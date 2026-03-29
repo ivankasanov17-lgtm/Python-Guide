@@ -28,7 +28,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-steps:
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Set up Node
@@ -44,7 +44,8 @@ steps:
         run: pnpm install
       - name: Build
         run: pnpm run build
-        working-directory: ./artifacts/python-reference      - name: Setup Pages
+        working-directory: ./artifacts/python-reference      
+      - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
