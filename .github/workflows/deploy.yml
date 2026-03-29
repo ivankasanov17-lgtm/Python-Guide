@@ -35,15 +35,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'pnpm'
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
+          cache: 'npm'
       - name: Install dependencies
-        run: pnpm install
+        run: npm install
+        working-directory: ./artifacts/python-reference
       - name: Build
-        run: pnpm run build
+        run: npm run build
         working-directory: ./artifacts/python-reference      
       - name: Setup Pages
         uses: actions/configure-pages@v4
