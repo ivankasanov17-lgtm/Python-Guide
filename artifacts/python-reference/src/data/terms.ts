@@ -20,6 +20,34 @@ export const terms: Term[] = [
     example: 'abs(-5)      # 5\nabs(-3.14)   # 3.14\nabs(3+4j)    # 5.0'
   },
   {
+    name: 'aiter(async_iterable)',
+    description: `Возвращает асинхронный итератор для асинхронного итерируемого объекта. Эквивалентно вызову метода __aiter__() на объекте. Добавлена в Python 3.10.
+
+Функция предназначена для использования внутри асинхронного кода — async-функций или async for. Асинхронный итерируемый объект — это объект, реализующий метод __aiter__(), который возвращает асинхронный итератор с методом __anext__().
+
+Основное применение — явное получение асинхронного итератора из асинхронного итерируемого, аналогично тому, как iter() используется для обычных итерируемых объектов.`,
+    syntax: 'aiter(async_iterable)',
+    arguments: [
+      { name: 'async_iterable', description: 'Асинхронный итерируемый объект, реализующий метод __aiter__()' }
+    ],
+    example: `import asyncio
+
+async def async_generator():
+    for i in range(5):
+        yield i
+
+async def main():
+    ait = aiter(async_generator())  # получаем асинхронный итератор
+    print(await anext(ait))  # 0
+    print(await anext(ait))  # 1
+
+    # Эквивалентно использованию async for:
+    async for value in async_generator():
+        print(value)  # 0, 1, 2, 3, 4
+
+asyncio.run(main())`
+  },
+  {
     name: 'all(iterable)',
     description: 'Возвращает True, если все элементы итерируемого объекта истинны (или объект пуст). Эквивалентно циклу, который проверяет каждый элемент.',
     syntax: 'all(iterable)',
@@ -32,6 +60,38 @@ export const terms: Term[] = [
     syntax: 'any(iterable)',
     arguments: [{ name: 'iterable', description: 'Итерируемый объект (список, кортеж и т.д.)' }],
     example: 'any([False, False, True])  # True\nany([False, False, False]) # False\nany([])                    # False'
+  },
+  {
+    name: 'anext(async_iterator[, default])',
+    description: `Возвращает следующий элемент из асинхронного итератора, вызывая его метод __anext__(). Добавлена в Python 3.10.
+
+Если итератор исчерпан:
+- Без default: выбрасывается исключение StopAsyncIteration
+- С default: возвращается значение default
+
+Является асинхронным аналогом встроенной функции next() для обычных итераторов. Должна вызываться с await внутри async-функции.
+
+Функция полезна для пошагового ручного обхода асинхронных итераторов, например при реализации асинхронного конвейера или при необходимости получить только первый элемент без полного обхода.`,
+    syntax: 'await anext(async_iterator[, default])',
+    arguments: [
+      { name: 'async_iterator', description: 'Асинхронный итератор — объект с методом __anext__(). Получается через aiter() или async for' },
+      { name: 'default', description: 'Необязательный. Значение, возвращаемое при исчерпании итератора вместо StopAsyncIteration' }
+    ],
+    example: `import asyncio
+
+async def async_counter(n):
+    for i in range(n):
+        yield i
+
+async def main():
+    ait = aiter(async_counter(3))
+
+    print(await anext(ait))           # 0
+    print(await anext(ait))           # 1
+    print(await anext(ait))           # 2
+    print(await anext(ait, "конец"))  # "конец" — итератор исчерпан
+
+asyncio.run(main())`
   },
   {
     name: 'ascii(object)',
@@ -48,11 +108,225 @@ export const terms: Term[] = [
     example: 'bin(10)   # "0b1010"\nbin(-5)   # "-0b101"\nbin(0)    # "0b0"'
   },
   {
+    name: 'bisect.bisect_left(a, x[, lo[, hi]])',
+    description: `Возвращает индекс левой точки вставки элемента x в отсортированный список a, чтобы список оставался отсортированным. Если x уже присутствует в a, возвращаемый индекс будет перед (левее) любым существующим вхождением.
+
+Функция использует алгоритм бинарного поиска и работает за O(log n).
+
+Параметры lo и hi позволяют ограничить поиск подсписком a[lo:hi].
+
+Отличие от bisect_right:
+- bisect_left: вставка перед существующими вхождениями x
+- bisect_right: вставка после существующих вхождений x
+
+Применение:
+- Поиск позиции вставки без самой вставки (поиск в отсортированном массиве)
+- Проверка: x in a эквивалентно a[bisect_left(a, x)] == x
+- Реализация ступенчатых шкал (grades, диапазонов)`,
+    syntax: 'bisect.bisect_left(a, x, lo=0, hi=len(a))',
+    arguments: [
+      { name: 'a', description: 'Отсортированный список, в котором выполняется поиск' },
+      { name: 'x', description: 'Искомое значение — точка вставки которого ищется' },
+      { name: 'lo', description: 'Необязательный. Нижняя граница подсписка для поиска. По умолчанию 0' },
+      { name: 'hi', description: 'Необязательный. Верхняя граница подсписка для поиска. По умолчанию len(a)' }
+    ],
+    example: `import bisect
+
+a = [1, 3, 3, 5, 7, 9]
+
+bisect.bisect_left(a, 3)   # 1 — перед первым вхождением 3
+bisect.bisect_left(a, 4)   # 3 — между 3 и 5
+bisect.bisect_left(a, 0)   # 0 — перед всеми
+bisect.bisect_left(a, 10)  # 6 — после всех
+
+# Поиск элемента в отсортированном списке за O(log n)
+def index(a, x):
+    i = bisect.bisect_left(a, x)
+    if i < len(a) and a[i] == x:
+        return i
+    raise ValueError(f"{x} не найден")
+
+# Ступенчатая шкала оценок
+def grade(score):
+    breakpoints = [60, 70, 80, 90]
+    grades = ["F", "D", "C", "B", "A"]
+    return grades[bisect.bisect_left(breakpoints, score)]
+
+print(grade(55))   # F
+print(grade(70))   # C  (bisect_left: 70 → индекс 1 → 'D'... нет, bisect_left([60,70,80,90], 70) = 1)
+print(grade(85))   # B
+print(grade(100))  # A`
+  },
+  {
+    name: 'bisect.bisect_right(a, x[, lo[, hi]])',
+    description: `Возвращает индекс правой точки вставки элемента x в отсортированный список a, чтобы список оставался отсортированным. Если x уже присутствует в a, возвращаемый индекс будет после (правее) всех существующих вхождений.
+
+Также доступна под именем bisect.bisect() (синоним bisect_right).
+
+Функция использует алгоритм бинарного поиска и работает за O(log n).
+
+Отличие от bisect_left:
+- bisect_left(a, x) — вставка перед существующими x
+- bisect_right(a, x) — вставка после существующих x
+
+Оба варианта дают одинаковый результат, если x не присутствует в a.`,
+    syntax: 'bisect.bisect_right(a, x, lo=0, hi=len(a))',
+    arguments: [
+      { name: 'a', description: 'Отсортированный список, в котором выполняется поиск' },
+      { name: 'x', description: 'Искомое значение — точка вставки после которого ищется' },
+      { name: 'lo', description: 'Необязательный. Нижняя граница подсписка для поиска. По умолчанию 0' },
+      { name: 'hi', description: 'Необязательный. Верхняя граница подсписка для поиска. По умолчанию len(a)' }
+    ],
+    example: `import bisect
+
+a = [1, 3, 3, 5, 7, 9]
+
+bisect.bisect_right(a, 3)   # 3 — после последнего вхождения 3
+bisect.bisect_right(a, 4)   # 3 — между 3 и 5 (то же, что bisect_left)
+bisect.bisect_right(a, 0)   # 0
+bisect.bisect_right(a, 10)  # 6
+
+# bisect() — синоним bisect_right
+bisect.bisect(a, 3)  # 3
+
+# Подсчёт вхождений x в отсортированном списке
+def count_occurrences(a, x):
+    return bisect.bisect_right(a, x) - bisect.bisect_left(a, x)
+
+a = [1, 2, 3, 3, 3, 4, 5]
+print(count_occurrences(a, 3))  # 3
+
+# Ступенчатая шкала (bisect_right удобнее для "включительно правой границы")
+def grade(score):
+    breakpoints = [60, 70, 80, 90]
+    grades = ["F", "D", "C", "B", "A"]
+    return grades[bisect.bisect_right(breakpoints, score)]
+
+print(grade(60))   # D  — 60 включено в "D" (bisect_right даёт индекс 1)
+print(grade(90))   # A
+print(grade(100))  # A`
+  },
+  {
+    name: 'bisect.insort_left(a, x[, lo[, hi]])',
+    description: `Вставляет элемент x в отсортированный список a, сохраняя его порядок. Если x уже присутствует в a, вставка происходит перед (левее) существующих вхождений.
+
+Эквивалентно: a.insert(bisect.bisect_left(a, x, lo, hi), x).
+
+Работает за O(log n) для нахождения позиции, но O(n) для самой вставки (из-за сдвига элементов списка). Для больших списков с частыми вставками используйте структуры данных типа SortedList (пакет sortedcontainers).`,
+    syntax: 'bisect.insort_left(a, x, lo=0, hi=len(a))',
+    arguments: [
+      { name: 'a', description: 'Отсортированный список, в который нужно вставить элемент' },
+      { name: 'x', description: 'Элемент для вставки' },
+      { name: 'lo', description: 'Необязательный. Нижняя граница подсписка. По умолчанию 0' },
+      { name: 'hi', description: 'Необязательный. Верхняя граница подсписка. По умолчанию len(a)' }
+    ],
+    example: `import bisect
+
+a = [1, 3, 5, 7]
+bisect.insort_left(a, 4)
+print(a)  # [1, 3, 4, 5, 7]
+
+bisect.insort_left(a, 3)
+print(a)  # [1, 3, 3, 4, 5, 7] — вставлен перед существующей 3
+
+# Поддержание отсортированного списка при потоке данных
+scores = []
+for score in [85, 92, 78, 88, 95, 70]:
+    bisect.insort_left(scores, score)
+    print(scores)
+# [85]
+# [85, 92]
+# [78, 85, 92]
+# [78, 85, 88, 92]
+# [78, 85, 88, 92, 95]
+# [70, 78, 85, 88, 92, 95]`
+  },
+  {
+    name: 'bisect.insort_right(a, x[, lo[, hi]])',
+    description: `Вставляет элемент x в отсортированный список a, сохраняя его порядок. Если x уже присутствует в a, вставка происходит после (правее) существующих вхождений.
+
+Также доступна под именем bisect.insort() (синоним insort_right).
+
+Эквивалентно: a.insert(bisect.bisect_right(a, x, lo, hi), x).
+
+Разница между insort_left и insort_right проявляется только при наличии дубликатов — они определяют, с какой стороны от равных элементов будет вставлен новый.`,
+    syntax: 'bisect.insort_right(a, x, lo=0, hi=len(a))',
+    arguments: [
+      { name: 'a', description: 'Отсортированный список, в который нужно вставить элемент' },
+      { name: 'x', description: 'Элемент для вставки' },
+      { name: 'lo', description: 'Необязательный. Нижняя граница подсписка. По умолчанию 0' },
+      { name: 'hi', description: 'Необязательный. Верхняя граница подсписка. По умолчанию len(a)' }
+    ],
+    example: `import bisect
+
+a = [1, 3, 5, 7]
+bisect.insort_right(a, 4)
+print(a)  # [1, 3, 4, 5, 7]
+
+bisect.insort_right(a, 3)
+print(a)  # [1, 3, 3, 4, 5, 7] — вставлен после существующей 3
+
+# insort() — синоним insort_right
+bisect.insort(a, 6)
+print(a)  # [1, 3, 3, 4, 5, 6, 7]
+
+# Стабильная вставка объектов с ключом
+from bisect import insort_right
+events = []
+# Каждое событие: (время, id, данные) — сортировка по времени
+insort_right(events, (10, 1, "event_a"))
+insort_right(events, (5,  2, "event_b"))
+insort_right(events, (10, 3, "event_c"))  # то же время — добавится после event_a
+print(events)
+# [(5, 2, 'event_b'), (10, 1, 'event_a'), (10, 3, 'event_c')]`
+  },
+  {
     name: 'bool([x])',
     description: 'Возвращает булево значение, то есть True или False. x преобразуется стандартными процедурами проверки истинности. Если x ложно или опущено, возвращается False; иначе True. bool — это подкласс int.',
     syntax: 'bool([x])',
     arguments: [{ name: 'x', description: 'Необязательный. Любое значение для преобразования в bool' }],
     example: 'bool(0)      # False\nbool(1)      # True\nbool("")     # False\nbool("hi")   # True\nbool()       # False'
+  },
+  {
+    name: 'breakpoint(*args, **kwargs)',
+    description: `Останавливает выполнение программы и запускает отладчик в месте вызова. Добавлена в Python 3.7.
+
+По умолчанию вызывает pdb.set_trace() без аргументов. Поведение можно изменить через переменную окружения PYTHONBREAKPOINT:
+- PYTHONBREAKPOINT=0 — полностью отключает все вызовы breakpoint()
+- PYTHONBREAKPOINT=module.callable — использует указанный обработчик (например, ipdb.set_trace)
+- PYTHONBREAKPOINT= (пустая строка) — эквивалентно 0
+
+Технически breakpoint() вызывает sys.breakpointhook(*args, **kwargs), который можно переопределить программно.
+
+Функция особенно удобна по сравнению с ручным импортом pdb — не нужно писать import pdb; pdb.set_trace(), достаточно одного вызова. Также легко отключается глобально без изменения кода.
+
+Основные команды pdb после вызова breakpoint():
+- n (next) — следующая строка
+- s (step) — войти в функцию
+- c (continue) — продолжить выполнение
+- q (quit) — выйти из отладчика
+- p <expr> — вывести значение выражения`,
+    syntax: 'breakpoint(*args, **kwargs)',
+    arguments: [
+      { name: '*args', description: 'Необязательные позиционные аргументы, передаваемые в sys.breakpointhook()' },
+      { name: '**kwargs', description: 'Необязательные именованные аргументы, передаваемые в sys.breakpointhook()' }
+    ],
+    example: `def calculate(x, y):
+    result = x * y
+    breakpoint()  # здесь выполнение остановится, откроется pdb
+    return result + 10
+
+calculate(3, 4)
+# (Pdb) p result
+# 12
+# (Pdb) c
+# продолжить выполнение
+
+# Отключить все breakpoint() без изменения кода:
+# PYTHONBREAKPOINT=0 python script.py
+
+# Использовать ipdb вместо pdb:
+# PYTHONBREAKPOINT=ipdb.set_trace python script.py`
   },
   {
     name: 'bytearray([source[, encoding[, errors]]])',
@@ -212,6 +486,702 @@ print(c.real)       # 3.0
 print(c.imag)       # 4.0
 print(c.conjugate()) # (3-4j)
 print(abs(c))       # 5.0  (модуль числа)`
+  },
+  {
+    name: 'collections.Counter([iterable-or-mapping])',
+    description: `Подкласс словаря из модуля collections для подсчёта хэшируемых объектов. Хранит элементы как ключи, а их количество — как значения. Является полноценным словарём — поддерживает все его методы.
+
+Создание:
+- Из итерируемого: Counter("aabbc") → {'a': 2, 'b': 2, 'c': 1}
+- Из словаря: Counter({'a': 3, 'b': 1})
+- Через именованные аргументы: Counter(a=3, b=1)
+- Пустой: Counter()
+
+Особенности:
+- Отсутствующие элементы возвращают 0, а не KeyError
+- Счётчики могут быть отрицательными (для математических операций)
+- Поддерживает арифметические операции: +, -, &, |
+- + возвращает только положительные счётчики
+
+Унаследованные полезные методы: .keys(), .values(), .items(), .update(), .pop() и др.`,
+    syntax: 'collections.Counter([iterable-or-mapping])',
+    arguments: [
+      { name: 'iterable-or-mapping', description: 'Необязательный. Итерируемый объект (строка, список и т.д.) или словарь/маппинг с начальными значениями счётчиков' }
+    ],
+    example: `from collections import Counter
+
+# Из итерируемого
+c = Counter("mississippi")
+print(c)  # Counter({'i': 4, 's': 4, 'p': 2, 'm': 1})
+
+# Из списка слов
+words = ["apple", "banana", "apple", "cherry", "banana", "apple"]
+c = Counter(words)
+print(c)  # Counter({'apple': 3, 'banana': 2, 'cherry': 1})
+
+# Доступ к несуществующему — 0, не ошибка
+print(c["grape"])  # 0
+
+# Арифметика счётчиков
+c1 = Counter(a=3, b=1)
+c2 = Counter(a=1, b=2)
+print(c1 + c2)   # Counter({'a': 4, 'b': 3})
+print(c1 - c2)   # Counter({'a': 2})        — только положительные
+print(c1 & c2)   # Counter({'a': 1, 'b': 1}) — минимум
+print(c1 | c2)   # Counter({'a': 3, 'b': 2}) — максимум`
+  },
+  {
+    name: 'collections.Counter.elements()',
+    description: `Возвращает итератор, в котором каждый элемент повторяется столько раз, сколько указывает его счётчик. Элементы возвращаются в порядке первого добавления. Элементы со счётчиком менее 1 не включаются.
+
+Результат — итератор, а не список. Для получения списка используйте list(counter.elements()).
+
+Применение:
+- «Разворачивание» счётчика обратно в список элементов
+- Создание мультимножества
+- Передача в функции, ожидающие итерируемые объекты (sorted, random.shuffle и т.д.)`,
+    syntax: 'counter.elements()',
+    arguments: [],
+    example: `from collections import Counter
+
+c = Counter(a=3, b=2, c=1, d=0, e=-1)
+list(c.elements())
+# ['a', 'a', 'a', 'b', 'b', 'c']
+# d и e не включены (счётчик < 1)
+
+# Практический пример — восстановление списка из счётчика
+words = ["apple", "banana", "apple", "cherry"]
+c = Counter(words)
+restored = sorted(c.elements())
+print(restored)  # ['apple', 'apple', 'banana', 'cherry']
+
+# Перемешать взвешенные данные
+import random
+items = Counter(red=3, blue=2, green=1)
+pool = list(items.elements())  # ['red', 'red', 'red', 'blue', 'blue', 'green']
+random.shuffle(pool)
+print(pool)`
+  },
+  {
+    name: 'collections.Counter.most_common([n])',
+    description: `Возвращает список из n наиболее часто встречающихся элементов и их счётчиков в порядке убывания. Если n не задан или None — возвращаются все элементы от наиболее к наименее частым.
+
+При равных счётчиках порядок элементов произвольный (не гарантирован стабильной сортировкой).
+
+Применение:
+- Топ-N самых частых слов, символов, событий
+- Анализ частотности данных
+- Нахождение редких элементов: most_common()[:-n-1:-1] — n редчайших`,
+    syntax: 'counter.most_common([n])',
+    arguments: [
+      { name: 'n', description: 'Необязательный. Количество возвращаемых элементов. Если не указан — возвращаются все элементы по убыванию частоты' }
+    ],
+    example: `from collections import Counter
+
+text = "the quick brown fox jumps over the lazy dog the fox"
+words = text.split()
+c = Counter(words)
+
+# Топ-3 самых частых
+print(c.most_common(3))
+# [('the', 3), ('fox', 2), ('quick', 1)]  — порядок при равных произвольный
+
+# Все элементы по убыванию
+print(c.most_common())
+
+# Самые редкие (последние 2)
+print(c.most_common()[:-3:-1])
+# [('dog', 1), ('lazy', 1)]
+
+# Подсчёт символов
+c = Counter("abracadabra")
+print(c.most_common(3))
+# [('a', 5), ('b', 2), ('r', 2)]
+
+# Анализ логов
+errors = ["404", "500", "404", "404", "403", "500", "404"]
+c = Counter(errors)
+for code, count in c.most_common():
+    print(f"HTTP {code}: {count} раз")`
+  },
+  {
+    name: 'collections.Counter.update([iterable-or-mapping])',
+    description: `Обновляет счётчики: добавляет подсчёты из iterable или маппинга к существующим. В отличие от dict.update(), который заменяет значения, Counter.update() складывает их.
+
+Принимает те же форматы, что и конструктор:
+- Итерируемый объект: каждый элемент увеличивает свой счётчик на 1
+- Маппинг/Counter: добавляет указанные количества
+- Именованные аргументы: counter.update(a=2, b=1)
+
+Метод изменяет счётчик на месте (in-place) и возвращает None.
+
+Обратная операция — subtract(): вычитает подсчёты вместо сложения.`,
+    syntax: 'counter.update([iterable-or-mapping])',
+    arguments: [
+      { name: 'iterable-or-mapping', description: 'Итерируемый объект, маппинг или Counter с данными для добавления к существующим счётчикам' }
+    ],
+    example: `from collections import Counter
+
+c = Counter(["apple", "banana", "apple"])
+print(c)  # Counter({'apple': 2, 'banana': 1})
+
+# Добавить из итерируемого (подсчитывает каждый элемент)
+c.update(["apple", "cherry", "cherry"])
+print(c)  # Counter({'apple': 3, 'cherry': 2, 'banana': 1})
+
+# Добавить из маппинга (складывает значения)
+c.update({"banana": 5, "grape": 1})
+print(c)  # Counter({'banana': 6, 'apple': 3, 'cherry': 2, 'grape': 1})
+
+# Добавить через именованные аргументы
+c.update(mango=3)
+print(c["mango"])  # 3
+
+# Реальный сценарий: подсчёт слов по кускам текста
+total = Counter()
+for chunk in ["hello world", "hello python", "world of python"]:
+    total.update(chunk.split())
+print(total.most_common(3))
+# [('hello', 2), ('world', 2), ('python', 2)]`
+  },
+  {
+    name: 'collections.defaultdict([default_factory])',
+    description: `Подкласс dict из модуля collections, автоматически создающий значение по умолчанию для отсутствующих ключей с помощью функции default_factory. Исключает KeyError при доступе к несуществующим ключам.
+
+При обращении к несуществующему ключу defaultdict:
+1. Вызывает default_factory() без аргументов
+2. Сохраняет результат как значение ключа
+3. Возвращает это значение
+
+Если default_factory равен None — поведение как у обычного dict (KeyError).
+
+Типичные значения default_factory:
+- list — для группировки (словарь списков)
+- set — для уникальных коллекций
+- int — для подсчёта (аналог Counter)
+- dict — для вложенных словарей
+- str, float — для строк/чисел (возвращает "" и 0.0)
+- lambda: значение — для произвольных значений по умолчанию
+
+Поддерживает все методы обычного dict. default_factory доступна как атрибут .default_factory.`,
+    syntax: 'collections.defaultdict([default_factory[, ...]])',
+    arguments: [
+      { name: 'default_factory', description: 'Необязательный. Вызываемый объект без аргументов, возвращающий значение по умолчанию. Если None — поведение как у dict. Может быть list, set, int, str или любая функция' }
+    ],
+    example: `from collections import defaultdict
+
+# Группировка элементов по ключу
+groups = defaultdict(list)
+pairs = [("a", 1), ("b", 2), ("a", 3), ("b", 4), ("c", 5)]
+for key, value in pairs:
+    groups[key].append(value)
+print(dict(groups))  # {'a': [1, 3], 'b': [2, 4], 'c': [5]}
+
+# Подсчёт (аналог Counter)
+word_count = defaultdict(int)
+for word in "the cat sat on the mat".split():
+    word_count[word] += 1
+print(dict(word_count))  # {'the': 2, 'cat': 1, ...}
+
+# Индекс слов (в каких позициях встречается)
+index = defaultdict(set)
+words = ["apple", "banana", "apple", "cherry", "banana"]
+for i, word in enumerate(words):
+    index[word].add(i)
+print(dict(index))  # {'apple': {0, 2}, 'banana': {1, 4}, 'cherry': {3}}
+
+# Произвольное значение по умолчанию
+scores = defaultdict(lambda: 100)
+scores["Alice"] += 50
+print(scores["Alice"])  # 150
+print(scores["Bob"])    # 100 — значение по умолчанию`
+  },
+  {
+    name: 'collections.deque([iterable[, maxlen]])',
+    description: `Двусторонняя очередь (double-ended queue) из модуля collections — структура данных, поддерживающая эффективные операции добавления и удаления с обоих концов за O(1).
+
+В отличие от списка (list):
+- list.append() / list.pop() — O(1) только для правого конца
+- list.insert(0, x) / list.pop(0) — O(n) — медленно для левого конца
+- deque работает за O(1) с обоих концов
+
+Параметр maxlen:
+- Если задан — deque ограничена по размеру
+- При превышении лимита элементы автоматически вытесняются с противоположного конца
+- Позволяет легко реализовать «скользящее окно» (sliding window)
+
+Применение:
+- Очереди (FIFO) и стеки (LIFO)
+- Хранение N последних элементов (история, буфер)
+- Алгоритм BFS (обход в ширину)
+- Скользящие окна и буферы`,
+    syntax: 'collections.deque([iterable[, maxlen]])',
+    arguments: [
+      { name: 'iterable', description: 'Необязательный. Итерируемый объект, элементы которого станут начальным содержимым очереди' },
+      { name: 'maxlen', description: 'Необязательный. Максимальная длина очереди. При превышении — автоматическое вытеснение с противоположного конца' }
+    ],
+    example: `from collections import deque
+
+# Создание
+d = deque([1, 2, 3, 4, 5])
+print(d)           # deque([1, 2, 3, 4, 5])
+
+# Скользящее окно — последние 3 элемента
+window = deque(maxlen=3)
+for x in [1, 2, 3, 4, 5]:
+    window.append(x)
+    print(list(window))
+# [1]  [1,2]  [1,2,3]  [2,3,4]  [3,4,5]
+
+# BFS — обход в ширину
+from collections import deque
+def bfs(graph, start):
+    visited = set([start])
+    queue = deque([start])
+    while queue:
+        node = queue.popleft()
+        print(node)
+        for neighbor in graph[node]:
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append(neighbor)`
+  },
+  {
+    name: 'collections.deque.append(x)',
+    description: 'Добавляет элемент x в правый конец (конец) очереди. Операция выполняется за O(1). Если deque имеет maxlen и уже заполнена, элемент с левого конца автоматически вытесняется.',
+    syntax: 'deque.append(x)',
+    arguments: [
+      { name: 'x', description: 'Элемент, добавляемый в правый конец очереди' }
+    ],
+    example: `from collections import deque
+
+d = deque([1, 2, 3])
+d.append(4)
+print(d)  # deque([1, 2, 3, 4])
+
+# С maxlen — вытеснение слева
+d = deque([1, 2, 3], maxlen=3)
+d.append(4)
+print(d)  # deque([2, 3, 4]) — 1 вытеснен
+
+# Использование как стек (LIFO): append + pop
+stack = deque()
+stack.append("a")
+stack.append("b")
+stack.append("c")
+print(stack.pop())  # "c" — последний добавленный`
+  },
+  {
+    name: 'collections.deque.appendleft(x)',
+    description: 'Добавляет элемент x в левый конец (начало) очереди. Операция выполняется за O(1) — в отличие от list.insert(0, x), которая занимает O(n). Если deque имеет maxlen и заполнена, элемент с правого конца автоматически вытесняется.',
+    syntax: 'deque.appendleft(x)',
+    arguments: [
+      { name: 'x', description: 'Элемент, добавляемый в левый конец (начало) очереди' }
+    ],
+    example: `from collections import deque
+
+d = deque([1, 2, 3])
+d.appendleft(0)
+print(d)  # deque([0, 1, 2, 3])
+
+# С maxlen — вытеснение справа
+d = deque([1, 2, 3], maxlen=3)
+d.appendleft(0)
+print(d)  # deque([0, 1, 2]) — 3 вытеснен
+
+# История браузера — новые страницы в начало
+history = deque(maxlen=5)
+for page in ["home", "about", "contact", "blog", "shop", "cart"]:
+    history.appendleft(page)
+print(list(history))  # ['cart', 'shop', 'blog', 'contact', 'about']`
+  },
+  {
+    name: 'collections.deque.extend(iterable)',
+    description: 'Расширяет правый конец очереди, добавляя все элементы iterable поочерёдно. Эквивалентно вызову append() для каждого элемента. Если deque имеет maxlen, лишние элементы вытесняются с левого конца.',
+    syntax: 'deque.extend(iterable)',
+    arguments: [
+      { name: 'iterable', description: 'Итерируемый объект, элементы которого добавляются в правый конец очереди' }
+    ],
+    example: `from collections import deque
+
+d = deque([1, 2, 3])
+d.extend([4, 5, 6])
+print(d)  # deque([1, 2, 3, 4, 5, 6])
+
+# С maxlen
+d = deque([1, 2, 3], maxlen=4)
+d.extend([4, 5])
+print(d)  # deque([2, 3, 4, 5]) — 1 вытеснен при добавлении 4, 2 вытеснен при добавлении 5
+
+# Добавление строки — по символу
+d = deque()
+d.extend("abc")
+print(d)  # deque(['a', 'b', 'c'])`
+  },
+  {
+    name: 'collections.deque.extendleft(iterable)',
+    description: `Расширяет левый конец очереди, добавляя элементы iterable поочерёдно слева. Обратите внимание: так как каждый элемент добавляется в начало, итоговый порядок элементов будет обратным по сравнению с исходным iterable.
+
+Эквивалентно вызову appendleft() для каждого элемента по порядку:
+extendleft([1, 2, 3]) → appendleft(1), appendleft(2), appendleft(3)
+Результат: deque([3, 2, 1, ...])`,
+    syntax: 'deque.extendleft(iterable)',
+    arguments: [
+      { name: 'iterable', description: 'Итерируемый объект. Элементы добавляются в левый конец по одному — итоговый порядок обратный' }
+    ],
+    example: `from collections import deque
+
+d = deque([4, 5, 6])
+d.extendleft([1, 2, 3])
+print(d)  # deque([3, 2, 1, 4, 5, 6]) — обратный порядок!
+
+# Чтобы сохранить исходный порядок — перевернуть iterable
+d = deque([4, 5, 6])
+d.extendleft(reversed([1, 2, 3]))
+print(d)  # deque([1, 2, 3, 4, 5, 6])
+
+# Практическое применение: добавить приоритетные элементы в начало
+queue = deque(["task3", "task4"])
+priority_tasks = ["task1", "task2"]
+queue.extendleft(reversed(priority_tasks))
+print(queue)  # deque(['task1', 'task2', 'task3', 'task4'])`
+  },
+  {
+    name: 'collections.deque.pop()',
+    description: 'Удаляет и возвращает элемент из правого конца (конца) очереди. Выполняется за O(1). Если очередь пуста, вызывает IndexError.',
+    syntax: 'deque.pop()',
+    arguments: [],
+    example: `from collections import deque
+
+d = deque([1, 2, 3, 4])
+print(d.pop())  # 4
+print(d)        # deque([1, 2, 3])
+
+# Использование как стек (LIFO)
+stack = deque()
+stack.append("first")
+stack.append("second")
+stack.append("third")
+print(stack.pop())  # "third"
+print(stack.pop())  # "second"
+print(stack.pop())  # "first"
+# stack.pop()      # IndexError — стек пуст
+
+# Защита от ошибки
+d = deque()
+try:
+    d.pop()
+except IndexError:
+    print("Очередь пуста")`
+  },
+  {
+    name: 'collections.deque.popleft()',
+    description: 'Удаляет и возвращает элемент из левого конца (начала) очереди. Выполняется за O(1) — в отличие от list.pop(0), которая занимает O(n). Если очередь пуста, вызывает IndexError.',
+    syntax: 'deque.popleft()',
+    arguments: [],
+    example: `from collections import deque
+
+d = deque([1, 2, 3, 4])
+print(d.popleft())  # 1
+print(d)            # deque([2, 3, 4])
+
+# Использование как очередь (FIFO)
+queue = deque()
+queue.append("клиент 1")
+queue.append("клиент 2")
+queue.append("клиент 3")
+
+print(queue.popleft())  # "клиент 1" — первый пришёл, первый ушёл
+print(queue.popleft())  # "клиент 2"
+
+# BFS — обход в ширину
+graph = {1: [2, 3], 2: [4], 3: [4, 5], 4: [], 5: []}
+queue = deque([1])
+visited = {1}
+order = []
+while queue:
+    node = queue.popleft()
+    order.append(node)
+    for neighbor in graph[node]:
+        if neighbor not in visited:
+            visited.add(neighbor)
+            queue.append(neighbor)
+print(order)  # [1, 2, 3, 4, 5]`
+  },
+  {
+    name: 'collections.deque.rotate(n=1)',
+    description: `Поворачивает очередь на n шагов вправо. При n > 0 — элементы перемещаются с правого конца на левый. При n < 0 — с левого на правый.
+
+deque.rotate(1) эквивалентно: deque.appendleft(deque.pop())
+deque.rotate(-1) эквивалентно: deque.append(deque.popleft())
+
+Применение:
+- Реализация «кольцевого буфера» (circular buffer)
+- Циклический сдвиг последовательности
+- Шифр Цезаря и другие ротационные алгоритмы
+- Симуляция «карусели» (round-robin) без бесконечного цикла`,
+    syntax: 'deque.rotate(n=1)',
+    arguments: [
+      { name: 'n', description: 'Количество шагов поворота. Положительное — вправо (с правого конца на левый). Отрицательное — влево (с левого конца на правый). По умолчанию 1' }
+    ],
+    example: `from collections import deque
+
+d = deque([1, 2, 3, 4, 5])
+
+d.rotate(1)   # поворот вправо на 1
+print(d)      # deque([5, 1, 2, 3, 4])
+
+d.rotate(-1)  # поворот влево на 1
+print(d)      # deque([1, 2, 3, 4, 5]) — вернулись к исходному
+
+d.rotate(2)
+print(d)      # deque([4, 5, 1, 2, 3])
+
+# Шифр Цезаря
+alphabet = deque("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+alphabet.rotate(-3)  # сдвиг на 3
+table = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "".join(alphabet))
+print("HELLO".translate(table))  # EBIIL
+
+# Переход хода в игре (round-robin)
+players = deque(["Алиса", "Боб", "Карл"])
+for turn in range(6):
+    current = players[0]
+    print(f"Ход {turn + 1}: {current}")
+    players.rotate(-1)  # передать ход следующему`
+  },
+  {
+    name: 'collections.OrderedDict()',
+    description: `Подкласс dict из модуля collections, гарантирующий сохранение порядка вставки ключей. Начиная с Python 3.7, обычный dict тоже сохраняет порядок вставки, однако OrderedDict предоставляет дополнительные возможности и семантику.
+
+Ключевые отличия от обычного dict:
+- Имеет методы move_to_end() и popitem(last=...) для управления порядком
+- Сравнение учитывает порядок: OrderedDict([('a', 1), ('b', 2)]) ≠ OrderedDict([('b', 2), ('a', 1)])
+- Явно выражает намерение: «порядок важен»
+
+Когда использовать OrderedDict вместо dict:
+- Когда порядок элементов является частью бизнес-логики
+- Когда нужен метод move_to_end() или специальное поведение popitem()
+- Для совместимости с Python < 3.7
+- Когда важна семантика — код явно говорит о значимости порядка`,
+    syntax: 'collections.OrderedDict()',
+    arguments: [],
+    example: `from collections import OrderedDict
+
+# Создание
+od = OrderedDict()
+od["banana"] = 3
+od["apple"] = 1
+od["cherry"] = 2
+print(list(od.keys()))  # ['banana', 'apple', 'cherry'] — порядок сохранён
+
+# Сравнение учитывает порядок
+od1 = OrderedDict([("a", 1), ("b", 2)])
+od2 = OrderedDict([("b", 2), ("a", 1)])
+print(od1 == od2)   # False — разный порядок!
+
+# Обычные словари не учитывают порядок при сравнении
+d1 = {"a": 1, "b": 2}
+d2 = {"b": 2, "a": 1}
+print(d1 == d2)     # True
+
+# LRU-кэш вручную
+class LRUCache:
+    def __init__(self, capacity):
+        self.cache = OrderedDict()
+        self.capacity = capacity
+    def get(self, key):
+        if key in self.cache:
+            self.cache.move_to_end(key)
+            return self.cache[key]
+        return -1
+    def put(self, key, value):
+        if key in self.cache:
+            self.cache.move_to_end(key)
+        self.cache[key] = value
+        if len(self.cache) > self.capacity:
+            self.cache.popitem(last=False)`
+  },
+  {
+    name: 'collections.OrderedDict.move_to_end(key[, last=True])',
+    description: `Перемещает существующий ключ в конец (или начало) OrderedDict. Если ключ не существует — вызывает KeyError.
+
+Параметр last:
+- True (по умолчанию) — перемещает ключ в конец (правый конец)
+- False — перемещает ключ в начало (левый конец)
+
+Метод работает за O(1).
+
+Основное применение — реализация LRU-кэша (Least Recently Used): при обращении к элементу он перемещается в конец, а «устаревшие» (давно не используемые) элементы остаются в начале и вытесняются первыми.`,
+    syntax: 'ordered_dict.move_to_end(key, last=True)',
+    arguments: [
+      { name: 'key', description: 'Ключ, который нужно переместить. Должен существовать в словаре' },
+      { name: 'last', description: 'Если True (по умолчанию) — перемещает в конец. Если False — перемещает в начало' }
+    ],
+    example: `from collections import OrderedDict
+
+od = OrderedDict([("a", 1), ("b", 2), ("c", 3)])
+print(list(od.keys()))  # ['a', 'b', 'c']
+
+# Переместить "a" в конец
+od.move_to_end("a")
+print(list(od.keys()))  # ['b', 'c', 'a']
+
+# Переместить "a" в начало
+od.move_to_end("a", last=False)
+print(list(od.keys()))  # ['a', 'b', 'c']
+
+# LRU-кэш: при обращении — перемещаем в конец
+cache = OrderedDict()
+cache["page1"] = "<html>...</html>"
+cache["page2"] = "<html>...</html>"
+cache["page3"] = "<html>...</html>"
+
+# Обращаемся к page1 — она «свежая», перемещаем в конец
+cache.move_to_end("page1")
+print(list(cache.keys()))  # ['page2', 'page3', 'page1']
+# При вытеснении удалим первый элемент (page2) — он «устаревший»`
+  },
+  {
+    name: 'collections.OrderedDict.popitem(last=True)',
+    description: `Удаляет и возвращает пару (ключ, значение) из OrderedDict. В отличие от dict.popitem() (возвращает произвольную пару), OrderedDict.popitem() уважает порядок.
+
+Параметр last:
+- True (по умолчанию) — удаляет последний добавленный элемент (LIFO, как стек)
+- False — удаляет первый добавленный элемент (FIFO, как очередь)
+
+Если словарь пуст — вызывает KeyError.
+
+Применение:
+- LRU-кэш: popitem(last=False) удаляет давно не используемый элемент
+- LIFO/FIFO обработка словарей
+- Поочерёдное извлечение элементов в порядке добавления`,
+    syntax: 'ordered_dict.popitem(last=True)',
+    arguments: [
+      { name: 'last', description: 'Если True (по умолчанию) — удаляет последний элемент (LIFO). Если False — удаляет первый элемент (FIFO)' }
+    ],
+    example: `from collections import OrderedDict
+
+od = OrderedDict([("a", 1), ("b", 2), ("c", 3)])
+
+# last=True (по умолчанию) — удалить последний
+print(od.popitem())         # ('c', 3)
+print(list(od.keys()))      # ['a', 'b']
+
+# last=False — удалить первый
+print(od.popitem(last=False))  # ('a', 1)
+print(list(od.keys()))         # ['b']
+
+# LRU-кэш: вытеснить «самый старый» элемент
+cache = OrderedDict()
+capacity = 3
+for key, value in [("x", 1), ("y", 2), ("z", 3), ("w", 4)]:
+    cache[key] = value
+    if len(cache) > capacity:
+        removed = cache.popitem(last=False)  # удалить самый старый
+        print(f"Вытеснен: {removed}")
+# Вытеснен: ('x', 1)
+print(list(cache.keys()))  # ['y', 'z', 'w']`
+  },
+  {
+    name: 'copy.copy(x)',
+    description: `Создаёт поверхностную (shallow) копию объекта x из модуля copy. Поверхностная копия создаёт новый объект верхнего уровня, но вложенные объекты (элементы списка, значения словаря и т.д.) не копируются — они разделяются между оригиналом и копией.
+
+Поведение поверхностной копии:
+- Новый объект создаётся для верхнего уровня (изменения в нём не влияют на оригинал)
+- Вложенные объекты — те же самые ссылки (изменение вложенного объекта влияет на оригинал!)
+
+copy.copy() эквивалентно:
+- Для списка: list[:]  или list(lst)
+- Для словаря: dict.copy()
+- Для множества: set.copy()
+
+Для полного независимого копирования вложенных структур используйте copy.deepcopy().`,
+    syntax: 'copy.copy(x)',
+    arguments: [
+      { name: 'x', description: 'Объект, поверхностную копию которого нужно создать' }
+    ],
+    example: `import copy
+
+# Список — поверхностная копия
+original = [1, [2, 3], [4, 5]]
+shallow = copy.copy(original)
+
+shallow.append(99)        # изменяем верхний уровень копии
+print(original)           # [1, [2, 3], [4, 5]] — оригинал не тронут
+
+shallow[1].append(999)    # изменяем вложенный список
+print(original)           # [1, [2, 3, 999], [4, 5]] — оригинал изменён!
+
+# Словарь — поверхностная копия
+d = {"a": [1, 2], "b": [3, 4]}
+d_copy = copy.copy(d)
+
+d_copy["c"] = [5, 6]      # новый ключ только в копии
+print("c" in d)            # False
+
+d_copy["a"].append(99)    # изменение вложенного списка
+print(d["a"])              # [1, 2, 99] — оригинал изменён!
+
+# Когда поверхностная копия достаточна
+numbers = [1, 2, 3, 4, 5]  # плоский список без вложений
+nums_copy = copy.copy(numbers)
+nums_copy[0] = 99
+print(numbers[0])  # 1 — безопасно, нет вложенных объектов`
+  },
+  {
+    name: 'copy.deepcopy(x[, memo])',
+    description: `Создаёт глубокую (deep) копию объекта x из модуля copy. Глубокая копия рекурсивно копирует все вложенные объекты — оригинал и копия полностью независимы.
+
+Отличие от copy.copy():
+- copy.copy() — копирует только верхний уровень, вложенные объекты разделяются
+- copy.deepcopy() — копирует всё рекурсивно, полная независимость
+
+Параметр memo:
+- Словарь для хранения уже скопированных объектов (id → копия)
+- Используется внутри рекурсии для обработки циклических ссылок
+- Обычно не нужен при прямом вызове
+
+Объекты могут управлять поведением deep copy через методы __copy__() и __deepcopy__().
+
+Предупреждение: deepcopy может быть медленным для больших или сложных структур. Если производительность критична — рассмотрите альтернативы (json сериализация, ручное копирование).`,
+    syntax: 'copy.deepcopy(x[, memo])',
+    arguments: [
+      { name: 'x', description: 'Объект, глубокую копию которого нужно создать' },
+      { name: 'memo', description: 'Необязательный. Словарь уже скопированных объектов для обработки циклических ссылок' }
+    ],
+    example: `import copy
+
+# Глубокая копия — полная независимость
+original = [1, [2, 3], {"a": [4, 5]}]
+deep = copy.deepcopy(original)
+
+deep[1].append(999)
+deep[2]["a"].append(999)
+
+print(original)  # [1, [2, 3], {'a': [4, 5]}] — не изменён!
+print(deep)      # [1, [2, 3, 999], {'a': [4, 5, 999]}]
+
+# Класс с вложенными объектами
+class Config:
+    def __init__(self, settings):
+        self.settings = settings
+
+config1 = Config({"debug": True, "ports": [8000, 8080]})
+config2 = copy.deepcopy(config1)
+
+config2.settings["debug"] = False
+config2.settings["ports"].append(9000)
+
+print(config1.settings)  # {'debug': True, 'ports': [8000, 8080]} — не изменён!
+print(config2.settings)  # {'debug': False, 'ports': [8000, 8080, 9000]}
+
+# Циклические ссылки — deepcopy обрабатывает корректно
+a = [1, 2]
+a.append(a)        # a содержит ссылку на себя!
+b = copy.deepcopy(a)
+print(b[0])        # 1
+print(b[2] is b)   # True — цикличность сохранена, но в копии`
   },
   {
     name: 'delattr(object, name)',
@@ -659,6 +1629,219 @@ a | b   # frozenset({1, 2, 3, 4})
 a & b   # frozenset({2, 3})`
   },
   {
+    name: 'functools.lru_cache(maxsize=128, typed=False)',
+    description: `Декоратор из модуля functools, реализующий кэширование результатов функции по алгоритму LRU (Least Recently Used — «вытеснение давно неиспользуемых»).
+
+Когда кэшированная функция вызывается с теми же аргументами, результат берётся из кэша без повторного вычисления. Это позволяет значительно ускорить рекурсивные вычисления, частые запросы к базам данных или тяжёлые вычисления с повторяющимися входными данными.
+
+Параметр maxsize:
+- Если maxsize=None — кэш неограничен (отключает LRU, работает быстрее)
+- Если maxsize — степень двойки, алгоритм работает наиболее эффективно
+- При достижении лимита вытесняется давно не использовавшийся элемент
+
+Параметр typed:
+- Если True — аргументы разных типов кэшируются отдельно (например, f(3) и f(3.0) — разные ключи)
+
+Все аргументы функции должны быть хэшируемыми (нельзя передавать списки, словари).
+
+Доступ к статистике кэша — через атрибут .cache_info() (hits, misses, maxsize, currsize). Очистка кэша — .cache_clear().
+
+Начиная с Python 3.9, можно использовать @cache вместо @lru_cache(maxsize=None).`,
+    syntax: '@functools.lru_cache(maxsize=128, typed=False)\ndef func(...): ...',
+    arguments: [
+      { name: 'maxsize', description: 'Максимальное количество сохраняемых результатов. None — кэш без ограничений. По умолчанию 128' },
+      { name: 'typed', description: 'Если True — аргументы разных типов хранятся отдельно. По умолчанию False' }
+    ],
+    example: `import functools
+
+@functools.lru_cache(maxsize=None)
+def fibonacci(n):
+    if n < 2:
+        return n
+    return fibonacci(n - 1) + fibonacci(n - 2)
+
+print(fibonacci(50))  # 12586269025 — быстро благодаря кэшу
+
+print(fibonacci.cache_info())
+# CacheInfo(hits=48, misses=51, maxsize=None, currsize=51)
+
+fibonacci.cache_clear()  # очистить кэш
+
+# Кэш с ограничением
+@functools.lru_cache(maxsize=4)
+def slow_square(n):
+    return n * n
+
+slow_square(1)  # вычисляется
+slow_square(2)  # вычисляется
+slow_square(1)  # из кэша`
+  },
+  {
+    name: 'functools.partial(func, /, *args, **keywords)',
+    description: `Создаёт новый объект partial — частично применённую функцию с зафиксированными аргументами. Возвращает вызываемый объект, ведущий себя как func с предустановленными позиционными и именованными аргументами.
+
+Когда partial-объект вызывается, переданные args добавляются в начало к аргументам вызова, а keywords объединяются с переданными именованными аргументами. Это позволяет адаптировать функции с несколькими параметрами под интерфейсы, ожидающие функцию с меньшим числом аргументов.
+
+Атрибуты partial-объекта:
+- .func — исходная функция
+- .args — зафиксированные позиционные аргументы
+- .keywords — зафиксированные именованные аргументы
+
+Применение:
+- Адаптация функций для map(), filter(), sorted()
+- Создание специализированных версий общих функций
+- Обратные вызовы в GUI, событийных системах
+
+Альтернатива — lambda-функции. functools.partial предпочтительнее, когда нужно сохранить читаемость, возможность интроспекции и документирования.`,
+    syntax: 'functools.partial(func, /, *args, **keywords)',
+    arguments: [
+      { name: 'func', description: 'Исходная функция, которую нужно частично применить' },
+      { name: '*args', description: 'Позиционные аргументы, которые будут добавлены в начало при каждом вызове' },
+      { name: '**keywords', description: 'Именованные аргументы, которые будут переданы при каждом вызове' }
+    ],
+    example: `import functools
+
+# Зафиксировать основание логарифма
+import math
+log2 = functools.partial(math.log, base=2)
+print(log2(8))    # 3.0
+print(log2(1024)) # 10.0
+
+# Создать умножитель
+double = functools.partial(lambda x, n: x * n, n=2)
+triple = functools.partial(lambda x, n: x * n, n=3)
+print(double(5))  # 10
+print(triple(5))  # 15
+
+# Использование с map
+from functools import partial
+add = lambda x, y: x + y
+add5 = partial(add, 5)
+result = list(map(add5, [1, 2, 3, 4]))
+print(result)  # [6, 7, 8, 9]
+
+# Интроспекция
+print(add5.func)      # <function <lambda> ...>
+print(add5.args)      # (5,)
+print(add5.keywords)  # {}`
+  },
+  {
+    name: 'functools.reduce(function, iterable[, initializer])',
+    description: `Применяет функцию двух аргументов кумулятивно ко всем элементам итерируемого объекта, сворачивая его в одно значение. Находится в модуле functools (в Python 3 перенесена из встроенных).
+
+Алгоритм работы:
+1. Берёт первые два элемента, применяет function
+2. Результат и следующий элемент снова передаёт в function
+3. Продолжает до конца последовательности
+
+С initializer:
+- Если задан, он помещается перед элементами iterable
+- Используется как начальное значение при пустом iterable
+- Без initializer пустой iterable вызывает TypeError
+
+Применение:
+- Вычисление произведения всех элементов
+- Поиск наибольшего/наименьшего элемента (хотя лучше max/min)
+- Объединение структур (словарей, множеств) из списка
+- Реализация факториала, суммы, конкатенации`,
+    syntax: 'functools.reduce(function, iterable[, initializer])',
+    arguments: [
+      { name: 'function', description: 'Функция двух аргументов: (накопленное_значение, текущий_элемент). Возвращает новое накопленное значение' },
+      { name: 'iterable', description: 'Итерируемый объект, элементы которого последовательно обрабатываются' },
+      { name: 'initializer', description: 'Необязательный. Начальное значение накопителя. Помещается перед элементами iterable' }
+    ],
+    example: `from functools import reduce
+
+# Сумма элементов (аналог sum())
+result = reduce(lambda acc, x: acc + x, [1, 2, 3, 4, 5])
+print(result)  # 15
+
+# Произведение всех элементов
+product = reduce(lambda acc, x: acc * x, [1, 2, 3, 4, 5])
+print(product)  # 120
+
+# Факториал
+factorial = reduce(lambda acc, x: acc * x, range(1, 6))
+print(factorial)  # 120
+
+# С initializer
+result = reduce(lambda acc, x: acc + x, [], 0)
+print(result)   # 0 — без initializer была бы ошибка
+
+# Объединение словарей
+dicts = [{"a": 1}, {"b": 2}, {"c": 3}]
+merged = reduce(lambda d1, d2: {**d1, **d2}, dicts)
+print(merged)   # {'a': 1, 'b': 2, 'c': 3}
+
+# Поиск максимума
+nums = [3, 7, 2, 9, 1]
+max_val = reduce(lambda a, b: a if a > b else b, nums)
+print(max_val)  # 9`
+  },
+  {
+    name: 'functools.wraps(wrapped, assigned=..., updated=...)',
+    description: `Удобный декоратор из модуля functools для обновления метаданных функции-обёртки (wrapper), чтобы она выглядела как оборачиваемая функция (wrapped).
+
+При создании декоратора функция-обёртка заменяет оригинальную. Без @wraps атрибуты оборачиваемой функции (имя, docstring, аннотации, модуль) теряются — обёртка имеет собственные. @wraps копирует нужные атрибуты из оригинала.
+
+По умолчанию копируются атрибуты (assigned):
+- __module__
+- __name__
+- __qualname__
+- __annotations__
+- __doc__
+
+По умолчанию обновляются атрибуты (updated):
+- __dict__ — словарь атрибутов
+
+Также добавляет __wrapped__ — ссылку на оригинальную функцию, позволяющую «заглянуть» под декоратор.
+
+Без @wraps инструменты документирования (help(), sphinx), отладки и тестирования не смогут корректно определить имя и описание функции.`,
+    syntax: '@functools.wraps(wrapped, assigned=WRAPPER_ASSIGNMENTS, updated=WRAPPER_UPDATES)',
+    arguments: [
+      { name: 'wrapped', description: 'Исходная функция, атрибуты которой нужно скопировать в обёртку' },
+      { name: 'assigned', description: 'Необязательный. Кортеж атрибутов для копирования. По умолчанию: __module__, __name__, __qualname__, __annotations__, __doc__' },
+      { name: 'updated', description: 'Необязательный. Кортеж атрибутов для обновления (через update). По умолчанию: __dict__' }
+    ],
+    example: `import functools
+
+def my_decorator(func):
+    @functools.wraps(func)   # копируем метаданные из func
+    def wrapper(*args, **kwargs):
+        print("До вызова")
+        result = func(*args, **kwargs)
+        print("После вызова")
+        return result
+    return wrapper
+
+@my_decorator
+def greet(name: str) -> str:
+    """Приветствует пользователя."""
+    return f"Привет, {name}!"
+
+print(greet.__name__)  # 'greet' (без @wraps было бы 'wrapper')
+print(greet.__doc__)   # 'Приветствует пользователя.'
+print(greet("Alice"))
+
+# Доступ к оригиналу через __wrapped__
+original = greet.__wrapped__
+print(original("Bob"))  # без декоратора
+
+# Без @wraps — потеря метаданных:
+def bad_decorator(func):
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
+
+@bad_decorator
+def add(a, b):
+    """Складывает два числа."""
+    return a + b
+
+print(add.__name__)  # 'wrapper' — неверно!
+print(add.__doc__)   # None — потеряно!`
+  },
+  {
     name: 'getattr(object, name[, default])',
     description: `Возвращает значение именованного атрибута объекта. Является динамическим эквивалентом получения атрибута через точечную нотацию object.name.
 
@@ -834,6 +2017,276 @@ class Point:
 p = Point(1, 2)
 d = {p: "origin"}   # можно использовать как ключ
 s = {p}             # можно добавить в set`
+  },
+  {
+    name: 'heapq.heapify(x)',
+    description: `Преобразует список x в двоичную мин-кучу (min-heap) на месте (in-place) за O(n). После вызова элемент x[0] всегда является наименьшим.
+
+Куча (heap) — это специальная организация списка, при которой выполняется свойство кучи: x[k] <= x[2*k+1] и x[k] <= x[2*k+2] для всех k. Элементы хранятся в обычном списке Python, просто переупорядоченным образом.
+
+Важно: heapify изменяет список на месте, не создавая новой структуры данных. После heapify список выглядит «перемешанным», но первый элемент всегда минимальный.
+
+Применение: преобразование существующего списка в кучу для последующих heappush/heappop операций.`,
+    syntax: 'heapq.heapify(x)',
+    arguments: [
+      { name: 'x', description: 'Список, который нужно преобразовать в кучу на месте' }
+    ],
+    example: `import heapq
+
+data = [5, 3, 8, 1, 9, 2, 7]
+heapq.heapify(data)
+print(data)    # [1, 3, 2, 5, 9, 8, 7] — куча (порядок не очевиден, но data[0] = 1 — минимум)
+print(data[0]) # 1 — всегда минимальный элемент
+
+# После heapify можно использовать heappush/heappop
+heapq.heappush(data, 0)
+print(heapq.heappop(data))  # 0 — новый минимум`
+  },
+  {
+    name: 'heapq.heappop(heap)',
+    description: `Извлекает и возвращает наименьший элемент из кучи, поддерживая структуру кучи. Работает за O(log n).
+
+Если куча пуста — вызывает IndexError.
+
+Для просмотра наименьшего элемента без извлечения используйте heap[0].
+
+Комбинация heappush + heappop составляет основу приоритетной очереди:
+- Добавить элемент: heappush(heap, item)
+- Извлечь минимум: heappop(heap)`,
+    syntax: 'heapq.heappop(heap)',
+    arguments: [
+      { name: 'heap', description: 'Список-куча, из которого извлекается наименьший элемент' }
+    ],
+    example: `import heapq
+
+heap = [1, 3, 5, 7, 9]
+heapq.heapify(heap)
+
+print(heapq.heappop(heap))  # 1 — минимальный
+print(heapq.heappop(heap))  # 3
+print(heapq.heappop(heap))  # 5
+print(heap)                  # [7, 9] — оставшиеся элементы
+
+# Сортировка через кучу (аналог heapsort)
+data = [5, 3, 8, 1, 9, 2, 7, 4, 6]
+heapq.heapify(data)
+sorted_data = [heapq.heappop(data) for _ in range(len(data))]
+print(sorted_data)  # [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+# Приоритетная очередь задач
+tasks = []
+heapq.heappush(tasks, (3, "низкий приоритет"))
+heapq.heappush(tasks, (1, "высокий приоритет"))
+heapq.heappush(tasks, (2, "средний приоритет"))
+while tasks:
+    priority, task = heapq.heappop(tasks)
+    print(f"{priority}: {task}")`
+  },
+  {
+    name: 'heapq.heappush(heap, item)',
+    description: `Добавляет элемент item в кучу heap, поддерживая структуру кучи. Работает за O(log n).
+
+Список heap должен уже быть валидной кучей (созданной через heapify или изначально пустым). Нельзя просто использовать обычный список — порядок элементов не будет гарантированным.
+
+Использование строк или кортежей позволяет создавать приоритетные очереди с дополнительными данными: heappush(heap, (priority, data)).`,
+    syntax: 'heapq.heappush(heap, item)',
+    arguments: [
+      { name: 'heap', description: 'Список-куча, в который добавляется элемент' },
+      { name: 'item', description: 'Элемент для добавления. Должен поддерживать операцию сравнения <' }
+    ],
+    example: `import heapq
+
+heap = []
+heapq.heappush(heap, 5)
+heapq.heappush(heap, 1)
+heapq.heappush(heap, 3)
+heapq.heappush(heap, 2)
+print(heap)              # [1, 2, 3, 5] — куча, heap[0]=1 — минимум
+
+# Приоритетная очередь с кортежами (priority, data)
+pq = []
+heapq.heappush(pq, (2, "email"))
+heapq.heappush(pq, (1, "звонок"))    # высший приоритет
+heapq.heappush(pq, (3, "встреча"))
+
+while pq:
+    priority, task = heapq.heappop(pq)
+    print(f"[{priority}] {task}")
+# [1] звонок
+# [2] email
+# [3] встреча
+
+# Добавление в существующую кучу
+data = [3, 1, 5, 7]
+heapq.heapify(data)
+heapq.heappush(data, 0)  # добавить новый минимум
+print(data[0])  # 0`
+  },
+  {
+    name: 'heapq.heappushpop(heap, item)',
+    description: `Добавляет элемент item в кучу, затем извлекает и возвращает наименьший элемент. Работает за O(log n) и более эффективен, чем последовательные heappush + heappop.
+
+Если item меньше текущего минимума кучи — возвращается сам item (куча не изменяется). Иначе — добавляется item и извлекается старый минимум.
+
+Применение: часто используется в алгоритмах типа «поддерживать кучу из k наибольших элементов» при потоковой обработке данных.`,
+    syntax: 'heapq.heappushpop(heap, item)',
+    arguments: [
+      { name: 'heap', description: 'Список-куча' },
+      { name: 'item', description: 'Элемент, который сначала добавляется в кучу, после чего извлекается минимум' }
+    ],
+    example: `import heapq
+
+heap = [2, 4, 6, 8]
+heapq.heapify(heap)
+
+# item > текущий минимум → добавляется 5, извлекается 2
+result = heapq.heappushpop(heap, 5)
+print(result)  # 2
+print(heap)    # [4, 5, 6, 8]
+
+# item < текущий минимум → item возвращается сразу
+result = heapq.heappushpop(heap, 1)
+print(result)  # 1
+print(heap)    # [4, 5, 6, 8] — куча не изменилась
+
+# Поддержание кучи из k наибольших элементов
+def k_largest_stream(stream, k):
+    heap = []
+    for item in stream:
+        if len(heap) < k:
+            heapq.heappush(heap, item)
+        else:
+            heapq.heappushpop(heap, item)  # вытесняет минимум если item больше
+    return sorted(heap, reverse=True)
+
+print(k_largest_stream([3, 1, 4, 1, 5, 9, 2, 6], 3))  # [9, 6, 5]`
+  },
+  {
+    name: 'heapq.heapreplace(heap, item)',
+    description: `Извлекает и возвращает наименьший элемент из кучи, затем добавляет новый элемент item. Работает за O(log n) и более эффективен, чем последовательные heappop + heappush.
+
+Отличие от heappushpop:
+- heapreplace: сначала извлекает, потом добавляет (куча никогда не остаётся пустой в процессе)
+- heappushpop: сначала добавляет, потом извлекает
+
+Если куча пуста — вызывает IndexError. Если item меньше текущего минимума — куча нарушает инвариант после вставки (применяйте осторожно).`,
+    syntax: 'heapq.heapreplace(heap, item)',
+    arguments: [
+      { name: 'heap', description: 'Список-куча (не должна быть пустой)' },
+      { name: 'item', description: 'Элемент, добавляемый в кучу после извлечения минимума' }
+    ],
+    example: `import heapq
+
+heap = [1, 3, 5, 7, 9]
+heapq.heapify(heap)
+
+# Извлечь 1, добавить 4
+result = heapq.heapreplace(heap, 4)
+print(result)  # 1 — извлечённый минимум
+print(heap)    # [3, 4, 5, 7, 9]
+
+result = heapq.heapreplace(heap, 2)
+print(result)  # 3
+print(heap)    # [2, 4, 5, 7, 9]
+
+# Применение: слияние отсортированных файлов (merge sort)
+# Классический алгоритм: начать с минимальных элементов каждого файла,
+# извлекать минимум и заменять следующим из того же файла
+import heapq
+streams = [[1, 4, 7], [2, 5, 8], [3, 6, 9]]
+heap = [(stream[0], i, 0) for i, stream in enumerate(streams)]
+heapq.heapify(heap)
+result = []
+while heap:
+    val, stream_i, elem_i = heapq.heappop(heap)
+    result.append(val)
+    if elem_i + 1 < len(streams[stream_i]):
+        heapq.heappush(heap, (streams[stream_i][elem_i + 1], stream_i, elem_i + 1))
+print(result)  # [1, 2, 3, 4, 5, 6, 7, 8, 9]`
+  },
+  {
+    name: 'heapq.nlargest(n, iterable[, key])',
+    description: `Возвращает список из n наибольших элементов итерируемого объекта, отсортированных по убыванию. Эквивалентно sorted(iterable, reverse=True)[:n], но эффективнее для малых n.
+
+Сложность: O(k log n), где k — длина iterable.
+
+Когда использовать nlargest vs sorted():
+- n значительно меньше len(iterable) → nlargest эффективнее
+- n примерно равно len(iterable) → sorted() эффективнее
+- n == 1 → используйте max() — самый быстрый вариант
+
+Параметр key работает так же, как в sorted() и max() — функция применяется к каждому элементу для сравнения, но возвращаются оригинальные элементы.`,
+    syntax: 'heapq.nlargest(n, iterable, key=None)',
+    arguments: [
+      { name: 'n', description: 'Количество наибольших элементов для возврата' },
+      { name: 'iterable', description: 'Итерируемый объект с данными' },
+      { name: 'key', description: 'Необязательный. Функция одного аргумента для определения критерия сравнения' }
+    ],
+    example: `import heapq
+
+numbers = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5]
+print(heapq.nlargest(3, numbers))   # [9, 6, 5]
+print(heapq.nlargest(1, numbers))   # [9]
+
+# С ключом — топ-3 студентов по GPA
+students = [
+    {"name": "Alice", "gpa": 3.8},
+    {"name": "Bob",   "gpa": 3.5},
+    {"name": "Carol", "gpa": 3.9},
+    {"name": "Dave",  "gpa": 3.7},
+]
+top3 = heapq.nlargest(3, students, key=lambda s: s["gpa"])
+for s in top3:
+    print(f"{s['name']}: {s['gpa']}")
+# Carol: 3.9  Alice: 3.8  Dave: 3.7
+
+# Топ-5 самых дорогих товаров
+prices = {"apple": 1.2, "laptop": 999, "pen": 0.5, "phone": 799, "book": 15}
+top = heapq.nlargest(2, prices, key=prices.get)
+print(top)  # ['laptop', 'phone']`
+  },
+  {
+    name: 'heapq.nsmallest(n, iterable[, key])',
+    description: `Возвращает список из n наименьших элементов итерируемого объекта, отсортированных по возрастанию. Эквивалентно sorted(iterable)[:n], но эффективнее для малых n.
+
+Сложность: O(k log n), где k — длина iterable.
+
+Когда использовать nsmallest vs sorted():
+- n значительно меньше len(iterable) → nsmallest эффективнее
+- n примерно равно len(iterable) → sorted() эффективнее
+- n == 1 → используйте min() — самый быстрый вариант
+
+Является зеркальной функцией к nlargest().`,
+    syntax: 'heapq.nsmallest(n, iterable, key=None)',
+    arguments: [
+      { name: 'n', description: 'Количество наименьших элементов для возврата' },
+      { name: 'iterable', description: 'Итерируемый объект с данными' },
+      { name: 'key', description: 'Необязательный. Функция одного аргумента для определения критерия сравнения' }
+    ],
+    example: `import heapq
+
+numbers = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5]
+print(heapq.nsmallest(3, numbers))  # [1, 1, 2]
+print(heapq.nsmallest(1, numbers))  # [1]
+
+# С ключом — 3 ближайших к нулю числа по модулю
+data = [-5, 3, -1, 8, -2, 7, 0]
+closest = heapq.nsmallest(3, data, key=abs)
+print(closest)  # [0, -1, -2]
+
+# Самые дешёвые товары
+products = [
+    {"name": "ручка",   "price": 30},
+    {"name": "тетрадь", "price": 80},
+    {"name": "линейка", "price": 45},
+    {"name": "карандаш","price": 20},
+    {"name": "папка",   "price": 120},
+]
+cheapest = heapq.nsmallest(2, products, key=lambda p: p["price"])
+for item in cheapest:
+    print(f"{item['name']}: {item['price']} руб.")
+# карандаш: 20 руб.
+# ручка: 30 руб.`
   },
   {
     name: 'help([object])',
@@ -1205,6 +2658,556 @@ print(rolls)   # например [3, 1, 4, 2] — все броски до 6
 lines = list(iter(input, ""))`
   },
   {
+    name: 'itertools.accumulate(iterable[, func, *, initial=None])',
+    description: `Возвращает итератор накопленных результатов применения функции func к элементам iterable. По умолчанию (без func) накапливает сумму — аналог функции numpy.cumsum.
+
+Алгоритм работы:
+- Первый элемент возвращается как есть (если не задан initial)
+- Каждый следующий элемент вычисляется как func(накопленное, текущий)
+
+Параметр initial (добавлен в Python 3.8):
+- Если задан, помещается перед элементами iterable
+- Длина результата = len(iterable) + 1
+
+Применение:
+- Накопленная сумма (бегущий итог)
+- Накопленное произведение
+- Бегущий максимум/минимум
+- Реализация сканирующих операций в функциональном стиле`,
+    syntax: 'itertools.accumulate(iterable[, func, *, initial=None])',
+    arguments: [
+      { name: 'iterable', description: 'Итерируемый объект с исходными данными' },
+      { name: 'func', description: 'Необязательный. Функция двух аргументов (накопленное, текущий). По умолчанию — сложение (operator.add)' },
+      { name: 'initial', description: 'Необязательный. Начальное значение накопителя. Добавлено в Python 3.8' }
+    ],
+    example: `import itertools
+import operator
+
+# Накопленная сумма (по умолчанию)
+list(itertools.accumulate([1, 2, 3, 4, 5]))
+# [1, 3, 6, 10, 15]
+
+# Накопленное произведение
+list(itertools.accumulate([1, 2, 3, 4, 5], operator.mul))
+# [1, 2, 6, 24, 120]
+
+# Бегущий максимум
+list(itertools.accumulate([3, 1, 4, 1, 5, 9, 2, 6], max))
+# [3, 3, 4, 4, 5, 9, 9, 9]
+
+# С начальным значением
+list(itertools.accumulate([1, 2, 3], initial=100))
+# [100, 101, 103, 106]
+
+# Расчёт баланса счёта
+transactions = [1000, -200, -50, 300, -100]
+balance = list(itertools.accumulate(transactions))
+print(balance)  # [1000, 800, 750, 1050, 950]`
+  },
+  {
+    name: 'itertools.chain(*iterables)',
+    description: `Объединяет несколько итерируемых объектов в один последовательный итератор. Элементы возвращаются из первого итерируемого до его исчерпания, затем из второго и так далее.
+
+Не создаёт промежуточных списков — ленивый (lazy) итератор, потребляет входные данные по одному.
+
+Дополнительный метод itertools.chain.from_iterable(iterable):
+- Принимает один итерируемый объект, содержащий вложенные итерируемые
+- Эквивалентно chain(*iterable), но ленивый — итерируемые раскрываются по одному
+- Полезен когда число вложенных итерируемых неизвестно заранее
+
+Применение:
+- Объединение нескольких списков без создания нового списка
+- Обход нескольких коллекций как одной
+- «Выравнивание» (flatten) одного уровня вложенности`,
+    syntax: 'itertools.chain(*iterables)\nitertools.chain.from_iterable(iterable)',
+    arguments: [
+      { name: '*iterables', description: 'Один или несколько итерируемых объектов, которые нужно объединить в цепочку' }
+    ],
+    example: `import itertools
+
+# Объединение списков
+list(itertools.chain([1, 2], [3, 4], [5, 6]))
+# [1, 2, 3, 4, 5, 6]
+
+# Строки тоже итерируемые
+list(itertools.chain("ABC", "DEF"))
+# ['A', 'B', 'C', 'D', 'E', 'F']
+
+# chain.from_iterable — для вложенных итерируемых
+nested = [[1, 2], [3, 4], [5, 6]]
+list(itertools.chain.from_iterable(nested))
+# [1, 2, 3, 4, 5, 6]
+
+# "Выравнивание" матрицы
+matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+flat = list(itertools.chain.from_iterable(matrix))
+print(flat)  # [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+# Обход разных структур как одной
+users = ["Alice", "Bob"]
+admins = ["Carol", "Dave"]
+for name in itertools.chain(users, admins):
+    print(name)  # Alice, Bob, Carol, Dave`
+  },
+  {
+    name: 'itertools.combinations(iterable, r)',
+    description: `Возвращает итератор всех r-элементных комбинаций из элементов iterable без повторений и без учёта порядка. Элементы сортируются согласно порядку их появления во входном iterable.
+
+Ключевые свойства:
+- Порядок элементов внутри комбинации сохраняется (как во входном iterable)
+- Порядок внутри комбинации не меняется (нет перестановок)
+- Каждый элемент используется не более одного раза
+- Общее количество комбинаций: C(n, r) = n! / (r! × (n-r)!)
+
+Отличие от combinations_with_replacement:
+- combinations — без повторений: один элемент не может встречаться дважды в одной комбинации
+- combinations_with_replacement — с повторениями
+
+Применение: подбор команд, выбор подмножеств, комбинаторные задачи, проверка всех пар или троек в наборе.`,
+    syntax: 'itertools.combinations(iterable, r)',
+    arguments: [
+      { name: 'iterable', description: 'Итерируемый объект — источник элементов' },
+      { name: 'r', description: 'Длина каждой комбинации (целое неотрицательное число)' }
+    ],
+    example: `import itertools
+
+# Все пары из 4 элементов
+list(itertools.combinations([1, 2, 3, 4], 2))
+# [(1,2), (1,3), (1,4), (2,3), (2,4), (3,4)]
+
+# Тройки из строки
+list(itertools.combinations("ABC", 2))
+# [('A','B'), ('A','C'), ('B','C')]
+
+# Количество комбинаций
+from math import comb
+print(comb(4, 2))  # 6
+
+# Проверка всех пар в списке
+scores = [85, 90, 78, 92]
+for a, b in itertools.combinations(scores, 2):
+    print(f"Разность: {abs(a - b)}")
+
+# Нахождение всех подмножеств любой длины
+data = [1, 2, 3]
+all_subsets = []
+for r in range(len(data) + 1):
+    all_subsets.extend(itertools.combinations(data, r))
+print(all_subsets)
+# [(), (1,), (2,), (3,), (1,2), (1,3), (2,3), (1,2,3)]`
+  },
+  {
+    name: 'itertools.cycle(iterable)',
+    description: `Возвращает бесконечный итератор, циклически повторяющий элементы iterable. После исчерпания iterable начинает снова с первого элемента.
+
+Важно: cycle сохраняет копию каждого элемента внутри. При работе с большими итерируемыми это может занять значительный объём памяти.
+
+Типичные применения:
+- Циклическая смена цветов, стилей, состояний
+- Распределение задач по воркерам по кругу (round-robin)
+- Чередование значений при генерации данных
+- Создание бесконечных последовательностей с периодом
+
+Поскольку цикл бесконечный, для ограничения числа элементов используйте itertools.islice(), zip() с конечным итерируемым или явный break.`,
+    syntax: 'itertools.cycle(iterable)',
+    arguments: [
+      { name: 'iterable', description: 'Итерируемый объект, элементы которого будут бесконечно повторяться по кругу' }
+    ],
+    example: `import itertools
+
+# Взять первые 7 элементов из бесконечного цикла
+list(itertools.islice(itertools.cycle([1, 2, 3]), 7))
+# [1, 2, 3, 1, 2, 3, 1]
+
+# Чередование состояний
+toggler = itertools.cycle(["ВКЛ", "ВЫКЛ"])
+for _ in range(5):
+    print(next(toggler))
+# ВКЛ, ВЫКЛ, ВКЛ, ВЫКЛ, ВКЛ
+
+# Round-robin распределение задач
+workers = itertools.cycle(["worker-1", "worker-2", "worker-3"])
+tasks = ["task_a", "task_b", "task_c", "task_d", "task_e"]
+for task in tasks:
+    print(f"{next(workers)} обрабатывает {task}")
+
+# Циклические цвета для графика
+colors = itertools.cycle(["red", "blue", "green"])
+data_series = ["A", "B", "C", "D", "E"]
+for label, color in zip(data_series, colors):
+    print(f"{label}: {color}")`
+  },
+  {
+    name: 'itertools.dropwhile(predicate, iterable)',
+    description: `Возвращает итератор, который пропускает элементы iterable, пока predicate возвращает True, а затем возвращает все оставшиеся элементы — включая первый, на котором predicate вернул False, и все последующие.
+
+Ключевое отличие от filter():
+- filter() проверяет каждый элемент независимо
+- dropwhile() отбрасывает только начало последовательности: как только predicate впервые вернул False, все дальнейшие элементы возвращаются без проверки
+
+Это делает dropwhile() полезным для обработки данных с «шапкой» (заголовком) или начальными строками, которые нужно пропустить.
+
+Парная функция: itertools.takewhile() — возвращает элементы, пока predicate истинен.`,
+    syntax: 'itertools.dropwhile(predicate, iterable)',
+    arguments: [
+      { name: 'predicate', description: 'Функция одного аргумента, возвращающая bool. Элементы пропускаются, пока она возвращает True' },
+      { name: 'iterable', description: 'Итерируемый объект с исходными данными' }
+    ],
+    example: `import itertools
+
+# Пропустить числа меньше 5
+list(itertools.dropwhile(lambda x: x < 5, [1, 2, 4, 6, 3, 8]))
+# [6, 3, 8]  — 3 < 5, но она уже после первого False
+
+# Пропустить строки-комментарии в начале файла
+lines = ["# Комментарий", "# Ещё комментарий", "data=1", "# не пропустится", "data=2"]
+data_lines = list(itertools.dropwhile(lambda l: l.startswith("#"), lines))
+print(data_lines)  # ['data=1', '# не пропустится', 'data=2']
+
+# Пропустить нули в начале
+list(itertools.dropwhile(lambda x: x == 0, [0, 0, 0, 1, 2, 0, 3]))
+# [1, 2, 0, 3]
+
+# Пропустить заголовок CSV
+rows = [["name", "age"], ["Alice", 30], ["Bob", 25]]
+is_header = True
+data = list(itertools.dropwhile(lambda r: r == ["name", "age"], rows))
+print(data)  # [['Alice', 30], ['Bob', 25]]`
+  },
+  {
+    name: 'itertools.groupby(iterable, key=None)',
+    description: `Возвращает итератор, группирующий последовательные элементы iterable с одинаковым значением ключа key. Возвращает пары (ключ, группа), где группа — итератор элементов с этим ключом.
+
+Критически важно: groupby работает только с последовательными группами, аналогично команде GROUP BY в Unix. Если данные не отсортированы по ключу — элементы с одинаковым ключом попадут в разные группы.
+
+Чтобы сгруппировать все элементы с одинаковым ключом, нужно предварительно отсортировать: sorted(iterable, key=key).
+
+Особенности итератора групп:
+- Итератор группы «ломается» при переходе к следующей паре (ключ, группа)
+- Если нужно сохранить группу — преобразуйте в list() немедленно
+
+Параметр key:
+- Если None — элемент сам является ключом (группируются идентичные элементы)
+- Если функция — вычисляется для каждого элемента, сравниваются результаты`,
+    syntax: 'itertools.groupby(iterable, key=None)',
+    arguments: [
+      { name: 'iterable', description: 'Итерируемый объект с данными. Для корректной группировки должен быть отсортирован по ключу' },
+      { name: 'key', description: 'Необязательный. Функция, вычисляющая ключ группировки для каждого элемента. По умолчанию — идентичность элемента' }
+    ],
+    example: `import itertools
+
+# Группировка последовательных одинаковых элементов
+data = [1, 1, 2, 2, 2, 3, 1, 1]
+for key, group in itertools.groupby(data):
+    print(key, list(group))
+# 1 [1, 1]
+# 2 [2, 2, 2]
+# 3 [3]
+# 1 [1, 1]  ← снова 1, отдельная группа!
+
+# Правильная группировка: сначала сортировка
+words = ["apple", "ant", "banana", "avocado", "blueberry", "cherry"]
+words.sort(key=lambda w: w[0])  # сортируем по первой букве
+for letter, group in itertools.groupby(words, key=lambda w: w[0]):
+    print(f"{letter}: {list(group)}")
+# a: ['apple', 'ant', 'avocado']
+# b: ['banana', 'blueberry']
+# c: ['cherry']
+
+# Группировка чётных и нечётных чисел
+numbers = sorted([1, 2, 3, 4, 5, 6], key=lambda x: x % 2)
+for parity, group in itertools.groupby(numbers, key=lambda x: x % 2):
+    label = "нечётные" if parity else "чётные"
+    print(f"{label}: {list(group)}")`
+  },
+  {
+    name: 'itertools.islice(iterable, stop) / itertools.islice(iterable, start, stop[, step])',
+    description: `Возвращает итератор, выдающий выбранные элементы из iterable по аналогии со срезом (slice), но без создания промежуточного списка. Работает с любым итератором, а не только с последовательностями.
+
+В отличие от обычного среза:
+- Не поддерживает отрицательные значения start, stop, step
+- Не создаёт копию данных — ленивый (lazy) итератор
+- Работает с бесконечными итераторами
+
+Формы вызова:
+- islice(iterable, stop) — первые stop элементов (start=0, step=1)
+- islice(iterable, start, stop) — элементы с позиции start по stop
+- islice(iterable, start, stop, step) — с шагом step
+- islice(iterable, None) — все элементы (эквивалент копирования итератора)
+
+Применение: ограничение длины бесконечных итераторов, «страничный» (paginated) обход, пропуск заголовка (islice(data, 1, None)).`,
+    syntax: 'itertools.islice(iterable, stop)\nitertools.islice(iterable, start, stop[, step])',
+    arguments: [
+      { name: 'iterable', description: 'Итерируемый объект или итератор, в том числе бесконечный' },
+      { name: 'stop', description: 'Позиция конца (не включается). None — до конца итератора' },
+      { name: 'start', description: 'Необязательный. Начальная позиция (включается). По умолчанию 0' },
+      { name: 'step', description: 'Необязательный. Шаг выборки. По умолчанию 1. Не может быть отрицательным' }
+    ],
+    example: `import itertools
+
+# Первые 5 элементов бесконечного счётчика
+list(itertools.islice(itertools.count(), 5))
+# [0, 1, 2, 3, 4]
+
+# С позиции 2 по 7
+list(itertools.islice(range(100), 2, 7))
+# [2, 3, 4, 5, 6]
+
+# С шагом 2
+list(itertools.islice(range(20), 0, 10, 2))
+# [0, 2, 4, 6, 8]
+
+# Пропустить первую строку (заголовок)
+import csv
+with open("data.csv") as f:
+    reader = csv.reader(f)
+    data = list(itertools.islice(reader, 1, None))  # без заголовка
+
+# Постраничный вывод
+def paginate(iterable, page_size):
+    it = iter(iterable)
+    while True:
+        page = list(itertools.islice(it, page_size))
+        if not page:
+            break
+        yield page
+
+for page in paginate(range(10), 3):
+    print(page)
+# [0, 1, 2]  [3, 4, 5]  [6, 7, 8]  [9]`
+  },
+  {
+    name: 'itertools.permutations(iterable[, r])',
+    description: `Возвращает итератор всех r-элементных перестановок элементов iterable. Учитывает порядок — (A, B) и (B, A) считаются разными перестановками.
+
+Ключевые свойства:
+- Элементы считаются уникальными по позиции, а не по значению
+- Если r не задан или равен None — используется длина iterable (все перестановки)
+- Количество перестановок: P(n, r) = n! / (n-r)!
+- При r > n — результат пуст
+- Кортежи возвращаются в лексикографическом порядке относительно входного iterable
+
+Отличие от combinations():
+- combinations — без учёта порядка: (A, B) == (B, A)
+- permutations — с учётом порядка: (A, B) ≠ (B, A)
+
+Применение: задачи о размещениях, поиск всех возможных упорядочиваний, генерация анаграмм.`,
+    syntax: 'itertools.permutations(iterable[, r])',
+    arguments: [
+      { name: 'iterable', description: 'Итерируемый объект — источник элементов' },
+      { name: 'r', description: 'Необязательный. Длина каждой перестановки. По умолчанию — длина iterable' }
+    ],
+    example: `import itertools
+
+# Все перестановки из 3 элементов
+list(itertools.permutations([1, 2, 3]))
+# [(1,2,3), (1,3,2), (2,1,3), (2,3,1), (3,1,2), (3,2,1)]
+
+# Перестановки по 2 из 3
+list(itertools.permutations([1, 2, 3], 2))
+# [(1,2), (1,3), (2,1), (2,3), (3,1), (3,2)]
+
+# Все анаграммы слова
+words = set(itertools.permutations("abc"))
+print(len(words))  # 6
+
+# Подсчёт
+from math import perm
+print(perm(4, 2))  # 12 — перестановки из 4 по 2
+
+# Нахождение всех маршрутов между городами
+cities = ["Москва", "Питер", "Казань"]
+for route in itertools.permutations(cities):
+    print(" → ".join(route))
+# Москва → Питер → Казань
+# Москва → Казань → Питер
+# ...`
+  },
+  {
+    name: 'itertools.product(*iterables, repeat=1)',
+    description: `Возвращает итератор декартова произведения входных итерируемых объектов — аналог вложенных циклов for. Эквивалентно вложенным циклам: product(A, B) == ((a, b) for a in A for b in B).
+
+Параметр repeat:
+- Позволяет вычислить декартово произведение iterable с самим собой repeat раз
+- product(A, repeat=3) == product(A, A, A)
+
+Ключевые свойства:
+- Входные iterable преобразуются в списки перед вычислением (данные хранятся в памяти)
+- Количество результатов: произведение длин всех входных итерируемых
+- Возвращает кортежи в лексикографическом порядке
+
+Применение:
+- Генерация всех комбинаций параметров (перебор конфигураций)
+- Матричные вычисления
+- Перебор вариантов (brute-force)
+- Генерация тестовых данных`,
+    syntax: 'itertools.product(*iterables, repeat=1)',
+    arguments: [
+      { name: '*iterables', description: 'Один или несколько итерируемых объектов, декартово произведение которых нужно вычислить' },
+      { name: 'repeat', description: 'Необязательный. Количество повторений каждого iterable в произведении. По умолчанию 1' }
+    ],
+    example: `import itertools
+
+# Декартово произведение двух последовательностей
+list(itertools.product([1, 2], ["a", "b"]))
+# [(1,'a'), (1,'b'), (2,'a'), (2,'b')]
+
+# Произведение трёх списков
+list(itertools.product([0, 1], [0, 1], [0, 1]))
+# — все 8 трёхбитовых комбинаций
+
+# Эквивалент вложенных циклов
+# for a in [1, 2]:
+#     for b in ['x', 'y']:
+#         print(a, b)
+for a, b in itertools.product([1, 2], ["x", "y"]):
+    print(a, b)
+
+# repeat — произведение с самим собой
+list(itertools.product("AB", repeat=2))
+# [('A','A'), ('A','B'), ('B','A'), ('B','B')]
+
+# Перебор всех комбинаций гиперпараметров
+learning_rates = [0.001, 0.01]
+batch_sizes = [32, 64]
+optimizers = ["adam", "sgd"]
+for lr, bs, opt in itertools.product(learning_rates, batch_sizes, optimizers):
+    print(f"lr={lr}, batch={bs}, optimizer={opt}")`
+  },
+  {
+    name: 'itertools.repeat(object[, times])',
+    description: `Возвращает итератор, бесконечно (или times раз) повторяющий объект object. Не создаёт копий объекта — все итерации возвращают одну и ту же ссылку.
+
+Без параметра times — бесконечный итератор. С times — конечный, возвращает ровно times элементов.
+
+Применение:
+- Передача константного аргумента в map() или starmap()
+- Создание списка из одинаковых элементов (эффективнее, чем [value] * n для неизменяемых)
+- Заполнение значениями по умолчанию
+- Совместное использование с zip() для «прикрепления» константы к итератору
+
+Важно: так как возвращается одна и та же ссылка, мутация объекта (если он изменяемый) будет видна во всех позициях.`,
+    syntax: 'itertools.repeat(object[, times])',
+    arguments: [
+      { name: 'object', description: 'Объект, который будет возвращаться на каждой итерации' },
+      { name: 'times', description: 'Необязательный. Количество повторений. Если не задан — бесконечный итератор' }
+    ],
+    example: `import itertools
+
+# Конечное повторение
+list(itertools.repeat(10, 5))
+# [10, 10, 10, 10, 10]
+
+list(itertools.repeat("hello", 3))
+# ['hello', 'hello', 'hello']
+
+# Использование с map() — передача константного аргумента
+list(map(pow, range(5), itertools.repeat(2)))
+# [0, 1, 4, 9, 16] — каждое число в степени 2
+
+# Использование с zip()
+data = [1, 2, 3, 4, 5]
+constant = 10
+pairs = list(zip(data, itertools.repeat(constant)))
+print(pairs)  # [(1,10), (2,10), (3,10), (4,10), (5,10)]
+
+# Бесконечный итератор (ограничиваем islice)
+infinite = itertools.repeat(42)
+first_three = list(itertools.islice(infinite, 3))
+print(first_three)  # [42, 42, 42]`
+  },
+  {
+    name: 'itertools.takewhile(predicate, iterable)',
+    description: `Возвращает итератор, который выдаёт элементы iterable, пока predicate возвращает True. Как только predicate впервые возвращает False — итерация немедленно прекращается, оставшиеся элементы игнорируются.
+
+Ключевое отличие от filter():
+- filter() проверяет каждый элемент независимо, пропуская не подходящие
+- takewhile() останавливается при первом «ложном» элементе — дальше не идёт
+
+Парная функция: itertools.dropwhile() — пропускает начало, затем выдаёт всё оставшееся.
+
+Применение:
+- Чтение данных до достижения стоп-условия (например, до пустой строки)
+- Обход отсортированных данных до превышения порогового значения
+- Реализация «раннего выхода» из итерации без break`,
+    syntax: 'itertools.takewhile(predicate, iterable)',
+    arguments: [
+      { name: 'predicate', description: 'Функция одного аргумента, возвращающая bool. Итерация продолжается, пока она возвращает True' },
+      { name: 'iterable', description: 'Итерируемый объект с исходными данными' }
+    ],
+    example: `import itertools
+
+# Взять числа, пока они меньше 5
+list(itertools.takewhile(lambda x: x < 5, [1, 2, 3, 6, 2, 1]))
+# [1, 2, 3]  — остановились на 6, хотя дальше есть 2 и 1
+
+# Чтение строк до пустой
+lines = ["line 1", "line 2", "", "line 3", "line 4"]
+result = list(itertools.takewhile(lambda l: l != "", lines))
+print(result)  # ['line 1', 'line 2']
+
+# Из отсортированного списка — все элементы до порога
+prices = [10, 25, 38, 55, 72, 90]
+affordable = list(itertools.takewhile(lambda p: p < 50, prices))
+print(affordable)  # [10, 25, 38]
+
+# Совместно с dropwhile — выделить «середину»
+data = [0, 0, 1, 2, 3, 0, 0]
+middle = list(itertools.takewhile(
+    lambda x: x != 0,
+    itertools.dropwhile(lambda x: x == 0, data)
+))
+print(middle)  # [1, 2, 3]`
+  },
+  {
+    name: 'itertools.zip_longest(*iterables, fillvalue=None)',
+    description: `Объединяет несколько итерируемых объектов в итератор кортежей, аналогично встроенной zip(). Главное отличие: zip_longest продолжает работу до исчерпания самого длинного итерируемого, заполняя «пробелы» значением fillvalue.
+
+Встроенный zip() останавливается на самом коротком — zip_longest() дополняет короткие.
+
+Поведение:
+- Количество кортежей в результате = длина самого длинного iterable
+- Позиции исчерпавшихся итерируемых заполняются fillvalue
+- Каждый iterable может иметь свою длину
+
+Применение:
+- Объединение данных из разных источников неравной длины
+- Построчное сравнение файлов/последовательностей
+- Заполнение матрицы данными переменной длины`,
+    syntax: 'itertools.zip_longest(*iterables, fillvalue=None)',
+    arguments: [
+      { name: '*iterables', description: 'Один или несколько итерируемых объектов для объединения' },
+      { name: 'fillvalue', description: 'Необязательный. Значение для заполнения «пробелов» в коротких итерируемых. По умолчанию None' }
+    ],
+    example: `import itertools
+
+# Простое использование
+list(itertools.zip_longest([1, 2, 3], ["a", "b"]))
+# [(1,'a'), (2,'b'), (3, None)]
+
+# Со своим fillvalue
+list(itertools.zip_longest([1, 2, 3], ["a", "b"], fillvalue="-"))
+# [(1,'a'), (2,'b'), (3,'-')]
+
+# Три списка разной длины
+a = [1, 2, 3, 4]
+b = ["x", "y"]
+c = [True, False, True]
+for row in itertools.zip_longest(a, b, c, fillvalue=0):
+    print(row)
+# (1, 'x', True)
+# (2, 'y', False)
+# (3,  0,  True)
+# (4,  0,   0 )
+
+# Сравнение двух списков по позициям
+list1 = [1, 2, 3, 4, 5]
+list2 = [1, 2, 9, 4]
+for i, (a, b) in enumerate(itertools.zip_longest(list1, list2)):
+    if a != b:
+        print(f"Позиция {i}: {a} != {b}")`
+  },
+  {
     name: 'len(s)',
     description: `Возвращает длину (количество элементов) объекта. Аргументом может быть последовательность (строка, байты, кортеж, список, диапазон) или коллекция (словарь, множество, frozenset).
 
@@ -1428,6 +3431,57 @@ data = [{"name": "Alice", "score": 95},
         {"name": "Bob", "score": 87}]
 best = max(data, key=lambda d: d["score"])
 print(best["name"])           # 'Alice'`
+  },
+  {
+    name: 'memoryview(object)',
+    description: `Создаёт объект memoryview — «вид в память» — позволяющий получить прямой доступ к внутренним данным объекта, поддерживающего буферный протокол (buffer protocol), без копирования.
+
+Буферный протокол реализуют: bytes, bytearray, array.array, numpy.ndarray и другие. Обычные списки и строки его не реализуют.
+
+Ключевые особенности:
+- Не копирует данные: memoryview ссылается на те же байты в памяти
+- Поддерживает срезы: срез memoryview — это тоже memoryview (без копирования!)
+- Изменяемый для изменяемых объектов: mv[0] = 65 изменяет исходный bytearray
+- Поддерживает многомерные данные (например, 2D-массивы numpy)
+
+Атрибуты объекта memoryview:
+- .format — строка формата (например, 'B' для байт без знака)
+- .itemsize — размер одного элемента в байтах
+- .ndim — количество измерений
+- .shape — кортеж размеров по каждому измерению
+- .tobytes() — преобразовать в объект bytes
+- .tolist() — преобразовать в список
+
+Применение: высокопроизводительная обработка бинарных данных, работа с большими буферами без лишних копирований, взаимодействие с C-расширениями и numpy.`,
+    syntax: 'memoryview(object)',
+    arguments: [
+      { name: 'object', description: 'Объект, реализующий буферный протокол: bytes, bytearray, array.array, numpy.ndarray и другие' }
+    ],
+    example: `# Создание из bytes (только для чтения)
+mv = memoryview(b'Hello, World!')
+print(mv[0])        # 72 (код символа 'H')
+print(bytes(mv[0:5]))  # b'Hello'
+
+# Создание из bytearray (изменяемый)
+data = bytearray(b'abcde')
+mv = memoryview(data)
+mv[0] = 65          # изменяем первый байт: ASCII 65 = 'A'
+print(data)         # bytearray(b'Abcde')
+
+# Срез без копирования
+chunk = mv[1:4]     # memoryview, не bytes — нет копирования!
+print(bytes(chunk)) # b'bcd'
+
+# Сравнение производительности: работа с большим буфером
+big = bytearray(10_000_000)
+view = memoryview(big)
+# Это НЕ копирует данные:
+part = view[1_000_000:2_000_000]
+
+# Преобразование
+mv2 = memoryview(b'\\x01\\x02\\x03')
+print(mv2.tobytes()) # b'\\x01\\x02\\x03'
+print(mv2.tolist())  # [1, 2, 3]`
   },
   {
     name: 'min(iterable[, key, default]) / min(arg1, arg2, *args[, key])',
@@ -1734,6 +3788,292 @@ ch = 'g'
 ord('a') <= ord(ch) <= ord('z')  # True — строчная буква`
   },
   {
+    name: 'os.environ.get(key[, default])',
+    description: `Возвращает значение переменной окружения key из словаря os.environ. Если переменная не найдена — возвращает default вместо исключения. Является вызовом метода .get() на объекте os.environ, который ведёт себя как обычный словарь.
+
+os.environ — это объект типа Mapping, отражающий текущее состояние переменных окружения процесса. Изменения через os.environ влияют на дочерние процессы, запущенные из данной программы.
+
+Разница между os.environ.get() и os.getenv():
+- Оба эквивалентны по поведению
+- os.getenv() — более удобный синтаксис (одна функция вместо атрибута объекта)
+- os.environ.get() позволяет также использовать другие методы словаря: .keys(), .items(), .pop() и т.д.
+
+Также можно обращаться напрямую: os.environ["KEY"] — но это выбросит KeyError если ключ отсутствует.`,
+    syntax: 'os.environ.get(key[, default])',
+    arguments: [
+      { name: 'key', description: 'Имя переменной окружения (строка)' },
+      { name: 'default', description: 'Необязательный. Значение по умолчанию, если переменная не найдена. По умолчанию None' }
+    ],
+    example: `import os
+
+# Безопасный доступ — без KeyError
+host = os.environ.get("DB_HOST", "localhost")
+port = os.environ.get("DB_PORT", "5432")
+print(f"Connect to {host}:{port}")
+
+# Доступ без значения по умолчанию
+api_key = os.environ.get("API_KEY")
+if api_key is None:
+    raise EnvironmentError("API_KEY не установлена")
+
+# Перебор всех переменных окружения
+for key, value in os.environ.items():
+    if key.startswith("PYTHON"):
+        print(f"{key} = {value}")
+
+# Временное изменение (для тестов)
+os.environ["MY_VAR"] = "test_value"
+print(os.environ.get("MY_VAR"))  # "test_value"
+del os.environ["MY_VAR"]
+print(os.environ.get("MY_VAR"))  # None`
+  },
+  {
+    name: 'os.getenv(key[, default])',
+    description: `Возвращает значение переменной окружения key. Если переменная не установлена — возвращает default. Более компактный аналог os.environ.get(key, default).
+
+Функция удобна для получения одной переменной. Для работы с несколькими переменными или для изменения окружения используйте os.environ напрямую.
+
+Важно: os.getenv() не позволяет устанавливать переменные — только читать. Для установки используйте os.environ[key] = value или os.putenv(key, value).`,
+    syntax: 'os.getenv(key, default=None)',
+    arguments: [
+      { name: 'key', description: 'Имя переменной окружения (строка)' },
+      { name: 'default', description: 'Необязательный. Значение, возвращаемое если переменная не найдена. По умолчанию None' }
+    ],
+    example: `import os
+
+# Простое чтение с fallback
+debug = os.getenv("DEBUG", "false")
+print(debug)  # значение переменной или "false"
+
+# Типичный паттерн конфигурации
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///local.db")
+SECRET_KEY = os.getenv("SECRET_KEY")
+PORT = int(os.getenv("PORT", "8000"))
+
+if SECRET_KEY is None:
+    raise ValueError("Необходимо установить SECRET_KEY")
+
+# Отличие от прямого доступа через []
+# os.environ["MISSING"]        → KeyError
+# os.getenv("MISSING")         → None
+# os.getenv("MISSING", "def")  → "def"
+
+# Установка переменной (не через getenv!)
+os.environ["NEW_VAR"] = "value"
+print(os.getenv("NEW_VAR"))  # "value"`
+  },
+  {
+    name: 'os.listdir([path])',
+    description: `Возвращает список имён файлов и директорий в указанной директории path. Порядок элементов произвольный (не сортируется). Не рекурсивный — возвращает только прямые вложения.
+
+Если path не указан — используется текущая рабочая директория (аналог '.').
+
+Возвращаемые имена — только имена файлов, не полные пути. Для получения полного пути используйте os.path.join(path, name).
+
+Скрытые файлы (начинающиеся с '.') включаются в вывод, в отличие от поведения командной строки ls без флага -a.
+
+Для рекурсивного обхода директорий используйте os.walk(). Для glob-паттернов — модуль glob или pathlib.Path.glob().`,
+    syntax: 'os.listdir(path=".")',
+    arguments: [
+      { name: 'path', description: 'Необязательный. Путь к директории. По умолчанию — текущая рабочая директория' }
+    ],
+    example: `import os
+
+# Список файлов в текущей директории
+files = os.listdir()
+print(files)  # ['main.py', 'README.md', '.git', 'data', ...]
+
+# Список файлов в указанной директории
+files = os.listdir("/tmp")
+print(files)
+
+# Только файлы (без поддиректорий)
+path = "."
+only_files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+print(only_files)
+
+# Только Python-файлы
+py_files = [f for f in os.listdir(".") if f.endswith(".py")]
+print(py_files)
+
+# Полные пути к файлам
+base = "/etc"
+full_paths = [os.path.join(base, name) for name in os.listdir(base)]
+
+# Подсчёт файлов и директорий
+items = os.listdir(".")
+dirs  = [x for x in items if os.path.isdir(x)]
+files = [x for x in items if os.path.isfile(x)]
+print(f"Директорий: {len(dirs)}, файлов: {len(files)}")`
+  },
+  {
+    name: 'os.path.exists(path)',
+    description: `Возвращает True если путь path ссылается на существующий объект файловой системы (файл, директорию, символическую ссылку). Возвращает False если объект не существует или нет прав на проверку.
+
+Важные особенности:
+- Возвращает True для файлов, директорий и символических ссылок
+- Возвращает False для битых (broken) символических ссылок
+- Не вызывает исключений при отсутствии прав доступа — просто возвращает False
+
+Для более специфичных проверок используйте:
+- os.path.isfile(path) — только файлы
+- os.path.isdir(path) — только директории
+- os.path.islink(path) — только символические ссылки`,
+    syntax: 'os.path.exists(path)',
+    arguments: [
+      { name: 'path', description: 'Строка или path-like объект — путь для проверки существования' }
+    ],
+    example: `import os
+
+# Проверка существования файла
+if os.path.exists("config.json"):
+    with open("config.json") as f:
+        config = f.read()
+else:
+    config = "{}"
+
+# Проверка перед созданием директории
+log_dir = "/var/log/myapp"
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+# Проверка перед удалением
+import os
+filename = "temp_data.csv"
+if os.path.exists(filename):
+    os.remove(filename)
+    print(f"{filename} удалён")
+else:
+    print(f"{filename} не найден")
+
+# Проверка наличия конфигурационных файлов
+configs = ["prod.env", "staging.env", "dev.env"]
+available = [c for c in configs if os.path.exists(c)]
+print(f"Найдено конфигов: {available}")`
+  },
+  {
+    name: 'os.path.isdir(path)',
+    description: `Возвращает True если path является существующей директорией. Разрешает символические ссылки — если path — символическая ссылка на директорию, возвращает True.
+
+Возвращает False если path не существует, является файлом, битой символической ссылкой или при ошибке доступа.
+
+Полезно для разграничения файлов и директорий при обходе файловой системы. Часто используется совместно с os.listdir() или os.walk().`,
+    syntax: 'os.path.isdir(path)',
+    arguments: [
+      { name: 'path', description: 'Строка или path-like объект — путь для проверки' }
+    ],
+    example: `import os
+
+# Проверка что путь — директория
+path = "/usr/local"
+if os.path.isdir(path):
+    print(f"{path} — директория")
+    print(os.listdir(path))
+
+# Фильтрация: только субдиректории
+base = "."
+subdirs = [d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))]
+print("Поддиректории:", subdirs)
+
+# Проверка перед чтением файлов в директории
+def process_directory(path):
+    if not os.path.isdir(path):
+        raise ValueError(f"'{path}' не является директорией")
+    for filename in os.listdir(path):
+        filepath = os.path.join(path, filename)
+        if os.path.isfile(filepath):
+            print(f"Обрабатываю файл: {filename}")
+
+# Убедиться что назначение — директория
+dest = "output"
+if not os.path.isdir(dest):
+    os.makedirs(dest)  # создать если не существует`
+  },
+  {
+    name: 'os.path.isfile(path)',
+    description: `Возвращает True если path является существующим обычным файлом. Разрешает символические ссылки — если path — символическая ссылка на файл, возвращает True.
+
+Возвращает False если path не существует, является директорией, устройством, сокетом или при ошибке доступа.
+
+Является наиболее частой проверкой при работе с файлами — позволяет убедиться, что по пути находится именно файл перед его открытием или обработкой.`,
+    syntax: 'os.path.isfile(path)',
+    arguments: [
+      { name: 'path', description: 'Строка или path-like объект — путь для проверки' }
+    ],
+    example: `import os
+
+# Проверка перед открытием файла
+filepath = "data.csv"
+if os.path.isfile(filepath):
+    with open(filepath) as f:
+        data = f.read()
+else:
+    print(f"Файл {filepath} не найден")
+
+# Рекурсивный поиск файлов с расширением
+def find_files(directory, extension):
+    result = []
+    for name in os.listdir(directory):
+        full_path = os.path.join(directory, name)
+        if os.path.isfile(full_path) and name.endswith(extension):
+            result.append(full_path)
+    return result
+
+py_files = find_files(".", ".py")
+print(py_files)
+
+# Отделить файлы от директорий
+items = os.listdir(".")
+files = [x for x in items if os.path.isfile(x)]
+dirs  = [x for x in items if os.path.isdir(x)]
+other = [x for x in items if not os.path.isfile(x) and not os.path.isdir(x)]`
+  },
+  {
+    name: 'os.path.join(path, *paths)',
+    description: `Соединяет компоненты пути в единый путь, используя правильный разделитель для текущей операционной системы. На Unix/macOS — '/', на Windows — '\\'.
+
+Ключевые правила:
+- Если компонент является абсолютным путём — все предыдущие компоненты отбрасываются
+- Пустые компоненты игнорируются (кроме последнего)
+- Не проверяет, существует ли путь
+
+Применение — единственный правильный способ составления путей: никогда не используйте конкатенацию строк (path + "/" + name) — это не переносимо и ошибочно при наличии завершающих слешей.`,
+    syntax: 'os.path.join(path, *paths)',
+    arguments: [
+      { name: 'path', description: 'Первый компонент пути' },
+      { name: '*paths', description: 'Один или несколько компонентов пути для присоединения' }
+    ],
+    example: `import os
+
+# Базовое использование
+os.path.join("home", "user", "documents")
+# "home/user/documents"  (Unix)
+
+os.path.join("/home", "user", "file.txt")
+# "/home/user/file.txt"
+
+# Абсолютный компонент сбрасывает всё предыдущее
+os.path.join("/foo", "/bar", "baz")
+# "/bar/baz"  — /foo отброшен!
+
+# Практическое применение — сборка путей к файлам
+base_dir = "/var/data"
+subdir = "2024"
+filename = "report.csv"
+full_path = os.path.join(base_dir, subdir, filename)
+print(full_path)  # /var/data/2024/report.csv
+
+# Динамическая сборка пути из переменных
+import os
+home = os.path.expanduser("~")  # домашняя директория
+config_path = os.path.join(home, ".config", "myapp", "settings.json")
+
+# Перебор файлов с полным путём
+for name in os.listdir("."):
+    full = os.path.join(".", name)
+    print(full)`
+  },
+  {
     name: 'pow(base, exp[, mod])',
     description: `Возвращает base в степени exp. При наличии третьего аргумента mod возвращает (base ** exp) % mod — модульное возведение в степень.
 
@@ -1892,6 +4232,253 @@ print(c.diameter)   # 10
 print(c.area)       # 78.539...
 c.radius = 10       # вызывает setter с валидацией
 # c.radius = -1     # ValueError!`
+  },
+  {
+    name: 'random.choice(seq)',
+    description: `Возвращает случайный элемент из непустой последовательности seq. Находится в модуле random. Использует равномерное распределение — каждый элемент выбирается с одинаковой вероятностью.
+
+Если seq пустая — вызывает IndexError. Работает с любыми последовательностями, поддерживающими индексирование: list, tuple, str и т.д.
+
+Для выбора нескольких элементов используйте random.choices() (с повторениями) или random.sample() (без повторений).`,
+    syntax: 'random.choice(seq)',
+    arguments: [
+      { name: 'seq', description: 'Непустая последовательность (список, кортеж, строка), из которой выбирается элемент' }
+    ],
+    example: `import random
+
+# Из списка
+colors = ["красный", "зелёный", "синий", "жёлтый"]
+print(random.choice(colors))  # одно случайное значение
+
+# Из строки (случайный символ)
+letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+print(random.choice(letters))  # случайная буква
+
+# Из кортежа
+suits = ("♠", "♥", "♦", "♣")
+print(random.choice(suits))  # случайная масть
+
+# Игральная карта
+ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
+card = f"{random.choice(ranks)}{random.choice(suits)}"
+print(card)  # например, "K♦"
+
+# Случайное решение
+decision = random.choice(["да", "нет", "может быть"])
+print(decision)`
+  },
+  {
+    name: 'random.choices(population[, weights, cum_weights, k=1])',
+    description: `Возвращает список из k случайных элементов из population с возможностью повторений. Находится в модуле random. Поддерживает взвешенный выбор — элементы с большим весом выбираются чаще.
+
+Параметры weights и cum_weights задают вероятности:
+- weights — относительные веса (например, [1, 2, 3] означает вероятности 1/6, 2/6, 3/6)
+- cum_weights — накопительные (кумулятивные) веса (например, [1, 3, 6])
+- Нельзя указать оба параметра одновременно
+
+Отличие от random.sample():
+- choices() — выбор с повторениями (один элемент может быть выбран несколько раз)
+- sample() — выбор без повторений (каждый элемент не более одного раза)
+
+Если population пустая — вызывает IndexError.`,
+    syntax: 'random.choices(population, weights=None, *, cum_weights=None, k=1)',
+    arguments: [
+      { name: 'population', description: 'Последовательность, из которой выбираются элементы' },
+      { name: 'weights', description: 'Необязательный. Список относительных весов для каждого элемента' },
+      { name: 'cum_weights', description: 'Необязательный. Список кумулятивных весов' },
+      { name: 'k', description: 'Количество выбираемых элементов. По умолчанию 1' }
+    ],
+    example: `import random
+
+# Без весов — равномерно
+items = ["a", "b", "c", "d"]
+print(random.choices(items, k=3))  # ['c', 'a', 'a'] — повторения возможны
+
+# С весами — взвешенный выбор
+loot = ["меч", "щит", "броня", "легендарный меч"]
+weights = [50, 30, 15, 5]  # редкость в %
+drops = random.choices(loot, weights=weights, k=10)
+print(drops)
+
+# Имитация монеты
+sides = ["орёл", "решка"]
+tosses = random.choices(sides, k=100)
+print(f"Орёл: {tosses.count('орёл')}, Решка: {tosses.count('решка')}")
+
+# Генерация случайного пароля
+import string
+alphabet = string.ascii_letters + string.digits + "!@#$%"
+password = "".join(random.choices(alphabet, k=16))
+print(password)
+
+# Кумулятивные веса (суммируются слева)
+colors = ["красный", "зелёный", "синий"]
+result = random.choices(colors, cum_weights=[10, 40, 100], k=5)
+# 10% красный, 30% зелёный, 60% синий`
+  },
+  {
+    name: 'random.randint(a, b)',
+    description: `Возвращает случайное целое число N такое, что a ≤ N ≤ b. Оба конца диапазона включительно. Находится в модуле random. Эквивалентно random.randrange(a, b+1).
+
+Часто используется для генерации случайных индексов, бросания кубика, генерации случайных чисел в тестах и симуляциях.
+
+Если a > b — вызывает ValueError.`,
+    syntax: 'random.randint(a, b)',
+    arguments: [
+      { name: 'a', description: 'Нижняя граница диапазона (включительно)' },
+      { name: 'b', description: 'Верхняя граница диапазона (включительно)' }
+    ],
+    example: `import random
+
+# Случайное число от 1 до 6 (кубик)
+dice = random.randint(1, 6)
+print(f"Выпало: {dice}")
+
+# Случайное число от 0 до 100
+score = random.randint(0, 100)
+
+# Бросок двух кубиков
+die1 = random.randint(1, 6)
+die2 = random.randint(1, 6)
+print(f"Кубики: {die1} + {die2} = {die1 + die2}")
+
+# Случайный индекс списка
+items = ["a", "b", "c", "d", "e"]
+idx = random.randint(0, len(items) - 1)
+print(items[idx])  # равносильно random.choice(items)
+
+# Симуляция: 1000 бросков монеты
+results = [random.randint(0, 1) for _ in range(1000)]
+print(f"Орёл (0): {results.count(0)}, Решка (1): {results.count(1)}")
+
+# Случайный год
+year = random.randint(1900, 2024)
+print(year)`
+  },
+  {
+    name: 'random.random()',
+    description: `Возвращает случайное вещественное число в диапазоне [0.0, 1.0) — то есть от 0.0 включительно до 1.0 не включительно. Находится в модуле random. Использует алгоритм Mersenne Twister.
+
+Базовая функция генератора псевдослучайных чисел. Все остальные функции модуля random основаны на ней.
+
+Для получения числа в произвольном диапазоне [a, b) используйте: a + (b - a) * random.random()
+Или встроенную random.uniform(a, b).
+
+Не предназначена для криптографических целей — используйте модуль secrets для генерации криптографически безопасных случайных чисел.`,
+    syntax: 'random.random()',
+    arguments: [],
+    example: `import random
+
+# Базовое использование
+x = random.random()
+print(x)  # например, 0.7234512...  (от 0.0 до 0.999...)
+
+# Масштабирование в диапазон [a, b)
+def rand_range(a, b):
+    return a + (b - a) * random.random()
+
+print(rand_range(10, 20))  # случайное число в [10, 20)
+
+# Вероятностные проверки
+def event_happens(probability):
+    """Возвращает True с заданной вероятностью (0.0 — 1.0)"""
+    return random.random() < probability
+
+# Событие с вероятностью 30%
+for _ in range(5):
+    print(event_happens(0.3))
+
+# Симуляция: доля успехов при вероятности 70%
+trials = 10000
+successes = sum(1 for _ in range(trials) if random.random() < 0.7)
+print(f"Успехов: {successes}/{trials} = {successes/trials:.2%}")`
+  },
+  {
+    name: 'random.sample(population, k)',
+    description: `Возвращает список из k уникальных элементов, случайно выбранных из population без повторений. Находится в модуле random. Оригинальный population не изменяется.
+
+Отличие от random.choices():
+- sample() — без повторений (каждый элемент не более одного раза)
+- choices() — с повторениями (один элемент может встретиться несколько раз)
+
+Если k > len(population) — вызывает ValueError.
+
+Начиная с Python 3.9, population может быть множеством (set) или словарём, но для воспроизводимости рекомендуется использовать последовательности.
+
+Применение: выбор победителей лотереи, выборка данных для тестирования, случайное разбиение на группы.`,
+    syntax: 'random.sample(population, k)',
+    arguments: [
+      { name: 'population', description: 'Последовательность или множество, из которого производится выборка' },
+      { name: 'k', description: 'Количество элементов для выборки (не более len(population))' }
+    ],
+    example: `import random
+
+# Лотерея: 6 чисел из 45
+lottery = random.sample(range(1, 46), 6)
+print(sorted(lottery))  # например, [3, 12, 19, 27, 34, 41]
+
+# Случайная подвыборка из списка
+students = ["Анна", "Борис", "Вера", "Георгий", "Дарья", "Егор"]
+group = random.sample(students, 3)
+print("Выбранная группа:", group)  # без повторений
+
+# Перемешать список (альтернатива shuffle — не изменяет оригинал)
+original = [1, 2, 3, 4, 5]
+shuffled = random.sample(original, len(original))
+print(original)   # [1, 2, 3, 4, 5] — не изменён!
+print(shuffled)   # [3, 1, 5, 2, 4] — перемешан
+
+# Случайная выборка из диапазона (эффективно для больших диапазонов)
+indices = random.sample(range(1_000_000), 10)
+print(indices)  # 10 уникальных чисел из миллиона, без создания списка
+
+# k=1 — аналог choice, но возвращает список
+winner = random.sample(students, 1)[0]
+print(f"Победитель: {winner}")`
+  },
+  {
+    name: 'random.shuffle(x)',
+    description: `Перемешивает элементы последовательности x на месте (in-place). Находится в модуле random. Изменяет оригинальный список — не создаёт новый.
+
+Важно: shuffle работает только с изменяемыми последовательностями (list). Для кортежей и строк нужно сначала преобразовать в список.
+
+Для получения перемешанной копии без изменения оригинала используйте random.sample(x, len(x)).
+
+Воспроизводимость: можно зафиксировать начальное состояние через random.seed(), чтобы получать одинаковые результаты при повторных запусках.`,
+    syntax: 'random.shuffle(x)',
+    arguments: [
+      { name: 'x', description: 'Изменяемая последовательность (список), которую нужно перемешать' }
+    ],
+    example: `import random
+
+# Перемешать колоду карт
+deck = list(range(52))  # карты 0..51
+random.shuffle(deck)
+print(deck[:5])  # первые 5 карт после перемешивания
+
+# Перемешать список строк
+players = ["Алиса", "Боб", "Карлос", "Диана"]
+random.shuffle(players)
+print("Порядок хода:", players)
+
+# Перемешать копию (без изменения оригинала)
+original = [1, 2, 3, 4, 5]
+shuffled = original.copy()
+random.shuffle(shuffled)
+print("Оригинал:", original)  # [1, 2, 3, 4, 5]
+print("Перемешан:", shuffled) # [3, 1, 5, 2, 4]
+
+# Воспроизводимое перемешивание (seed)
+data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+random.seed(42)
+random.shuffle(data)
+print(data)  # всегда один и тот же результат при seed=42
+
+# Строку нельзя shuffle напрямую
+s = "hello"
+chars = list(s)
+random.shuffle(chars)
+print("".join(chars))  # "lhelo" или другой вариант`
   },
   {
     name: 'range(stop) / range(start, stop[, step])',
@@ -5267,6 +7854,314 @@ class C(A, B):
 
 C().method()   # C → A → B (порядок MRO!)
 print(C.__mro__)  # (C, A, B, object)`
+  },
+  {
+    name: 'sys.exit([arg])',
+    description: `Завершает работу интерпретатора Python. Вызывает исключение SystemExit, которое может быть перехвачено в блоке try/except. Находится в модуле sys.
+
+Аргумент arg:
+- Если не указан или None — код завершения 0 (успех)
+- Если целое число — используется как код возврата (0 = успех, ненулевое = ошибка)
+- Если строка — выводится в stderr, код возврата 1
+
+Поскольку sys.exit() вызывает SystemExit, а не принудительно завершает процесс, код в finally-блоках и обработчиках исключений всё равно выполнится. Для немедленного завершения без cleanup используйте os._exit().`,
+    syntax: 'sys.exit([arg])',
+    arguments: [
+      { name: 'arg', description: 'Необязательный. Код завершения (int), сообщение об ошибке (str) или None. По умолчанию 0' }
+    ],
+    example: `import sys
+
+# Нормальное завершение
+sys.exit(0)   # код 0 = успех
+
+# Завершение с ошибкой
+sys.exit(1)   # ненулевой код = ошибка
+
+# Завершение с сообщением (в stderr)
+sys.exit("Критическая ошибка: конфигурационный файл не найден")
+
+# Перехват SystemExit (антипаттерн, но возможен)
+try:
+    sys.exit(1)
+except SystemExit as e:
+    print(f"Перехвачен выход с кодом: {e.code}")
+
+# Типичный паттерн: валидация аргументов
+import sys
+
+def main():
+    if len(sys.argv) < 2:
+        print("Использование: script.py <filename>", file=sys.stderr)
+        sys.exit(1)
+    filename = sys.argv[1]
+    print(f"Обрабатываю файл: {filename}")
+
+# finally всё равно выполняется
+try:
+    print("До выхода")
+    sys.exit(0)
+finally:
+    print("Это выполнится!")  # выводится перед выходом`
+  },
+  {
+    name: 'sys.getrefcount(object)',
+    description: `Возвращает количество ссылок на объект object. Находится в модуле sys. Используется для отладки и понимания работы управления памятью в CPython (счётчик ссылок).
+
+Важно: возвращаемое значение всегда на 1 больше ожидаемого, потому что временная ссылка создаётся при передаче object в функцию getrefcount().
+
+Применяется для:
+- Понимания, почему объект не удаляется сборщиком мусора
+- Отладки утечек памяти
+- Исследования внутреннего поведения CPython
+
+Примечание: данная функция специфична для CPython и может отсутствовать в других реализациях Python (PyPy, Jython и т.д.).`,
+    syntax: 'sys.getrefcount(object)',
+    arguments: [
+      { name: 'object', description: 'Объект, для которого нужно получить счётчик ссылок' }
+    ],
+    example: `import sys
+
+# Базовый пример
+a = []
+print(sys.getrefcount(a))  # 2 (a + временная ссылка в getrefcount)
+
+b = a  # ещё одна ссылка
+print(sys.getrefcount(a))  # 3
+
+del b
+print(sys.getrefcount(a))  # 2 снова
+
+# Маленькие числа кэшируются интерпретатором
+print(sys.getrefcount(1))    # очень большое число — 1 используется повсюду
+print(sys.getrefcount(None)) # ещё больше — None используется везде
+
+# Список — уникальный объект
+my_list = [1, 2, 3]
+print(sys.getrefcount(my_list))  # 2
+
+refs = [my_list, my_list, my_list]  # 3 дополнительные ссылки
+print(sys.getrefcount(my_list))  # 5
+
+# Внутри функции
+def inspect(obj):
+    # здесь +1 за параметр функции
+    print(f"Ссылок: {sys.getrefcount(obj)}")
+
+inspect(my_list)  # 6 (my_list + refs[0,1,2] + параметр + getrefcount)`
+  },
+  {
+    name: 'sys.getsizeof(object[, default])',
+    description: `Возвращает размер объекта object в байтах. Использует метод объекта __sizeof__() и добавляет накладные расходы сборщика мусора. Находится в модуле sys.
+
+Важные ограничения:
+- Возвращает размер только самого объекта, без вложенных объектов
+- Для списка возвращает размер массива указателей, а не суммарный размер элементов
+- Для словаря — размер хеш-таблицы без размера ключей и значений
+
+Для полного (рекурсивного) замера размера структуры данных нужно обходить все вложенные объекты вручную или использовать сторонние библиотеки (pympler, objgraph).
+
+Параметр default позволяет вернуть указанное значение вместо TypeError для объектов, не реализующих __sizeof__().`,
+    syntax: 'sys.getsizeof(object, default)',
+    arguments: [
+      { name: 'object', description: 'Объект, размер которого нужно получить' },
+      { name: 'default', description: 'Необязательный. Значение, возвращаемое если объект не поддерживает __sizeof__()' }
+    ],
+    example: `import sys
+
+# Базовые типы
+print(sys.getsizeof(0))        # 28 — int
+print(sys.getsizeof(1000))     # 28 — int (одинаково для маленьких чисел)
+print(sys.getsizeof(True))     # 28 — bool
+print(sys.getsizeof(1.0))      # 24 — float
+print(sys.getsizeof("hello"))  # 54 — str (зависит от длины)
+print(sys.getsizeof(""))       # 49 — пустая строка
+
+# Контейнеры — только сам контейнер, не содержимое!
+lst = [1, 2, 3]
+print(sys.getsizeof(lst))      # 88 — пустой список + 3 указателя
+print(sys.getsizeof([]))       # 56 — пустой список
+
+# Размер не включает вложенные объекты
+big_list = [list(range(1000))] * 5
+print(sys.getsizeof(big_list)) # ~104 — только 5 указателей!
+
+# Рекурсивный подсчёт размера (полная функция)
+def deep_sizeof(obj, seen=None):
+    if seen is None:
+        seen = set()
+    obj_id = id(obj)
+    if obj_id in seen:
+        return 0
+    seen.add(obj_id)
+    size = sys.getsizeof(obj)
+    if hasattr(obj, '__dict__'):
+        size += deep_sizeof(obj.__dict__, seen)
+    if hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes)):
+        size += sum(deep_sizeof(item, seen) for item in obj)
+    return size
+
+data = {"key": [1, 2, 3], "other": "value"}
+print(deep_sizeof(data))  # учитывает все вложенные объекты`
+  },
+  {
+    name: 'time.perf_counter()',
+    description: `Возвращает значение счётчика производительности в секундах (число с плавающей запятой) с наивысшей доступной точностью. Находится в модуле time. Используется для измерения коротких промежутков времени в коде.
+
+Ключевые особенности:
+- Точка отсчёта произвольна — важна только разница между двумя вызовами
+- Не сбрасывается при sleep — учитывает время сна
+- Наивысшая точность среди функций time для измерения производительности
+- Монотонный счётчик — значение никогда не убывает (в отличие от time.time())
+
+Отличие от time.time():
+- time.time() — абсолютное время (Unix timestamp, может меняться при изменении системных часов)
+- time.perf_counter() — относительный счётчик, оптимизированный для измерений
+
+Для профилирования используйте модуль timeit (более точен, учитывает многократные запуски).`,
+    syntax: 'time.perf_counter()',
+    arguments: [],
+    example: `import time
+
+# Базовое измерение времени выполнения
+start = time.perf_counter()
+
+# ... измеряемый код ...
+result = sum(range(1_000_000))
+
+end = time.perf_counter()
+print(f"Выполнено за {end - start:.4f} секунд")
+
+# Контекстный менеджер для удобного замера
+from contextlib import contextmanager
+
+@contextmanager
+def timer(label=""):
+    start = time.perf_counter()
+    yield
+    elapsed = time.perf_counter() - start
+    print(f"{label}: {elapsed:.6f} сек")
+
+with timer("Сортировка"):
+    data = list(range(100_000, 0, -1))
+    data.sort()
+
+# Сравнение двух алгоритмов
+def algo1(n): return sum(range(n))
+def algo2(n): return n * (n - 1) // 2
+
+n = 1_000_000
+t1 = time.perf_counter(); algo1(n); t1 = time.perf_counter() - t1
+t2 = time.perf_counter(); algo2(n); t2 = time.perf_counter() - t2
+print(f"algo1: {t1:.6f}s, algo2: {t2:.6f}s, быстрее в: {t1/t2:.1f}x")`
+  },
+  {
+    name: 'time.sleep(seconds)',
+    description: `Приостанавливает выполнение текущего потока на указанное количество секунд. Находится в модуле time. Аргумент seconds может быть вещественным числом для задержки с точностью до миллисекунд.
+
+Важные особенности:
+- Блокирует текущий поток — другие потоки продолжают работу
+- Минимальная фактическая задержка зависит от ОС (обычно ~1–15 мс)
+- Может быть прервана сигналом (в этом случае вызывается исключение)
+- Для асинхронного кода используйте asyncio.sleep() — не блокирует event loop
+
+Применение: rate limiting, задержки между повторными запросами к API, анимации в консоли, имитация нагрузки в тестах.`,
+    syntax: 'time.sleep(seconds)',
+    arguments: [
+      { name: 'seconds', description: 'Количество секунд ожидания. Может быть вещественным числом (например, 0.5 для 500 мс)' }
+    ],
+    example: `import time
+
+# Задержка 1 секунда
+time.sleep(1)
+
+# Задержка 0.5 секунды (500 мс)
+time.sleep(0.5)
+
+# Retry с задержкой
+import requests
+
+def fetch_with_retry(url, retries=3, delay=2.0):
+    for attempt in range(1, retries + 1):
+        try:
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Попытка {attempt}/{retries} не удалась: {e}")
+            if attempt < retries:
+                time.sleep(delay)
+    raise RuntimeError(f"Не удалось получить {url} за {retries} попыток")
+
+# Прогресс-бар с задержкой
+import sys
+for i in range(1, 11):
+    print(f"\rЗагрузка: {'█' * i}{'░' * (10 - i)} {i * 10}%", end="", flush=True)
+    time.sleep(0.2)
+print()
+
+# Rate limiting для API
+endpoints = ["/api/a", "/api/b", "/api/c"]
+for endpoint in endpoints:
+    print(f"Запрос к {endpoint}")
+    # process(endpoint)
+    time.sleep(0.1)  # не более 10 запросов в секунду`
+  },
+  {
+    name: 'time.time()',
+    description: `Возвращает текущее время в виде числа секунд, прошедших с начала эпохи Unix (1 января 1970 года, 00:00:00 UTC) — Unix timestamp. Тип возвращаемого значения — float. Находится в модуле time.
+
+Применение:
+- Получение текущего абсолютного времени
+- Вычисление прошедшего времени (разность двух timestamp)
+- Хранение временных меток в базах данных
+- Создание временных идентификаторов
+
+Ограничения:
+- Зависит от системных часов — может прыгнуть при изменении времени на ПК
+- Для точных измерений производительности лучше использовать time.perf_counter()
+- Для работы с датами и временем лучше использовать модуль datetime
+
+Преобразование: datetime.datetime.fromtimestamp(ts) → объект datetime.`,
+    syntax: 'time.time()',
+    arguments: [],
+    example: `import time
+
+# Текущий Unix timestamp
+ts = time.time()
+print(ts)  # например, 1736000000.123456
+
+# Измерение времени выполнения
+start = time.time()
+result = sum(range(10_000_000))
+elapsed = time.time() - start
+print(f"Выполнено за {elapsed:.3f} сек")
+
+# Конвертация в читаемый формат
+import datetime
+dt = datetime.datetime.fromtimestamp(time.time())
+print(dt.strftime("%Y-%m-%d %H:%M:%S"))  # "2024-01-04 15:30:00"
+
+# Временная метка для имён файлов
+filename = f"backup_{int(time.time())}.tar.gz"
+print(filename)  # "backup_1736000000.tar.gz"
+
+# Проверка тайм-аута
+def wait_for_condition(check_fn, timeout=10.0, interval=0.5):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if check_fn():
+            return True
+        time.sleep(interval)
+    return False  # тайм-аут истёк
+
+# Кэш с TTL
+cache = {}
+def get_cached(key, ttl=60):
+    if key in cache:
+        value, timestamp = cache[key]
+        if time.time() - timestamp < ttl:
+            return value  # данные актуальны
+    return None  # кэш устарел или пуст`
   },
   {
     name: 'tuple([iterable])',
