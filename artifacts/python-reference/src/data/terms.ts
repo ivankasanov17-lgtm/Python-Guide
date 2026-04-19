@@ -3737,6 +3737,341 @@ except FileExistsError:
     print("Файл уже существует")`
   },
   {
+    name: 'operator.add(a, b)',
+    description: `Возвращает a + b. Функциональный эквивалент оператора + из модуля operator. Находится в модуле operator.
+
+Модуль operator предоставляет функциональные аналоги всех операторов Python. Это полезно когда нужно передать оператор как аргумент функции высшего порядка (map, reduce, sorted и т.д.).
+
+Эквивалентно: operator.add(a, b) == a + b
+
+Другие арифметические функции модуля:
+- operator.sub(a, b) — вычитание
+- operator.mul(a, b) — умножение
+- operator.truediv(a, b) — деление
+- operator.floordiv(a, b) — целочисленное деление
+- operator.mod(a, b) — остаток от деления
+- operator.pow(a, b) — возведение в степень
+- operator.neg(a) — унарный минус`,
+    syntax: 'operator.add(a, b)',
+    arguments: [
+      { name: 'a', description: 'Первый операнд' },
+      { name: 'b', description: 'Второй операнд' }
+    ],
+    example: `import operator
+from functools import reduce
+
+# Простое использование
+print(operator.add(3, 5))   # 8
+print(operator.add("foo", "bar"))  # "foobar" — работает со строками
+print(operator.add([1, 2], [3, 4]))  # [1, 2, 3, 4] — конкатенация списков
+
+# Передача в функции высшего порядка
+numbers = [1, 2, 3, 4, 5]
+total = reduce(operator.add, numbers)  # 15
+print(total)
+
+# Сравнение: lambda vs operator
+# С lambda:
+total = reduce(lambda a, b: a + b, numbers)
+
+# С operator (лаконичнее):
+total = reduce(operator.add, numbers)
+
+# Список всех арифметических функций
+ops = {
+    '+': operator.add,
+    '-': operator.sub,
+    '*': operator.mul,
+    '/': operator.truediv,
+}
+a, b = 10, 3
+for symbol, fn in ops.items():
+    print(f"10 {symbol} 3 = {fn(a, b)}")`
+  },
+  {
+    name: 'operator.attrgetter(*attrs)',
+    description: `Возвращает вызываемый объект, который при вызове f(obj) возвращает атрибут obj.attr. Находится в модуле operator. Используется как ключевая функция в sort/sorted/min/max.
+
+С несколькими атрибутами attrgetter('attr1', 'attr2') возвращает кортеж (obj.attr1, obj.attr2).
+
+Поддерживает вложенные атрибуты через точку: attrgetter('a.b.c') эквивалентно lambda obj: obj.a.b.c.
+
+Преимущество перед lambda: быстрее (реализован на C), читаемее при нескольких атрибутах.
+
+Отличие от operator.itemgetter():
+- attrgetter — доступ по атрибуту (obj.attr)
+- itemgetter — доступ по ключу/индексу (obj[key])`,
+    syntax: 'operator.attrgetter(*attrs)',
+    arguments: [
+      { name: '*attrs', description: 'Один или несколько имён атрибутов для извлечения. Поддерживает вложенные атрибуты через точку' }
+    ],
+    example: `import operator
+from dataclasses import dataclass
+
+@dataclass
+class Employee:
+    name: str
+    department: str
+    salary: float
+
+employees = [
+    Employee("Алиса", "Разработка", 120000),
+    Employee("Боб",   "Маркетинг",  80000),
+    Employee("Вера",  "Разработка",  95000),
+    Employee("Гриша", "Маркетинг", 110000),
+]
+
+# Сортировка по одному атрибуту
+by_salary = sorted(employees, key=operator.attrgetter("salary"))
+for e in by_salary:
+    print(f"{e.name}: {e.salary}")
+
+# Сортировка по нескольким атрибутам: сначала отдел, потом зарплата
+by_dept_salary = sorted(employees,
+    key=operator.attrgetter("department", "salary"))
+
+# Вложенные атрибуты
+@dataclass
+class Address:
+    city: str
+
+@dataclass
+class Person:
+    name: str
+    address: Address
+
+people = [
+    Person("Анна", Address("Москва")),
+    Person("Иван", Address("Казань")),
+]
+by_city = sorted(people, key=operator.attrgetter("address.city"))
+
+# Использование с max/min
+richest = max(employees, key=operator.attrgetter("salary"))
+print(richest.name)  # Алиса`
+  },
+  {
+    name: 'operator.itemgetter(*items)',
+    description: `Возвращает вызываемый объект, который при вызове f(obj) возвращает obj[item]. Находится в модуле operator. Используется как ключевая функция в sort/sorted/min/max или для извлечения данных через map.
+
+С несколькими аргументами itemgetter(0, 2) возвращает кортеж (obj[0], obj[2]).
+
+Работает с любыми объектами, поддерживающими оператор [] — списки, кортежи, словари, строки.
+
+Преимущество перед lambda: быстрее (реализован на C), лаконичнее записывается.
+
+Отличие от operator.attrgetter():
+- itemgetter — доступ по ключу/индексу (obj[key])
+- attrgetter — доступ по атрибуту (obj.attr)`,
+    syntax: 'operator.itemgetter(*items)',
+    arguments: [
+      { name: '*items', description: 'Один или несколько ключей/индексов для извлечения' }
+    ],
+    example: `import operator
+from functools import reduce
+
+# Сортировка списка кортежей по второму элементу
+data = [("яблоко", 3), ("банан", 1), ("вишня", 2)]
+sorted_data = sorted(data, key=operator.itemgetter(1))
+print(sorted_data)  # [('банан', 1), ('вишня', 2), ('яблоко', 3)]
+
+# Сортировка списка словарей
+students = [
+    {"name": "Алиса", "grade": 5, "age": 20},
+    {"name": "Боб",   "grade": 3, "age": 22},
+    {"name": "Вера",  "grade": 4, "age": 21},
+]
+by_grade = sorted(students, key=operator.itemgetter("grade"), reverse=True)
+print([s["name"] for s in by_grade])  # ['Алиса', 'Вера', 'Боб']
+
+# Несколько ключей — сортировка по нескольким полям
+by_grade_age = sorted(students,
+    key=operator.itemgetter("grade", "age"))
+
+# Извлечение через map
+rows = [(1, "a", 10), (2, "b", 20), (3, "c", 30)]
+third_col = list(map(operator.itemgetter(2), rows))
+print(third_col)  # [10, 20, 30]
+
+# Доступ по индексу — удобен для итерируемых объектов
+first = operator.itemgetter(0)
+print(first("hello"))  # 'h'
+print(first([10, 20, 30]))  # 10`
+  },
+  {
+    name: 'operator.methodcaller(name, /, *args, **kwargs)',
+    description: `Возвращает вызываемый объект, который при вызове f(obj) выполняет obj.method(*args, **kwargs). Находится в модуле operator.
+
+Полезно для передачи вызова метода с аргументами в функции высшего порядка (map, filter, sorted и т.д.) без написания lambda.
+
+Эквивалентно: operator.methodcaller('name', args)(obj) == obj.name(args)
+
+Преимущество перед lambda: явнее выражает намерение, быстрее при C-реализации.`,
+    syntax: 'operator.methodcaller(name, /, *args, **kwargs)',
+    arguments: [
+      { name: 'name', description: 'Имя метода для вызова (строка)' },
+      { name: '*args', description: 'Необязательные позиционные аргументы, передаваемые в метод' },
+      { name: '**kwargs', description: 'Необязательные именованные аргументы, передаваемые в метод' }
+    ],
+    example: `import operator
+
+# Простой вызов метода
+upcase = operator.methodcaller("upper")
+print(upcase("hello"))  # 'HELLO'
+
+# Аналог lambda
+# lambda s: s.upper()  ==  operator.methodcaller("upper")
+
+# Метод с аргументами
+stripper = operator.methodcaller("strip", "!")
+print(stripper("!!!hello!!!"))  # 'hello'
+
+# Использование с map
+words = ["hello", "world", "python"]
+upper_words = list(map(operator.methodcaller("upper"), words))
+print(upper_words)  # ['HELLO', 'WORLD', 'PYTHON']
+
+# Сортировка по результату вызова метода
+strings = ["banana", "apple", "cherry", "date"]
+sorted_by_len = sorted(strings, key=operator.methodcaller("__len__"))
+print(sorted_by_len)  # ['date', 'apple', 'banana', 'cherry']
+
+# Метод split с аргументом
+csv_rows = ["a,b,c", "d,e,f", "g,h,i"]
+splitter = operator.methodcaller("split", ",")
+parsed = list(map(splitter, csv_rows))
+print(parsed)  # [['a','b','c'], ['d','e','f'], ['g','h','i']]
+
+# Цепочка через map + filter
+sentences = ["Hello world", "foo", "Python is great"]
+long_words = list(filter(
+    operator.methodcaller("__len__"),  # отфильтровать непустые
+    map(operator.methodcaller("upper"), sentences)
+))`
+  },
+  {
+    name: 'operator.mul(a, b)',
+    description: `Возвращает a * b. Функциональный эквивалент оператора * из модуля operator.
+
+Работает с числами (умножение), строками (str * n), списками (list * n) и любыми объектами, определяющими __mul__.
+
+Полезен при передаче умножения как функции в reduce, map и другие функции высшего порядка.
+
+Эквивалентно: operator.mul(a, b) == a * b`,
+    syntax: 'operator.mul(a, b)',
+    arguments: [
+      { name: 'a', description: 'Первый операнд' },
+      { name: 'b', description: 'Второй операнд' }
+    ],
+    example: `import operator
+from functools import reduce
+
+# Числа
+print(operator.mul(3, 4))    # 12
+print(operator.mul(2.5, 4))  # 10.0
+
+# Строки и списки
+print(operator.mul("ab", 3))     # 'ababab'
+print(operator.mul([1, 2], 3))   # [1, 2, 1, 2, 1, 2]
+
+# Факториал через reduce
+def factorial(n):
+    return reduce(operator.mul, range(1, n + 1), 1)
+
+print(factorial(5))   # 120
+print(factorial(10))  # 3628800
+
+# Произведение всех элементов списка
+nums = [1, 2, 3, 4, 5]
+product = reduce(operator.mul, nums)
+print(product)  # 120
+
+# Использование в map
+pairs = [(2, 3), (4, 5), (6, 7)]
+products = list(map(lambda p: operator.mul(*p), pairs))
+print(products)  # [6, 20, 42]`
+  },
+  {
+    name: 'operator.sub(a, b)',
+    description: `Возвращает a - b. Функциональный эквивалент оператора - из модуля operator.
+
+Полезен при передаче вычитания как функции в reduce, sorted и другие функции высшего порядка.
+
+Эквивалентно: operator.sub(a, b) == a - b`,
+    syntax: 'operator.sub(a, b)',
+    arguments: [
+      { name: 'a', description: 'Уменьшаемое' },
+      { name: 'b', description: 'Вычитаемое' }
+    ],
+    example: `import operator
+from functools import reduce
+
+# Простое использование
+print(operator.sub(10, 3))   # 7
+print(operator.sub(5.5, 2.1))  # 3.4
+
+# Разница: первый минус все остальные
+nums = [100, 10, 20, 5]
+result = reduce(operator.sub, nums)  # ((100 - 10) - 20) - 5 = 65
+print(result)
+
+# Вычисление разниц последовательных элементов
+values = [1, 4, 9, 16, 25]
+diffs = list(map(operator.sub, values[1:], values[:-1]))
+print(diffs)  # [3, 5, 7, 9] — разницы
+
+# В качестве ключа сортировки (разница от значения)
+target = 10
+numbers = [3, 15, 7, 12, 1]
+closest = sorted(numbers, key=lambda x: abs(operator.sub(x, target)))
+print(closest)  # [12, 7, 15, 3, 1] — по близости к 10`
+  },
+  {
+    name: 'operator.truediv(a, b)',
+    description: `Возвращает a / b (деление с плавающей запятой). Функциональный эквивалент оператора / из модуля operator.
+
+Всегда возвращает float, даже если оба аргумента целые. Для целочисленного деления используйте operator.floordiv(a, b) (аналог a // b).
+
+Вызывает ZeroDivisionError при b == 0.
+
+Эквивалентно: operator.truediv(a, b) == a / b`,
+    syntax: 'operator.truediv(a, b)',
+    arguments: [
+      { name: 'a', description: 'Делимое' },
+      { name: 'b', description: 'Делитель (не должен быть 0)' }
+    ],
+    example: `import operator
+from functools import reduce
+
+# Простое использование
+print(operator.truediv(10, 3))   # 3.3333...
+print(operator.truediv(10, 2))   # 5.0 — всегда float!
+print(operator.truediv(7, 2))    # 3.5
+
+# Отличие от floordiv
+print(operator.truediv(7, 2))    # 3.5
+print(operator.floordiv(7, 2))   # 3
+
+# Среднее через reduce + truediv
+nums = [10, 20, 30, 40]
+total = reduce(operator.add, nums)
+avg = operator.truediv(total, len(nums))
+print(avg)  # 25.0
+
+# Нормализация данных
+data = [100, 200, 150, 250]
+max_val = max(data)
+normalized = [operator.truediv(x, max_val) for x in data]
+print(normalized)  # [0.4, 0.8, 0.6, 1.0]
+
+# Безопасное деление
+def safe_div(a, b):
+    try:
+        return operator.truediv(a, b)
+    except ZeroDivisionError:
+        return float('inf')`
+  },
+  {
     name: 'ord(c)',
     description: `Возвращает целое число — кодовую точку Unicode для заданного символа. Является обратной функцией к chr().
 
@@ -4072,6 +4407,364 @@ config_path = os.path.join(home, ".config", "myapp", "settings.json")
 for name in os.listdir("."):
     full = os.path.join(".", name)
     print(full)`
+  },
+  {
+    name: 'pathlib.Path(path)',
+    description: `Создаёт объект Path — объектно-ориентированное представление пути файловой системы. Находится в модуле pathlib (Python 3.4+). На Unix создаётся PosixPath, на Windows — WindowsPath.
+
+pathlib.Path является современной альтернативой работе со строками путей через os.path. Предоставляет удобный API: конкатенация через оператор /, методы для чтения/записи, проверки существования и т.д.
+
+Основные операции:
+- Path('/dir') / 'subdir' / 'file.txt' — конкатенация путей через /
+- path.parent — родительская директория
+- path.name — имя файла с расширением
+- path.stem — имя файла без расширения
+- path.suffix — расширение файла
+- path.parts — кортеж всех компонентов пути
+- str(path) — преобразование в строку
+
+Можно создать от строки, другого Path или текущей директории: Path.cwd() / Path.home().`,
+    syntax: 'pathlib.Path(path)',
+    arguments: [
+      { name: 'path', description: 'Строка, другой объект Path или os.PathLike, представляющий путь файловой системы' }
+    ],
+    example: `from pathlib import Path
+
+# Создание объектов Path
+p = Path("/home/user/documents/file.txt")
+p = Path("relative/path/to/file.py")
+p = Path(".")          # текущая директория
+
+# Конкатенация путей через /
+base = Path("/home/user")
+config = base / ".config" / "myapp" / "settings.json"
+print(config)  # /home/user/.config/myapp/settings.json
+
+# Компоненты пути
+p = Path("/home/user/report.tar.gz")
+print(p.parent)   # /home/user
+print(p.name)     # report.tar.gz
+print(p.stem)     # report.tar
+print(p.suffix)   # .gz
+print(p.suffixes) # ['.tar', '.gz']
+print(p.parts)    # ('/', 'home', 'user', 'report.tar.gz')
+
+# Специальные директории
+home = Path.home()     # домашняя директория (~)
+cwd  = Path.cwd()      # текущая рабочая директория
+
+# Абсолютный путь
+relative = Path("data/file.csv")
+absolute = relative.resolve()  # абсолютный путь с разрешением symlinks
+print(absolute)
+
+# Glob-паттерны
+src = Path("src")
+py_files = list(src.glob("**/*.py"))  # рекурсивный поиск всех .py файлов`
+  },
+  {
+    name: 'pathlib.Path.exists()',
+    description: `Возвращает True если путь указывает на существующий объект файловой системы (файл, директорию, символическую ссылку). Возвращает False если объект не существует или нет прав доступа.
+
+Эквивалент os.path.exists(), но в объектно-ориентированном стиле.
+
+Особенности:
+- Возвращает True для файлов, директорий и символических ссылок
+- Возвращает False для битых (broken) символических ссылок
+- Не вызывает исключений — при ошибке доступа просто возвращает False
+
+Для более специфичных проверок: Path.is_file(), Path.is_dir(), Path.is_symlink().`,
+    syntax: 'Path.exists()',
+    arguments: [],
+    example: `from pathlib import Path
+
+# Проверка существования файла
+config = Path("config.json")
+if config.exists():
+    text = config.read_text()
+else:
+    text = "{}"
+
+# Проверка перед удалением
+log_file = Path("app.log")
+if log_file.exists():
+    log_file.unlink()  # удалить файл
+    print("Лог удалён")
+
+# Создание директории если не существует
+data_dir = Path("data/output")
+if not data_dir.exists():
+    data_dir.mkdir(parents=True)
+
+# Проверка нескольких путей
+required = [Path("config.toml"), Path("data/"), Path(".env")]
+missing = [p for p in required if not p.exists()]
+if missing:
+    print(f"Отсутствуют: {missing}")`
+  },
+  {
+    name: 'pathlib.Path.is_dir()',
+    description: `Возвращает True если путь указывает на существующую директорию. Разрешает символические ссылки — если путь является символической ссылкой на директорию, возвращает True.
+
+Возвращает False если путь не существует, является файлом, битой символической ссылкой или при ошибке доступа.
+
+Эквивалент os.path.isdir() в объектно-ориентированном стиле. Полезно для разграничения файлов и директорий при обходе файловой системы.`,
+    syntax: 'Path.is_dir()',
+    arguments: [],
+    example: `from pathlib import Path
+
+# Проверка что путь — директория
+p = Path("/usr/local")
+if p.is_dir():
+    print(f"{p} — директория")
+    for item in p.iterdir():
+        print(item.name)
+
+# Только поддиректории
+base = Path(".")
+subdirs = [d for d in base.iterdir() if d.is_dir()]
+print("Поддиректории:", [d.name for d in subdirs])
+
+# Проверка перед обходом
+def process_dir(path):
+    p = Path(path)
+    if not p.is_dir():
+        raise ValueError(f"'{p}' не является директорией")
+    for item in p.iterdir():
+        if item.is_file():
+            print(f"Файл: {item.name}")
+        elif item.is_dir():
+            print(f"Папка: {item.name}/")
+
+# Убедиться что назначение — директория
+dest = Path("output")
+if not dest.is_dir():
+    dest.mkdir(parents=True)`
+  },
+  {
+    name: 'pathlib.Path.is_file()',
+    description: `Возвращает True если путь указывает на существующий обычный файл. Разрешает символические ссылки — если путь является символической ссылкой на файл, возвращает True.
+
+Возвращает False если путь не существует, является директорией, устройством, сокетом или при ошибке доступа.
+
+Эквивалент os.path.isfile() в объектно-ориентированном стиле. Наиболее частая проверка при работе с файлами.`,
+    syntax: 'Path.is_file()',
+    arguments: [],
+    example: `from pathlib import Path
+
+# Проверка перед чтением файла
+filepath = Path("data.csv")
+if filepath.is_file():
+    content = filepath.read_text(encoding="utf-8")
+else:
+    print(f"Файл {filepath} не найден")
+
+# Рекурсивный поиск файлов с расширением
+def find_files(directory, extension):
+    return [
+        p for p in Path(directory).rglob(f"*{extension}")
+        if p.is_file()
+    ]
+
+py_files = find_files(".", ".py")
+print(py_files)
+
+# Разделить файлы и папки
+items = list(Path(".").iterdir())
+files = [x for x in items if x.is_file()]
+dirs  = [x for x in items if x.is_dir()]
+print(f"Файлов: {len(files)}, директорий: {len(dirs)}")
+
+# Вместе с exists() — явная проверка типа
+p = Path("output")
+if p.exists() and not p.is_file():
+    print(f"'{p}' существует, но это не файл")`
+  },
+  {
+    name: 'pathlib.Path.iterdir()',
+    description: `Возвращает итератор объектов Path для всех элементов директории. Не рекурсивный — возвращает только прямые вложения (файлы и поддиректории). Порядок элементов произвольный.
+
+Эквивалент os.listdir(), но возвращает объекты Path (а не строки), что позволяет сразу вызывать методы is_file(), is_dir(), read_text() и т.д.
+
+Для рекурсивного обхода используйте Path.rglob('*') или Path.glob('**/*').
+Вызывает NotADirectoryError если путь не является директорией.`,
+    syntax: 'Path.iterdir()',
+    arguments: [],
+    example: `from pathlib import Path
+
+# Перебор элементов директории
+for item in Path(".").iterdir():
+    print(item.name, "— файл" if item.is_file() else "— папка")
+
+# Только файлы Python
+py_files = [p for p in Path("src").iterdir() if p.suffix == ".py"]
+
+# Разделить файлы и папки
+base = Path("project")
+files = []
+dirs  = []
+for item in base.iterdir():
+    (files if item.is_file() else dirs).append(item)
+
+print("Файлов:", len(files))
+print("Папок:", len(dirs))
+
+# Подсчёт файлов по типу
+from collections import Counter
+exts = Counter(p.suffix for p in Path(".").iterdir() if p.is_file())
+print(exts)  # Counter({'.py': 5, '.txt': 2, '.json': 1})
+
+# Рекурсивный обход через glob
+all_py = list(Path(".").rglob("*.py"))
+print(f"Всего .py файлов: {len(all_py)}")`
+  },
+  {
+    name: 'pathlib.Path.mkdir(parents=False, exist_ok=False)',
+    description: `Создаёт директорию по данному пути. Находится в классе Path модуля pathlib.
+
+Параметры:
+- parents=False — если True, создаёт все промежуточные директории (аналог mkdir -p / os.makedirs)
+- exist_ok=False — если True, не вызывает ошибку если директория уже существует
+
+Вызывает FileExistsError если директория уже существует и exist_ok=False.
+Вызывает FileNotFoundError если промежуточные директории не существуют и parents=False.
+
+Эквивалент os.makedirs(path, exist_ok=True) при parents=True, exist_ok=True.`,
+    syntax: 'Path.mkdir(mode=0o777, parents=False, exist_ok=False)',
+    arguments: [
+      { name: 'mode', description: 'Необязательный. Права доступа (Unix). По умолчанию 0o777' },
+      { name: 'parents', description: 'Если True — создаёт все промежуточные директории. По умолчанию False' },
+      { name: 'exist_ok', description: 'Если True — не вызывает ошибку если директория уже есть. По умолчанию False' }
+    ],
+    example: `from pathlib import Path
+
+# Создание простой директории
+Path("output").mkdir()
+
+# Безопасное создание (уже существует — не ошибка)
+Path("logs").mkdir(exist_ok=True)
+
+# Создание вложенной структуры директорий
+Path("data/2024/january").mkdir(parents=True, exist_ok=True)
+
+# Типичный паттерн: убедиться что директория есть
+def ensure_dir(path):
+    p = Path(path)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+output = ensure_dir("results/graphs")
+# теперь можно записывать файлы
+(output / "chart.png").write_bytes(b"...")
+
+# Создание временной директории
+import tempfile
+with tempfile.TemporaryDirectory() as tmp:
+    work_dir = Path(tmp) / "processing"
+    work_dir.mkdir()
+    (work_dir / "data.txt").write_text("temp data")
+    # по выходу из with — всё удаляется`
+  },
+  {
+    name: 'pathlib.Path.read_text([encoding])',
+    description: `Считывает содержимое файла и возвращает его как строку. Удобная однострочная альтернатива конструкции open(path).read(). Находится в классе Path модуля pathlib.
+
+Автоматически открывает и закрывает файл. Если файл не существует — вызывает FileNotFoundError.
+
+Параметр encoding:
+- Если не указан — используется кодировка платформы по умолчанию (locale.getpreferredencoding())
+- Рекомендуется всегда указывать явно: encoding="utf-8"
+
+Для бинарных файлов используйте Path.read_bytes() — возвращает bytes.
+Для записи используйте Path.write_text(data, encoding).`,
+    syntax: 'Path.read_text(encoding=None, errors=None)',
+    arguments: [
+      { name: 'encoding', description: 'Необязательный. Кодировка текста (например "utf-8"). По умолчанию кодировка платформы' },
+      { name: 'errors', description: 'Необязательный. Обработка ошибок кодирования ("strict", "ignore", "replace")' }
+    ],
+    example: `from pathlib import Path
+
+# Простое чтение файла
+content = Path("readme.txt").read_text(encoding="utf-8")
+print(content)
+
+# Чтение конфигурационного JSON
+import json
+config = json.loads(Path("config.json").read_text(encoding="utf-8"))
+print(config["host"])
+
+# Чтение нескольких файлов
+log_dir = Path("logs")
+all_logs = ""
+for log_file in sorted(log_dir.glob("*.log")):
+    all_logs += log_file.read_text(encoding="utf-8")
+
+# Обработка ошибок
+p = Path("data.csv")
+try:
+    text = p.read_text(encoding="utf-8")
+except FileNotFoundError:
+    print(f"Файл {p} не найден")
+except UnicodeDecodeError:
+    text = p.read_text(encoding="latin-1")  # запасная кодировка
+
+# Сравнение: стандартный open vs pathlib
+# Стандартный:
+with open("file.txt", encoding="utf-8") as f:
+    content = f.read()
+
+# pathlib — короче:
+content = Path("file.txt").read_text(encoding="utf-8")`
+  },
+  {
+    name: 'pathlib.Path.write_text(data[, encoding])',
+    description: `Записывает строку data в файл, перезаписывая его если существует. Удобная однострочная альтернатива open(path, 'w').write(data). Находится в классе Path модуля pathlib.
+
+Автоматически открывает, записывает и закрывает файл. Если файл не существует — создаёт его. Если директория не существует — вызывает FileNotFoundError.
+
+Возвращает количество записанных символов.
+
+Параметр encoding: рекомендуется всегда указывать явно, например encoding="utf-8".
+
+Для бинарных данных используйте Path.write_bytes(data).
+Для дозаписи (append) нужен стандартный open(path, 'a').`,
+    syntax: 'Path.write_text(data, encoding=None, errors=None)',
+    arguments: [
+      { name: 'data', description: 'Строка для записи в файл' },
+      { name: 'encoding', description: 'Необязательный. Кодировка текста (например "utf-8"). По умолчанию кодировка платформы' },
+      { name: 'errors', description: 'Необязательный. Обработка ошибок кодирования ("strict", "ignore", "replace")' }
+    ],
+    example: `from pathlib import Path
+
+# Простая запись
+Path("output.txt").write_text("Hello, World!", encoding="utf-8")
+
+# Запись JSON
+import json
+config = {"host": "localhost", "port": 8000, "debug": True}
+Path("config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+# Генерация отчёта
+report_lines = ["# Отчёт", "", "## Результаты", "- Пункт 1", "- Пункт 2"]
+Path("report.md").write_text("\\n".join(report_lines), encoding="utf-8")
+
+# Создание файла в новой директории
+output_dir = Path("results/2024")
+output_dir.mkdir(parents=True, exist_ok=True)
+(output_dir / "summary.txt").write_text("Итоги года", encoding="utf-8")
+
+# Сравнение: стандартный open vs pathlib
+# Стандартный:
+with open("file.txt", "w", encoding="utf-8") as f:
+    f.write("данные")
+
+# pathlib — короче:
+Path("file.txt").write_text("данные", encoding="utf-8")
+
+# Дозапись (write_text всегда перезаписывает — для append нужен open)
+p = Path("log.txt")
+with open(p, "a", encoding="utf-8") as f:
+    f.write("новая строка\\n")`
   },
   {
     name: 'pow(base, exp[, mod])',
@@ -4531,6 +5224,323 @@ for i in reversed(range(5)):
 # Классический цикл for
 for i in range(len(my_list)):
     print(i, my_list[i])`
+  },
+  {
+    name: 're.compile(pattern[, flags])',
+    description: `Компилирует регулярное выражение pattern в объект Pattern. Находится в модуле re. Скомпилированный объект можно использовать повторно — это эффективнее многократного вызова re.match(), re.search() и т.д. с одним и тем же паттерном.
+
+Методы объекта Pattern совпадают с функциями модуля re, но вызываются без первого аргумента pattern:
+- pattern.match(string) — аналог re.match(pattern, string)
+- pattern.search(string) — аналог re.search(pattern, string)
+- pattern.findall(string) — аналог re.findall(pattern, string)
+- pattern.sub(repl, string) — аналог re.sub(pattern, repl, string)
+
+Флаги flags:
+- re.IGNORECASE (re.I) — регистронезависимый поиск
+- re.MULTILINE (re.M) — ^ и $ совпадают с началом/концом каждой строки
+- re.DOTALL (re.S) — точка . совпадает с любым символом включая \\n
+- re.VERBOSE (re.X) — позволяет писать паттерн с пробелами и комментариями`,
+    syntax: 're.compile(pattern, flags=0)',
+    arguments: [
+      { name: 'pattern', description: 'Строка регулярного выражения' },
+      { name: 'flags', description: 'Необязательный. Флаги модификаторов (re.I, re.M, re.S и т.д.)' }
+    ],
+    example: `import re
+
+# Компиляция и повторное использование
+email_pattern = re.compile(r'[\\w.+-]+@[\\w-]+\\.[\\w.]+')
+
+emails = [
+    "user@example.com",
+    "not-an-email",
+    "admin@company.org",
+]
+for s in emails:
+    m = email_pattern.search(s)
+    print(f"{s!r}: {'найден' if m else 'не найден'}")
+
+# Флаг IGNORECASE
+pattern = re.compile(r'python', re.IGNORECASE)
+print(bool(pattern.search("I love Python")))   # True
+print(bool(pattern.search("PYTHON is great"))) # True
+
+# Флаг VERBOSE — читаемый паттерн
+phone = re.compile(r"""
+    (\\+7|8)         # код страны
+    [\\s-]?          # необязательный разделитель
+    (\\d{3})         # код города
+    [\\s-]?
+    (\\d{3})         # первые 3 цифры
+    [\\s-]?
+    (\\d{2})         # следующие 2 цифры
+    [\\s-]?
+    (\\d{2})         # последние 2 цифры
+""", re.VERBOSE)
+
+m = phone.match("+7 916 123-45-67")
+if m:
+    print(m.groups())  # ('+7', '916', '123', '45', '67')
+
+# Объединение флагов
+p = re.compile(r'^hello', re.IGNORECASE | re.MULTILINE)`
+  },
+  {
+    name: 're.findall(pattern, string[, flags])',
+    description: `Возвращает список всех не перекрывающихся совпадений паттерна pattern в строке string. Находится в модуле re. Обходит строку слева направо и возвращает совпадения в порядке нахождения.
+
+Возвращаемый тип зависит от групп в паттерне:
+- Нет групп → список совпавших строк: ['match1', 'match2']
+- Одна группа → список строк группы: ['group1', 'group2']
+- Несколько групп → список кортежей: [('g1', 'g2'), ('g1', 'g2')]
+
+Если совпадений нет — возвращает пустой список (не вызывает исключения).
+
+Отличие от re.finditer():
+- findall() — возвращает список строк
+- finditer() — возвращает итератор объектов Match (с позициями и группами)`,
+    syntax: 're.findall(pattern, string, flags=0)',
+    arguments: [
+      { name: 'pattern', description: 'Строка регулярного выражения' },
+      { name: 'string', description: 'Строка, в которой выполняется поиск' },
+      { name: 'flags', description: 'Необязательный. Флаги (re.I, re.M, re.S и т.д.)' }
+    ],
+    example: `import re
+
+# Все числа в строке
+text = "В 2023 году вышел Python 3.12, а в 2024 — Python 3.13"
+numbers = re.findall(r'\\d+', text)
+print(numbers)  # ['2023', '3', '12', '2024', '3', '13']
+
+# Все слова (только буквы)
+words = re.findall(r'[a-zA-Zа-яА-ЯёЁ]+', "Привет, мир! Hello, world!")
+print(words)  # ['Привет', 'мир', 'Hello', 'world']
+
+# С одной группой — возвращает содержимое группы
+emails = re.findall(r'[\\w.+-]+@([\\w-]+\\.[\\w.]+)', "a@gmail.com, b@yahoo.com")
+print(emails)  # ['gmail.com', 'yahoo.com']
+
+# С несколькими группами — возвращает кортежи
+dates = re.findall(r'(\\d{2})\\.(\\d{2})\\.(\\d{4})', "01.01.2024 и 15.06.2023")
+print(dates)  # [('01', '01', '2024'), ('15', '06', '2023')]
+
+# Все хэштеги
+post = "Отличный день! #python #coding #replit"
+tags = re.findall(r'#(\\w+)', post)
+print(tags)  # ['python', 'coding', 'replit']
+
+# Пустой список если нет совпадений
+print(re.findall(r'\\d+', "нет чисел"))  # []`
+  },
+  {
+    name: 're.finditer(pattern, string[, flags])',
+    description: `Возвращает итератор объектов Match для всех не перекрывающихся совпадений паттерна pattern в строке string. Находится в модуле re. В отличие от re.findall(), возвращает объекты Match с полной информацией о каждом совпадении.
+
+Объект Match предоставляет:
+- .group() / .group(0) — всё совпадение
+- .group(n) — n-я группа
+- .groups() — кортеж всех групп
+- .start() — начальная позиция совпадения
+- .end() — конечная позиция
+- .span() — кортеж (start, end)
+
+Преимущества перед findall():
+- Ленивое вычисление (не загружает все результаты в память)
+- Доступ к позициям совпадений
+- Доступ к именованным и нумерованным группам`,
+    syntax: 're.finditer(pattern, string, flags=0)',
+    arguments: [
+      { name: 'pattern', description: 'Строка регулярного выражения' },
+      { name: 'string', description: 'Строка, в которой выполняется поиск' },
+      { name: 'flags', description: 'Необязательный. Флаги (re.I, re.M, re.S и т.д.)' }
+    ],
+    example: `import re
+
+# Все числа с их позициями
+text = "в 2023 году выпущено 42 обновления и 7 патчей"
+for m in re.finditer(r'\\d+', text):
+    print(f"'{m.group()}' на позиции {m.start()}–{m.end()}")
+
+# Именованные группы
+pattern = re.compile(r'(?P<year>\\d{4})-(?P<month>\\d{2})-(?P<day>\\d{2})')
+text = "Сегодня 2024-01-15, вчера было 2024-01-14"
+
+for m in pattern.finditer(text):
+    print(f"Дата: {m.group('day')}.{m.group('month')}.{m.group('year')}")
+# Дата: 15.01.2024
+# Дата: 14.01.2024
+
+# Парсинг лога
+log = """
+2024-01-15 10:30:00 ERROR Database connection failed
+2024-01-15 10:30:01 INFO  Retrying...
+2024-01-15 10:30:05 ERROR Timeout exceeded
+"""
+pattern = re.compile(r'(?P<time>[\\d:]+) (?P<level>\\w+)\\s+(?P<msg>.+)')
+errors = [m.group('msg') for m in pattern.finditer(log) if m.group('level') == 'ERROR']
+print(errors)
+# ['Database connection failed', 'Timeout exceeded']`
+  },
+  {
+    name: 're.match(pattern, string[, flags])',
+    description: `Проверяет, совпадает ли паттерн pattern с началом строки string. Возвращает объект Match при успехе или None при неудаче. Находится в модуле re.
+
+Ключевое отличие от re.search():
+- re.match() — проверяет только начало строки (аналог паттерна с ^)
+- re.search() — ищет совпадение в любом месте строки
+
+Объект Match:
+- .group() — всё совпадение
+- .group(n) — n-я группа (нумерация с 1)
+- .groups() — кортеж всех групп
+- .start(), .end(), .span() — позиция совпадения
+
+Всегда проверяйте результат через if m: перед вызовом методов — обращение к None вызовет AttributeError.`,
+    syntax: 're.match(pattern, string, flags=0)',
+    arguments: [
+      { name: 'pattern', description: 'Строка регулярного выражения' },
+      { name: 'string', description: 'Строка, с начала которой ищется совпадение' },
+      { name: 'flags', description: 'Необязательный. Флаги (re.I, re.M, re.S и т.д.)' }
+    ],
+    example: `import re
+
+# Базовое использование
+m = re.match(r'\\d+', '123abc')
+if m:
+    print(m.group())  # '123'
+
+# match только с начала строки!
+print(re.match(r'\\d+', 'abc123'))   # None — нет числа в начале
+print(re.search(r'\\d+', 'abc123'))  # <Match '123'> — search находит
+
+# Проверка формата ввода
+def is_valid_username(s):
+    return bool(re.match(r'^[a-z][a-z0-9_]{2,19}$', s, re.IGNORECASE))
+
+print(is_valid_username("user_123"))   # True
+print(is_valid_username("1user"))      # False — начинается с цифры
+print(is_valid_username("ab"))         # False — слишком короткий
+
+# Группы
+m = re.match(r'(\\w+)\\s(\\w+)', 'Hello World')
+if m:
+    print(m.group(1))   # 'Hello'
+    print(m.group(2))   # 'World'
+    print(m.groups())   # ('Hello', 'World')
+
+# Именованные группы
+m = re.match(r'(?P<protocol>https?)://(?P<host>[\\w.]+)', 'https://example.com/path')
+if m:
+    print(m.group('protocol'))  # 'https'
+    print(m.group('host'))      # 'example.com'`
+  },
+  {
+    name: 're.search(pattern, string[, flags])',
+    description: `Ищет первое совпадение паттерна pattern в любом месте строки string. Возвращает объект Match при успехе или None при неудаче. Находится в модуле re.
+
+Ключевое отличие от re.match():
+- re.match() — проверяет только начало строки
+- re.search() — ищет совпадение в любом месте строки (сканирует всю строку)
+
+Возвращает только первое совпадение. Для поиска всех совпадений используйте re.findall() или re.finditer().
+
+Объект Match предоставляет:
+- .group() — всё совпадение
+- .group(n) — n-я захватывающая группа
+- .start(), .end() — позиции начала и конца совпадения`,
+    syntax: 're.search(pattern, string, flags=0)',
+    arguments: [
+      { name: 'pattern', description: 'Строка регулярного выражения' },
+      { name: 'string', description: 'Строка, в которой выполняется поиск' },
+      { name: 'flags', description: 'Необязательный. Флаги (re.I, re.M, re.S и т.д.)' }
+    ],
+    example: `import re
+
+# Базовое использование
+text = "Python 3.12 вышел в 2023 году"
+m = re.search(r'\\d+\\.\\d+', text)
+if m:
+    print(m.group())   # '3.12'
+    print(m.start())   # позиция начала
+    print(m.span())    # (7, 11)
+
+# Отличие match vs search
+s = "Цена: 1500 рублей"
+print(re.match(r'\\d+', s))    # None — нет числа в начале
+print(re.search(r'\\d+', s))   # <Match '1500'>
+
+# Проверка наличия паттерна (как bool)
+html = "<div class='container'><p>Текст</p></div>"
+has_tags = bool(re.search(r'<[^>]+>', html))
+print(has_tags)  # True
+
+# Поиск с группами
+log = "2024-01-15 ERROR: connection timeout after 30s"
+m = re.search(r'(ERROR|WARN|INFO): (.+)', log)
+if m:
+    level = m.group(1)  # 'ERROR'
+    msg   = m.group(2)  # 'connection timeout after 30s'
+    print(f"[{level}] {msg}")
+
+# Многострочный поиск
+text = "Строка 1\\nСтрока 2\\nСтрока 3"
+m = re.search(r'^Строка 2$', text, re.MULTILINE)
+print(bool(m))  # True`
+  },
+  {
+    name: 're.sub(pattern, repl, string[, count=0, flags=0])',
+    description: `Заменяет все (или count) совпадений паттерна pattern в строке string на repl. Возвращает новую строку. Находится в модуле re. Оригинальная строка не изменяется.
+
+Параметр repl может быть:
+- Строкой — в которой \\1, \\2 (или \\g<1>, \\g<name>) — ссылки на группы
+- Функцией — принимает объект Match, возвращает строку-замену
+
+Параметр count:
+- 0 (по умолчанию) — заменить все совпадения
+- N > 0 — заменить только первые N совпадений
+
+Если совпадений нет — возвращает оригинальную строку без изменений.`,
+    syntax: 're.sub(pattern, repl, string, count=0, flags=0)',
+    arguments: [
+      { name: 'pattern', description: 'Строка регулярного выражения' },
+      { name: 'repl', description: 'Строка замены (может содержать \\1, \\2 для групп) или функция(Match) → str' },
+      { name: 'string', description: 'Исходная строка' },
+      { name: 'count', description: 'Необязательный. Максимальное число замен (0 = все). По умолчанию 0' },
+      { name: 'flags', description: 'Необязательный. Флаги (re.I, re.M и т.д.)' }
+    ],
+    example: `import re
+
+# Простая замена
+text = "Python 2 устарел, используйте Python 2.7 вместо Python 2.6"
+result = re.sub(r'Python 2', 'Python 3', text)
+print(result)
+# 'Python 3 устарел, используйте Python 3.7 вместо Python 3.6'
+
+# Замена только первых N совпадений
+result = re.sub(r'\\d+', 'X', "1 + 2 = 3", count=2)
+print(result)  # 'X + X = 3'
+
+# Удаление HTML-тегов
+html = "<b>Жирный</b> и <i>курсив</i>"
+clean = re.sub(r'<[^>]+>', '', html)
+print(clean)  # 'Жирный и курсив'
+
+# Ссылки на группы в замене
+# Переформат: "Иванов Иван" → "Иван Иванов"
+name = "Иванов Иван"
+reformatted = re.sub(r'(\\w+) (\\w+)', r'\\2 \\1', name)
+print(reformatted)  # 'Иван Иванов'
+
+# Замена с функцией
+def double_number(m):
+    return str(int(m.group()) * 2)
+
+result = re.sub(r'\\d+', double_number, "у меня 3 кошки и 5 собак")
+print(result)  # 'у меня 6 кошки и 10 собак'
+
+# Нормализация пробелов
+messy = "слишком   много    пробелов"
+clean = re.sub(r'\\s+', ' ', messy).strip()
+print(clean)  # 'слишком много пробелов'`
   },
   {
     name: 'repr(object)',
@@ -8164,6 +9174,67 @@ def get_cached(key, ttl=60):
     return None  # кэш устарел или пуст`
   },
   {
+    name: 'timeit.timeit(stmt, setup, timer, number)',
+    description: `Измеряет время выполнения фрагмента кода stmt, запуская его number раз. Возвращает общее время в секундах (float). Находится в модуле timeit. Предназначен для точных замеров производительности небольших фрагментов кода.
+
+Параметры:
+- stmt — измеряемый код (строка или callable). По умолчанию 'pass'
+- setup — код подготовки, выполняется один раз перед замером (строка или callable). По умолчанию 'pass'
+- timer — функция-таймер. По умолчанию time.perf_counter()
+- number — количество повторений измеряемого кода. По умолчанию 1_000_000
+
+Преимущества перед ручным time.perf_counter():
+- Отключает сборщик мусора во время замера
+- Автоматически повторяет несколько раз для статистической точности
+- Изолирует измеряемый код от кода инициализации
+
+Для нескольких повторов замера (поиск минимального времени) используйте timeit.repeat(stmt, number=N, repeat=R) — возвращает список из R результатов.`,
+    syntax: 'timeit.timeit(stmt="pass", setup="pass", timer=<timer>, number=1000000)',
+    arguments: [
+      { name: 'stmt', description: 'Измеряемый код: строка или callable без аргументов. По умолчанию "pass"' },
+      { name: 'setup', description: 'Код подготовки, выполняется один раз. По умолчанию "pass"' },
+      { name: 'timer', description: 'Необязательный. Функция-таймер. По умолчанию time.perf_counter()' },
+      { name: 'number', description: 'Количество повторений stmt. По умолчанию 1_000_000' }
+    ],
+    example: `import timeit
+
+# Сравнение способов создания списка
+t1 = timeit.timeit('[x**2 for x in range(100)]', number=10000)
+t2 = timeit.timeit('list(map(lambda x: x**2, range(100)))', number=10000)
+print(f"list comprehension: {t1:.4f}s")
+print(f"map+lambda:         {t2:.4f}s")
+print(f"Быстрее в: {max(t1,t2)/min(t1,t2):.2f}x")
+
+# С параметром setup — импорт/подготовка данных
+t = timeit.timeit(
+    stmt='",".join(str(n) for n in numbers)',
+    setup='numbers = list(range(1000))',
+    number=5000
+)
+print(f"join с генератором: {t:.4f}s")
+
+# Callable вместо строки (удобнее для сложного кода)
+def test_dict_access():
+    d = {"a": 1, "b": 2, "c": 3}
+    return d.get("a")
+
+t = timeit.timeit(test_dict_access, number=100000)
+print(f"dict.get: {t:.4f}s")
+
+# timeit.repeat — несколько замеров для надёжности
+results = timeit.repeat(
+    stmt='sorted([5,3,1,4,2])',
+    number=100000,
+    repeat=5
+)
+print(f"Лучший результат: {min(results):.4f}s")
+print(f"Все замеры: {[f'{r:.4f}' for r in results]}")
+
+# Из командной строки (без кода):
+# python -m timeit -n 10000 "'-'.join(str(n) for n in range(100))"
+# python -m timeit -s "import re" "re.compile(r'\\\\d+')"  `
+  },
+  {
     name: 'tuple([iterable])',
     description: `Создаёт неизменяемую последовательность (кортеж) из итерируемого объекта. Если iterable не указан — создаётся пустой кортеж ().
 
@@ -8267,6 +9338,173 @@ d.species           # 'Canis'
 # Метакласс — type порождает классы
 type(int)           # <class 'type'>
 type(type)          # <class 'type'>`
+  },
+  {
+    name: 'typing.cast(type, object)',
+    description: `Приводит значение object к типу type для системы проверки типов. Находится в модуле typing. Во время выполнения просто возвращает object без каких-либо изменений — это подсказка исключительно для статических анализаторов (mypy, pyright и т.д.).
+
+Используется когда анализатор типов не может самостоятельно вывести правильный тип, но программист знает, какой тип на самом деле.
+
+Типичные случаи применения:
+- После isinstance-проверки в месте, которое анализатор не распознаёт
+- При работе с API, возвращающими Any или Optional
+- При сужении типа Union[A, B] до конкретного A
+
+Важно: typing.cast() ничего не делает в runtime — не конвертирует тип данных, не выполняет проверку. Используйте только когда уверены в типе.`,
+    syntax: 'typing.cast(type, val)',
+    arguments: [
+      { name: 'type', description: 'Целевой тип (или строка с именем типа)' },
+      { name: 'val', description: 'Значение, которое нужно "привести" к типу (в runtime возвращается без изменений)' }
+    ],
+    example: `from typing import cast, Optional, Union
+
+# Базовое использование
+x: object = "hello"
+s = cast(str, x)       # анализатор знает, что s — str
+print(s.upper())       # 'HELLO'
+
+# После Optional — убираем None из типа
+def get_user_id() -> Optional[int]:
+    return 42
+
+user_id = get_user_id()
+# Здесь тип Optional[int], но мы знаем что не None:
+safe_id = cast(int, user_id)
+print(safe_id + 1)  # 43
+
+# Union сужение
+def parse_value(data: Union[str, int]) -> str:
+    if isinstance(data, str):
+        # mypy может не распознать сужение в сложных случаях
+        return cast(str, data).upper()
+    return str(data)
+
+# Работа с возвратом Any (например json.loads)
+import json
+raw = json.loads('{"name": "Alice", "age": 30}')
+# raw имеет тип Any
+typed = cast(dict[str, object], raw)
+print(typed["name"])  # теперь анализатор понимает структуру
+
+# Важно: в runtime cast ничего не делает
+result = cast(int, "не число")
+print(result)   # 'не число' — тип не изменился!
+print(type(result))  # <class 'str'>`
+  },
+  {
+    name: 'typing.get_type_hints(obj[, globalns[, localns]])',
+    description: `Возвращает словарь аннотаций типов для функции, метода, модуля или класса obj. Находится в модуле typing. В отличие от прямого доступа к __annotations__, разрешает строковые аннотации (forward references) и аннотации из модулей.
+
+Отличие от obj.__annotations__:
+- __annotations__ — "сырой" словарь, строковые аннотации остаются строками
+- get_type_hints() — разрешает строковые ссылки (from __future__ import annotations) в реальные типы
+
+Параметры globalns / localns:
+- Позволяют указать пространства имён для разрешения forward references
+- Полезно при работе с аннотациями из другого модуля
+
+Если аннотации недоступны или объект не поддерживает их — возвращает пустой словарь.`,
+    syntax: 'typing.get_type_hints(obj, globalns=None, localns=None)',
+    arguments: [
+      { name: 'obj', description: 'Функция, метод, класс или модуль, аннотации которого нужно получить' },
+      { name: 'globalns', description: 'Необязательный. Глобальное пространство имён для разрешения строковых аннотаций' },
+      { name: 'localns', description: 'Необязательный. Локальное пространство имён для разрешения строковых аннотаций' }
+    ],
+    example: `from typing import get_type_hints, Optional, List
+
+# Аннотации функции
+def process(name: str, count: int = 0) -> Optional[str]:
+    if count > 0:
+        return name * count
+    return None
+
+hints = get_type_hints(process)
+print(hints)
+# {'name': <class 'str'>, 'count': <class 'int'>, 'return': typing.Optional[str]}
+
+# Аннотации класса
+class User:
+    id: int
+    name: str
+    email: Optional[str]
+
+    def __init__(self, id: int, name: str):
+        self.id = id
+        self.name = name
+
+print(get_type_hints(User))
+# {'id': <class 'int'>, 'name': <class 'str'>, 'email': typing.Optional[str]}
+
+# Разрешение forward references (строковых аннотаций)
+class Node:
+    value: int
+    next: "Optional[Node]"   # forward reference
+
+print(get_type_hints(Node))
+# {'value': int, 'next': Optional[Node]}  — строка разрешена!
+
+# Практическое применение: валидация или сериализация
+def validate_types(obj, cls):
+    hints = get_type_hints(cls)
+    for field, expected_type in hints.items():
+        value = getattr(obj, field, None)
+        if not isinstance(value, expected_type):
+            raise TypeError(f"{field}: ожидался {expected_type}, получен {type(value)}")`
+  },
+  {
+    name: 'typing.NewType(name, tp)',
+    description: `Создаёт новый тип name на основе tp. Находится в модуле typing. Позволяет различать семантически разные значения одного базового типа на уровне статической проверки.
+
+В Python ≥ 3.10: NewType создаёт класс-объект. В Python 3.9 и ниже — возвращает callable.
+
+Ключевое отличие от type alias (MyType = int):
+- type alias — синоним, оба типа полностью взаимозаменяемы
+- NewType — новый тип, нельзя передать базовый тип туда, где ожидается NewType
+
+В runtime NewType("UserId", int) возвращает просто identity-функцию (в 3.10+ — экземпляр класса NewType). Никакой реальной проверки типов в runtime не происходит.
+
+Применение: различение UserId vs ProductId (оба int), Email vs Username (оба str) и т.д.`,
+    syntax: 'typing.NewType(name, tp)',
+    arguments: [
+      { name: 'name', description: 'Имя нового типа (строка, должно совпадать с именем переменной)' },
+      { name: 'tp', description: 'Базовый тип, на основе которого создаётся новый' }
+    ],
+    example: `from typing import NewType
+
+# Создание семантически различных типов
+UserId = NewType("UserId", int)
+ProductId = NewType("ProductId", int)
+Email = NewType("Email", str)
+
+# Использование в аннотациях
+def get_user(user_id: UserId) -> str:
+    return f"User #{user_id}"
+
+def get_product(product_id: ProductId) -> str:
+    return f"Product #{product_id}"
+
+# Создание значений нового типа
+uid = UserId(42)
+pid = ProductId(42)
+
+# mypy выдаст ошибку: Argument 1 to "get_user" has incompatible type "ProductId"
+# get_user(pid)  # ОШИБКА ТИПА!
+
+# get_user принимает только UserId, не int напрямую
+# get_user(42)   # ОШИБКА ТИПА в строгом режиме!
+get_user(UserId(42))  # OK
+
+# Наследование методов базового типа
+uid = UserId(10)
+print(uid + 5)    # 15 — работает как int
+print(uid * 2)    # 20
+
+# Email vs str
+def send_email(to: Email, subject: str) -> None:
+    print(f"Отправка на {to}: {subject}")
+
+# send_email("user@example.com", "Hello")  # ОШИБКА ТИПА
+send_email(Email("user@example.com"), "Hello")  # OK`
   },
   {
     name: 'vars([object])',
