@@ -12790,4 +12790,284 @@ if __name__ == "__main__":
 **Совместимость с \`@dataclass\`:**
 \`@dataclass\` генерирует \`__init__\` который делает присваивания \`self.name = name\`. Дескриптор перехватывает эти присваивания через \`__set__\`. Важно: в аннотации ставим \`# type: ignore[assignment]\` потому что mypy не понимает что \`TypedField[str]\` совместим с \`str\`.`,
   },
+  {
+    id: "metaclass-auto-registry",
+    title: "Метакласс AutoRegistryMeta с авторегистрацией",
+    task: "Создайте метакласс AutoRegistryMeta, который автоматически регистрирует все наследующие классы в глобальном реестре (по имени или тегу). Добавьте поддержку __getattr__ / __getattribute__ для динамического доступа к зарегистрированным классам и возможность переопределения поведения при создании экземпляра (например, автоматический singleton для определённых классов).",
+    files: [
+      {
+        filename: "registry_meta.py",
+        code: `from __future__ import annotations
+
+import logging
+import threading
+from typing import Any, ClassVar
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Глобальный реестр
+# ---------------------------------------------------------------------------
+
+class Registry:
+    """Thread-safe хранилище зарегистрированных классов."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._classes: dict[str, type] = {}
+        self._singletons: dict[str, Any] = {}
+
+    def add(self, key: str, klass: type) -> None:
+        with self._lock:
+            if key in self._classes:
+                log.warning("Registry: overwriting key %r (%s -> %s)",
+                            key, self._classes[key].__name__, klass.__name__)
+            self._classes[key] = klass
+            log.debug("Registry: registered %r -> %s", key, klass.__name__)
+
+    def get(self, key: str) -> type | None:
+        with self._lock:
+            return self._classes.get(key)
+
+    def all(self) -> dict[str, type]:
+        with self._lock:
+            return dict(self._classes)
+
+    def get_or_create_singleton(self, key: str, klass: type, *args: Any, **kwargs: Any) -> Any:
+        """Создаёт экземпляр один раз; последующие вызовы возвращают тот же объект."""
+        with self._lock:
+            if key not in self._singletons:
+                instance = object.__new__(klass)
+                instance.__init__(*args, **kwargs)
+                self._singletons[key] = instance
+                log.debug("Registry: created singleton for %r", key)
+            return self._singletons[key]
+
+    def clear_singletons(self) -> None:
+        with self._lock:
+            self._singletons.clear()
+
+
+_global_registry = Registry()
+
+
+# ---------------------------------------------------------------------------
+# Метакласс
+# ---------------------------------------------------------------------------
+
+class AutoRegistryMeta(type):
+    # Метакласс автоматически регистрирует подклассы в _global_registry.
+    # Ключ регистрации: атрибут registry_tag или cls.__name__.lower().
+    # Поддерживает singleton=True и кастомную фабрику __class_factory__.
+
+    _skip_registration: ClassVar[set[str]] = set()
+
+    def __new__(
+        mcs,
+        name: str,
+        bases: tuple[type, ...],
+        namespace: dict[str, Any],
+        **kwargs: Any,
+    ) -> "AutoRegistryMeta":
+        klass = super().__new__(mcs, name, bases, namespace, **kwargs)
+
+        if name in mcs._skip_registration:
+            return klass
+
+        # Базовый класс иерархии не регистрируется
+        is_base = not any(isinstance(b, AutoRegistryMeta) for b in bases)
+        if is_base:
+            return klass
+
+        tag: str = namespace.get("registry_tag", name.lower())
+        _global_registry.add(tag, klass)
+        return klass
+
+    def __call__(cls, *args: Any, **kwargs: Any) -> Any:
+        # singleton=True: возвращаем один и тот же экземпляр
+        if getattr(cls, "singleton", False):
+            tag = getattr(cls, "registry_tag", cls.__name__.lower())
+            return _global_registry.get_or_create_singleton(tag, cls, *args, **kwargs)
+
+        # __class_factory__: делегируем создание кастомной фабрике
+        factory = getattr(cls, "__class_factory__", None)
+        if factory is not None and callable(factory):
+            return factory(*args, **kwargs)
+
+        return super().__call__(*args, **kwargs)
+
+    def __getattr__(cls, name: str) -> type:
+        # Динамический доступ к реестру через атрибут класса:
+        # PluginBase.pdf_generator -> _global_registry.get("pdf_generator")
+        # Вызывается только если атрибут не найден обычным путём.
+        found = _global_registry.get(name)
+        if found is not None:
+            return found
+        raise AttributeError(
+            f"{cls.__name__!r} has no attribute {name!r} "
+            f"and registry has no key {name!r}. "
+            f"Registered: {list(_global_registry.all())}"
+        )
+
+    def __repr__(cls) -> str:
+        tag = getattr(cls, "registry_tag", cls.__name__.lower())
+        singleton_mark = " [singleton]" if getattr(cls, "singleton", False) else ""
+        return f"<class {cls.__name__!r} tag={tag!r}{singleton_mark}>"`,
+      },
+      {
+        filename: "usage_meta.py",
+        code: `from __future__ import annotations
+
+import logging
+from typing import Any
+
+from registry_meta import AutoRegistryMeta, _global_registry
+
+logging.basicConfig(level=logging.INFO)
+
+
+# ---------------------------------------------------------------------------
+# Базовый класс (сам НЕ регистрируется)
+# ---------------------------------------------------------------------------
+
+class PluginBase(metaclass=AutoRegistryMeta):
+    """Базовый класс плагинов. Подклассы регистрируются автоматически."""
+
+    def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raise NotImplementedError
+
+
+# ---------------------------------------------------------------------------
+# Подклассы — регистрируются автоматически при объявлении
+# ---------------------------------------------------------------------------
+
+class PdfPlugin(PluginBase):
+    registry_tag = "pdf"
+
+    def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"type": "pdf", "pages": payload.get("pages", 1)}
+
+
+class ExcelPlugin(PluginBase):
+    registry_tag = "excel"
+
+    def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"type": "excel", "sheets": payload.get("sheets", 1)}
+
+
+class JsonPlugin(PluginBase):
+    # registry_tag не задан -> ключ = "jsonplugin" (имя класса lower)
+    def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"type": "json", "data": payload}
+
+
+# ---------------------------------------------------------------------------
+# Singleton-класс
+# ---------------------------------------------------------------------------
+
+class ConfigManager(PluginBase):
+    registry_tag = "config"
+    singleton = True  # AutoRegistryMeta.__call__ вернёт один и тот же экземпляр
+
+    def __init__(self, debug: bool = False) -> None:
+        self.debug = debug
+        self._data: dict[str, Any] = {}
+
+    def set(self, key: str, value: Any) -> None:
+        self._data[key] = value
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._data.get(key, default)
+
+
+# ---------------------------------------------------------------------------
+# Кастомная фабрика через __class_factory__
+# ---------------------------------------------------------------------------
+
+class SmartPlugin(PluginBase):
+    registry_tag = "smart"
+
+    def __init__(self, mode: str) -> None:
+        self.mode = mode
+
+    @classmethod
+    def __class_factory__(cls, mode: str = "auto") -> "SmartPlugin | PdfPlugin":
+        """Возвращает PdfPlugin при mode='pdf', иначе SmartPlugin."""
+        if mode == "pdf":
+            return PdfPlugin()
+        instance = cls.__new__(cls)
+        instance.mode = mode
+        return instance
+
+    def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {"type": "smart", "mode": self.mode}
+
+
+# ---------------------------------------------------------------------------
+# Демонстрация
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    # 1. Все зарегистрированные классы
+    print("Registered:", list(_global_registry.all()))
+    # -> ['pdf', 'excel', 'jsonplugin', 'config', 'smart']
+
+    # 2. Динамический доступ через __getattr__ метакласса
+    PdfKlass = PluginBase.pdf          # type: ignore[attr-defined]
+    print("Via getattr:", PdfKlass)    # <class 'PdfPlugin' tag='pdf'>
+    result = PdfKlass().execute({"pages": 5})
+    print("PDF result:", result)
+
+    # 3. Singleton: оба вызова возвращают один объект
+    cfg1 = ConfigManager(debug=True)
+    cfg1.set("env", "production")
+    cfg2 = ConfigManager(debug=False)
+    print("Singleton same?", cfg1 is cfg2)   # True
+    print("Config env:", cfg2.get("env"))    # "production"
+
+    # 4. Кастомная фабрика
+    smart = SmartPlugin(mode="auto")
+    print("Smart:", type(smart).__name__)        # SmartPlugin
+
+    smart_as_pdf = SmartPlugin(mode="pdf")
+    print("Smart->PDF:", type(smart_as_pdf).__name__)  # PdfPlugin
+
+    # 5. Динамическая регистрация нового плагина без изменения базы
+    class CsvPlugin(PluginBase):
+        registry_tag = "csv"
+        def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+            return {"type": "csv", "rows": payload.get("rows", 0)}
+
+    print("After dynamic reg:", list(_global_registry.all()))
+    csv_klass = PluginBase.csv         # type: ignore[attr-defined]
+    print("CSV result:", csv_klass().execute({"rows": 100}))
+
+    # 6. Несуществующий ключ -> AttributeError
+    try:
+        _ = PluginBase.nonexistent     # type: ignore[attr-defined]
+    except AttributeError as e:
+        print(f"AttributeError: {e}")`,
+      },
+    ],
+    explanation: `**На что обратить внимание:**
+
+**Метакласс \`__new__\` vs \`__init__\`:**
+\`type.__new__(mcs, name, bases, namespace)\` создаёт сам объект класса. Регистрация происходит здесь, а не в \`__init_subclass__\`, потому что нам нужен доступ к финальному объекту класса с уже вычисленными атрибутами.
+
+**Определение базового класса vs подкласса:**
+Проверка \`not any(isinstance(b, AutoRegistryMeta) for b in bases)\` — если ни один из родителей не создан этим метаклассом, это первый (базовый) класс иерархии. Без неё сам \`PluginBase\` тоже попал бы в реестр.
+
+**\`__getattr__\` на метаклассе — доступ через класс:**
+\`__getattr__\` на обычном объекте вызывается когда атрибут не найден. На метаклассе это означает поиск атрибута на *классе* (не экземпляре): \`PluginBase.pdf\` инициирует поиск \`"pdf"\` в реестре. Для экземпляров это не работает — там \`__getattr__\` нужно определять на самом классе.
+
+**Singleton через \`get_or_create_singleton\` с блокировкой:**
+\`threading.Lock\` гарантирует что в многопоточном коде только один поток создаст экземпляр. Для asyncio замените на \`asyncio.Lock\` или используйте \`functools.cache\` для однопоточного случая.
+
+**\`__class_factory__\` — инверсия контроля:**
+Переопределение \`AutoRegistryMeta.__call__\` проверяет наличие \`__class_factory__\`. Это позволяет классу самому решать как создавать экземпляры — возвращать другой класс, применять пул объектов и т.п. — без наследования от специального миксина.
+
+**Почему не \`__init_subclass__\`:**
+\`__init_subclass__\` проще для базовой регистрации, но не позволяет переопределить \`__call__\` (создание экземпляров) и \`__getattr__\` (доступ через класс) — это исключительные возможности метакласса.`,
+  },
 ];
