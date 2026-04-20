@@ -8,6 +8,7 @@ import NotFound from "@/pages/not-found";
 // Pages
 import ReferencePage from "@/pages/reference";
 import ExamplesPage from "@/pages/examples";
+import DjangoPage from "@/pages/django";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,7 @@ function Router() {
           </Route>
           <Route path="/reference" component={ReferencePage} />
           <Route path="/examples" component={ExamplesPage} />
+          <Route path="/django" component={DjangoPage} />
           <Route component={NotFound} />
         </Switch>
       </main>

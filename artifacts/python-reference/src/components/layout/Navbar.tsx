@@ -1,5 +1,5 @@
 import { Link, useRoute } from "wouter";
-import { BookOpen, Code2 } from "lucide-react";
+import { BookOpen, Code2, Layers } from "lucide-react";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -10,6 +10,7 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 export function Navbar() {
   const [isReference] = useRoute("/reference");
   const [isExamples] = useRoute("/examples");
+  const [isDjango] = useRoute("/django");
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -43,6 +44,16 @@ export function Navbar() {
           >
             <Code2 className="h-4 w-4" />
             Сложные примеры
+          </Link>
+          <Link
+            href="/django"
+            className={cn(
+              "flex items-center gap-2 transition-colors hover:text-primary",
+              isDjango ? "text-primary" : "text-muted-foreground"
+            )}
+          >
+            <Layers className="h-4 w-4" />
+            Django
           </Link>
         </div>
       </div>
