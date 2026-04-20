@@ -10940,4 +10940,1854 @@ if __name__ == "__main__":
 - S3 presigned URL с \`ExpiresIn=86400\` — безопасный временный доступ к flamegraph без публичного bucket
 - В Slack передаём URL — разработчик кликает и сразу видит где «тормозит» запрос`,
   },
+  {
+    id: "factory-dependency-injection",
+    title: "Factory + Dependency Injection для генераторов отчётов",
+    task: `Реализуйте Pythonic Factory + Dependency Injection для создания различных типов отчётных генераторов (PDF, Excel, JSON). Фабрика должна автоматически подбирать реализацию в зависимости от конфигурации и типа пользователя (VIP/обычный), использовать inject / fastapi.Depends для внедрения зависимостей (S3-клиент, шаблонизатор, кэш). Добавьте возможность регистрации новых генераторов без изменения кода фабрики.`,
+    files: [
+      {
+        filename: "report_generators.py",
+        code: `from __future__ import annotations
+
+import io
+import json
+import logging
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any, Callable, ClassVar
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Вспомогательные зависимости (упрощённые стабы для демонстрации)
+# ---------------------------------------------------------------------------
+
+class S3Client:
+    def upload(self, key: str, data: bytes) -> str:
+        url = f"https://s3.example.com/{key}"
+        log.info("S3 upload: %s (%d bytes) → %s", key, len(data), url)
+        return url
+
+
+class TemplateEngine:
+    def render(self, template: str, context: dict[str, Any]) -> str:
+        # В реальности — Jinja2 / WeasyPrint и т.п.
+        return f"<rendered:{template}:{context}>"
+
+
+class Cache:
+    def __init__(self) -> None:
+        self._store: dict[str, bytes] = {}
+
+    def get(self, key: str) -> bytes | None:
+        return self._store.get(key)
+
+    def set(self, key: str, value: bytes) -> None:
+        self._store[key] = value
+        log.info("Cache.set: %s (%d bytes)", key, len(value))
+
+
+# ---------------------------------------------------------------------------
+# Модель пользователя и конфигурация
+# ---------------------------------------------------------------------------
+
+@dataclass
+class User:
+    id: int
+    name: str
+    is_vip: bool = False
+
+
+@dataclass
+class ReportConfig:
+    format: str          # "pdf", "excel", "json"
+    template: str = "default"
+    locale: str = "ru"
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Базовый интерфейс генератора
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ReportResult:
+    filename: str
+    content: bytes
+    content_type: str
+    s3_url: str | None = None
+
+
+class BaseReportGenerator(ABC):
+    """
+    Каждый генератор получает зависимости через конструктор (DI),
+    а не создаёт их сам — это упрощает тестирование и замену реализаций.
+    """
+
+    def __init__(
+        self,
+        s3: S3Client,
+        tpl: TemplateEngine,
+        cache: Cache,
+    ) -> None:
+        self.s3 = s3
+        self.tpl = tpl
+        self.cache = cache
+
+    @abstractmethod
+    def generate(
+        self,
+        data: dict[str, Any],
+        config: ReportConfig,
+        user: User,
+    ) -> ReportResult:
+        ...
+
+    def _cache_key(self, data: dict[str, Any], config: ReportConfig, user: User) -> str:
+        import hashlib, pickle
+        raw = pickle.dumps((data, config, user.id))
+        return hashlib.sha256(raw).hexdigest()
+
+    def _try_cache(self, key: str) -> bytes | None:
+        return self.cache.get(key)
+
+    def _save_cache(self, key: str, content: bytes) -> None:
+        self.cache.set(key, content)
+
+    def _upload_s3(self, filename: str, content: bytes) -> str:
+        return self.s3.upload(filename, content)
+
+
+# ---------------------------------------------------------------------------
+# Конкретные реализации
+# ---------------------------------------------------------------------------
+
+class JsonReportGenerator(BaseReportGenerator):
+    content_type = "application/json"
+
+    def generate(self, data: dict[str, Any], config: ReportConfig, user: User) -> ReportResult:
+        cache_key = self._cache_key(data, config, user)
+        if cached := self._try_cache(cache_key):
+            log.info("JSON report: cache hit")
+            return ReportResult("report.json", cached, self.content_type)
+
+        # VIP-пользователи получают расширенный payload
+        payload = dict(data)
+        if user.is_vip:
+            payload["_vip"] = True
+            payload["_user"] = user.name
+
+        content = json.dumps(payload, ensure_ascii=False, indent=2).encode()
+        self._save_cache(cache_key, content)
+        s3_url = self._upload_s3(f"reports/{user.id}/report.json", content)
+        return ReportResult("report.json", content, self.content_type, s3_url)
+
+
+class ExcelReportGenerator(BaseReportGenerator):
+    content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    def generate(self, data: dict[str, Any], config: ReportConfig, user: User) -> ReportResult:
+        # Реальная реализация использовала бы openpyxl
+        rows = list(data.items())
+        if user.is_vip:
+            rows.insert(0, ("VIP", user.name))
+        content = f"EXCEL:{config.locale}:{rows}".encode()
+        s3_url = self._upload_s3(f"reports/{user.id}/report.xlsx", content)
+        return ReportResult("report.xlsx", content, self.content_type, s3_url)
+
+
+class PdfReportGenerator(BaseReportGenerator):
+    content_type = "application/pdf"
+
+    def generate(self, data: dict[str, Any], config: ReportConfig, user: User) -> ReportResult:
+        html = self.tpl.render(config.template, {"data": data, "user": user.name})
+        # Реальная реализация: weasyprint.HTML(string=html).write_pdf()
+        content = f"PDF:{html}".encode()
+        s3_url = self._upload_s3(f"reports/{user.id}/report.pdf", content)
+        return ReportResult("report.pdf", content, self.content_type, s3_url)
+
+
+# ---------------------------------------------------------------------------
+# Фабрика с реестром — добавляй генераторы без изменения кода фабрики
+# ---------------------------------------------------------------------------
+
+GeneratorFactory = Callable[["ReportGeneratorFactory", User, ReportConfig], BaseReportGenerator]
+
+class ReportGeneratorFactory:
+    """
+    Реестр генераторов.  Новый формат регистрируется через декоратор
+    @factory.register("csv") — фабрика не знает о конкретных типах заранее.
+    """
+
+    _registry: ClassVar[dict[str, type[BaseReportGenerator]]] = {}
+
+    def __init__(self, s3: S3Client, tpl: TemplateEngine, cache: Cache) -> None:
+        # Зависимости хранятся в фабрике и передаются генераторам при создании
+        self._s3 = s3
+        self._tpl = tpl
+        self._cache = cache
+
+    # --- регистрация ---
+
+    @classmethod
+    def register(cls, fmt: str):
+        """Декоратор для регистрации нового генератора."""
+        def decorator(klass: type[BaseReportGenerator]) -> type[BaseReportGenerator]:
+            cls._registry[fmt] = klass
+            log.info("Registered generator: %s → %s", fmt, klass.__name__)
+            return klass
+        return decorator
+
+    # --- создание ---
+
+    def create(self, user: User, config: ReportConfig) -> BaseReportGenerator:
+        """
+        Выбирает реализацию:
+        - VIP-пользователи всегда получают PDF (если не задан explicit формат)
+        - Обычные пользователи — по config.format
+        """
+        fmt = config.format
+        if user.is_vip and fmt not in ("pdf", "excel"):
+            log.info("VIP user %s: upgrading %s → pdf", user.id, fmt)
+            fmt = "pdf"
+
+        klass = self._registry.get(fmt)
+        if klass is None:
+            raise ValueError(f"Unknown report format: {fmt!r}. "
+                             f"Registered: {list(self._registry)}")
+
+        return klass(s3=self._s3, tpl=self._tpl, cache=self._cache)
+
+
+# Регистрируем встроенные генераторы
+ReportGeneratorFactory.register("json")(JsonReportGenerator)
+ReportGeneratorFactory.register("excel")(ExcelReportGenerator)
+ReportGeneratorFactory.register("pdf")(PdfReportGenerator)
+
+
+# ---------------------------------------------------------------------------
+# Пример: регистрация нового формата без изменения фабрики
+# ---------------------------------------------------------------------------
+
+@ReportGeneratorFactory.register("csv")
+class CsvReportGenerator(BaseReportGenerator):
+    content_type = "text/csv"
+
+    def generate(self, data: dict[str, Any], config: ReportConfig, user: User) -> ReportResult:
+        lines = ["key,value"] + [f"{k},{v}" for k, v in data.items()]
+        content = "\\n".join(lines).encode()
+        s3_url = self._upload_s3(f"reports/{user.id}/report.csv", content)
+        return ReportResult("report.csv", content, self.content_type, s3_url)`,
+      },
+      {
+        filename: "main_fastapi.py",
+        code: `"""
+FastAPI-приложение с Dependency Injection через fastapi.Depends.
+Фабрика и все зависимости (S3, Cache, TemplateEngine) создаются один раз
+и переиспользуются между запросами.
+"""
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel
+
+from report_generators import (
+    Cache,
+    ReportConfig,
+    ReportGeneratorFactory,
+    ReportResult,
+    S3Client,
+    TemplateEngine,
+    User,
+)
+
+app = FastAPI(title="Report Generator API")
+
+
+# ---------------------------------------------------------------------------
+# Singleton-зависимости (создаются один раз при старте)
+# ---------------------------------------------------------------------------
+
+def get_s3() -> S3Client:
+    return S3Client()          # в production — boto3.client("s3")
+
+def get_template_engine() -> TemplateEngine:
+    return TemplateEngine()    # в production — jinja2.Environment(...)
+
+def get_cache() -> Cache:
+    return Cache()             # в production — Redis-backed cache
+
+def get_factory(
+    s3: Annotated[S3Client, Depends(get_s3)],
+    tpl: Annotated[TemplateEngine, Depends(get_template_engine)],
+    cache: Annotated[Cache, Depends(get_cache)],
+) -> ReportGeneratorFactory:
+    """
+    Фабрика получает зависимости через Depends — FastAPI строит граф сам.
+    Если s3/cache/tpl — Singleton (через lru_cache / lifespan), они не
+    создаются заново при каждом запросе.
+    """
+    return ReportGeneratorFactory(s3=s3, tpl=tpl, cache=cache)
+
+
+# ---------------------------------------------------------------------------
+# Request / Response модели
+# ---------------------------------------------------------------------------
+
+class GenerateReportRequest(BaseModel):
+    user_id: int
+    user_name: str
+    is_vip: bool = False
+    format: str = "json"         # "json" | "excel" | "pdf" | "csv"
+    template: str = "default"
+    data: dict = {}
+
+
+class GenerateReportResponse(BaseModel):
+    filename: str
+    content_type: str
+    size_bytes: int
+    s3_url: str | None
+
+
+# ---------------------------------------------------------------------------
+# Endpoint
+# ---------------------------------------------------------------------------
+
+@app.post("/reports/generate", response_model=GenerateReportResponse)
+def generate_report(
+    req: GenerateReportRequest,
+    factory: Annotated[ReportGeneratorFactory, Depends(get_factory)],
+) -> GenerateReportResponse:
+    user = User(id=req.user_id, name=req.user_name, is_vip=req.is_vip)
+    config = ReportConfig(format=req.format, template=req.template)
+
+    try:
+        generator = factory.create(user, config)
+        result: ReportResult = generator.generate(req.data, config, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return GenerateReportResponse(
+        filename=result.filename,
+        content_type=result.content_type,
+        size_bytes=len(result.content),
+        s3_url=result.s3_url,
+    )
+
+
+@app.get("/reports/formats")
+def list_formats() -> dict:
+    return {"formats": list(ReportGeneratorFactory._registry)}
+
+
+# ---------------------------------------------------------------------------
+# Запуск: uvicorn main_fastapi:app --reload
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)`,
+      },
+    ],
+    explanation: `**На что обратить внимание:**
+
+**Registry-паттерн через ClassVar:**
+\`ReportGeneratorFactory._registry\` — это словарь на уровне класса (не экземпляра). Декоратор \`@factory.register("csv")\` заполняет его в момент объявления класса, ещё до создания любого экземпляра фабрики. Новый формат добавляется в любом модуле без правки фабрики.
+
+**DI через fastapi.Depends vs ручной DI:**
+- \`Depends(get_s3)\` — FastAPI разрешает граф зависимостей автоматически, поддерживает scope (request, singleton через \`lru_cache\`), тестирование через \`app.dependency_overrides\`
+- В \`report_generators.py\` зависимости передаются в конструктор — это чистый Python DI без привязки к фреймворку (тестируется без FastAPI)
+
+**Автоматический апгрейд формата для VIP:**
+Логика "VIP получает PDF" находится в \`factory.create()\`, а не в endpoint — бизнес-правило инкапсулировано в одном месте.
+
+**Кэширование в BaseReportGenerator:**
+Ключ кэша строится через \`pickle + sha256\` по \`(data, config, user.id)\` — включает все параметры запроса. В production замените pickle на \`orjson\` / \`msgpack\` для надёжности.
+
+**Тестирование через dependency_overrides:**
+\`\`\`python
+app.dependency_overrides[get_s3] = lambda: MockS3Client()
+app.dependency_overrides[get_cache] = lambda: FakeCache()
+\`\`\`
+Фабрика и генераторы получат моки без изменения кода.`,
+  },
+  {
+    id: "strategy-webhook-payment",
+    title: "Strategy-паттерн для webhook'ов платёжных систем",
+    task: `Создайте Strategy-паттерн для обработки входящих webhook'ов от разных платёжных систем (Stripe, Tinkoff, YooKassa). Каждая стратегия должна реализовывать валидацию подписи, преобразование payload и генерацию событий домена. Основной сервис должен динамически выбирать стратегию по provider и поддерживать добавление новых провайдеров через entry-points.`,
+    files: [
+      {
+        filename: "webhook_strategies.py",
+        code: `from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import logging
+import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Доменные события (результат обработки webhook'а)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DomainEvent:
+    event_type: str          # "payment.succeeded", "payment.failed", ...
+    provider: str            # "stripe", "tinkoff", "yookassa"
+    external_id: str         # ID транзакции на стороне провайдера
+    amount: int              # в копейках / центах
+    currency: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+    occurred_at: float = field(default_factory=time.time)
+
+
+@dataclass
+class WebhookRequest:
+    """Сырой HTTP-запрос от платёжной системы."""
+    provider: str
+    headers: dict[str, str]
+    body: bytes              # сырое тело (важно для проверки подписи!)
+    payload: dict[str, Any]  # распаршенный JSON
+
+
+# ---------------------------------------------------------------------------
+# Базовая стратегия
+# ---------------------------------------------------------------------------
+
+class WebhookStrategy(ABC):
+    """
+    Каждый провайдер реализует три операции:
+    1. validate_signature — проверка HMAC / RSA подписи
+    2. parse_event       — нормализация payload в DomainEvent
+    3. handle            — оркестрация (validate → parse → publish)
+    """
+
+    provider: str  # задаётся в подклассе как атрибут класса
+
+    def __init__(self, secret: str) -> None:
+        self._secret = secret
+
+    @abstractmethod
+    def validate_signature(self, request: WebhookRequest) -> bool: ...
+
+    @abstractmethod
+    def parse_event(self, request: WebhookRequest) -> DomainEvent: ...
+
+    def handle(self, request: WebhookRequest) -> DomainEvent:
+        if not self.validate_signature(request):
+            raise ValueError(f"[{self.provider}] Invalid webhook signature")
+        event = self.parse_event(request)
+        log.info("[%s] Processed event: %s id=%s amount=%d %s",
+                 self.provider, event.event_type, event.external_id,
+                 event.amount, event.currency)
+        return event
+
+
+# ---------------------------------------------------------------------------
+# Стратегия: Stripe
+# ---------------------------------------------------------------------------
+
+class StripeWebhookStrategy(WebhookStrategy):
+    provider = "stripe"
+
+    def validate_signature(self, request: WebhookRequest) -> bool:
+        """
+        Stripe подписывает payload схемой:
+        Stripe-Signature: t=<timestamp>,v1=<hmac-sha256>
+        """
+        sig_header = request.headers.get("Stripe-Signature", "")
+        parts = dict(item.split("=", 1) for item in sig_header.split(",") if "=" in item)
+        timestamp = parts.get("t", "")
+        expected_sig = parts.get("v1", "")
+
+        signed_payload = f"{timestamp}.".encode() + request.body
+        computed = hmac.new(
+            self._secret.encode(), signed_payload, hashlib.sha256
+        ).hexdigest()
+
+        # Защита от timing-атак — hmac.compare_digest
+        return hmac.compare_digest(computed, expected_sig)
+
+    def parse_event(self, request: WebhookRequest) -> DomainEvent:
+        p = request.payload
+        obj = p.get("data", {}).get("object", {})
+        event_map = {
+            "payment_intent.succeeded": "payment.succeeded",
+            "payment_intent.payment_failed": "payment.failed",
+            "charge.refunded": "payment.refunded",
+        }
+        return DomainEvent(
+            event_type=event_map.get(p.get("type", ""), "unknown"),
+            provider=self.provider,
+            external_id=obj.get("id", ""),
+            amount=obj.get("amount", 0),
+            currency=obj.get("currency", "usd").upper(),
+            metadata={"stripe_event_id": p.get("id", "")},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Стратегия: Tinkoff
+# ---------------------------------------------------------------------------
+
+class TinkoffWebhookStrategy(WebhookStrategy):
+    provider = "tinkoff"
+
+    def validate_signature(self, request: WebhookRequest) -> bool:
+        """
+        Tinkoff: подпись = SHA-256 конкатенации отсортированных значений
+        всех полей payload (кроме самого Token), добавляя секрет.
+        """
+        p = dict(request.payload)
+        received_token = p.pop("Token", "")
+        # Сортируем поля по ключу, берём строковые значения
+        values = [str(v) for _, v in sorted(p.items())]
+        values.append(self._secret)
+        raw = "".join(values).encode()
+        computed = hashlib.sha256(raw).hexdigest()
+        return hmac.compare_digest(computed, received_token)
+
+    def parse_event(self, request: WebhookRequest) -> DomainEvent:
+        p = request.payload
+        status_map = {
+            "CONFIRMED": "payment.succeeded",
+            "REJECTED": "payment.failed",
+            "REFUNDED": "payment.refunded",
+            "PARTIAL_REFUNDED": "payment.refunded",
+        }
+        return DomainEvent(
+            event_type=status_map.get(p.get("Status", ""), "unknown"),
+            provider=self.provider,
+            external_id=str(p.get("PaymentId", "")),
+            amount=p.get("Amount", 0),
+            currency="RUB",
+            metadata={
+                "order_id": p.get("OrderId"),
+                "terminal_key": p.get("TerminalKey"),
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# Стратегия: YooKassa
+# ---------------------------------------------------------------------------
+
+class YooKassaWebhookStrategy(WebhookStrategy):
+    provider = "yookassa"
+
+    def validate_signature(self, request: WebhookRequest) -> bool:
+        """
+        YooKassa передаёт IP-заголовок — в production дополнительно
+        проверяйте список разрешённых IP. Здесь демонстрируем HMAC-вариант.
+        """
+        sig = request.headers.get("X-YooKassa-Signature", "")
+        computed = hmac.new(
+            self._secret.encode(), request.body, hashlib.sha256
+        ).hexdigest()
+        return hmac.compare_digest(computed, sig)
+
+    def parse_event(self, request: WebhookRequest) -> DomainEvent:
+        p = request.payload
+        obj = p.get("object", {})
+        amount_info = obj.get("amount", {})
+        amount_value = int(float(amount_info.get("value", "0")) * 100)
+        status_map = {
+            "payment.succeeded": "payment.succeeded",
+            "payment.canceled": "payment.failed",
+            "refund.succeeded": "payment.refunded",
+        }
+        return DomainEvent(
+            event_type=status_map.get(p.get("event", ""), "unknown"),
+            provider=self.provider,
+            external_id=obj.get("id", ""),
+            amount=amount_value,
+            currency=amount_info.get("currency", "RUB").upper(),
+            metadata={"description": obj.get("description", "")},
+        )`,
+      },
+      {
+        filename: "webhook_service.py",
+        code: `from __future__ import annotations
+
+import importlib.metadata
+import logging
+from typing import Type
+
+from webhook_strategies import (
+    DomainEvent,
+    StripeWebhookStrategy,
+    TinkoffWebhookStrategy,
+    WebhookRequest,
+    WebhookStrategy,
+    YooKassaWebhookStrategy,
+)
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Реестр стратегий (entry-points совместимый)
+# ---------------------------------------------------------------------------
+
+class WebhookStrategyRegistry:
+    """
+    Хранит зарегистрированные стратегии.
+    Поддерживает два способа регистрации:
+      1. Программно: registry.register(StripeWebhookStrategy)
+      2. Через entry-points: группа "webhook.strategies" в pyproject.toml
+         [project.entry-points."webhook.strategies"]
+         stripe = "mypackage.strategies:StripeWebhookStrategy"
+    """
+
+    def __init__(self) -> None:
+        self._strategies: dict[str, type[WebhookStrategy]] = {}
+
+    def register(self, klass: type[WebhookStrategy]) -> type[WebhookStrategy]:
+        self._strategies[klass.provider] = klass
+        log.info("Registered strategy: %s", klass.provider)
+        return klass
+
+    def load_entry_points(self, group: str = "webhook.strategies") -> None:
+        """Загружает стратегии из entry-points установленных пакетов."""
+        try:
+            eps = importlib.metadata.entry_points(group=group)
+            for ep in eps:
+                klass: type[WebhookStrategy] = ep.load()
+                self.register(klass)
+                log.info("Loaded strategy from entry-point: %s → %s", ep.name, klass)
+        except Exception as exc:
+            log.warning("Entry-points load failed: %s", exc)
+
+    def get(self, provider: str) -> type[WebhookStrategy] | None:
+        return self._strategies.get(provider)
+
+    def providers(self) -> list[str]:
+        return list(self._strategies)
+
+
+# Глобальный реестр
+registry = WebhookStrategyRegistry()
+registry.register(StripeWebhookStrategy)
+registry.register(TinkoffWebhookStrategy)
+registry.register(YooKassaWebhookStrategy)
+
+
+# ---------------------------------------------------------------------------
+# Основной сервис
+# ---------------------------------------------------------------------------
+
+class WebhookService:
+    """
+    Динамически выбирает стратегию по полю provider в запросе.
+    Секреты провайдеров хранятся отдельно (в реальности — из env / Vault).
+    """
+
+    def __init__(
+        self,
+        secrets: dict[str, str],
+        reg: WebhookStrategyRegistry = registry,
+    ) -> None:
+        self._secrets = secrets
+        self._registry = reg
+
+    def process(self, request: WebhookRequest) -> DomainEvent:
+        klass = self._registry.get(request.provider)
+        if klass is None:
+            known = self._registry.providers()
+            raise ValueError(
+                f"Unknown provider: {request.provider!r}. Known: {known}"
+            )
+
+        secret = self._secrets.get(request.provider, "")
+        strategy: WebhookStrategy = klass(secret=secret)
+        return strategy.handle(request)
+
+
+# ---------------------------------------------------------------------------
+# Демонстрация
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    import hashlib, hmac, json, logging
+    logging.basicConfig(level=logging.INFO)
+
+    SECRETS = {
+        "stripe": "stripe_secret_key",
+        "tinkoff": "tinkoff_terminal_password",
+        "yookassa": "yookassa_secret",
+    }
+
+    service = WebhookService(secrets=SECRETS)
+
+    # --- Stripe ---
+    stripe_payload = {
+        "id": "evt_001",
+        "type": "payment_intent.succeeded",
+        "data": {"object": {"id": "pi_001", "amount": 5000, "currency": "usd"}},
+    }
+    body = json.dumps(stripe_payload).encode()
+    timestamp = "1700000000"
+    sig = hmac.new(
+        SECRETS["stripe"].encode(),
+        f"{timestamp}.".encode() + body,
+        hashlib.sha256,
+    ).hexdigest()
+
+    stripe_req = WebhookRequest(
+        provider="stripe",
+        headers={"Stripe-Signature": f"t={timestamp},v1={sig}"},
+        body=body,
+        payload=stripe_payload,
+    )
+
+    event = service.process(stripe_req)
+    print(f"Stripe event: {event}")
+
+    # --- Tinkoff ---
+    import hashlib
+    tinkoff_payload = {
+        "TerminalKey": "TK001",
+        "OrderId": "order-99",
+        "PaymentId": 12345,
+        "Amount": 199900,
+        "Status": "CONFIRMED",
+    }
+    values = [str(v) for _, v in sorted(tinkoff_payload.items())]
+    values.append(SECRETS["tinkoff"])
+    token = hashlib.sha256("".join(values).encode()).hexdigest()
+    tinkoff_payload["Token"] = token
+
+    tinkoff_req = WebhookRequest(
+        provider="tinkoff",
+        headers={},
+        body=json.dumps(tinkoff_payload).encode(),
+        payload=tinkoff_payload,
+    )
+    event = service.process(tinkoff_req)
+    print(f"Tinkoff event: {event}")`,
+      },
+    ],
+    explanation: `**На что обратить внимание:**
+
+**Стратегия как класс, а не функция:**
+Каждая стратегия хранит \`_secret\` через конструктор. Это позволяет тестировать \`validate_signature\` в изоляции:
+\`\`\`python
+strategy = StripeWebhookStrategy(secret="test_key")
+assert strategy.validate_signature(fake_request) is True
+\`\`\`
+
+**Важность сырого \`body\` для валидации подписи:**
+Stripe и YooKassa вычисляют HMAC по байтам HTTP-тела до парсинга JSON. Если вы сначала парсите \`json.loads(body)\`, а потом делаете \`json.dumps(payload)\` — подпись не совпадёт из-за разного форматирования. Всегда сохраняйте \`request.body\` как \`bytes\`.
+
+**hmac.compare_digest vs ==:**
+Обычное сравнение строк \`computed == received\` уязвимо к timing-атаке: злоумышленник может по времени ответа угадать первые совпавшие байты. \`hmac.compare_digest\` выполняется за константное время.
+
+**Entry-points для расширяемости:**
+\`importlib.metadata.entry_points(group="webhook.strategies")\` — стандартный Python-механизм для plugin-систем. Сторонний пакет регистрирует стратегию в своём \`pyproject.toml\`:
+\`\`\`toml
+[project.entry-points."webhook.strategies"]
+sberbank = "sberbank_payments.strategy:SberbankWebhookStrategy"
+\`\`\`
+После \`pip install sberbank-payments\` и \`registry.load_entry_points()\` новый провайдер доступен без изменения кода сервиса.
+
+**Нормализация в DomainEvent:**
+Все провайдеры возвращают сумму в единых единицах (копейки). Stripe присылает центы напрямую, YooKassa — рубли дробью (\`"100.00"\`), поэтому \`float(value) * 100\` → \`int\`. Это типичная ошибка: забытое умножение приводит к транзакциям в 100x меньшей суммой.`,
+  },
+  {
+    id: "repository-unit-of-work-sqlalchemy",
+    title: "Repository + Unit of Work поверх SQLAlchemy 2.0",
+    task: `Реализуйте Repository + Unit of Work паттерны поверх SQLAlchemy 2.0 (с поддержкой async и sync). UoW должен управлять транзакциями, автоматически коммитить/откатывать, поддерживать nested-транзакции и работать с несколькими репозиториями в одном бизнес-кейсе. Добавьте возможность работы в тестовом режиме с in-memory SQLite без изменения кода приложения.`,
+    files: [
+      {
+        filename: "repository.py",
+        code: `from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Generic, TypeVar, Sequence
+
+from sqlalchemy import select, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
+
+# ---------------------------------------------------------------------------
+# ORM модели
+# ---------------------------------------------------------------------------
+
+class Base(DeclarativeBase):
+    pass
+
+
+class UserModel(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(unique=True)
+    name: Mapped[str]
+    is_active: Mapped[bool] = mapped_column(default=True)
+
+
+class OrderModel(Base):
+    __tablename__ = "orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int]
+    amount: Mapped[int]       # в копейках
+    status: Mapped[str] = mapped_column(default="pending")
+
+
+# ---------------------------------------------------------------------------
+# Generic-репозиторий (async)
+# ---------------------------------------------------------------------------
+
+T = TypeVar("T", bound=Base)
+
+
+class AsyncRepository(ABC, Generic[T]):
+    """Базовый async-репозиторий. Работает с любой SQLAlchemy-моделью."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    @property
+    @abstractmethod
+    def model(self) -> type[T]: ...
+
+    async def get(self, id_: int) -> T | None:
+        return await self._session.get(self.model, id_)
+
+    async def list(self) -> Sequence[T]:
+        result = await self._session.execute(select(self.model))
+        return result.scalars().all()
+
+    async def add(self, obj: T) -> T:
+        self._session.add(obj)
+        await self._session.flush()  # присваивает id без commit
+        return obj
+
+    async def delete(self, id_: int) -> None:
+        await self._session.execute(
+            delete(self.model).where(self.model.id == id_)  # type: ignore[attr-defined]
+        )
+
+    async def find_by(self, **kwargs: object) -> Sequence[T]:
+        stmt = select(self.model).filter_by(**kwargs)
+        result = await self._session.execute(stmt)
+        return result.scalars().all()
+
+
+# ---------------------------------------------------------------------------
+# Конкретные репозитории
+# ---------------------------------------------------------------------------
+
+class UserRepository(AsyncRepository[UserModel]):
+    model = UserModel
+
+    async def get_by_email(self, email: str) -> UserModel | None:
+        result = await self._session.execute(
+            select(UserModel).where(UserModel.email == email)
+        )
+        return result.scalar_one_or_none()
+
+    async def deactivate(self, user_id: int) -> None:
+        user = await self.get(user_id)
+        if user:
+            user.is_active = False
+            await self._session.flush()
+
+
+class OrderRepository(AsyncRepository[OrderModel]):
+    model = OrderModel
+
+    async def get_user_orders(self, user_id: int) -> Sequence[OrderModel]:
+        return await self.find_by(user_id=user_id)
+
+    async def cancel(self, order_id: int) -> None:
+        order = await self.get(order_id)
+        if order:
+            order.status = "cancelled"
+            await self._session.flush()
+
+
+# ---------------------------------------------------------------------------
+# Generic-репозиторий (sync) — для скриптов / Celery-воркеров
+# ---------------------------------------------------------------------------
+
+class SyncRepository(ABC, Generic[T]):
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    @property
+    @abstractmethod
+    def model(self) -> type[T]: ...
+
+    def get(self, id_: int) -> T | None:
+        return self._session.get(self.model, id_)
+
+    def add(self, obj: T) -> T:
+        self._session.add(obj)
+        self._session.flush()
+        return obj`,
+      },
+      {
+        filename: "unit_of_work.py",
+        code: `from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager, contextmanager
+from typing import AsyncIterator, Iterator
+
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import Session, sessionmaker, create_engine
+
+from repository import Base, OrderRepository, UserRepository
+
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Async Unit of Work
+# ---------------------------------------------------------------------------
+
+class AsyncUnitOfWork:
+    """
+    Управляет жизненным циклом транзакции и предоставляет репозитории.
+
+    Использование:
+        async with AsyncUnitOfWork(session_factory) as uow:
+            user = await uow.users.get_by_email("a@b.com")
+            await uow.orders.add(OrderModel(user_id=user.id, amount=100))
+            # commit происходит автоматически при выходе без исключения
+
+    Nested-транзакции (savepoint):
+        async with uow.nested():
+            ...  # откатится только этот блок при исключении
+    """
+
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._factory = session_factory
+        self._session: AsyncSession
+
+    async def __aenter__(self) -> "AsyncUnitOfWork":
+        self._session = self._factory()
+        # Инициализируем репозитории, привязанные к текущей сессии
+        self.users = UserRepository(self._session)
+        self.orders = OrderRepository(self._session)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        if exc_type is None:
+            await self.commit()
+        else:
+            await self.rollback()
+            log.warning("UoW rollback: %s — %s", exc_type.__name__, exc_val)
+        await self._session.close()
+
+    async def commit(self) -> None:
+        await self._session.commit()
+
+    async def rollback(self) -> None:
+        await self._session.rollback()
+
+    @asynccontextmanager
+    async def nested(self) -> AsyncIterator["AsyncUnitOfWork"]:
+        """
+        Создаёт savepoint внутри активной транзакции.
+        При исключении откатывается только до savepoint — внешняя транзакция жива.
+        """
+        async with self._session.begin_nested():
+            try:
+                yield self
+            except Exception:
+                log.warning("Nested transaction rolled back to savepoint")
+                raise  # пере-рейзим для обработки во внешнем блоке
+
+
+# ---------------------------------------------------------------------------
+# Sync Unit of Work (для Celery, скриптов и т.п.)
+# ---------------------------------------------------------------------------
+
+class SyncUnitOfWork:
+    def __init__(self, session_factory: sessionmaker) -> None:
+        self._factory = session_factory
+        self._session: Session
+
+    def __enter__(self) -> "SyncUnitOfWork":
+        self._session = self._factory()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if exc_type is None:
+            self._session.commit()
+        else:
+            self._session.rollback()
+        self._session.close()
+
+    @contextmanager
+    def nested(self) -> Iterator["SyncUnitOfWork"]:
+        with self._session.begin_nested():
+            yield self
+
+
+# ---------------------------------------------------------------------------
+# Фабрики сессий для разных окружений
+# ---------------------------------------------------------------------------
+
+def make_async_session_factory(db_url: str) -> async_sessionmaker[AsyncSession]:
+    engine = create_async_engine(db_url, echo=False)
+    return async_sessionmaker(engine, expire_on_commit=False)
+
+
+def make_sync_session_factory(db_url: str) -> sessionmaker:
+    engine = create_engine(db_url, echo=False)
+    return sessionmaker(engine, expire_on_commit=False)
+
+
+async def init_db(db_url: str) -> None:
+    """Создаёт таблицы (используйте только в dev/test — в prod Alembic)."""
+    engine = create_async_engine(db_url)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# Демонстрация
+# ---------------------------------------------------------------------------
+
+async def demo(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    from repository import OrderModel, UserModel
+
+    # --- Базовое использование ---
+    async with AsyncUnitOfWork(session_factory) as uow:
+        user = await uow.users.get_by_email("alice@example.com")
+        if not user:
+            user = await uow.users.add(UserModel(email="alice@example.com", name="Alice"))
+        order = await uow.orders.add(
+            OrderModel(user_id=user.id, amount=199900)
+        )
+        log.info("Created order #%d for user #%d", order.id, user.id)
+        # commit автоматически при выходе из контекстного менеджера
+
+    # --- Nested-транзакции ---
+    async with AsyncUnitOfWork(session_factory) as uow:
+        user = await uow.users.get_by_email("alice@example.com")
+        assert user is not None
+
+        try:
+            async with uow.nested():
+                # Эта операция будет откачена...
+                await uow.orders.add(OrderModel(user_id=user.id, amount=-1))
+                raise ValueError("Invalid amount — rollback to savepoint")
+        except ValueError:
+            log.info("Nested block rolled back, outer transaction still alive")
+
+        # ...но этот commit всё равно выполнится
+        await uow.orders.add(OrderModel(user_id=user.id, amount=50000))
+
+    # --- Показываем итог ---
+    async with AsyncUnitOfWork(session_factory) as uow:
+        orders = await uow.orders.get_user_orders(user.id)  # type: ignore
+        log.info("User orders: %s", [(o.id, o.amount, o.status) for o in orders])
+
+
+if __name__ == "__main__":
+    import asyncio
+    logging.basicConfig(level=logging.INFO)
+
+    # In-memory SQLite для демо (PostgreSQL для production)
+    DB_URL = "sqlite+aiosqlite:///:memory:"
+
+    async def main() -> None:
+        await init_db(DB_URL)
+        factory = make_async_session_factory(DB_URL)
+        await demo(factory)
+
+    asyncio.run(main())`,
+      },
+      {
+        filename: "test_uow.py",
+        code: `"""
+Тесты с in-memory SQLite — код приложения не меняется,
+подменяется только фабрика сессий.
+"""
+import pytest
+import pytest_asyncio
+
+from repository import OrderModel, UserModel
+from unit_of_work import AsyncUnitOfWork, init_db, make_async_session_factory
+
+
+TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+
+
+@pytest_asyncio.fixture
+async def session_factory():
+    await init_db(TEST_DB_URL)
+    return make_async_session_factory(TEST_DB_URL)
+
+
+@pytest.mark.asyncio
+async def test_create_user_and_order(session_factory):
+    async with AsyncUnitOfWork(session_factory) as uow:
+        user = await uow.users.add(UserModel(email="bob@test.com", name="Bob"))
+        order = await uow.orders.add(OrderModel(user_id=user.id, amount=1000))
+
+    # Проверяем, что данные сохранились
+    async with AsyncUnitOfWork(session_factory) as uow:
+        fetched = await uow.users.get_by_email("bob@test.com")
+        assert fetched is not None
+        assert fetched.name == "Bob"
+        orders = await uow.orders.get_user_orders(fetched.id)
+        assert len(orders) == 1
+        assert orders[0].amount == 1000
+
+
+@pytest.mark.asyncio
+async def test_rollback_on_exception(session_factory):
+    with pytest.raises(RuntimeError):
+        async with AsyncUnitOfWork(session_factory) as uow:
+            await uow.users.add(UserModel(email="fail@test.com", name="Fail"))
+            raise RuntimeError("Something went wrong")
+
+    # Данные должны быть откачены
+    async with AsyncUnitOfWork(session_factory) as uow:
+        user = await uow.users.get_by_email("fail@test.com")
+        assert user is None
+
+
+@pytest.mark.asyncio
+async def test_nested_transaction_partial_rollback(session_factory):
+    async with AsyncUnitOfWork(session_factory) as uow:
+        user = await uow.users.add(UserModel(email="nested@test.com", name="Nested"))
+
+        try:
+            async with uow.nested():
+                await uow.orders.add(OrderModel(user_id=user.id, amount=-999))
+                raise ValueError("bad amount")
+        except ValueError:
+            pass  # ожидаемо
+
+        # Этот заказ должен попасть в БД
+        await uow.orders.add(OrderModel(user_id=user.id, amount=5000))
+
+    async with AsyncUnitOfWork(session_factory) as uow:
+        fetched = await uow.users.get_by_email("nested@test.com")
+        assert fetched is not None
+        orders = await uow.orders.get_user_orders(fetched.id)
+        # Только один заказ (с amount=5000), откаченный (-999) не сохранился
+        assert len(orders) == 1
+        assert orders[0].amount == 5000`,
+      },
+    ],
+    explanation: `**На что обратить внимание:**
+
+**flush() vs commit():**
+- \`session.flush()\` — синхронизирует изменения с БД (SQL выполняется), но транзакция ещё открыта. Это позволяет получить автосгенерированный \`id\` записи до commit.
+- \`session.commit()\` — фиксирует транзакцию. UoW вызывает его автоматически в \`__aexit__\` при отсутствии исключения.
+
+**expire_on_commit=False:**
+По умолчанию после commit SQLAlchemy сбрасывает атрибуты объектов ("expiry") — следующее обращение к \`user.name\` вызовет новый SELECT. Это неожиданно в async-коде после закрытия сессии. \`expire_on_commit=False\` отключает это поведение.
+
+**Nested-транзакции через SAVEPOINT:**
+\`session.begin_nested()\` создаёт \`SAVEPOINT\` в PostgreSQL/SQLite. При откате вложенного блока выполняется \`ROLLBACK TO SAVEPOINT\`, внешняя транзакция остаётся активной. Это критически важно для сложных бизнес-кейсов где часть операций может быть необязательной.
+
+**Тестирование с SQLite без изменения кода:**
+Вся замена — строка \`DB_URL = "sqlite+aiosqlite:///:memory:"\` в фикстуре. Код бизнес-логики использует \`AsyncUnitOfWork(session_factory)\` — ему всё равно, что за БД. Для поддержки SQLite в тестах убедитесь что не используете PostgreSQL-специфичный синтаксис (RETURNING, jsonb и т.п.) в базовых репозиториях.
+
+**Generic-репозиторий \`AsyncRepository[T]\`:**
+TypeVar + Generic позволяет написать базовые CRUD-методы один раз. IDE и mypy выводят правильный тип: \`await uow.users.get(1)\` возвращает \`UserModel | None\`, а не \`Any\`. Конкретные репозитории добавляют только специализированные запросы.`,
+  },
+  {
+    id: "async-decorator-retry-logging",
+    title: "Универсальный async-декоратор с retry и логированием",
+    task: `Напишите универсальный async-декоратор с параметрами, который измеряет время выполнения, автоматически логирует входные/выходные параметры (с маскировкой чувствительных данных) и повторяет выполнение при указанных исключениях (retry с exponential backoff). Декоратор должен работать как на обычных async-функциях, так и на методах класса и FastAPI-эндпоинтах.`,
+    files: [
+      {
+        filename: "observe.py",
+        code: `from __future__ import annotations
+
+import asyncio
+import functools
+import logging
+import re
+import time
+from collections.abc import Callable, Coroutine
+from typing import Any, ParamSpec, TypeVar
+
+log = logging.getLogger(__name__)
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+# ---------------------------------------------------------------------------
+# Маскировка чувствительных данных
+# ---------------------------------------------------------------------------
+
+_SENSITIVE_KEYS = re.compile(
+    r"password|secret|token|key|auth|card|cvv|ssn|pin",
+    re.IGNORECASE,
+)
+_MASK = "***"
+
+
+def _mask_value(key: str, value: Any) -> Any:
+    """Маскирует значение если ключ похож на чувствительный."""
+    if isinstance(key, str) and _SENSITIVE_KEYS.search(key):
+        return _MASK
+    if isinstance(value, str) and len(value) > 200:
+        return value[:50] + f"...[{len(value)} chars]"
+    return value
+
+
+def _safe_repr(obj: Any, depth: int = 0) -> Any:
+    """Рекурсивно маскирует dict/list для безопасного логирования."""
+    if depth > 3:
+        return "..."
+    if isinstance(obj, dict):
+        return {k: _mask_value(k, _safe_repr(v, depth + 1)) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_safe_repr(v, depth + 1) for v in obj]
+    return obj
+
+
+# ---------------------------------------------------------------------------
+# Основной декоратор
+# ---------------------------------------------------------------------------
+
+def observe(
+    *,
+    retry_on: tuple[type[Exception], ...] = (),
+    max_retries: int = 3,
+    backoff_factor: float = 2.0,
+    backoff_base: float = 0.5,
+    log_args: bool = True,
+    log_result: bool = True,
+    sensitive_params: tuple[str, ...] = (),
+) -> Callable[[Callable[P, Coroutine[Any, Any, R]]], Callable[P, Coroutine[Any, Any, R]]]:
+    """
+    Параметризованный async-декоратор. Применим к:
+    - обычным async-функциям
+    - async-методам класса (self/cls прозрачно передаётся)
+    - FastAPI-эндпоинтам (совместим с inspect.signature через @functools.wraps)
+
+    Args:
+        retry_on:          Кортеж исключений, при которых делать повторные попытки.
+        max_retries:       Максимальное число повторов (не считая первую попытку).
+        backoff_factor:    Множитель задержки между попытками.
+        backoff_base:      Базовая задержка (секунды) для первого повтора.
+        log_args:          Логировать ли входные аргументы.
+        log_result:        Логировать ли возвращаемое значение.
+        sensitive_params:  Дополнительные имена параметров для маскировки.
+    """
+    def decorator(
+        func: Callable[P, Coroutine[Any, Any, R]],
+    ) -> Callable[P, Coroutine[Any, Any, R]]:
+
+        import inspect
+        sig = inspect.signature(func)
+        func_name = f"{func.__module__}.{func.__qualname__}"
+
+        @functools.wraps(func)
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            # --- Собираем аргументы для логирования ---
+            if log_args:
+                bound = sig.bind(*args, **kwargs)
+                bound.apply_defaults()
+                safe_args: dict[str, Any] = {}
+                for param_name, value in bound.arguments.items():
+                    if param_name in sensitive_params:
+                        safe_args[param_name] = _MASK
+                    else:
+                        safe_args[param_name] = _safe_repr(value)
+                log.info("[%s] call args=%s", func_name, safe_args)
+            else:
+                log.info("[%s] call", func_name)
+
+            attempt = 0
+            last_exc: Exception | None = None
+
+            while True:
+                t_start = time.perf_counter()
+                try:
+                    result = await func(*args, **kwargs)
+                    elapsed = time.perf_counter() - t_start
+
+                    if log_result:
+                        safe_result = _safe_repr(result)
+                        log.info(
+                            "[%s] ok attempt=%d elapsed=%.3fs result=%s",
+                            func_name, attempt + 1, elapsed, safe_result,
+                        )
+                    else:
+                        log.info(
+                            "[%s] ok attempt=%d elapsed=%.3fs",
+                            func_name, attempt + 1, elapsed,
+                        )
+                    return result
+
+                except Exception as exc:
+                    elapsed = time.perf_counter() - t_start
+
+                    if retry_on and isinstance(exc, retry_on) and attempt < max_retries:
+                        delay = backoff_base * (backoff_factor ** attempt)
+                        log.warning(
+                            "[%s] %s (attempt %d/%d) — retry in %.2fs",
+                            func_name, type(exc).__name__,
+                            attempt + 1, max_retries + 1, delay,
+                        )
+                        await asyncio.sleep(delay)
+                        attempt += 1
+                        last_exc = exc
+                        continue
+
+                    log.error(
+                        "[%s] failed attempt=%d elapsed=%.3fs exc=%s: %s",
+                        func_name, attempt + 1, elapsed, type(exc).__name__, exc,
+                    )
+                    raise
+
+        return wrapper
+    return decorator`,
+      },
+      {
+        filename: "usage.py",
+        code: `"""
+Демонстрация @observe на трёх сценариях:
+1. Обычная async-функция
+2. Метод класса
+3. FastAPI-эндпоинт
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import random
+from typing import Annotated
+
+from fastapi import Depends, FastAPI
+from pydantic import BaseModel
+
+from observe import observe
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+
+
+# ---------------------------------------------------------------------------
+# 1. Обычная async-функция
+# ---------------------------------------------------------------------------
+
+class NetworkError(Exception):
+    pass
+
+
+@observe(
+    retry_on=(NetworkError,),
+    max_retries=3,
+    backoff_base=0.1,
+    sensitive_params=("api_key",),
+    log_result=True,
+)
+async def fetch_user(user_id: int, api_key: str) -> dict:
+    """api_key будет замаскирован в логах."""
+    if random.random() < 0.5:
+        raise NetworkError("Simulated network failure")
+    return {"id": user_id, "name": "Alice", "email": "alice@example.com"}
+
+
+# ---------------------------------------------------------------------------
+# 2. Метод класса
+# ---------------------------------------------------------------------------
+
+class PaymentService:
+    def __init__(self, gateway_url: str) -> None:
+        self._url = gateway_url
+
+    @observe(
+        retry_on=(TimeoutError,),
+        max_retries=2,
+        backoff_base=0.05,
+        sensitive_params=("card_number", "cvv"),
+        log_args=True,
+        log_result=False,   # результат не логируем (содержит статус платежа)
+    )
+    async def charge(
+        self,
+        amount: int,
+        card_number: str,
+        cvv: str,
+    ) -> dict:
+        """card_number и cvv маскируются, self — не логируется (filtered by _safe_repr)."""
+        await asyncio.sleep(0.01)  # имитация HTTP-запроса к платёжному шлюзу
+        return {"status": "ok", "transaction_id": "txn_001", "amount": amount}
+
+
+# ---------------------------------------------------------------------------
+# 3. FastAPI-эндпоинт
+# ---------------------------------------------------------------------------
+
+app = FastAPI()
+
+
+class CreateOrderRequest(BaseModel):
+    user_id: int
+    amount: int
+    payment_token: str   # будет замаскирован через _SENSITIVE_KEYS
+
+
+def get_payment_service() -> PaymentService:
+    return PaymentService(gateway_url="https://gateway.example.com")
+
+
+@app.post("/orders")
+@observe(
+    retry_on=(),         # эндпоинты обычно не ретраим
+    log_args=True,
+    log_result=True,
+    sensitive_params=("payment_token",),
+)
+async def create_order(
+    req: CreateOrderRequest,
+    svc: Annotated[PaymentService, Depends(get_payment_service)],
+) -> dict:
+    """
+    @observe совместим с FastAPI:
+    - @functools.wraps сохраняет __signature__, поэтому Depends работает корректно
+    - Pydantic-модели в логах отображаются как dict (через _safe_repr → .model_dump())
+    """
+    result = await svc.charge(
+        amount=req.amount,
+        card_number="4111111111111111",
+        cvv="123",
+    )
+    return {"order_id": "ord_001", "payment": result}
+
+
+# ---------------------------------------------------------------------------
+# Демонстрационный запуск (без FastAPI)
+# ---------------------------------------------------------------------------
+
+async def main() -> None:
+    # Тест 1: функция с retry
+    try:
+        user = await fetch_user(user_id=42, api_key="super_secret_key_xyz")
+        print(f"User: {user}")
+    except NetworkError:
+        print("Все попытки исчерпаны")
+
+    # Тест 2: метод класса
+    svc = PaymentService("https://gateway.example.com")
+    result = await svc.charge(amount=199900, card_number="4111111111111111", cvv="123")
+    print(f"Payment: {result}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())`,
+      },
+    ],
+    explanation: `**На что обратить внимание:**
+
+**ParamSpec + TypeVar для типизации декоратора:**
+\`P = ParamSpec("P")\` сохраняет сигнатуру оборачиваемой функции — IDE и mypy знают типы аргументов обёрнутой функции. Без ParamSpec декоратор стирает типы и возвращает \`Callable[..., Any]\`.
+
+**@functools.wraps — обязателен для FastAPI:**
+FastAPI использует \`inspect.signature(endpoint)\` для парсинга зависимостей (\`Depends\`), типов тела запроса, query-параметров. Без \`@functools.wraps\` сигнатура \`wrapper\` не совпадает с оригиналом — FastAPI не найдёт параметры и вернёт 422 или проигнорирует \`Depends\`.
+
+**Двойная маскировка чувствительных данных:**
+1. \`sensitive_params\` — явный список имён параметров (надёжно, без риска ложных срабатываний)
+2. \`_SENSITIVE_KEYS\` regex — автоматически по имени ключа в dict (для вложенных структур)
+
+Комбинация покрывает оба случая: именованный аргумент \`api_key="..."\` и dict \`{"password": "..."}\` внутри тела запроса.
+
+**Exponential backoff формула:**
+\`delay = backoff_base * (backoff_factor ** attempt)\`
+- attempt=0: 0.5 с
+- attempt=1: 1.0 с  
+- attempt=2: 2.0 с
+
+Добавьте \`delay += random.uniform(0, 0.1)\` (jitter) чтобы избежать thundering herd при одновременном перезапуске множества клиентов.
+
+**Метод класса — self не ломает декоратор:**
+\`sig.bind(*args, **kwargs)\` для метода включает \`self\` как первый позиционный аргумент. \`_safe_repr(self)\` не раскрывает внутренние поля (нет итерации по атрибутам), логируется как строковое repr объекта.`,
+  },
+  {
+    id: "descriptor-validation-dto",
+    title: "Дескриптор для валидации и преобразования полей модели",
+    task: `Реализуйте дескриптор для валидации и преобразования полей модели (аналог Pydantic, но на чистом метапрограммировании). Дескриптор должен поддерживать lazy-вычисление, кэширование, автоматическую конвертацию типов и запрет изменения после инициализации. Примените его в датаклассе, который используется как DTO для API и БД.`,
+    files: [
+      {
+        filename: "descriptors.py",
+        code: `from __future__ import annotations
+
+import re
+from typing import Any, Callable, Generic, TypeVar, overload
+
+T = TypeVar("T")
+S = TypeVar("S")  # тип владельца (owner class)
+
+
+# ---------------------------------------------------------------------------
+# Базовый валидирующий дескриптор
+# ---------------------------------------------------------------------------
+
+class TypedField(Generic[T]):
+    """
+    Дескриптор данных: реализует __set_name__, __get__, __set__, __delete__.
+
+    Особенности:
+    - Автоматическая конвертация типа через coerce
+    - Произвольные валидаторы (цепочка)
+    - Запрет изменения после инициализации (frozen=True)
+    - Хранение значений в __dict__ экземпляра (не в дескрипторе!)
+    """
+
+    def __init__(
+        self,
+        type_: type[T],
+        *,
+        coerce: bool = True,
+        default: T | None = None,
+        frozen: bool = False,
+        validators: list[Callable[[T], T]] | None = None,
+    ) -> None:
+        self._type = type_
+        self._coerce = coerce
+        self._default = default
+        self._frozen = frozen
+        self._validators: list[Callable[[T], T]] = validators or []
+        self._attr_name: str = ""          # заполняется в __set_name__
+        self._private_name: str = ""       # ключ в instance.__dict__
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        """Вызывается при создании класса — сохраняем имя атрибута."""
+        self._attr_name = name
+        self._private_name = f"_field_{name}"
+
+    # --- Получение значения ---
+
+    @overload
+    def __get__(self, obj: None, objtype: type) -> "TypedField[T]": ...
+    @overload
+    def __get__(self, obj: object, objtype: type) -> T: ...
+
+    def __get__(self, obj: object | None, objtype: type | None = None) -> "TypedField[T] | T":
+        if obj is None:
+            # Доступ через класс: User.email → возвращаем сам дескриптор
+            return self  # type: ignore[return-value]
+        value = obj.__dict__.get(self._private_name, self._default)
+        if value is None:
+            return self._default  # type: ignore[return-value]
+        return value  # type: ignore[return-value]
+
+    # --- Установка значения ---
+
+    def __set__(self, obj: object, value: Any) -> None:
+        # Frozen: запрещаем изменение если значение уже установлено
+        if self._frozen and self._private_name in obj.__dict__:
+            raise AttributeError(
+                f"Field '{self._attr_name}' is frozen and cannot be changed "
+                f"after initialization."
+            )
+
+        # Coerce: пытаемся привести к нужному типу
+        if value is not None and not isinstance(value, self._type):
+            if self._coerce:
+                try:
+                    value = self._type(value)
+                except (ValueError, TypeError) as exc:
+                    raise TypeError(
+                        f"Field '{self._attr_name}': cannot coerce "
+                        f"{type(value).__name__!r} → {self._type.__name__!r}: {exc}"
+                    ) from exc
+            else:
+                raise TypeError(
+                    f"Field '{self._attr_name}': expected {self._type.__name__}, "
+                    f"got {type(value).__name__}"
+                )
+
+        # Валидация по цепочке
+        for validator in self._validators:
+            value = validator(value)
+
+        obj.__dict__[self._private_name] = value
+
+    def __delete__(self, obj: object) -> None:
+        if self._frozen:
+            raise AttributeError(f"Field '{self._attr_name}' is frozen.")
+        obj.__dict__.pop(self._private_name, None)
+
+
+# ---------------------------------------------------------------------------
+# Lazy computed дескриптор (не-данных дескриптор)
+# ---------------------------------------------------------------------------
+
+class lazy_property(Generic[T]):
+    """
+    Вычисляет значение один раз при первом обращении и кэширует
+    его в __dict__ экземпляра. Повторные обращения не вызывают функцию.
+
+    Это не-данных дескриптор (только __get__) — instance.__dict__
+    имеет приоритет, поэтому после первого вычисления дескриптор
+    «вытесняется» кэшированным значением.
+    """
+
+    def __init__(self, func: Callable[[Any], T]) -> None:
+        self._func = func
+        self._attr_name = func.__name__
+        self.__doc__ = func.__doc__
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self._attr_name = name
+
+    def __get__(self, obj: object | None, objtype: type | None = None) -> T | "lazy_property[T]":
+        if obj is None:
+            return self  # type: ignore[return-value]
+        value = self._func(obj)
+        # Записываем в __dict__ экземпляра — перекрывает дескриптор
+        obj.__dict__[self._attr_name] = value
+        return value
+
+
+# ---------------------------------------------------------------------------
+# Готовые валидаторы
+# ---------------------------------------------------------------------------
+
+def non_empty(value: str) -> str:
+    if not value or not value.strip():
+        raise ValueError("Value cannot be empty")
+    return value.strip()
+
+
+def positive(value: int | float) -> int | float:
+    if value <= 0:
+        raise ValueError(f"Value must be positive, got {value}")
+    return value
+
+
+def email_format(value: str) -> str:
+    if not re.fullmatch(r"[^@]+@[^@]+\\.[^@]+", value):
+        raise ValueError(f"Invalid email format: {value!r}")
+    return value.lower()
+
+
+def max_length(n: int) -> Callable[[str], str]:
+    def validator(value: str) -> str:
+        if len(value) > n:
+            raise ValueError(f"Too long: {len(value)} > {n} chars")
+        return value
+    return validator`,
+      },
+      {
+        filename: "dto.py",
+        code: `"""
+ProductDTO — датаклас-DTO с дескрипторами.
+Используется и как API-схема (FastAPI), и как сущность для вставки в БД.
+"""
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from decimal import Decimal
+from typing import Any
+
+from descriptors import (
+    TypedField,
+    lazy_property,
+    email_format,
+    max_length,
+    non_empty,
+    positive,
+)
+
+
+# ---------------------------------------------------------------------------
+# DTO с дескрипторами
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ProductDTO:
+    """
+    Датакласс + дескрипторы:
+    - @dataclass генерирует __init__, __repr__, __eq__
+    - TypedField перехватывает установку значений через __set__
+    - lazy_property вычисляется один раз при первом обращении
+
+    Важно: дескрипторы объявлены как ClassVar-подобные атрибуты класса,
+    но хранят данные в instance.__dict__ — конфликта нет.
+    """
+
+    # Строки с валидацией и автотримом
+    name: str = TypedField(  # type: ignore[assignment]
+        str,
+        validators=[non_empty, max_length(100)],
+    )
+    sku: str = TypedField(   # type: ignore[assignment]
+        str,
+        frozen=True,         # SKU нельзя менять после создания
+        validators=[non_empty, max_length(32)],
+    )
+
+    # Число с автоматической конвертацией str → int
+    quantity: int = TypedField(  # type: ignore[assignment]
+        int,
+        coerce=True,
+        validators=[positive],  # type: ignore[list-item]
+    )
+
+    # Decimal через coerce (TypedField вызывает Decimal(value))
+    price: Decimal = TypedField(  # type: ignore[assignment]
+        Decimal,
+        coerce=True,
+        validators=[positive],  # type: ignore[list-item]
+    )
+
+    # Email с форматной валидацией, frozen
+    owner_email: str = TypedField(  # type: ignore[assignment]
+        str,
+        frozen=True,
+        validators=[non_empty, email_format],
+    )
+
+    tags: list[str] = field(default_factory=list)
+
+    # -------------------------------------------------------------------
+    # Lazy computed properties
+    # -------------------------------------------------------------------
+
+    @lazy_property
+    def display_price(self) -> str:
+        """Форматированная цена — вычисляется один раз."""
+        return f"{self.price:,.2f} ₽"
+
+    @lazy_property
+    def slug(self) -> str:
+        """URL-slug из имени — вычисляется один раз и кэшируется."""
+        import re
+        return re.sub(r"[^a-z0-9]+", "-", self.name.lower()).strip("-")
+
+    # -------------------------------------------------------------------
+    # Сериализация для API и БД
+    # -------------------------------------------------------------------
+
+    def to_api_dict(self) -> dict[str, Any]:
+        """Для FastAPI response_model / JSON API."""
+        return {
+            "sku": self.sku,
+            "name": self.name,
+            "price": float(self.price),
+            "display_price": self.display_price,
+            "quantity": self.quantity,
+            "owner_email": self.owner_email,
+            "tags": self.tags,
+            "slug": self.slug,
+        }
+
+    def to_db_dict(self) -> dict[str, Any]:
+        """Для INSERT/UPDATE в БД (без вычисляемых полей)."""
+        return {
+            "sku": self.sku,
+            "name": self.name,
+            "price": str(self.price),   # Decimal → str для PostgreSQL NUMERIC
+            "quantity": self.quantity,
+            "owner_email": self.owner_email,
+            "tags": json.dumps(self.tags),
+        }
+
+    @classmethod
+    def from_db_row(cls, row: dict[str, Any]) -> "ProductDTO":
+        """Восстановление из строки БД."""
+        return cls(
+            sku=row["sku"],
+            name=row["name"],
+            price=Decimal(row["price"]),
+            quantity=int(row["quantity"]),
+            owner_email=row["owner_email"],
+            tags=json.loads(row.get("tags", "[]")),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Демонстрация
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    # Создание с автоконвертацией типов
+    p = ProductDTO(
+        sku="  PROD-001  ",  # после strip → "PROD-001"
+        name="  Ноутбук ASUS  ",
+        price="59999.99",    # str → Decimal (coerce)
+        quantity="10",       # str → int (coerce)
+        owner_email="Admin@Example.COM",   # → admin@example.com (lower)
+        tags=["electronics", "laptops"],
+    )
+
+    print("API dict:", p.to_api_dict())
+    print("DB dict:", p.to_db_dict())
+    print("Slug:", p.slug)          # вычисляется и кэшируется
+    print("Slug again:", p.slug)    # из __dict__ без вызова функции
+
+    # Frozen: попытка изменить SKU → AttributeError
+    try:
+        p.sku = "NEW-SKU"
+    except AttributeError as e:
+        print(f"Frozen field: {e}")
+
+    # Ошибка валидации
+    try:
+        p.price = Decimal("-100")
+    except ValueError as e:
+        print(f"Validation error: {e}")
+
+    # Ошибка типа (без coerce)
+    try:
+        bad = ProductDTO(
+            sku="SKU-002", name="Test", price="not_a_number",
+            quantity=1, owner_email="test@test.com",
+        )
+    except TypeError as e:
+        print(f"Type error: {e}")
+
+    # Восстановление из БД
+    db_row = {
+        "sku": "PROD-001", "name": "Laptop", "price": "59999.99",
+        "quantity": "5", "owner_email": "admin@example.com", "tags": '["a","b"]',
+    }
+    restored = ProductDTO.from_db_row(db_row)
+    print("Restored from DB:", restored.to_api_dict())`,
+      },
+    ],
+    explanation: `**На что обратить внимание:**
+
+**Дескриптор данных vs не-данных дескриптор:**
+- \`TypedField\` реализует и \`__get__\`, и \`__set__\` → это **дескриптор данных**. Он имеет приоритет над \`instance.__dict__\`.
+- \`lazy_property\` реализует только \`__get__\` → это **не-данных дескриптор**. \`instance.__dict__\` имеет приоритет. Поэтому при первом вызове мы записываем значение в \`obj.__dict__[name]\`, и дальше Python берёт его оттуда, минуя дескриптор — это и есть кэширование.
+
+**Хранение в \`instance.__dict__\`, а не в дескрипторе:**
+Если хранить значения в самом дескрипторе (\`self._value = ...\`), все экземпляры класса будут делить одно значение (дескриптор один на класс). Правильно: \`obj.__dict__[self._private_name] = value\` — каждый экземпляр хранит своё значение.
+
+**\`__set_name__\` — автоматическое именование:**
+Вызывается Python при создании класса (\`type.__new__\`). Позволяет дескриптору узнать своё имя без явного указания: \`name = TypedField(str)\` вместо \`name = TypedField(str, name="name")\`.
+
+**Frozen через проверку \`_private_name in obj.__dict__\`:**
+Поле «заморожено» не с момента объявления, а с момента первой установки значения. Это позволяет \`__init__\` установить значение, но запрещает последующие изменения.
+
+**Совместимость с \`@dataclass\`:**
+\`@dataclass\` генерирует \`__init__\` который делает присваивания \`self.name = name\`. Дескриптор перехватывает эти присваивания через \`__set__\`. Важно: в аннотации ставим \`# type: ignore[assignment]\` потому что mypy не понимает что \`TypedField[str]\` совместим с \`str\`.`,
+  },
 ];
