@@ -1,5 +1,11 @@
 import { useState, useMemo } from "react";
-import { Search, ChevronRight, Terminal, ArrowLeft, BookOpen } from "lucide-react";
+import {
+  Search,
+  ChevronRight,
+  Terminal,
+  ArrowLeft,
+  BookOpen,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { terms, Term } from "@/data/terms";
 import { CodeBlock } from "@/components/CodeBlock";
@@ -10,9 +16,10 @@ export default function ReferencePage() {
 
   const filteredTerms = useMemo(() => {
     if (!searchQuery.trim()) return terms;
-    return terms.filter((term) =>
-      term.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      term.description.toLowerCase().includes(searchQuery.toLowerCase())
+    return terms.filter(
+      (term) =>
+        term.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        term.description.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [searchQuery]);
 
@@ -22,9 +29,8 @@ export default function ReferencePage() {
 
   return (
     <div className="flex h-[calc(100vh-4rem)] max-w-7xl mx-auto overflow-hidden bg-background">
-      
       {/* Sidebar - Hidden on mobile if a term is selected */}
-      <div 
+      <div
         className={`flex-col w-full md:w-80 lg:w-96 border-r border-border/50 bg-sidebar/50 flex-shrink-0 ${
           selectedTerm ? "hidden md:flex" : "flex"
         }`}
@@ -47,13 +53,15 @@ export default function ReferencePage() {
         <div className="flex-1 overflow-y-auto p-3 space-y-1">
           <AnimatePresence>
             {filteredTerms.length === 0 ? (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="text-center py-10 px-4 text-muted-foreground"
               >
                 <Terminal className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                <p className="text-sm">Ничего не найдено по запросу "{searchQuery}"</p>
+                <p className="text-sm">
+                  Ничего не найдено по запросу "{searchQuery}"
+                </p>
               </motion.div>
             ) : (
               filteredTerms.map((term) => (
@@ -67,11 +75,17 @@ export default function ReferencePage() {
                   }`}
                 >
                   <div>
-                    <span className="font-mono text-sm font-medium">{term.name}</span>
+                    <span className="font-mono text-lg font-medium">
+                      {term.name}
+                    </span>
                   </div>
-                  <ChevronRight className={`w-4 h-4 transition-transform ${
-                    selectedTermName === term.name ? "text-primary-foreground opacity-100" : "text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:translate-x-1"
-                  }`} />
+                  <ChevronRight
+                    className={`w-4 h-4 transition-transform ${
+                      selectedTermName === term.name
+                        ? "text-primary-foreground opacity-100"
+                        : "text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:translate-x-1"
+                    }`}
+                  />
                 </button>
               ))
             )}
@@ -80,13 +94,13 @@ export default function ReferencePage() {
       </div>
 
       {/* Main Content Area */}
-      <div 
+      <div
         className={`flex-1 flex-col overflow-y-auto bg-background/50 ${
           selectedTerm ? "flex" : "hidden md:flex"
         }`}
       >
         {selectedTerm ? (
-          <motion.div 
+          <motion.div
             key={selectedTerm.name}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -94,7 +108,7 @@ export default function ReferencePage() {
             className="max-w-4xl mx-auto w-full p-4 sm:p-6 lg:p-10"
           >
             {/* Mobile Back Button */}
-            <button 
+            <button
               onClick={() => setSelectedTermName(null)}
               className="md:hidden flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
             >
@@ -128,18 +142,27 @@ export default function ReferencePage() {
               {/* Arguments Section */}
               {selectedTerm.arguments.length > 0 && (
                 <section>
-                  <h2 className="text-xl font-semibold text-foreground mb-4">Аргументы</h2>
+                  <h2 className="text-xl font-semibold text-foreground mb-4">
+                    Аргументы
+                  </h2>
                   <div className="border border-border/50 rounded-2xl overflow-hidden bg-card shadow-sm">
                     <table className="w-full text-left text-sm">
                       <thead className="bg-muted/50 border-b border-border/50">
                         <tr>
-                          <th className="px-4 py-3 font-semibold text-foreground w-1/3">Параметр</th>
-                          <th className="px-4 py-3 font-semibold text-foreground">Описание</th>
+                          <th className="px-4 py-3 font-semibold text-foreground w-1/3">
+                            Параметр
+                          </th>
+                          <th className="px-4 py-3 font-semibold text-foreground">
+                            Описание
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/50">
                         {selectedTerm.arguments.map((arg, idx) => (
-                          <tr key={idx} className="hover:bg-muted/30 transition-colors">
+                          <tr
+                            key={idx}
+                            className="hover:bg-muted/30 transition-colors"
+                          >
                             <td className="px-4 py-3 align-top">
                               <code className="text-primary font-mono bg-primary/10 px-2 py-1 rounded-md text-xs">
                                 {arg.name}
@@ -158,7 +181,9 @@ export default function ReferencePage() {
 
               {/* Example Section */}
               <section>
-                <h2 className="text-xl font-semibold text-foreground mb-4">Пример использования</h2>
+                <h2 className="text-xl font-semibold text-foreground mb-4">
+                  Пример использования
+                </h2>
                 <CodeBlock code={selectedTerm.example} />
               </section>
             </div>
@@ -168,9 +193,12 @@ export default function ReferencePage() {
             <div className="w-20 h-20 bg-muted rounded-3xl flex items-center justify-center mb-6 shadow-inner rotate-3">
               <BookOpen className="w-10 h-10 text-muted-foreground -rotate-3" />
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">Справочник Python</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-2">
+              Справочник Python
+            </h2>
             <p className="text-muted-foreground max-w-md">
-              Выберите термин или метод из бокового меню слева, чтобы посмотреть его подробное описание, синтаксис и примеры использования.
+              Выберите термин или метод из бокового меню слева, чтобы посмотреть
+              его подробное описание, синтаксис и примеры использования.
             </p>
           </div>
         )}

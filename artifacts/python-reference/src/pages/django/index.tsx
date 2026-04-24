@@ -101,7 +101,7 @@ export default function DjangoPage() {
                             : "hover:bg-muted text-foreground"
                         }`}
                       >
-                        <span className="font-mono text-sm font-medium truncate">
+                        <span className="font-mono text-lg font-medium truncate">
                           {term.name}
                         </span>
                         <ChevronRight
