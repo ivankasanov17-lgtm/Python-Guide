@@ -8591,4 +8591,1345 @@ print(stats)
 # Для одного-двух Django-процессов достаточно ConnectionPool.
 # Для десятков воркеров и горизонтального масштабирования — pgbouncer/RDS Proxy.`,
   },
+  {
+    name: 'check',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py check — запускает встроенную систему проверок (system check framework) для всего проекта или указанных приложений. Проверяет конфигурацию настроек, корректность моделей (поля, индексы, related_name-конфликты), URL-конфигурацию, шаблоны, сторонние библиотеки. Выполняется автоматически перед runserver/migrate/test, но полезна как отдельный шаг в CI. Возвращает ненулевой exit-код при наличии ошибок указанного уровня и выше.',
+    syntax: 'manage.py check [app_label [app_label ...]] [--tag TAGS] [--database DATABASE] [--list-tags] [--deploy] [--fail-level LEVEL]',
+    arguments: [
+      {
+        name: 'app_label [app_label ...]',
+        description: 'Опциональный список меток приложений для проверки. Без аргументов проверяется весь проект.',
+      },
+      {
+        name: '--tag TAGS, -t TAGS',
+        description: 'Запустить только проверки с указанным тегом. Можно повторять флаг для нескольких тегов. Доступные теги: models, admin, security, urls, templates, translation, signals, async, caches, compatibility, database, files, staticfiles, sites.',
+      },
+      {
+        name: '--database DATABASE',
+        description: 'Алиас БД для проверок, требующих подключения (например, проверки backend-зависимых индексов и constraints). По умолчанию проверки БД пропускаются.',
+      },
+      {
+        name: '--list-tags',
+        description: 'Вывести список всех доступных тегов проверок и завершить. Полезно для исследования, какие подсистемы проверяются.',
+      },
+      {
+        name: '--deploy',
+        description: 'Включить дополнительные deployment-проверки (security.W001-W022): SECURE_SSL_REDIRECT, SESSION_COOKIE_SECURE, CSRF_COOKIE_SECURE, X_FRAME_OPTIONS, ALLOWED_HOSTS, SECRET_KEY и т. д. Обычно используется в CI с DEBUG=False.',
+      },
+      {
+        name: '--fail-level {CRITICAL,ERROR,WARNING,INFO,DEBUG}',
+        description: 'Минимальный уровень сообщения, при котором команда возвращает ненулевой exit-код. По умолчанию ERROR. WARNING делает CI строже (упадёт даже на предупреждениях).',
+      },
+    ],
+    example: `# Базовая проверка всего проекта
+$ python manage.py check
+System check identified no issues (0 silenced).
+
+# Только конкретные приложения
+$ python manage.py check myapp blog
+
+# Проверки только моделей
+$ python manage.py check --tag models
+
+# Несколько тегов сразу
+$ python manage.py check -t models -t admin -t urls
+
+# Список доступных тегов
+$ python manage.py check --list-tags
+admin
+async_support
+caches
+compatibility
+database
+files
+models
+security
+signals
+sites
+staticfiles
+templates
+translation
+urls
+
+# Deployment-проверки (для CI перед релизом)
+$ DJANGO_SETTINGS_MODULE=myproject.settings.production \\
+  python manage.py check --deploy --fail-level WARNING
+?: (security.W004) You have not set a value for the SECURE_HSTS_SECONDS setting.
+?: (security.W008) Your SECURE_SSL_REDIRECT setting is not set to True...
+System check identified some issues:
+ERRORS: ...
+
+# В CI/CD (GitHub Actions / GitLab CI)
+# - name: Django checks
+#   run: |
+#     python manage.py check --fail-level WARNING
+#     python manage.py check --deploy --fail-level WARNING
+#   env:
+#     DJANGO_SETTINGS_MODULE: myproject.settings.production
+
+# С проверкой БД (нужно подключение)
+$ python manage.py check --database default
+
+# Подавление конкретных предупреждений в settings.py
+SILENCED_SYSTEM_CHECKS = ['security.W004', 'fields.W342']
+
+# Кастомная проверка — регистрация в apps.py
+from django.core.checks import register, Warning, Tags
+
+@register(Tags.compatibility)
+def check_python_version(app_configs, **kwargs):
+    import sys
+    if sys.version_info < (3, 11):
+        return [Warning('Используется устаревшая версия Python', id='myapp.W001')]
+    return []`,
+  },
+  {
+    name: 'compilemessages',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py compilemessages — компилирует .po-файлы переводов в бинарные .mo-файлы, которые Django загружает в память при старте. Запускается после редактирования переводов в .po-файлах (вручную или через сервис типа Weblate/Transifex). Без шага компиляции переводы не будут видны Django — gettext читает только .mo. Сканирует папки locale/ во всех INSTALLED_APPS и в LOCALE_PATHS. Требует установленного gettext (msgfmt).',
+    syntax: 'manage.py compilemessages [--locale LOCALE] [--exclude EXCLUDE] [--use-fuzzy] [--ignore PATTERN]',
+    arguments: [
+      {
+        name: '--locale LOCALE, -l LOCALE',
+        description: 'Скомпилировать только указанную локаль (например, ru, en, de_AT). Можно повторять флаг для нескольких локалей. Без флага компилируются все найденные.',
+      },
+      {
+        name: '--exclude EXCLUDE, -x EXCLUDE',
+        description: 'Локаль, которую НЕ компилировать. Полезно при выборочной обработке (компилировать всё, кроме экспериментального языка).',
+      },
+      {
+        name: '--use-fuzzy, -f',
+        description: 'Включать в компиляцию переводы, помеченные как fuzzy (приблизительные, требующие ревью). По умолчанию игнорируются — соответствующая строка возвращается на исходном языке.',
+      },
+      {
+        name: '--ignore PATTERN, -i PATTERN',
+        description: 'Glob-паттерн каталогов, которые нужно пропустить при поиске .po-файлов. Можно повторять. Например: -i node_modules -i .venv.',
+      },
+    ],
+    example: `# Установка gettext (предварительно, на сервере/CI)
+# Ubuntu/Debian: apt install gettext
+# macOS:         brew install gettext
+# Windows:       https://mlocati.github.io/articles/gettext-iconv-windows.html
+
+# Структура переводов в проекте
+# myproject/
+# ├── locale/
+# │   ├── ru/LC_MESSAGES/django.po          ← редактируется человеком
+# │   ├── ru/LC_MESSAGES/django.mo          ← создаётся compilemessages
+# │   ├── en/LC_MESSAGES/django.po
+# │   └── en/LC_MESSAGES/django.mo
+
+# Полный цикл работы с переводами
+$ python manage.py makemessages -l ru -l en      # сгенерировать/обновить .po
+# ... отредактировать django.po (msgstr "перевод")
+$ python manage.py compilemessages                # скомпилировать .po → .mo
+
+# Только русский
+$ python manage.py compilemessages -l ru
+
+# Несколько локалей
+$ python manage.py compilemessages -l ru -l en -l de
+
+# Все, кроме экспериментальной локали
+$ python manage.py compilemessages -x experimental_lang
+
+# Включая fuzzy-переводы (риск показать неточный перевод)
+$ python manage.py compilemessages --use-fuzzy
+
+# Игнорировать сторонние пакеты
+$ python manage.py compilemessages -i node_modules -i venv
+
+# В CI/Docker — обязательный шаг сборки
+# Dockerfile:
+# RUN apt-get update && apt-get install -y gettext
+# RUN python manage.py compilemessages
+
+# Проверка результата
+$ ls locale/ru/LC_MESSAGES/
+django.mo  django.po
+
+# Использование в коде после компиляции:
+from django.utils.translation import gettext_lazy as _
+
+class Article(models.Model):
+    title = models.CharField(_('Заголовок'), max_length=200)
+    # При активной русской локали и наличии .mo вернёт перевод
+
+# settings.py
+LANGUAGE_CODE = 'ru'
+USE_I18N = True
+LOCALE_PATHS = [BASE_DIR / 'locale']               # доп. пути с переводами
+LANGUAGES = [('ru', 'Русский'), ('en', 'English')]
+
+# Если .mo нет — Django покажет msgid (исходную строку).
+# Если .mo есть, но устарел — увидите старый перевод. Перекомпилировать после
+# каждой правки .po обязательно.`,
+  },
+  {
+    name: 'createcachetable',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py createcachetable — создаёт в БД таблицы, используемые database-кешем (django.core.cache.backends.db.DatabaseCache). Имена таблиц берутся из CACHES["LOCATION"]. Команду нужно запускать однократно при первоначальной настройке кеша или при добавлении нового алиаса CACHES. Эквивалентна CREATE TABLE с правильной схемой (cache_key, value, expires) и индексами. Для других backend (Redis, Memcached, locmem, file) команда не нужна.',
+    syntax: 'manage.py createcachetable [--database DATABASE] [--dry-run]',
+    arguments: [
+      {
+        name: '--database DATABASE',
+        description: 'Алиас БД из DATABASES, в которой создавать таблицы. По умолчанию default. Полезно при использовании нескольких БД с DATABASE_ROUTERS.',
+      },
+      {
+        name: '--dry-run',
+        description: 'Не выполнять CREATE TABLE, а только напечатать SQL, который был бы выполнен. Полезно для просмотра схемы перед применением или для ручного запуска через миграции.',
+      },
+    ],
+    example: `# settings.py — конфигурация database cache
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'my_cache_table',         # имя таблицы в БД
+        'TIMEOUT': 300,                       # 5 минут по умолчанию
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,              # лимит записей
+            'CULL_FREQUENCY': 3,              # удалять 1/3 при превышении
+        },
+    },
+    'sessions': {                             # отдельный кеш для сессий
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'session_cache_table',
+    },
+}
+
+# Создать таблицы (один раз при настройке)
+$ python manage.py createcachetable
+Cache table 'my_cache_table' created.
+Cache table 'session_cache_table' created.
+
+# Команда создаст по таблице на каждый алиас CACHES типа DatabaseCache.
+
+# Просмотр генерируемого SQL без выполнения
+$ python manage.py createcachetable --dry-run
+BEGIN;
+CREATE TABLE "my_cache_table" (
+    "cache_key" varchar(255) NOT NULL PRIMARY KEY,
+    "value" text NOT NULL,
+    "expires" timestamp with time zone NOT NULL
+);
+CREATE INDEX "my_cache_table_expires" ON "my_cache_table" ("expires");
+COMMIT;
+
+# В отдельной БД
+$ python manage.py createcachetable --database=cache_db
+
+# Использование кеша после создания таблицы
+from django.core.cache import cache, caches
+
+cache.set('user:123:profile', user_data, timeout=600)
+cached = cache.get('user:123:profile')
+
+# Отдельный кеш-алиас
+caches['sessions'].set('session_xyz', session_data)
+
+# Когда database cache уместен:
+# + Не нужен отдельный сервис (Redis/Memcached) — всё в БД
+# + Транзакционная согласованность — кеш обновляется в одной транзакции
+# + Простой бэкап (вместе с обычным дампом БД)
+# - Медленнее Redis/Memcached на порядок (overhead SQL-запросов)
+# - Нагружает основную БД
+# - Подходит для small/medium-нагрузок (< 100 RPS)
+
+# Очистка устаревших записей — Django делает автоматически при cache.set()
+# (с вероятностью 1/CULL_FREQUENCY). Полная очистка вручную:
+cache.clear()                                 # DELETE FROM my_cache_table
+
+# Альтернатива через миграцию (для воспроизводимости):
+from django.core.management import call_command
+class Migration(migrations.Migration):
+    operations = [
+        migrations.RunPython(
+            lambda apps, schema_editor: call_command('createcachetable'),
+            reverse_code=migrations.RunPython.noop,
+        ),
+    ]`,
+  },
+  {
+    name: 'dbshell',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py dbshell — запускает интерактивную консоль СУБД (psql для PostgreSQL, mysql для MySQL/MariaDB, sqlplus для Oracle, sqlite3 для SQLite) с уже подставленными параметрами подключения из DATABASES. Удобна для быстрых ad-hoc запросов: не нужно искать пароль и хост, всё уже из settings.py. Требует установленного клиента БД на машине, где выполняется команда.',
+    syntax: 'manage.py dbshell [--database DATABASE] [-- ARGUMENTS]',
+    arguments: [
+      {
+        name: '--database DATABASE',
+        description: 'Алиас БД из DATABASES, к которой подключаться. По умолчанию default. Используется при наличии нескольких БД (replica, analytics).',
+      },
+      {
+        name: '-- ARGUMENTS',
+        description: 'Всё после "--" передаётся напрямую клиенту БД. Например: -- -c "SELECT 1" для psql выполнит запрос и выйдет; -- --html для psql включит HTML-вывод.',
+      },
+    ],
+    example: `# Открыть psql/mysql/sqlite3 для default-БД
+$ python manage.py dbshell
+psql (15.4)
+Type "help" for help.
+
+mydb=>
+
+# В psql — обычные команды
+mydb=> \\dt                            -- список таблиц
+mydb=> SELECT count(*) FROM auth_user;
+mydb=> \\d+ myapp_article              -- описание таблицы
+mydb=> \\q                             -- выход
+
+# Подключение к replica-БД
+$ python manage.py dbshell --database=replica
+
+# Передать аргументы клиенту (после --)
+$ python manage.py dbshell -- -c "SELECT count(*) FROM auth_user"
+ count
+-------
+   1234
+
+# Выполнить SQL-файл через psql
+$ python manage.py dbshell -- -f myscript.sql
+
+# Подавить заголовок psql и выводить только данные
+$ python manage.py dbshell -- -t -A -c "SELECT email FROM auth_user"
+
+# Для MySQL — те же принципы, но синтаксис клиентский
+$ python manage.py dbshell -- -e "SHOW TABLES"
+
+# Для SQLite — sqlite3 CLI
+$ python manage.py dbshell
+SQLite version 3.40.0
+sqlite> .tables
+sqlite> .schema auth_user
+sqlite> SELECT * FROM auth_user LIMIT 5;
+sqlite> .quit
+
+# Что нужно установить локально:
+#   PostgreSQL: psql        (apt install postgresql-client)
+#   MySQL:      mysql       (apt install mysql-client)
+#   SQLite:     sqlite3     (apt install sqlite3)
+#   Oracle:     sqlplus     (Oracle Instant Client)
+
+# Безопасность:
+# Команда логинится как DATABASES["..."]["USER"] с правами на write.
+# В production лучше использовать отдельного read-only пользователя
+# через --database=readonly алиас:
+DATABASES = {
+    'default':   {..., 'USER': 'app_rw'},
+    'readonly':  {..., 'USER': 'app_ro'},     # только SELECT
+}
+$ python manage.py dbshell --database=readonly
+
+# В Replit/Heroku — клиент psql обычно уже установлен,
+# можно подключиться к production-БД одной командой:
+$ python manage.py dbshell                    # параметры из env-переменных`,
+  },
+  {
+    name: 'diffsettings',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py diffsettings — выводит, какие настройки в текущем settings.py отличаются от значений по умолчанию Django. Незаменима при отладке: «почему у меня не работает middleware?» — посмотрите, что переопределено. Также полезна при ревизии конфигурации production vs development. По умолчанию формат "###" — звёздочки слева отмечают изменённые. Поддерживает unified-diff формат (как git diff) для копирования в issue/PR.',
+    syntax: 'manage.py diffsettings [--all] [--default MODULE] [--output {hash,unified}]',
+    arguments: [
+      {
+        name: '--all',
+        description: 'Показать все настройки (включая совпадающие с дефолтом). Без флага показываются только переопределённые.',
+      },
+      {
+        name: '--default MODULE',
+        description: 'Сравнивать с указанным модулем настроек, а не с django.conf.global_settings. Используется для сравнения, например, settings.production против settings.base.',
+      },
+      {
+        name: '--output {hash,unified}',
+        description: 'Формат вывода. hash — стандартный с "###" префиксами. unified — git-style diff с "+"/"-" префиксами, удобен для код-ревью и копирования в PR.',
+      },
+    ],
+    example: `# Базовый вывод — отличия от django.conf.global_settings
+$ python manage.py diffsettings
+ALLOWED_HOSTS = ['example.com', 'www.example.com']
+DATABASES = {'default': {'ENGINE': 'django.db.backends.postgresql', ...}}
+DEBUG = False
+INSTALLED_APPS = ['django.contrib.admin', 'django.contrib.auth', ...]
+SECRET_KEY = '<secret>'
+TEMPLATES = [{'BACKEND': 'django.template.backends.django.DjangoTemplates', ...}]
+TIME_ZONE = 'Europe/Moscow'
+### USE_I18N = True
+### USE_TZ = True
+###  — означает, что значение совпадает с дефолтом Django (но было явно переопределено)
+
+# Все настройки, включая дефолтные
+$ python manage.py diffsettings --all
+
+# Сравнение с собственным base settings (наследование)
+# myproject/settings/base.py        — базовые
+# myproject/settings/production.py  — production-специфика (наследует base)
+$ DJANGO_SETTINGS_MODULE=myproject.settings.production \\
+  python manage.py diffsettings --default=myproject.settings.base
+DEBUG = False
+ALLOWED_HOSTS = ['example.com']
+SECURE_SSL_REDIRECT = True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+DATABASES = {...}                              # с production-параметрами
+# Видно ровно то, что добавляет production к base.
+
+# Unified-формат для PR/code review
+$ python manage.py diffsettings --output=unified
+- ALLOWED_HOSTS = []
++ ALLOWED_HOSTS = ['example.com', 'www.example.com']
+- DEBUG = True
++ DEBUG = False
+- TIME_ZONE = 'America/Chicago'
++ TIME_ZONE = 'Europe/Moscow'
+
+# Типичный сценарий — выяснить причину неожиданного поведения
+$ python manage.py diffsettings | grep -i middleware
+MIDDLEWARE = ['django.middleware.security.SecurityMiddleware', ...]
+# → точный порядок и состав middleware
+
+$ python manage.py diffsettings | grep -i database
+DATABASES = {'default': {'ENGINE': 'django.db.backends.postgresql', ...}}
+
+# Проверка production-конфигурации в CI
+$ DJANGO_SETTINGS_MODULE=myproject.settings.production \\
+  python manage.py diffsettings --output=unified > settings.diff
+# Сохранить результат как артефакт CI и просматривать в PR.
+
+# Безопасность:
+# diffsettings выводит SECRET_KEY, DATABASES.PASSWORD и другие секреты.
+# В CI-логах и баг-репортах — фильтровать перед публикацией:
+$ python manage.py diffsettings | \\
+  sed 's/PASSWORD.*/PASSWORD=<redacted>/' | \\
+  sed "s/SECRET_KEY.*/SECRET_KEY='<redacted>'/"`,
+  },
+  {
+    name: 'dumpdata',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py dumpdata — сериализует содержимое БД в формат, пригодный для последующей загрузки через loaddata. По умолчанию JSON; поддерживается также XML и YAML. Используется для бэкапов фикстур, миграции данных между средами (dev → staging), создания seed-данных для тестов. Без аргументов выгружает все приложения; можно сузить до конкретных моделей. Не подходит для бэкапа большой production-БД — вместо неё используйте pg_dump/mysqldump.',
+    syntax: 'manage.py dumpdata [app_label[.ModelName] ...] [--all] [--format FORMAT] [--indent INDENT] [--exclude EXCLUDE] [--database DATABASE] [--natural-foreign] [--natural-primary] [--pks PRIMARY_KEYS] [--output OUTPUT]',
+    arguments: [
+      {
+        name: 'app_label[.ModelName] ...',
+        description: 'Список приложений или конкретных моделей для выгрузки. Без аргументов выгружаются все. Формат: "myapp" (всё приложение) или "myapp.Article" (только одна модель).',
+      },
+      {
+        name: '--all, -a',
+        description: 'Использовать default-менеджер вместо стандартного — возвращает ВСЕ объекты, включая отфильтрованные кастомным менеджером (например, soft-deleted записи).',
+      },
+      {
+        name: '--format FORMAT',
+        description: 'Формат сериализации: json (по умолчанию), xml, yaml. Для YAML требуется PyYAML, для XML — встроено.',
+      },
+      {
+        name: '--indent INDENT',
+        description: 'Количество пробелов отступа в выходном JSON/XML для читаемости. Без флага — компактный однострочный вывод.',
+      },
+      {
+        name: '--exclude EXCLUDE, -e EXCLUDE',
+        description: 'Приложение или модель, которое НЕ выгружать. Можно повторять. Часто исключают auth.permission и contenttypes — Django их пересоздаёт автоматически.',
+      },
+      {
+        name: '--database DATABASE',
+        description: 'Алиас БД, из которой выгружать данные. По умолчанию default.',
+      },
+      {
+        name: '--natural-foreign',
+        description: 'Использовать natural keys для FK-связей вместо численных pk. Делает дамп переносимым между БД с разными pk-нумерациями. Требует, чтобы у моделей был natural_key()-метод и менеджер с get_by_natural_key().',
+      },
+      {
+        name: '--natural-primary',
+        description: 'Использовать natural keys и для самих pk выгружаемых объектов, не только для FK. Делает дамп полностью независимым от численных id.',
+      },
+      {
+        name: '--pks PRIMARY_KEYS',
+        description: 'Выгрузить только объекты с указанными pk (через запятую, без пробелов: "1,5,42"). Работает только при выгрузке одной модели (myapp.Article).',
+      },
+      {
+        name: '--output OUTPUT, -o OUTPUT',
+        description: 'Файл для записи. Без флага — вывод в stdout. С флагом поддерживается потоковая запись и автоматическое сжатие по расширению (.gz, .bz2, .xz, .lzma).',
+      },
+    ],
+    example: `# Выгрузить весь проект в JSON (stdout)
+$ python manage.py dumpdata > backup.json
+
+# С отступами для читаемости
+$ python manage.py dumpdata --indent 2 > backup.json
+
+# Только одно приложение
+$ python manage.py dumpdata blog > blog_data.json
+
+# Только конкретная модель
+$ python manage.py dumpdata blog.Article > articles.json
+
+# Несколько моделей сразу
+$ python manage.py dumpdata blog.Article blog.Comment auth.User -o data.json
+
+# Конкретные записи по pk
+$ python manage.py dumpdata blog.Article --pks 1,5,42
+
+# Исключить системные таблицы (стандартная практика)
+$ python manage.py dumpdata \\
+    --exclude auth.permission \\
+    --exclude contenttypes \\
+    --exclude admin.logentry \\
+    --exclude sessions \\
+    -o full_backup.json
+# Эти таблицы Django пересоздаёт сам на основе моделей и миграций —
+# их выгрузка приводит к конфликтам id при loaddata.
+
+# С natural keys для переносимости
+$ python manage.py dumpdata blog \\
+    --natural-foreign --natural-primary \\
+    --indent 2 -o blog_fixture.json
+# Пример: ContentType вместо id будет ["app_label", "model"] —
+# совпадёт на любой инсталляции.
+
+# В YAML
+$ python manage.py dumpdata blog --format=yaml -o blog.yaml
+
+# Со сжатием (определяется по расширению файла)
+$ python manage.py dumpdata -o backup.json.gz       # gzip
+$ python manage.py dumpdata -o backup.json.xz       # xz
+$ python manage.py dumpdata -o backup.json.bz2      # bzip2
+
+# Из replica-БД
+$ python manage.py dumpdata --database=replica blog > blog.json
+
+# Создание seed-фикстур для тестов
+$ python manage.py dumpdata blog.Category --indent 2 \\
+    -o blog/fixtures/categories.json
+# В тестах:
+# class BlogTest(TestCase):
+#     fixtures = ['categories.json']
+
+# Загрузка обратно
+$ python manage.py loaddata backup.json
+
+# Включая объекты, отфильтрованные кастомным менеджером (soft-delete)
+class Article(models.Model):
+    is_deleted = models.BooleanField(default=False)
+    objects = ActiveManager()                 # фильтрует is_deleted=True
+    all_objects = models.Manager()            # видит всё
+
+$ python manage.py dumpdata blog.Article --all > with_deleted.json
+
+# ВАЖНО: НЕ использовать для бэкапа production-БД целиком
+# Минусы:
+#   - грузит всё в память (OOM на больших таблицах)
+#   - не сохраняет sequences/auto_increment счётчики
+#   - не воспроизводит точную схему (только данные)
+#   - медленно для миллионов записей
+# Для production-бэкапа: pg_dump (PG), mysqldump (MySQL), sqlite3 .backup`,
+  },
+  {
+    name: 'flush',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py flush — удаляет ВСЕ данные из БД (кроме структуры таблиц), сбрасывает счётчики автоинкремента и заново выполняет post-migrate сигналы (которые создают начальные данные: ContentType, Permission, дефолтные Site и т.п.). Эквивалент TRUNCATE для всех управляемых Django таблиц. Не удаляет миграции — схема остаётся. Используется для очистки dev/staging-БД, между прогонами интеграционных тестов, для сброса состояния перед загрузкой свежей фикстуры. На production использовать опасно.',
+    syntax: 'manage.py flush [--noinput] [--database DATABASE]',
+    arguments: [
+      {
+        name: '--noinput, --no-input',
+        description: 'Пропустить интерактивное подтверждение «Are you sure? Type yes to continue». Обязательно для использования в скриптах/CI. Без флага команда зависнет в ожидании ввода.',
+      },
+      {
+        name: '--database DATABASE',
+        description: 'Алиас БД из DATABASES, которую очищать. По умолчанию default. Для каждой БД flush нужно вызывать отдельно.',
+      },
+    ],
+    example: `# Базовое использование (с подтверждением)
+$ python manage.py flush
+You have requested a flush of the database.
+This will IRREVERSIBLY DESTROY all data currently in the 'mydb' database,
+and return each table to an empty state.
+Are you sure you want to do this?
+    Type 'yes' to continue, or 'no' to cancel: yes
+Installed 0 object(s) from 0 fixture(s)
+
+# Без подтверждения (для скриптов и CI)
+$ python manage.py flush --noinput
+
+# Конкретная БД (если несколько в DATABASES)
+$ python manage.py flush --database=test_db --noinput
+
+# Что именно делает flush:
+# 1. Для каждой таблицы из INSTALLED_APPS: DELETE FROM <table>;
+# 2. Сброс sequence/auto_increment счётчиков (ALTER SEQUENCE ... RESTART)
+# 3. Снова отправляет сигнал post_migrate — переcоздаются:
+#    - ContentType для всех моделей
+#    - Permission (add/change/delete/view) на каждую модель
+#    - django.contrib.sites.Site (если установлен)
+# 4. Загружает initial fixtures (если объявлены)
+
+# Что flush НЕ делает (в отличие от schema-сброса):
+#   - не удаляет таблицы (DROP TABLE)
+#   - не удаляет миграции
+#   - не трогает django_migrations таблицу
+#   - не пересоздаёт схему
+
+# Типичные сценарии:
+
+# 1. Очистка dev-БД перед загрузкой свежей фикстуры
+$ python manage.py flush --noinput
+$ python manage.py loaddata seed.json
+
+# 2. Между интеграционными тестами в CI
+- name: Reset DB
+  run: python manage.py flush --noinput
+- name: Load test data
+  run: python manage.py loaddata tests/fixtures/data.json
+
+# 3. Сброс staging после демо
+$ DJANGO_SETTINGS_MODULE=myproject.settings.staging \\
+  python manage.py flush --noinput
+
+# Альтернативы для разных целей:
+
+# Полное пересоздание схемы (удалить всё, включая структуру):
+$ python manage.py sqlflush          # SQL для очистки (без выполнения)
+$ dropdb mydb && createdb mydb       # удалить и создать БД заново
+$ python manage.py migrate
+
+# Только конкретная модель (без flush):
+Article.objects.all().delete()        # ORM, медленно для миллионов
+Article.objects.raw('TRUNCATE TABLE myapp_article')  # быстро, но без сигналов
+
+# ОПАСНОСТЬ В PRODUCTION:
+# flush безвозвратно удаляет ВСЕ пользовательские данные.
+# Защита от случайного запуска в production — проверка settings:
+import sys
+from django.conf import settings
+if 'flush' in sys.argv and not settings.DEBUG:
+    raise SystemExit('flush запрещён при DEBUG=False')
+# Или ограничить через права на БД (READ-ONLY в production).`,
+  },
+  {
+    name: 'inspectdb',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py inspectdb — анализирует существующую схему БД и генерирует Python-код моделей Django, соответствующий найденным таблицам. Незаменима при подключении Django к legacy-БД (которая существовала до Django) или при импорте схемы из внешней системы. Сгенерированные модели помечены как managed = False — Django не будет их менять через миграции. Поддерживает таблицы, представления (views) и партиции. Не идеальна — после генерации модели обычно требуют ручной правки (related_name, choices, типы для редких колонок).',
+    syntax: 'manage.py inspectdb [table [table ...]] [--database DATABASE] [--include-partitions] [--include-views]',
+    arguments: [
+      {
+        name: 'table [table ...]',
+        description: 'Опциональный список конкретных таблиц для инспекции. Без аргументов сканируются все таблицы в БД.',
+      },
+      {
+        name: '--database DATABASE',
+        description: 'Алиас БД для инспекции. По умолчанию default. Используется при подключении к нескольким БД (legacy + Django).',
+      },
+      {
+        name: '--include-partitions',
+        description: 'Включать partition-таблицы PostgreSQL (CREATE TABLE ... PARTITION OF ...). По умолчанию пропускаются. Только для PostgreSQL.',
+      },
+      {
+        name: '--include-views',
+        description: 'Включать database views в результат генерации. По умолчанию обрабатываются только обычные таблицы. View превращаются в managed=False модели для read-only доступа через ORM.',
+      },
+    ],
+    example: `# Базовое использование — вывести модели всех таблиц в stdout
+$ python manage.py inspectdb > models.py
+
+# Только указанные таблицы
+$ python manage.py inspectdb users orders products > legacy_models.py
+
+# Из конкретной БД
+$ python manage.py inspectdb --database=legacy > legacy/models.py
+
+# Включая views (для read-only доступа через ORM)
+$ python manage.py inspectdb --include-views
+
+# Включая партиции (PostgreSQL)
+$ python manage.py inspectdb --include-partitions
+
+# Пример сгенерированного результата:
+# This is an auto-generated Django model module.
+# You'll have to do the following manually to clean this up:
+#   * Rearrange models' order
+#   * Make sure each model has one field with primary_key=True
+#   * Make sure each ForeignKey and OneToOneField has on_delete set
+#   * Remove 'managed = False' lines if you wish to allow Django
+#     to create, modify, and delete the table
+from django.db import models
+
+class LegacyUsers(models.Model):
+    id = models.AutoField(primary_key=True)
+    email = models.CharField(unique=True, max_length=255)
+    created_at = models.DateTimeField()
+    company = models.ForeignKey('LegacyCompanies', models.DO_NOTHING, blank=True, null=True)
+
+    class Meta:
+        managed = False                       # Django не будет создавать/менять таблицу
+        db_table = 'legacy_users'             # точное имя из БД
+
+class LegacyCompanies(models.Model):
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=255)
+
+    class Meta:
+        managed = False
+        db_table = 'legacy_companies'
+
+# Типичный workflow подключения к legacy-БД:
+
+# 1. Добавить алиас БД в settings.py
+DATABASES = {
+    'default': {'ENGINE': 'django.db.backends.postgresql', 'NAME': 'newapp'},
+    'legacy':  {'ENGINE': 'django.db.backends.mysql',      'NAME': 'oldsystem'},
+}
+
+# 2. Сгенерировать модели
+$ python manage.py inspectdb --database=legacy > apps/legacy/models.py
+
+# 3. Создать router для маршрутизации запросов
+# apps/legacy/routers.py
+class LegacyRouter:
+    def db_for_read(self, model, **hints):
+        if model._meta.app_label == 'legacy':
+            return 'legacy'
+        return None
+    db_for_write = db_for_read
+    def allow_migrate(self, db, app_label, **hints):
+        return None if app_label != 'legacy' else False
+
+DATABASE_ROUTERS = ['apps.legacy.routers.LegacyRouter']
+
+# 4. Использовать как обычные модели Django
+from apps.legacy.models import LegacyUsers
+LegacyUsers.objects.using('legacy').filter(email__endswith='@example.com')
+
+# Что нужно поправить вручную после inspectdb:
+#   - on_delete у ForeignKey (по умолчанию ставит DO_NOTHING)
+#   - related_name (генерируются автоматически как 'X_set', часто конфликтуют)
+#   - choices для enum-колонок (inspectdb не угадывает)
+#   - проверить max_length у CharField (особенно для MySQL TEXT vs VARCHAR)
+#   - composite primary keys (Django <5.2 не поддерживает — ставится unique_together)
+#   - column types, которые inspectdb не распознал — будут как TextField с комментарием
+
+# Для views (read-only):
+$ python manage.py inspectdb --include-views v_user_stats > stats_models.py
+# Сгенерированная модель:
+class VUserStats(models.Model):
+    user_id = models.IntegerField(primary_key=True)
+    total_orders = models.IntegerField()
+    last_login = models.DateTimeField()
+    class Meta:
+        managed = False
+        db_table = 'v_user_stats'`,
+  },
+  {
+    name: 'loaddata',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py loaddata — загружает в БД фикстуры (JSON/XML/YAML), созданные через dumpdata или написанные вручную. Используется для seed-данных, тестовых данных, начального состояния production. Поиск файлов идёт в FIXTURE_DIRS, в подпапках fixtures/ всех INSTALLED_APPS, и по абсолютному пути. Поддерживает сжатые файлы (.gz, .bz2, .xz, .zip). Загрузка идёт в одной транзакции — при ошибке откатывается полностью. Может загружать в любую БД, включая через app_label (если фикстура неоднозначна).',
+    syntax: 'manage.py loaddata fixture [fixture ...] [--database DATABASE] [--ignorenonexistent] [--app APP_LABEL] [--format FORMAT] [--exclude EXCLUDE]',
+    arguments: [
+      {
+        name: 'fixture [fixture ...]',
+        description: 'Имена фикстур для загрузки (без расширения, например "categories") или полный путь ("/path/to/data.json"). Без расширения Django ищет во всех известных каталогах и форматах.',
+      },
+      {
+        name: '--database DATABASE',
+        description: 'Алиас БД из DATABASES, в которую загружать. По умолчанию default.',
+      },
+      {
+        name: '--ignorenonexistent, -i',
+        description: 'Игнорировать в фикстуре поля и модели, которых больше нет в схеме. Без флага загрузка падает с ошибкой. Полезно при загрузке старых дампов после удаления полей/моделей.',
+      },
+      {
+        name: '--app APP_LABEL',
+        description: 'Искать фикстуру только внутри одного указанного приложения. Используется для разрешения неоднозначности, когда фикстура с одинаковым именем есть в нескольких приложениях.',
+      },
+      {
+        name: '--format FORMAT',
+        description: 'Явный формат фикстуры (json, xml, yaml). Нужен только когда имя файла без расширения и Django не может угадать формат.',
+      },
+      {
+        name: '--exclude EXCLUDE, -e EXCLUDE',
+        description: 'Не загружать объекты указанного приложения или модели из фикстуры. Можно повторять флаг. Например: -e contenttypes -e auth.permission.',
+      },
+    ],
+    example: `# Базовая загрузка по имени (Django сам найдёт файл)
+$ python manage.py loaddata initial_data
+Installed 42 object(s) from 1 fixture(s)
+
+# Поиск идёт в:
+#   1. <app>/fixtures/initial_data.{json,xml,yaml,json.gz,...} для каждого app
+#   2. Каталоги из FIXTURE_DIRS
+#   3. Абсолютный/относительный путь, если содержит /
+
+# settings.py — добавить общий каталог фикстур
+FIXTURE_DIRS = [BASE_DIR / 'fixtures']
+
+# Несколько фикстур (загружаются в порядке указания)
+$ python manage.py loaddata users articles comments
+
+# Прямой путь к файлу
+$ python manage.py loaddata /backups/2026-04-29.json.gz
+
+# Сжатые файлы (формат определяется по расширению)
+$ python manage.py loaddata snapshot.json.gz
+$ python manage.py loaddata snapshot.json.xz
+$ python manage.py loaddata snapshot.json.bz2
+
+# В конкретную БД
+$ python manage.py loaddata --database=staging seed.json
+
+# Игнорировать удалённые поля/модели (старый дамп → новая схема)
+$ python manage.py loaddata --ignorenonexistent old_backup.json
+# Без флага: DeserializationError: KeyError: 'removed_field'
+
+# Из конкретного приложения (разрешение неоднозначности)
+# Если есть apps/blog/fixtures/categories.json и apps/shop/fixtures/categories.json
+$ python manage.py loaddata categories --app blog
+
+# Исключить системные таблицы
+$ python manage.py loaddata full_dump.json \\
+    --exclude contenttypes \\
+    --exclude auth.permission
+
+# Формат фикстуры (JSON):
+[
+    {
+        "model": "blog.category",
+        "pk": 1,
+        "fields": {
+            "name": "Технологии",
+            "slug": "tech"
+        }
+    },
+    {
+        "model": "blog.article",
+        "pk": 1,
+        "fields": {
+            "title": "Введение в Django",
+            "category": 1,
+            "author": ["admin@example.com"]    // natural key для FK
+        }
+    }
+]
+
+# Формат с natural keys (если фикстура была создана с --natural-foreign):
+[
+    {
+        "model": "contenttypes.contenttype",
+        "fields": {"app_label": "blog", "model": "article"}
+    }
+]
+
+# Использование в тестах
+class BlogTest(TestCase):
+    fixtures = ['categories.json', 'sample_articles.json']
+    # Django вызовет loaddata перед каждым тестом класса.
+    # Файлы ищутся в <app>/fixtures/.
+
+# В миграции через RunPython
+from django.core.management import call_command
+def load_initial(apps, schema_editor):
+    call_command('loaddata', 'initial_categories', app_label='blog')
+
+class Migration(migrations.Migration):
+    operations = [migrations.RunPython(load_initial, reverse_code=migrations.RunPython.noop)]
+
+# Транзакционность:
+# Все объекты из всех указанных фикстур грузятся в ОДНОЙ транзакции.
+# Ошибка в любой → откат всего, БД остаётся как была.
+# Большие фикстуры (миллионы строк) → риск долгой блокировки и OOM.
+# Для больших дампов — лучше pg_restore/mysql import.
+
+# Pre/post save сигналы НЕ срабатывают при loaddata
+# (используется raw=True в save). Это критично для пользовательских
+# полей с авто-вычислениями — они не сработают, нужно дублировать в фикстуре.`,
+  },
+  {
+    name: 'makemessages',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py makemessages — сканирует исходники проекта на наличие строк, отмеченных для перевода (gettext, gettext_lazy, _(), {% trans %}, {% blocktrans %}), и генерирует/обновляет .po-файлы для указанных языков. Это первый этап i18n-цикла; после правки .po вручную (или через Weblate/POEdit) нужен compilemessages для создания бинарных .mo. По умолчанию обрабатывает .py, .html, .txt; через --extension добавляются другие. Требует установленного xgettext (часть пакета gettext).',
+    syntax: 'manage.py makemessages [--all] [--extension EXTENSIONS] [--locale LOCALE] [--exclude EXCLUDE] [--domain DOMAIN] [--symlinks] [--ignore PATTERN] [--no-default-ignore] [--no-wrap] [--no-location] [--add-location {full,file,never}] [--no-obsolete] [--keep-pot]',
+    arguments: [
+      {
+        name: '--all, -a',
+        description: 'Обновить .po-файлы для ВСЕХ существующих локалей в проекте. Удобно после массовой правки исходников. Несовместимо с --locale.',
+      },
+      {
+        name: '--extension EXTENSIONS, -e EXTENSIONS',
+        description: 'Дополнительные расширения файлов для сканирования (через запятую или повторяющийся флаг). По умолчанию: html, txt, py. Например: -e html,txt,jinja для шаблонов Jinja.',
+      },
+      {
+        name: '--locale LOCALE, -l LOCALE',
+        description: 'Создать/обновить .po для указанной локали (ru, en_GB, de_AT). Можно повторять для нескольких. Если каталога нет, будет создан.',
+      },
+      {
+        name: '--exclude EXCLUDE, -x EXCLUDE',
+        description: 'Локаль, которую НЕ обновлять при использовании --all. Полезно для исключения экспериментальных языков.',
+      },
+      {
+        name: '--domain DOMAIN, -d DOMAIN',
+        description: 'Домен переводов: django (по умолчанию, для UI и шаблонов) или djangojs (для JavaScript-переводов через django.views.i18n.JavaScriptCatalog). Создаёт django.po или djangojs.po.',
+      },
+      {
+        name: '--symlinks, -s',
+        description: 'Следовать символическим ссылкам при сканировании каталогов. По умолчанию игнорируются.',
+      },
+      {
+        name: '--ignore PATTERN, -i PATTERN',
+        description: 'Glob-паттерн файлов/каталогов для пропуска при сканировании. Можно повторять. По умолчанию игнорируются CVS, .*, *~, *.pyc.',
+      },
+      {
+        name: '--no-default-ignore',
+        description: 'Не использовать список игнорируемых по умолчанию (CVS, .*, *~, *.pyc). Нужен только в специфических случаях, обычно не используется.',
+      },
+      {
+        name: '--no-wrap',
+        description: 'Не переносить длинные строки в .po-файле (msgid/msgstr остаются в одну строку). Удобно для git-diff: убирает шум от переноса при незначительных правках.',
+      },
+      {
+        name: '--no-location',
+        description: 'Не добавлять комментарии "#: file.py:42" с указанием места использования строки. Уменьшает diff при рефакторинге, но затрудняет переводчику поиск контекста.',
+      },
+      {
+        name: '--add-location [{full,file,never}]',
+        description: 'Уровень детализации location-комментариев. full (по умолчанию) — файл и строка, file — только файл, never — без location (эквивалент --no-location). Доступно с Django 2.2.',
+      },
+      {
+        name: '--no-obsolete',
+        description: 'Не сохранять в .po устаревшие переводы (помечаются как #~ msgid). По умолчанию сохраняются — позволяют переиспользовать перевод при возврате удалённой строки.',
+      },
+      {
+        name: '--keep-pot',
+        description: 'Не удалять временный .pot-файл (POT — Portable Object Template), создаваемый xgettext. По умолчанию удаляется после генерации .po. Нужен для сторонних инструментов (Weblate, Transifex).',
+      },
+    ],
+    example: `# Установка gettext (обязательно)
+# Ubuntu/Debian: apt install gettext
+# macOS:         brew install gettext
+# Windows:       https://mlocati.github.io/articles/gettext-iconv-windows.html
+
+# 1. Пометить строки для перевода в коде
+# views.py
+from django.utils.translation import gettext as _, gettext_lazy
+from django.shortcuts import render
+
+def home(request):
+    title = _('Добро пожаловать')
+    return render(request, 'home.html', {'title': title})
+
+# models.py — для атрибутов классов всегда _lazy
+class Article(models.Model):
+    title = models.CharField(gettext_lazy('Заголовок'), max_length=200)
+
+# Шаблон home.html
+{% load i18n %}
+<h1>{% trans "Добро пожаловать" %}</h1>
+{% blocktrans with name=user.username %}
+    Привет, {{ name }}!
+{% endblocktrans %}
+
+# 2. Сгенерировать .po для русского и английского
+$ python manage.py makemessages -l ru -l en
+processing locale ru
+processing locale en
+# Создаст: locale/ru/LC_MESSAGES/django.po
+#         locale/en/LC_MESSAGES/django.po
+
+# 3. Обновить ВСЕ существующие локали (после изменения исходников)
+$ python manage.py makemessages --all
+
+# Сканирование Jinja2-шаблонов
+$ python manage.py makemessages -l ru -e html,txt,jinja
+
+# Несколько расширений через запятую
+$ python manage.py makemessages -l ru --extension=html,txt,py,vue
+
+# JavaScript-переводы (отдельный домен)
+$ python manage.py makemessages -d djangojs -l ru
+# Создаст locale/ru/LC_MESSAGES/djangojs.po
+# Затем подключить в urls.py:
+# from django.views.i18n import JavaScriptCatalog
+# path('jsi18n/', JavaScriptCatalog.as_view(), name='javascript-catalog')
+
+# Игнорировать сторонние библиотеки
+$ python manage.py makemessages -l ru \\
+    --ignore=node_modules \\
+    --ignore=venv \\
+    --ignore=.tox \\
+    --ignore=staticfiles
+
+# Уменьшить шум в git-diff (для команд, чувствительных к diff)
+$ python manage.py makemessages --all --no-wrap --add-location=file
+# --no-wrap: длинные строки в одну строку
+# --add-location=file: только файл без номеров строк
+
+# Без location-комментариев вообще (минимальный diff)
+$ python manage.py makemessages --all --no-location
+
+# Не сохранять obsolete-переводы (чище .po, но теряются возможные восстановления)
+$ python manage.py makemessages --all --no-obsolete
+
+# Сохранить .pot-файл для Weblate/Transifex
+$ python manage.py makemessages -l ru --keep-pot
+# Появится locale/django.pot — шаблонный файл без переводов
+
+# 4. Структура сгенерированного .po
+# locale/ru/LC_MESSAGES/django.po
+# msgid ""
+# msgstr ""
+# "Content-Type: text/plain; charset=UTF-8\\n"
+# "Language: ru\\n"
+#
+# #: views.py:8
+# msgid "Добро пожаловать"
+# msgstr ""           ← переводчик заполняет
+#
+# #: models.py:5
+# msgid "Заголовок"
+# msgstr ""
+
+# 5. После заполнения переводов
+$ python manage.py compilemessages
+
+# Полный CI-цикл (проверка свежести переводов):
+$ python manage.py makemessages --all --no-obsolete
+$ git diff --exit-code locale/    # упадёт, если в коде есть непереведённые новые строки`,
+  },
+  {
+    name: 'makemigrations',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py makemigrations — анализирует текущее состояние моделей в коде, сравнивает с последней миграцией каждого приложения и создаёт новый файл миграции с операциями (CreateModel, AddField, AlterField, RemoveField, RunSQL и т.п.) для приведения схемы к новому состоянию. Не выполняет SQL — только генерирует Python-описание изменений. Применяется командой migrate. При конфликтующих миграциях из разных веток помогает --merge.',
+    syntax: 'manage.py makemigrations [app_label [app_label ...]] [--noinput] [--empty] [--dry-run] [--merge] [--name NAME] [--no-header] [--check] [--scriptable] [--update]',
+    arguments: [
+      {
+        name: 'app_label [app_label ...]',
+        description: 'Опциональный список приложений, для которых генерировать миграции. Без аргументов сканируются все приложения из INSTALLED_APPS.',
+      },
+      {
+        name: '--noinput, --no-input',
+        description: 'Не задавать интерактивные вопросы (например, «какое значение по умолчанию для нового NOT NULL поля?»). Если ответ требуется — команда падает. Используется в CI.',
+      },
+      {
+        name: '--empty',
+        description: 'Создать пустую миграцию (без операций) для последующего ручного заполнения, например через RunPython или RunSQL для data migration.',
+      },
+      {
+        name: '--dry-run',
+        description: 'Показать, что было бы сгенерировано, но не создавать файлы миграций. Полезно для проверки в CI или перед commit.',
+      },
+      {
+        name: '--merge',
+        description: 'Создать merge-миграцию для разрешения конфликта, когда в одном приложении есть несколько последних миграций (например, после merge git-веток). Не генерирует SQL-операции, только объявляет зависимости.',
+      },
+      {
+        name: '--name NAME, -n NAME',
+        description: 'Кастомное имя миграции (без префикса 0001_). По умолчанию Django генерирует имя из первой операции (например, 0042_alter_article_title). Полезно для семантических имён data migration.',
+      },
+      {
+        name: '--no-header',
+        description: 'Не добавлять комментарий-заголовок «Generated by Django X.Y.Z on YYYY-MM-DD HH:MM» в начало файла. Уменьшает diff между миграциями, созданными в разное время/разными версиями Django.',
+      },
+      {
+        name: '--check',
+        description: 'Завершиться с ненулевым exit-кодом, если есть несгенерированные миграции (модели изменены, но makemigrations не запускали). Используется в CI для проверки, что разработчик не забыл создать миграцию.',
+      },
+      {
+        name: '--scriptable',
+        description: 'Машиночитаемый вывод: интерактивные подсказки идут в stderr, имена сгенерированных файлов — в stdout (по одному на строку). Удобно для shell-скриптов: $(python manage.py makemigrations --scriptable).',
+      },
+      {
+        name: '--update',
+        description: 'Не создавать новый файл миграции, а обновить последнюю. Полезно, когда после первичной генерации внесли мелкую правку в модель и не хотите плодить миграции 0042, 0043 на одну фичу. Доступно с Django 4.1.',
+      },
+    ],
+    example: `# Базовое использование — генерация миграций для всех изменений
+$ python manage.py makemigrations
+Migrations for 'blog':
+  blog/migrations/0042_article_views.py
+    - Add field views to article
+
+# Только для конкретного приложения
+$ python manage.py makemigrations blog
+
+# С кастомным именем
+$ python manage.py makemigrations blog --name add_views_counter
+# Создаст 0042_add_views_counter.py вместо 0042_article_views.py
+
+# Пустая миграция для data migration
+$ python manage.py makemigrations blog --empty --name backfill_slugs
+# Создаст пустую миграцию, заполняем вручную:
+
+# blog/migrations/0043_backfill_slugs.py
+from django.db import migrations
+from django.utils.text import slugify
+
+def backfill(apps, schema_editor):
+    Article = apps.get_model('blog', 'Article')
+    for article in Article.objects.filter(slug=''):
+        article.slug = slugify(article.title)
+        article.save(update_fields=['slug'])
+
+class Migration(migrations.Migration):
+    dependencies = [('blog', '0042_article_slug')]
+    operations = [migrations.RunPython(backfill, reverse_code=migrations.RunPython.noop)]
+
+# Проверка перед commit (что будет сгенерировано)
+$ python manage.py makemigrations --dry-run --verbosity=2
+
+# В CI — проверка, что разработчик не забыл миграции
+- name: Check migrations
+  run: python manage.py makemigrations --check --dry-run
+# Падает, если модели изменены, но миграция не создана.
+
+# Разрешение конфликта merge
+# После git merge оказалось:
+#   blog/migrations/
+#     0042_add_views.py        (из main)
+#     0042_add_likes.py        (из feature-ветки)
+$ python manage.py makemigrations --merge
+Merging blog
+  Branch 0042_add_views
+    - Add field views to article
+  Branch 0042_add_likes
+    - Add field likes to article
+Created blog/migrations/0043_merge_20260429_1430.py
+
+# Без интерактива (CI)
+$ python manage.py makemigrations --noinput
+# Если требуется значение по умолчанию для нового NOT NULL поля → падение.
+# Решение: добавить default= в модель или сделать поле nullable.
+
+# Обновить последнюю миграцию вместо создания новой (Django 4.1+)
+# Сценарий: создал 0042_article_slug, заметил что забыл db_index=True
+$ python manage.py makemigrations --update
+# Перегенерирует 0042 с обновлённой версией модели, не создавая 0043.
+# ВАЖНО: только если 0042 ещё не применена на других серверах/в общем репо.
+
+# Машиночитаемый режим для скриптов
+$ FILES=$(python manage.py makemigrations --scriptable)
+$ echo "Created: $FILES"
+$ git add $FILES
+
+# Без header-комментария
+$ python manage.py makemigrations --no-header
+# Полезно для воспроизводимых сборок и уменьшения git-шума.
+
+# Что НЕ умеет makemigrations:
+#   - Угадывать переименование поля при одинаковом типе (спрашивает интерактивно)
+#   - Угадывать переименование модели (спрашивает)
+#   - Создавать data migration (только schema; для данных — --empty + RunPython)
+#   - Учитывать managed=False модели (игнорируются)`,
+  },
+  {
+    name: 'migrate',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py migrate — применяет (или откатывает) миграции в БД, синхронизируя её схему с описанием в Python. Без аргументов применяет все непримененные миграции для всех приложений. Может применить миграции до конкретной точки, откатить через указание более старого имени, выполнить «фейковую» миграцию (отметить применённой без выполнения SQL). Записи об применённых миграциях хранятся в таблице django_migrations.',
+    syntax: 'manage.py migrate [app_label] [migration_name] [--database DATABASE] [--fake] [--fake-initial] [--plan] [--run-syncdb] [--noinput] [--check] [--prune]',
+    arguments: [
+      {
+        name: 'app_label',
+        description: 'Опциональное имя приложения, миграции которого применять. Без него обрабатываются все приложения.',
+      },
+      {
+        name: 'migration_name',
+        description: 'Опциональное имя конкретной миграции (например, "0042" или "0042_add_views" или "zero" для отката всех). При указании Django применит/откатит миграции до этой точки.',
+      },
+      {
+        name: '--database DATABASE',
+        description: 'Алиас БД из DATABASES, в которую применять миграции. По умолчанию default. Для каждой БД миграции запускаются отдельно (с учётом DATABASE_ROUTERS.allow_migrate).',
+      },
+      {
+        name: '--fake',
+        description: 'Отметить миграции как применённые в django_migrations, но не выполнять SQL. Используется, если изменения уже применены вручную (например, когда схема создана до Django).',
+      },
+      {
+        name: '--fake-initial',
+        description: 'Для каждой initial-миграции (0001_initial.py) сначала проверить, существуют ли уже её таблицы. Если да — отметить применённой без выполнения. Используется при подключении Django к БД с уже существующей схемой.',
+      },
+      {
+        name: '--plan',
+        description: 'Показать план миграций (что будет применено и в каком порядке) без выполнения. Удобно для ревью и предсказания эффекта перед production-релизом.',
+      },
+      {
+        name: '--run-syncdb',
+        description: 'Создать таблицы для приложений без миграций (managed=True модели в приложении без папки migrations/). Устаревшая практика — все приложения должны иметь миграции.',
+      },
+      {
+        name: '--noinput, --no-input',
+        description: 'Не задавать интерактивные вопросы. Если требуется ответ (например, при удалении модели) — команда падает. Обязательно для CI/деплоя.',
+      },
+      {
+        name: '--check',
+        description: 'Завершиться с ненулевым exit-кодом, если есть непримененные миграции, и НЕ выполнять их. Полезно в CI для проверки актуальности БД перед запуском тестов.',
+      },
+      {
+        name: '--prune',
+        description: 'Удалить из django_migrations записи о миграциях, которых больше нет в коде (например, после удаления приложения). По умолчанию такие записи остаются как «висящие». Доступно с Django 4.2.',
+      },
+    ],
+    example: `# Применить все непримененные миграции (стандартный деплой-шаг)
+$ python manage.py migrate
+Operations to perform:
+  Apply all migrations: admin, auth, blog, contenttypes, sessions
+Running migrations:
+  Applying blog.0042_article_views... OK
+
+# Только конкретное приложение
+$ python manage.py migrate blog
+
+# До конкретной миграции (вперёд или назад)
+$ python manage.py migrate blog 0040
+# Если 0042 применена, а нужно откатиться к 0040 — откатит 0041, 0042.
+# Если применена 0038 — применит 0039, 0040.
+
+# Откат ВСЕХ миграций приложения
+$ python manage.py migrate blog zero
+# Удалит все таблицы blog. Используется при удалении приложения.
+
+# План перед применением (для ревью)
+$ python manage.py migrate --plan
+Planned operations:
+blog.0042_article_views
+    Add field views to article
+blog.0043_alter_article_status
+    Alter field status on article
+# В CI или перед production:
+$ python manage.py migrate --plan | tee migration_plan.txt
+
+# Проверка состояния миграций (без применения)
+$ python manage.py migrate --check
+# Exit 0 — все миграции применены
+# Exit 1 — есть непримененные
+
+# Fake-миграция (схема уже применена вручную)
+$ python manage.py migrate blog 0042 --fake
+# Запишет 0042 в django_migrations, но не выполнит SQL.
+# Сценарий: вручную сделали ALTER TABLE, теперь нужно «успокоить» Django.
+
+# Подключение к существующей БД с готовой схемой
+$ python manage.py migrate --fake-initial
+# Для каждого приложения: если таблицы из 0001_initial уже есть → отметить как применённую.
+
+# В конкретную БД (multi-DB сценарий)
+$ python manage.py migrate --database=replica
+
+# В деплое (без интерактива)
+$ python manage.py migrate --noinput
+
+# Удалить устаревшие записи в django_migrations (Django 4.2+)
+# Сценарий: удалили приложение oldapp, его записи остались в django_migrations
+$ python manage.py migrate --prune oldapp
+
+# Полный production deploy script
+#!/bin/bash
+set -e
+python manage.py migrate --check || {
+    python manage.py migrate --plan
+    python manage.py migrate --noinput
+}
+python manage.py collectstatic --noinput
+python manage.py compilemessages
+
+# Что делает Django при migrate:
+# 1. Читает django_migrations — какие миграции уже применены.
+# 2. Строит граф зависимостей миграций из всех приложений.
+# 3. Определяет план: какие применить и в каком порядке.
+# 4. Для каждой миграции:
+#    a. BEGIN транзакция (если backend поддерживает DDL в транзакции)
+#    b. Выполняет операции (CreateModel, AddField и т.п.)
+#    c. INSERT в django_migrations
+#    d. COMMIT
+# 5. Отправляет сигнал post_migrate (создаёт ContentType, Permission).
+
+# Транзакционность DDL по бэкендам:
+#   PostgreSQL  — да, миграция атомарна
+#   SQLite      — да (большинство операций)
+#   Oracle      — да
+#   MySQL/MariaDB — НЕТ для DDL — при ошибке БД может остаться в полусломанном состоянии
+
+# Откат — обратные операции
+# Каждая операция миграции имеет database_backwards.
+# RunPython требует reverse_code (или явный noop).
+# Не все операции обратимы (RunSQL без reverse_sql, RemoveField без хранения данных).
+
+# Прогресс длинных миграций
+$ python manage.py migrate --verbosity=2
+# Покажет каждую SQL-команду в реальном времени.`,
+  },
+  {
+    name: 'optimizemigration',
+    category: 'django-admin and manage.py',
+    description: 'Команда manage.py optimizemigration (Django 4.1+) — переписывает указанную миграцию, объединяя её операции через MigrationOptimizer. Например, последовательность CreateModel + AddField + AlterField сворачивается в один CreateModel с финальным набором полей. Полезна после squashmigrations для дополнительной оптимизации, или после ручной правки миграции с избыточными операциями. Не меняет историю django_migrations и не влияет на уже применённые миграции — только переписывает файл.',
+    syntax: 'manage.py optimizemigration app_label migration_name [--check]',
+    arguments: [
+      {
+        name: 'app_label',
+        description: 'Метка приложения, миграцию которого оптимизировать (обязательно).',
+      },
+      {
+        name: 'migration_name',
+        description: 'Имя миграции для оптимизации — без префикса 0001_ можно (например "0001_initial" или "0001"). Обязательный аргумент.',
+      },
+      {
+        name: '--check',
+        description: 'Завершиться с ненулевым exit-кодом, если миграция МОЖЕТ быть оптимизирована (но не переписывать файл). Используется в CI для напоминания об оптимизации после крупных правок.',
+      },
+    ],
+    example: `# Сценарий: после squashmigrations
+$ python manage.py squashmigrations blog 0001 0042
+Will squash the following migrations:
+ - 0001_initial
+ - 0002_add_category
+ - ...
+ - 0042_article_views
+Created new squashed migration /apps/blog/migrations/0001_squashed_0042_article_views.py
+
+# Squash объединяет файлы, но операции внутри могут остаться избыточными:
+# operations = [
+#     migrations.CreateModel(name='Article', fields=[('id', ...), ('title', ...)]),
+#     migrations.AddField('article', 'slug', ...),
+#     migrations.AlterField('article', 'title', max_length=300),  # было 200
+#     migrations.AddField('article', 'views', models.IntegerField(default=0)),
+# ]
+
+# Оптимизация — свернёт всё в один CreateModel
+$ python manage.py optimizemigration blog 0001_squashed_0042_article_views
+Optimizing... Optimized from 4 operations to 1 operation.
+# Файл переписан:
+# operations = [
+#     migrations.CreateModel(name='Article', fields=[
+#         ('id', ...),
+#         ('title', models.CharField(max_length=300)),
+#         ('slug', models.SlugField()),
+#         ('views', models.IntegerField(default=0)),
+#     ]),
+# ]
+
+# Без полного имени — можно по номеру
+$ python manage.py optimizemigration blog 0001
+
+# В CI — проверить, что миграции в оптимальной форме
+$ python manage.py optimizemigration blog 0001_squashed --check
+# Exit 0 — оптимизация не нужна
+# Exit 1 — миграция может быть оптимизирована (предложить разработчику запустить без --check)
+
+# Что умеет MigrationOptimizer:
+#   CreateModel + AddField   → CreateModel с добавленным полем
+#   CreateModel + AlterField → CreateModel с финальным определением поля
+#   AddField + RemoveField   → удаление обоих (поле было добавлено и удалено в той же миграции)
+#   AddField + AlterField    → AddField с финальным определением
+#   CreateModel + DeleteModel → удаление обоих
+#   AlterField + AlterField  → одна AlterField с финальным определением
+
+# Что НЕ оптимизирует:
+#   - RunPython, RunSQL — никогда не сворачивает (содержат произвольный код)
+#   - Операции через границу зависимостей других приложений
+#   - Операции, разделённые SeparateDatabaseAndState
+
+# Когда применять optimizemigration:
+# 1. Сразу после squashmigrations
+# 2. После ручного редактирования миграции с дублирующимися операциями
+# 3. В период «зачистки» репозитория перед мажорным релизом
+# 4. НЕ для уже применённых на других серверах миграций — это создаст несоответствие
+#    хеша операций (в django_migrations хранится только имя, но коллеги могут получить
+#    discrepancy при reverse-миграциях, если файл изменился)
+
+# Безопасность: optimizemigration создаёт ту же финальную схему, что и оригинал.
+# Применение оптимизированной миграции с нуля даёт идентичный результат.
+# Но если миграция уже применена — Django не перезапускает её (запись по имени),
+# поэтому оптимизация безопасна для будущих fresh-инсталляций.`,
+  },
 ];
