@@ -18593,4 +18593,5596 @@ def set_language_view(request):
 from django.utils.translation import gettext_lazy as _
 message = _('Добро пожаловать!')`,
   },
+  {
+    name: "LocaleMiddleware.process_request",
+    category: "Middleware",
+    description:
+      "Определяет язык для текущего запроса на основе настроек браузера, сессии или куки. Устанавливает активный язык перевода (активирует django.utils.translation.activate()), что влияет на все последующие вызовы перевода в рамках этого запроса.",
+    syntax: "LocaleMiddleware.process_request(request)",
+    arguments: [
+      {
+        name: "request",
+        description: "Объект HttpRequest текущего входящего запроса.",
+      },
+    ],
+    example: `# settings.py
+MIDDLEWARE = [
+    'django.middleware.locale.LocaleMiddleware',
+    ...
+]
+LANGUAGE_CODE = 'ru'
+USE_I18N = True
+
+# views.py
+from django.utils.translation import get_language
+
+def my_view(request):
+    # После работы LocaleMiddleware.process_request
+    # язык уже активирован
+    lang = get_language()  # например, 'ru'
+    return HttpResponse(f'Текущий язык: {lang}')`,
+  },
+  {
+    name: "LocaleMiddleware.process_response",
+    category: "Middleware",
+    description:
+      "Устанавливает заголовок Content-Language в ответе и при необходимости добавляет Cookie с выбранным языком. Также устанавливает заголовок Vary: Accept-Language, чтобы кэши учитывали язык при хранении ответа.",
+    syntax: "LocaleMiddleware.process_response(request, response)",
+    arguments: [
+      {
+        name: "request",
+        description: "Объект HttpRequest текущего запроса.",
+      },
+      {
+        name: "response",
+        description: "Объект HttpResponse, возвращаемый представлением.",
+      },
+    ],
+    example: `# После обработки LocaleMiddleware.process_response
+# ответ будет содержать заголовки:
+# Content-Language: ru
+# Vary: Accept-Language
+
+# Пример проверки заголовка в тесте:
+from django.test import TestCase
+
+class LocaleTest(TestCase):
+    def test_content_language_header(self):
+        response = self.client.get('/')
+        self.assertEqual(
+            response['Content-Language'], 'ru'
+        )
+        self.assertIn('Accept-Language', response['Vary'])`,
+  },
+  {
+    name: "FlatpageFallbackMiddleware",
+    category: "Middleware",
+    description:
+      'Middleware из django.contrib.flatpages, которое перехватывает ответы с кодом 404 и ищет в базе данных соответствующую "плоскую страницу" (flatpage) для данного URL. Если страница найдена — возвращает её содержимое. Если нет — пропускает 404 дальше.',
+    syntax: "class FlatpageFallbackMiddleware",
+    arguments: [],
+    example: `# settings.py
+INSTALLED_APPS = [
+    'django.contrib.flatpages',
+    ...
+]
+MIDDLEWARE = [
+    ...
+    'django.contrib.flatpages.middleware.FlatpageFallbackMiddleware',
+]
+
+# Добавление плоской страницы через admin или shell:
+from django.contrib.flatpages.models import FlatPage
+from django.contrib.sites.models import Site
+
+page = FlatPage.objects.create(
+    url='/about/',
+    title='О нас',
+    content='<p>Информация о компании</p>',
+)
+page.sites.add(Site.objects.get_current())
+# Теперь GET /about/ вернёт эту страницу вместо 404`,
+  },
+  {
+    name: "FlatpageFallbackMiddleware.process_response",
+    category: "Middleware",
+    description:
+      "Основной метод FlatpageFallbackMiddleware. Вызывается для каждого ответа. Если статус ответа равен 404, метод пытается найти flatpage в базе данных по URL запроса. При успехе возвращает рендеринг страницы, при неудаче — оригинальный 404-ответ.",
+    syntax: "FlatpageFallbackMiddleware.process_response(request, response)",
+    arguments: [
+      {
+        name: "request",
+        description: "Объект HttpRequest текущего запроса.",
+      },
+      {
+        name: "response",
+        description:
+          "Объект HttpResponse. Если статус 404 — middleware ищет flatpage.",
+      },
+    ],
+    example: `# Принцип работы process_response:
+# 1. Получает ответ от view
+# 2. Если response.status_code != 404 — возвращает ответ без изменений
+# 3. Если 404 — ищет FlatPage.objects.get(url=request.path_info)
+# 4. Если flatpage найдена — рендерит шаблон flatpages/default.html
+# 5. Если нет — возвращает исходный 404
+
+# Шаблон flatpages/default.html
+"""
+<!DOCTYPE html>
+<html>
+<head><title>{{ flatpage.title }}</title></head>
+<body>{{ flatpage.content }}</body>
+</html>
+"""`,
+  },
+  {
+    name: "RedirectFallbackMiddleware",
+    category: "Middleware",
+    description:
+      "Middleware из django.contrib.redirects, которое перехватывает 404-ответы и проверяет базу данных на наличие зарегистрированного редиректа для данного URL. Если редирект найден — отвечает кодом 301 (постоянный) или 302 (временный). Требует django.contrib.sites.",
+    syntax: "class RedirectFallbackMiddleware",
+    arguments: [],
+    example: `# settings.py
+INSTALLED_APPS = [
+    'django.contrib.redirects',
+    'django.contrib.sites',
+    ...
+]
+MIDDLEWARE = [
+    ...
+    'django.contrib.redirects.middleware.RedirectFallbackMiddleware',
+]
+SITE_ID = 1
+
+# Добавление редиректа:
+from django.contrib.redirects.models import Redirect
+from django.contrib.sites.models import Site
+
+Redirect.objects.create(
+    site=Site.objects.get_current(),
+    old_path='/old-url/',
+    new_path='/new-url/',
+)
+# Теперь GET /old-url/ вернёт 301 → /new-url/`,
+  },
+  {
+    name: "RedirectFallbackMiddleware.process_response",
+    category: "Middleware",
+    description:
+      "Основной метод RedirectFallbackMiddleware. При получении 404-ответа выполняет поиск в таблице redirects по текущему сайту и URL. Если запись найдена и new_path не пустой — возвращает HttpResponsePermanentRedirect (301). Если new_path пустой — возвращает HttpResponseGone (410). Если записи нет — оставляет исходный 404.",
+    syntax: "RedirectFallbackMiddleware.process_response(request, response)",
+    arguments: [
+      {
+        name: "request",
+        description: "Объект HttpRequest текущего запроса.",
+      },
+      {
+        name: "response",
+        description:
+          "Объект HttpResponse. Обрабатывается только при статусе 404.",
+      },
+    ],
+    example: `from django.contrib.redirects.models import Redirect
+from django.contrib.sites.models import Site
+
+# Постоянный редирект (301):
+Redirect.objects.create(
+    site=Site.objects.get_current(),
+    old_path='/blog/',
+    new_path='/articles/',
+)
+
+# Возврат 410 Gone (страница удалена навсегда):
+Redirect.objects.create(
+    site=Site.objects.get_current(),
+    old_path='/deleted-page/',
+    new_path='',  # пустой new_path → 410
+)
+
+# Проверка в тесте:
+from django.test import TestCase
+
+class RedirectTest(TestCase):
+    def test_redirect(self):
+        response = self.client.get('/blog/')
+        self.assertRedirects(
+            response, '/articles/', status_code=301
+        )`,
+  },
+  {
+    name: "MiddlewareMixin",
+    category: "Middleware",
+    description:
+      "Вспомогательный класс-миксин из django.utils.deprecation, который упрощает написание middleware, совместимого как со старым (Django < 1.10), так и с новым стилем. Предоставляет реализацию __init__ и __call__, позволяя разработчику определять только методы process_request, process_response, process_view и/или process_exception.",
+    syntax: "class MyMiddleware(MiddlewareMixin)",
+    arguments: [],
+    example: `from django.utils.deprecation import MiddlewareMixin
+
+class TimingMiddleware(MiddlewareMixin):
+    """Middleware для измерения времени обработки запроса."""
+
+    def process_request(self, request):
+        import time
+        request._start_time = time.time()
+
+    def process_response(self, request, response):
+        import time
+        if hasattr(request, '_start_time'):
+            duration = time.time() - request._start_time
+            response['X-Request-Duration'] = f'{duration:.4f}s'
+        return response
+
+# settings.py
+MIDDLEWARE = [
+    'myapp.middleware.TimingMiddleware',
+    ...
+]`,
+  },
+  {
+    name: "MiddlewareMixin.__init__",
+    category: "Middleware",
+    description:
+      "Метод инициализации MiddlewareMixin. Принимает аргумент get_response — следующий обработчик в цепочке middleware (или само view). Сохраняет его в self.get_response. Параметр get_response может быть None при использовании в старом стиле (Django < 1.10).",
+    syntax: "MiddlewareMixin.__init__(get_response=None)",
+    arguments: [
+      {
+        name: "get_response",
+        description:
+          "Вызываемый объект — следующий middleware или view в цепочке обработки. Может быть None для совместимости со старым стилем.",
+      },
+    ],
+    example: `from django.utils.deprecation import MiddlewareMixin
+
+class MyMiddleware(MiddlewareMixin):
+    def __init__(self, get_response=None):
+        # Пользовательская логика инициализации
+        self.allowed_ips = ['127.0.0.1', '192.168.0.1']
+        # Обязательно вызываем родительский __init__
+        super().__init__(get_response)
+
+    def process_request(self, request):
+        ip = request.META.get('REMOTE_ADDR')
+        if ip not in self.allowed_ips:
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden('Доступ запрещён')`,
+  },
+  {
+    name: "MiddlewareMixin.__call__",
+    category: "Middleware",
+    description:
+      "Метод вызова MiddlewareMixin, реализующий новый стиль middleware (callable). При каждом запросе вызывает process_request (если определён), затем get_response для получения ответа, затем process_response (если определён). Позволяет использовать middleware нового стиля без ручного написания __call__.",
+    syntax: "MiddlewareMixin.__call__(request)",
+    arguments: [
+      {
+        name: "request",
+        description: "Объект HttpRequest текущего входящего запроса.",
+      },
+    ],
+    example: `from django.utils.deprecation import MiddlewareMixin
+
+class LoggingMiddleware(MiddlewareMixin):
+    """
+    __call__ автоматически вызывает:
+    1. self.process_request(request)   — если определён
+    2. response = self.get_response(request)
+    3. self.process_response(request, response) — если определён
+    4. return response
+    """
+
+    def process_request(self, request):
+        print(f'[IN]  {request.method} {request.path}')
+
+    def process_response(self, request, response):
+        print(f'[OUT] {request.method} {request.path} → {response.status_code}')
+        return response
+
+# Middleware работает как callable в цепочке Django:
+# request → LoggingMiddleware.__call__ → view → response`,
+  },
+  {
+    name: "CreateModel",
+    category: "Migration Operations",
+    description:
+      "Создаёт новую модель (таблицу) в базе данных в рамках миграции. Это основная операция, генерируемая Django при создании новой модели через makemigrations. Принимает имя модели, список полей, параметры Meta, базовые классы и менеджеры.",
+    syntax:
+      "CreateModel(model_name, fields, options=None, bases=(), managers=None)",
+    arguments: [
+      {
+        name: "model_name",
+        description: "Строка — имя создаваемой модели (в CamelCase).",
+      },
+      {
+        name: "fields",
+        description:
+          "Список кортежей (имя_поля, объект_поля), описывающих колонки таблицы.",
+      },
+      {
+        name: "options",
+        description:
+          "Словарь параметров класса Meta модели (например, ordering, verbose_name). По умолчанию None.",
+      },
+      {
+        name: "bases",
+        description:
+          "Кортеж базовых классов для модели. По умолчанию (models.Model,).",
+      },
+      {
+        name: "managers",
+        description: "Список менеджеров модели. По умолчанию None.",
+      },
+    ],
+    example: `from django.db import migrations, models
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.CreateModel(
+            name='Article',
+            fields=[
+                ('id', models.BigAutoField(primary_key=True)),
+                ('title', models.CharField(max_length=200)),
+                ('body', models.TextField()),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+            ],
+            options={
+                'ordering': ['-created_at'],
+                'verbose_name': 'Статья',
+            },
+        ),
+    ]`,
+  },
+  {
+    name: "DeleteModel",
+    category: "Migration Operations",
+    description:
+      "Удаляет существующую модель (и соответствующую таблицу) из базы данных. Генерируется командой makemigrations при удалении класса модели из кода. Операция необратима — данные таблицы будут потеряны при применении миграции.",
+    syntax: "DeleteModel(model_name)",
+    arguments: [
+      { name: "model_name", description: "Строка — имя удаляемой модели." },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ('myapp', '0005_previous_migration'),
+    ]
+
+    operations = [
+        migrations.DeleteModel(
+            name='OldModel',
+        ),
+    ]`,
+  },
+  {
+    name: "RenameModel",
+    category: "Migration Operations",
+    description:
+      "Переименовывает существующую модель, изменяя имя таблицы в базе данных и обновляя все внешние ключи, ссылающиеся на неё. Django переименовывает таблицу на уровне БД через ALTER TABLE, сохраняя все данные.",
+    syntax: "RenameModel(old_name, new_name)",
+    arguments: [
+      { name: "old_name", description: "Текущее имя модели (строка)." },
+      { name: "new_name", description: "Новое имя модели (строка)." },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.RenameModel(
+            old_name='Post',
+            new_name='Article',
+        ),
+    ]
+# Таблица myapp_post будет переименована в myapp_article
+# Все ForeignKey, указывающие на Post, обновятся автоматически`,
+  },
+  {
+    name: "AlterModelTable",
+    category: "Migration Operations",
+    description:
+      "Изменяет имя таблицы базы данных для модели (атрибут db_table в классе Meta). Используется, когда нужно задать произвольное имя таблицы вместо автоматически генерируемого Django.",
+    syntax: "AlterModelTable(model_name, table)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      {
+        name: "table",
+        description:
+          "Новое имя таблицы в базе данных. None — вернуть автоматически генерируемое имя.",
+      },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.AlterModelTable(
+            name='Article',
+            table='content_articles',
+        ),
+    ]
+# Теперь модель Article использует таблицу content_articles
+# Эквивалентно: class Meta: db_table = 'content_articles'`,
+  },
+  {
+    name: "AlterModelUniqueTogether",
+    category: "Migration Operations",
+    description:
+      "Изменяет ограничение unique_together в классе Meta модели. Добавляет или удаляет составные уникальные ограничения (UNIQUE INDEX) на уровне базы данных. Устарело начиная с Django 4.2 — рекомендуется использовать UniqueConstraint.",
+    syntax: "AlterModelUniqueTogether(model_name, unique_together)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      {
+        name: "unique_together",
+        description:
+          "Множество кортежей полей, формирующих составные уникальные ограничения. Пустое множество снимает все ограничения.",
+      },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.AlterModelUniqueTogether(
+            name='Article',
+            unique_together={('author', 'slug')},
+        ),
+    ]
+# Комбинация author + slug должна быть уникальной
+# Снять ограничение: unique_together=set()`,
+  },
+  {
+    name: "AlterModelIndexTogether",
+    category: "Migration Operations",
+    description:
+      "Изменяет ограничение index_together в классе Meta модели — добавляет или удаляет составные индексы на уровне базы данных. Устарело начиная с Django 4.2 — рекомендуется использовать Meta.indexes с объектами Index.",
+    syntax: "AlterModelIndexTogether(model_name, index_together)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      {
+        name: "index_together",
+        description:
+          "Множество кортежей имён полей для создания составных индексов. Пустое множество удаляет все такие индексы.",
+      },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.AlterModelIndexTogether(
+            name='Article',
+            index_together={('author', 'created_at')},
+        ),
+    ]
+# Создаёт составной индекс по полям author и created_at
+# Улучшает производительность запросов с фильтрацией по обоим полям`,
+  },
+  {
+    name: "AlterModelOptions",
+    category: "Migration Operations",
+    description:
+      "Изменяет параметры класса Meta модели, которые не влияют на схему базы данных — такие как ordering, verbose_name, verbose_name_plural, permissions и другие. Не выполняет SQL-запросов к БД, только обновляет состояние миграций.",
+    syntax: "AlterModelOptions(model_name, options)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      {
+        name: "options",
+        description:
+          "Словарь новых параметров Meta. Полностью заменяет предыдущее значение.",
+      },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.AlterModelOptions(
+            name='Article',
+            options={
+                'ordering': ['-created_at'],
+                'verbose_name': 'Статья',
+                'verbose_name_plural': 'Статьи',
+                'permissions': [
+                    ('can_publish', 'Может публиковать'),
+                ],
+            },
+        ),
+    ]`,
+  },
+  {
+    name: "AlterModelManagers",
+    category: "Migration Operations",
+    description:
+      "Изменяет менеджеры модели, зафиксированные в состоянии миграций. Влияет на то, какой менеджер Django использует при выполнении операций в данных миграций (RunPython и др.). Не изменяет схему базы данных.",
+    syntax: "AlterModelManagers(model_name, managers)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      {
+        name: "managers",
+        description:
+          "Список кортежей (порядок, объект_менеджера), описывающих менеджеры модели.",
+      },
+    ],
+    example: `from django.db import migrations, models
+
+class PublishedManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_published=True)
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.AlterModelManagers(
+            name='Article',
+            managers=[
+                ('objects', models.Manager()),
+                ('published', PublishedManager()),
+            ],
+        ),
+    ]`,
+  },
+  {
+    name: "AlterOrderWithRespectTo",
+    category: "Migration Operations",
+    description:
+      "Создаёт или удаляет поле _order в таблице модели, которое используется при задании order_with_respect_to в классе Meta. Это поле обеспечивает упорядочивание объектов относительно связанного родительского объекта.",
+    syntax: "AlterOrderWithRespectTo(model_name, order_with_respect_to)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      {
+        name: "order_with_respect_to",
+        description:
+          "Имя поля ForeignKey, относительно которого задаётся порядок. None — удалить поле _order.",
+      },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.AlterOrderWithRespectTo(
+            name='Answer',
+            order_with_respect_to='question',
+        ),
+    ]
+# Добавляет колонку _order в таблицу answer
+# Теперь можно использовать:
+# question.answer_set.all()  — в заданном порядке
+# answer.get_order()
+# answer.set_order(n)`,
+  },
+  {
+    name: "AddField",
+    category: "Migration Operations",
+    description:
+      "Добавляет новое поле в существующую модель (колонку в таблицу). Генерируется командой makemigrations при добавлении поля в класс модели. Если поле не nullable и таблица содержит данные — Django запросит значение по умолчанию.",
+    syntax: "AddField(model_name, name, field, preserve_default=True)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      { name: "name", description: "Имя добавляемого поля (строка)." },
+      {
+        name: "field",
+        description:
+          "Экземпляр класса поля Django (например, models.CharField(max_length=100)).",
+      },
+      {
+        name: "preserve_default",
+        description:
+          "Если False — значение по умолчанию используется только для заполнения существующих строк и удаляется после миграции. По умолчанию True.",
+      },
+    ],
+    example: `from django.db import migrations, models
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.AddField(
+            model_name='article',
+            name='subtitle',
+            field=models.CharField(
+                max_length=300,
+                blank=True,
+                default='',
+            ),
+            preserve_default=False,
+        ),
+    ]`,
+  },
+  {
+    name: "RemoveField",
+    category: "Migration Operations",
+    description:
+      "Удаляет поле из модели (колонку из таблицы). Генерируется командой makemigrations при удалении поля из класса модели. Данные удалённой колонки будут потеряны безвозвратно. Также удаляет связанные индексы и ограничения.",
+    syntax: "RemoveField(model_name, name)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      { name: "name", description: "Имя удаляемого поля (строка)." },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.RemoveField(
+            model_name='article',
+            name='old_description',
+        ),
+    ]
+# ВНИМАНИЕ: данные колонки old_description будут удалены
+# Перед применением убедитесь, что данные не нужны
+# или перенесите их через RunPython до RemoveField`,
+  },
+  {
+    name: "AlterField",
+    category: "Migration Operations",
+    description:
+      "Изменяет определение существующего поля модели — тип, ограничения, параметры null/blank, max_length и другие атрибуты. Выполняет ALTER COLUMN на уровне базы данных. Используется, когда изменяется описание поля без смены его имени.",
+    syntax: "AlterField(model_name, name, field, preserve_default=True)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      { name: "name", description: "Имя изменяемого поля (строка)." },
+      {
+        name: "field",
+        description: "Новый экземпляр поля с обновлёнными параметрами.",
+      },
+      {
+        name: "preserve_default",
+        description:
+          "Сохранить ли значение по умолчанию в модели после миграции. По умолчанию True.",
+      },
+    ],
+    example: `from django.db import migrations, models
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.AlterField(
+            model_name='article',
+            name='title',
+            field=models.CharField(
+                max_length=500,  # было 200, увеличиваем
+                verbose_name='Заголовок',
+            ),
+        ),
+    ]`,
+  },
+  {
+    name: "RenameField",
+    category: "Migration Operations",
+    description:
+      "Переименовывает существующее поле модели (колонку в таблице). Выполняет ALTER TABLE ... RENAME COLUMN на уровне базы данных. Данные сохраняются. Также обновляет все индексы и ограничения, связанные с этим полем.",
+    syntax: "RenameField(model_name, old_name, new_name)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      { name: "old_name", description: "Текущее имя поля (строка)." },
+      { name: "new_name", description: "Новое имя поля (строка)." },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.RenameField(
+            model_name='article',
+            old_name='pub_date',
+            new_name='published_at',
+        ),
+    ]
+# Колонка pub_date переименуется в published_at
+# Данные сохраняются, все ссылки в миграциях обновятся`,
+  },
+  {
+    name: "AddIndex",
+    category: "Migration Operations",
+    description:
+      "Добавляет индекс к модели, используя объект Index из django.db.models. Создаёт индекс в базе данных через CREATE INDEX. Позволяет задавать именованные индексы, частичные индексы, функциональные индексы и индексы с указанием порядка сортировки.",
+    syntax: "AddIndex(model_name, index)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      {
+        name: "index",
+        description:
+          "Экземпляр models.Index (или его подкласса) с описанием индекса.",
+      },
+    ],
+    example: `from django.db import migrations, models
+
+class Migration(migrations.Migration):
+    operations = [
+        # Простой индекс по одному полю
+        migrations.AddIndex(
+            model_name='article',
+            index=models.Index(
+                fields=['published_at'],
+                name='article_published_at_idx',
+            ),
+        ),
+        # Составной индекс с сортировкой
+        migrations.AddIndex(
+            model_name='article',
+            index=models.Index(
+                fields=['author', '-published_at'],
+                name='article_author_date_idx',
+            ),
+        ),
+    ]`,
+  },
+  {
+    name: "RemoveIndex",
+    category: "Migration Operations",
+    description:
+      "Удаляет именованный индекс из модели. Выполняет DROP INDEX на уровне базы данных. Является обратной операцией к AddIndex. Индекс должен быть указан по имени — тому же, что было задано при его создании через AddIndex или Meta.indexes.",
+    syntax: "RemoveIndex(model_name, name)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      {
+        name: "name",
+        description:
+          "Имя удаляемого индекса (строка) — должно совпадать с именем, под которым индекс был создан.",
+      },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.RemoveIndex(
+            model_name='article',
+            name='article_published_at_idx',
+        ),
+    ]
+# Удаляет индекс article_published_at_idx из таблицы article
+# Обратная операция: migrations.AddIndex(...)`,
+  },
+  {
+    name: "AddConstraint",
+    category: "Migration Operations",
+    description:
+      "Добавляет ограничение (constraint) к модели, используя объекты UniqueConstraint, CheckConstraint или ExclusionConstraint. Создаёт соответствующее ограничение в базе данных через ALTER TABLE ... ADD CONSTRAINT. Предпочтительный способ вместо устаревшего unique_together.",
+    syntax: "AddConstraint(model_name, constraint)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      {
+        name: "constraint",
+        description:
+          "Экземпляр класса ограничения (UniqueConstraint, CheckConstraint и др.) с обязательным атрибутом name.",
+      },
+    ],
+    example: `from django.db import migrations, models
+
+class Migration(migrations.Migration):
+    operations = [
+        # Уникальное составное ограничение
+        migrations.AddConstraint(
+            model_name='article',
+            constraint=models.UniqueConstraint(
+                fields=['author', 'slug'],
+                name='unique_author_slug',
+            ),
+        ),
+        # Ограничение на проверку значения
+        migrations.AddConstraint(
+            model_name='article',
+            constraint=models.CheckConstraint(
+                check=models.Q(rating__gte=0, rating__lte=10),
+                name='valid_rating_range',
+            ),
+        ),
+    ]`,
+  },
+  {
+    name: "RemoveConstraint",
+    category: "Migration Operations",
+    description:
+      "Удаляет именованное ограничение из модели. Выполняет ALTER TABLE ... DROP CONSTRAINT на уровне базы данных. Является обратной операцией к AddConstraint. Ограничение идентифицируется по имени.",
+    syntax: "RemoveConstraint(model_name, name)",
+    arguments: [
+      { name: "model_name", description: "Имя модели (строка)." },
+      {
+        name: "name",
+        description:
+          "Имя удаляемого ограничения (строка) — должно совпадать с именем, под которым оно было создано.",
+      },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.RemoveConstraint(
+            model_name='article',
+            name='unique_author_slug',
+        ),
+        migrations.RemoveConstraint(
+            model_name='article',
+            name='valid_rating_range',
+        ),
+    ]`,
+  },
+  {
+    name: "SeparateDatabaseAndState",
+    category: "Migration Operations",
+    description:
+      "Разделяет операции миграции на две независимые группы: database_operations — операции, выполняемые в базе данных (SQL), и state_operations — операции, обновляющие только внутреннее состояние Django (граф миграций). Используется для сложных ситуаций, когда схема БД и состояние Django должны обновляться по-разному.",
+    syntax:
+      "SeparateDatabaseAndState(database_operations=None, state_operations=None)",
+    arguments: [
+      {
+        name: "database_operations",
+        description:
+          "Список операций, применяемых к базе данных. По умолчанию None (пустой список).",
+      },
+      {
+        name: "state_operations",
+        description:
+          "Список операций, применяемых только к состоянию миграций Django. По умолчанию None (пустой список).",
+      },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        # Пример: переименование таблицы вручную через SQL,
+        # при этом Django обновляет своё состояние через RenameModel
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    'ALTER TABLE myapp_post RENAME TO myapp_article;',
+                    reverse_sql='ALTER TABLE myapp_article RENAME TO myapp_post;',
+                ),
+            ],
+            state_operations=[
+                migrations.RenameModel(
+                    old_name='Post',
+                    new_name='Article',
+                ),
+            ],
+        ),
+    ]`,
+  },
+  {
+    name: "RunSQL",
+    category: "Migration Operations",
+    description:
+      "Выполняет произвольный SQL-запрос в рамках миграции. Позволяет делать то, что нельзя выразить стандартными операциями Django: создавать триггеры, представления, функции, выполнять сложные преобразования данных. Поддерживает обратный SQL для отката миграции.",
+    syntax:
+      "RunSQL(sql, reverse_sql=None, state_operations=None, hints=None, elidable=False)",
+    arguments: [
+      {
+        name: "sql",
+        description:
+          "Строка SQL или список строк/кортежей (sql, params) для выполнения при применении миграции.",
+      },
+      {
+        name: "reverse_sql",
+        description:
+          "SQL для отката миграции (migrate --reverse). Если None — откат невозможен. RunSQL.noop отключает откат без ошибки.",
+      },
+      {
+        name: "state_operations",
+        description:
+          "Список обычных операций Django для обновления состояния миграций (без выполнения SQL). По умолчанию None.",
+      },
+      {
+        name: "hints",
+        description:
+          "Словарь подсказок для роутера базы данных. По умолчанию None.",
+      },
+      {
+        name: "elidable",
+        description:
+          "Если True — операция может быть пропущена при оптимизации (squashmigrations). По умолчанию False.",
+      },
+    ],
+    example: `from django.db import migrations
+
+class Migration(migrations.Migration):
+    operations = [
+        # Создание представления (view)
+        migrations.RunSQL(
+            sql="""
+                CREATE VIEW active_articles AS
+                SELECT * FROM myapp_article
+                WHERE is_published = TRUE;
+            """,
+            reverse_sql="DROP VIEW IF EXISTS active_articles;",
+        ),
+
+        # Параметризованный запрос для заполнения данных
+        migrations.RunSQL(
+            sql=[
+                ("UPDATE myapp_article SET rating = %s WHERE rating IS NULL", [0]),
+            ],
+            reverse_sql=migrations.RunSQL.noop,
+        ),
+    ]`,
+  },
+  {
+    name: "RunPython",
+    category: "Migration Operations",
+    description:
+      "Выполняет произвольный Python-код в рамках миграции. Используется для миграции данных (data migrations): заполнения новых полей, преобразования существующих данных, создания начальных объектов. Код получает apps (реестр моделей на момент миграции) и schema_editor.",
+    syntax: "RunPython(code, reverse_code=None, hints=None, elidable=False)",
+    arguments: [
+      {
+        name: "code",
+        description:
+          "Функция вида func(apps, schema_editor) — выполняется при применении миграции. Должна принимать именно эти два аргумента.",
+      },
+      {
+        name: "reverse_code",
+        description:
+          "Функция для отката миграции. Если None — откат невозможен. RunPython.noop отключает откат без ошибки.",
+      },
+      {
+        name: "hints",
+        description:
+          "Словарь подсказок для роутера базы данных. По умолчанию None.",
+      },
+      {
+        name: "elidable",
+        description:
+          "Если True — операция может быть пропущена при squashmigrations. По умолчанию False.",
+      },
+    ],
+    example: `from django.db import migrations
+
+def fill_slugs(apps, schema_editor):
+    """Заполняет поле slug на основе title для существующих статей."""
+    from django.utils.text import slugify
+    # Используем apps.get_model, а не прямой импорт!
+    Article = apps.get_model('myapp', 'Article')
+    for article in Article.objects.filter(slug=''):
+        article.slug = slugify(article.title)
+        article.save(update_fields=['slug'])
+
+def reverse_fill_slugs(apps, schema_editor):
+    Article = apps.get_model('myapp', 'Article')
+    Article.objects.all().update(slug='')
+
+class Migration(migrations.Migration):
+    operations = [
+        migrations.RunPython(
+            code=fill_slugs,
+            reverse_code=reverse_fill_slugs,
+        ),
+    ]`,
+  },
+  {
+    name: "Operation.database_forwards",
+    category: "Migration Operations",
+    description:
+      'Метод базового класса Operation, который реализует применение операции к базе данных при выполнении migrate (движение "вперёд"). Все стандартные операции Django переопределяют этот метод. Используется при написании пользовательских операций миграции.',
+    syntax:
+      "Operation.database_forwards(app_label, schema_editor, from_state, to_state)",
+    arguments: [
+      {
+        name: "app_label",
+        description:
+          "Метка приложения (строка), к которому относится операция.",
+      },
+      {
+        name: "schema_editor",
+        description:
+          "Объект BaseDatabaseSchemaEditor для выполнения DDL-операций в БД.",
+      },
+      {
+        name: "from_state",
+        description:
+          "Состояние проекта до применения операции (объект ProjectState).",
+      },
+      {
+        name: "to_state",
+        description:
+          "Состояние проекта после применения операции (объект ProjectState).",
+      },
+    ],
+    example: `from django.db import migrations
+
+class MyCustomOperation(migrations.Operation):
+    """Пример пользовательской операции миграции."""
+
+    def __init__(self, model_name, sql):
+        self.model_name = model_name
+        self.sql = sql
+
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        # Выполняем SQL при применении миграции
+        schema_editor.execute(self.sql)
+
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        pass  # Откат не требуется
+
+    def state_forwards(self, app_label, state):
+        pass  # Состояние не меняется
+
+    def describe(self):
+        return f'Runs custom SQL on {self.model_name}'`,
+  },
+  {
+    name: "Operation.database_backwards",
+    category: "Migration Operations",
+    description:
+      'Метод базового класса Operation, реализующий откат операции в базе данных при выполнении migrate с аргументом имени предыдущей миграции (движение "назад"). Если операция необратима, должен вызывать NotImplementedError. Используется при написании пользовательских операций.',
+    syntax:
+      "Operation.database_backwards(app_label, schema_editor, from_state, to_state)",
+    arguments: [
+      { name: "app_label", description: "Метка приложения (строка)." },
+      {
+        name: "schema_editor",
+        description:
+          "Объект BaseDatabaseSchemaEditor для выполнения DDL-операций.",
+      },
+      {
+        name: "from_state",
+        description:
+          "Состояние проекта до отката (объект ProjectState) — то есть целевое состояние после отката.",
+      },
+      {
+        name: "to_state",
+        description:
+          "Состояние проекта после отката — исходное состояние до применения операции.",
+      },
+    ],
+    example: `from django.db import migrations
+
+class CreateView(migrations.Operation):
+    """Операция создания SQL-представления с поддержкой отката."""
+
+    reduces_to_sql = True
+
+    def __init__(self, name, sql):
+        self.name = name
+        self.sql = sql
+
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        schema_editor.execute(
+            f'CREATE VIEW {self.name} AS {self.sql}'
+        )
+
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        # Откат: удаляем представление
+        schema_editor.execute(f'DROP VIEW IF EXISTS {self.name}')
+
+    def state_forwards(self, app_label, state):
+        pass
+
+    def describe(self):
+        return f'Creates view {self.name}'`,
+  },
+  {
+    name: "Operation.state_forwards",
+    category: "Migration Operations",
+    description:
+      "Метод базового класса Operation, обновляющий внутреннее состояние Django (граф моделей) при применении операции — без взаимодействия с базой данных. Вызывается как при применении, так и при построении состояния без реального выполнения SQL (например, при --fake).",
+    syntax: "Operation.state_forwards(app_label, state)",
+    arguments: [
+      { name: "app_label", description: "Метка приложения (строка)." },
+      {
+        name: "state",
+        description:
+          "Объект ProjectState, представляющий текущее состояние всех моделей. Метод должен изменять его на месте (in-place).",
+      },
+    ],
+    example: `from django.db import migrations
+from django.db.migrations.state import ModelState
+
+class AddVirtualField(migrations.Operation):
+    """Операция, добавляющая поле только в состояние (без SQL)."""
+
+    def __init__(self, model_name, name, field):
+        self.model_name = model_name
+        self.name = name
+        self.field = field
+
+    def state_forwards(self, app_label, state):
+        # Добавляем поле в состояние Django
+        state.models[app_label, self.model_name.lower()].fields[
+            self.name
+        ] = self.field
+        # Уведомляем об изменении
+        state.reload_model(app_label, self.model_name.lower())
+
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        pass  # Никаких SQL-запросов
+
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        pass
+
+    def describe(self):
+        return f'Adds {self.name} to {self.model_name} (state only)'`,
+  },
+  {
+    name: "Operation.describe",
+    category: "Migration Operations",
+    description:
+      "Возвращает человекочитаемое строковое описание операции. Используется командой showmigrations и в выводе migrate для информирования пользователя о том, что именно делает каждая операция. При создании пользовательской операции рекомендуется переопределить этот метод.",
+    syntax: "Operation.describe()",
+    arguments: [],
+    example: `from django.db import migrations
+
+class CreateMaterializedView(migrations.Operation):
+    def __init__(self, name, sql):
+        self.name = name
+        self.sql = sql
+
+    def describe(self):
+        # Выводится при: python manage.py migrate --verbosity 2
+        return f'Creates materialized view "{self.name}"'
+
+    def state_forwards(self, app_label, state):
+        pass
+
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        schema_editor.execute(
+            f'CREATE MATERIALIZED VIEW {self.name} AS {self.sql}'
+        )
+
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        schema_editor.execute(
+            f'DROP MATERIALIZED VIEW IF EXISTS {self.name}'
+        )
+
+# Вывод в консоли при migrate:
+# Running deferred SQL...
+# Creates materialized view "active_users_view"`,
+  },
+  {
+    name: "Operation.reduce",
+    category: "Migration Operations",
+    description:
+      "Метод оптимизации операций, вызываемый командой squashmigrations. Принимает другую операцию и проверяет, можно ли объединить текущую и переданную операции в одну (или удалить обе). Возвращает список операций-результатов, False (нельзя объединить) или True (операции взаимоуничтожаются).",
+    syntax: "Operation.reduce(operation, app_label)",
+    arguments: [
+      {
+        name: "operation",
+        description:
+          "Следующая операция в списке, с которой выполняется попытка объединения.",
+      },
+      { name: "app_label", description: "Метка приложения (строка)." },
+    ],
+    example: `from django.db import migrations
+
+class MyOperation(migrations.Operation):
+    def __init__(self, model_name, value):
+        self.model_name = model_name
+        self.value = value
+
+    def reduce(self, operation, app_label):
+        # Если следующая операция того же типа и модели —
+        # объединяем в одну с последним значением
+        if (
+            isinstance(operation, MyOperation)
+            and operation.model_name == self.model_name
+        ):
+            return [operation]  # Оставляем только последнюю
+
+        # Не можем объединить — возвращаем False
+        return False
+
+    def state_forwards(self, app_label, state): pass
+    def database_forwards(self, app_label, schema_editor, from_state, to_state): pass
+    def database_backwards(self, app_label, schema_editor, from_state, to_state): pass
+    def describe(self): return f'MyOperation on {self.model_name}'`,
+  },
+  {
+    name: "Model.__str__",
+    category: "Models",
+    description:
+      'Определяет строковое представление объекта модели. Вызывается при преобразовании объекта в строку: в шаблонах, в Django Admin, в выводе QuerySet и при использовании str(). Рекомендуется переопределять в каждой модели, чтобы объекты отображались понятно, а не как "Article object (1)".',
+    syntax: "Model.__str__()",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    author = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'{self.title} — {self.author.username}'
+
+# Использование:
+article = Article.objects.get(pk=1)
+print(str(article))        # 'Python основы — ivan'
+print(f'{article}')        # 'Python основы — ivan'
+
+# В Django Admin объект отображается через __str__
+# В шаблоне: {{ article }}  → 'Python основы — ivan'
+
+# QuerySet тоже использует __str__:
+print(Article.objects.all())
+# <QuerySet [<Article: Python основы — ivan>, ...]>`,
+  },
+  {
+    name: "Model.__eq__",
+    category: "Models",
+    description:
+      "Определяет логику сравнения двух объектов модели. По умолчанию два объекта считаются равными, если они принадлежат одному классу (или прокси-цепочке) и имеют одинаковое значение первичного ключа. Объект с pk=None не равен никакому другому объекту, включая самого себя.",
+    syntax: "Model.__eq__(other)",
+    arguments: [
+      {
+        name: "other",
+        description: "Объект, с которым сравнивается текущий экземпляр модели.",
+      },
+    ],
+    example: `from myapp.models import Article
+
+a1 = Article.objects.get(pk=1)
+a2 = Article.objects.get(pk=1)
+a3 = Article.objects.get(pk=2)
+
+print(a1 == a2)   # True  — одинаковый pk
+print(a1 == a3)   # False — разные pk
+print(a1 is a2)   # False — разные объекты в памяти
+
+# Новый (несохранённый) объект:
+new = Article(title='Черновик')
+print(new.pk)     # None
+print(new == a1)  # False — pk=None не равен ничему
+
+# Разные модели с одинаковым pk не равны:
+from django.contrib.auth.models import User
+user = User.objects.get(pk=1)
+print(a1 == user) # False — разные классы`,
+  },
+  {
+    name: "Model.__hash__",
+    category: "Models",
+    description:
+      "Определяет хэш объекта модели, что позволяет использовать экземпляры моделей в множествах (set) и в качестве ключей словарей. Хэш вычисляется на основе значения первичного ключа. Объекты с pk=None не хэшируемы (вызывают TypeError), так как их хэш изменится после сохранения.",
+    syntax: "Model.__hash__()",
+    arguments: [],
+    example: `from myapp.models import Article
+
+a1 = Article.objects.get(pk=1)
+a2 = Article.objects.get(pk=1)
+a3 = Article.objects.get(pk=2)
+
+# Использование в множестве:
+articles_set = {a1, a2, a3}
+print(len(articles_set))  # 2 — a1 и a2 одинаковы
+
+# Использование как ключ словаря:
+cache = {a1: 'cached_data'}
+print(cache[a2])  # 'cached_data' — a1 == a2
+
+# Объект без pk не хэшируем:
+new_article = Article(title='Новая')
+try:
+    hash(new_article)
+except TypeError as e:
+    print(e)  # unhashable type: 'Article' (pk=None)`,
+  },
+  {
+    name: "Meta.app_label",
+    category: "Models",
+    description:
+      'Явно указывает, к какому приложению Django относится модель. Необходимо, если модель определяется вне обычного расположения (не внутри зарегистрированного приложения в INSTALLED_APPS). Также используется при обращении к модели через строку вида "app_label.ModelName".',
+    syntax: "class Meta:\n    app_label = 'myapp'",
+    arguments: [],
+    example: `from django.db import models
+
+# Модель в нестандартном месте:
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+
+    class Meta:
+        app_label = 'blog'  # Привязка к приложению 'blog'
+
+# Ссылка на модель через строку (в ForeignKey, GenericFK):
+class Comment(models.Model):
+    article = models.ForeignKey(
+        'blog.Article',      # app_label.ModelName
+        on_delete=models.CASCADE,
+    )
+
+# Получение модели через реестр:
+from django.apps import apps
+Article = apps.get_model('blog', 'Article')`,
+  },
+  {
+    name: "Meta.base_manager_name",
+    category: "Models",
+    description:
+      "Указывает имя менеджера, который Django будет использовать в качестве базового при загрузке связанных объектов. Базовый менеджер используется при операциях, требующих доступа ко всем объектам — например, при обратных отношениях. По умолчанию Django использует первый определённый менеджер.",
+    syntax: "class Meta:\n    base_manager_name = 'objects'",
+    arguments: [],
+    example: `from django.db import models
+
+class ActiveManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True)
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    is_active = models.BooleanField(default=True)
+
+    active = ActiveManager()  # Кастомный менеджер (первый!)
+    objects = models.Manager()  # Стандартный
+
+    class Meta:
+        # Без этого Django использовал бы 'active' как базовый,
+        # и обратные связи (related_name) не видели бы скрытые объекты
+        base_manager_name = 'objects'`,
+  },
+  {
+    name: "Meta.db_table",
+    category: "Models",
+    description:
+      "Задаёт пользовательское имя таблицы в базе данных. По умолчанию Django генерирует имя по шаблону appname_modelname (например, blog_article). Используется для работы с существующими таблицами или для соблюдения соглашений об именовании базы данных.",
+    syntax: "class Meta:\n    db_table = 'custom_table_name'",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+
+    class Meta:
+        db_table = 'content_articles'
+        # По умолчанию было бы: blog_article или myapp_article
+
+# Работа с унаследованной базой данных:
+class LegacyUser(models.Model):
+    name = models.CharField(max_length=100)
+    email = models.EmailField()
+
+    class Meta:
+        db_table = 'tbl_users'  # Существующая таблица
+        managed = False  # Django не управляет схемой`,
+  },
+  {
+    name: "Meta.db_tablespace",
+    category: "Models",
+    description:
+      "Указывает табличное пространство (tablespace) базы данных для хранения таблицы модели. Поддерживается только некоторыми СУБД (Oracle, PostgreSQL). Позволяет распределять таблицы по разным физическим хранилищам для оптимизации производительности или управления дисковым пространством.",
+    syntax: "class Meta:\n    db_tablespace = 'tablespace_name'",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+
+    class Meta:
+        db_tablespace = 'fast_ssd'  # Для PostgreSQL/Oracle
+
+# settings.py — глобальное табличное пространство по умолчанию:
+DEFAULT_TABLESPACE = 'primary'
+DEFAULT_INDEX_TABLESPACE = 'indexes'
+
+# Примечание: SQLite и MySQL не поддерживают tablespace,
+# настройка просто игнорируется`,
+  },
+  {
+    name: "Meta.default_manager_name",
+    category: "Models",
+    description:
+      "Указывает имя менеджера, который Django будет использовать по умолчанию (через атрибут Model.objects, если явно не переопределён). Полезно, когда в модели несколько менеджеров и нужно явно контролировать, какой из них является основным.",
+    syntax: "class Meta:\n    default_manager_name = 'objects'",
+    arguments: [],
+    example: `from django.db import models
+
+class PublishedManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_published=True)
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    is_published = models.BooleanField(default=False)
+
+    published = PublishedManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        # Без этого 'published' был бы default (первый в списке)
+        default_manager_name = 'all_objects'
+
+# Теперь Article.objects — это all_objects:
+print(Article.objects.count())   # Все статьи
+print(Article.published.count()) # Только опубликованные`,
+  },
+  {
+    name: "Meta.default_related_name",
+    category: "Models",
+    description:
+      "Задаёт имя обратного отношения по умолчанию для всех связей, ссылающихся на данную модель. Используется вместо автоматически генерируемого имени modelname_set. Удобно при наследовании или при наличии множества ForeignKey-отношений к одной модели.",
+    syntax: "class Meta:\n    default_related_name = 'articles'",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    author = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    category = models.ForeignKey('Category', on_delete=models.SET_NULL, null=True)
+
+    class Meta:
+        default_related_name = 'articles'
+
+# Теперь обратные отношения используют 'articles':
+user = User.objects.get(pk=1)
+user.articles.all()       # Вместо user.article_set.all()
+
+category = Category.objects.get(pk=1)
+category.articles.all()   # Вместо category.article_set.all()`,
+  },
+  {
+    name: "Meta.get_latest_by",
+    category: "Models",
+    description:
+      'Указывает поле (или список полей) по умолчанию для методов QuerySet.latest() и QuerySet.earliest(). Если задано, эти методы можно вызывать без аргументов, и они будут использовать указанное поле для определения "последнего" или "первого" объекта.',
+    syntax: "class Meta:\n    get_latest_by = 'created_at'",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        get_latest_by = 'created_at'
+        # Или несколько полей (с Django 2.0+):
+        # get_latest_by = ['-updated_at', 'created_at']
+
+# Благодаря get_latest_by можно не передавать поле:
+latest = Article.objects.latest()      # По created_at
+earliest = Article.objects.earliest()  # По created_at
+
+# Без get_latest_by нужно явно указывать поле:
+latest = Article.objects.latest('created_at')`,
+  },
+  {
+    name: "Meta.managed",
+    category: "Models",
+    description:
+      "Управляет тем, создаёт ли Django таблицу для этой модели и управляет ли её схемой при миграциях. При managed=False Django не выполняет CREATE TABLE, ALTER TABLE, DROP TABLE для этой модели. Используется при подключении к уже существующим таблицам или представлениям (views) БД.",
+    syntax: "class Meta:\n    managed = False",
+    arguments: [],
+    example: `from django.db import models
+
+# Модель для существующей таблицы (не управляется Django):
+class LegacyOrder(models.Model):
+    order_id = models.IntegerField(primary_key=True)
+    customer_name = models.CharField(max_length=200)
+    total = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        managed = False
+        db_table = 'orders'  # Существующая таблица
+
+# Django ORM работает полностью:
+orders = LegacyOrder.objects.filter(total__gte=1000)
+
+# Модель для SQL-представления:
+class ArticleSummary(models.Model):
+    title = models.CharField(max_length=200)
+    comment_count = models.IntegerField()
+
+    class Meta:
+        managed = False
+        db_table = 'v_article_summary'  # Представление (VIEW)`,
+  },
+  {
+    name: "Meta.ordering",
+    category: "Models",
+    description:
+      "Задаёт порядок сортировки по умолчанию для QuerySet этой модели. Применяется автоматически ко всем запросам, если явно не указан другой порядок через .order_by(). Знак минус перед именем поля означает убывающий порядок. Может содержать несколько полей.",
+    syntax: "class Meta:\n    ordering = ['-created_at', 'title']",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+    rating = models.IntegerField(default=0)
+
+    class Meta:
+        # Сначала по убыванию рейтинга, затем по заголовку
+        ordering = ['-rating', 'title']
+
+# Все запросы автоматически сортируются:
+Article.objects.all()
+# SELECT ... ORDER BY rating DESC, title ASC
+
+# Переопределить порядок явно:
+Article.objects.all().order_by('created_at')
+
+# Отменить сортировку (для производительности):
+Article.objects.all().order_by()`,
+  },
+  {
+    name: "Meta.permissions",
+    category: "Models",
+    description:
+      "Определяет дополнительные права доступа для модели, которые будут созданы в базе данных вместе со стандартными правами (add, change, delete, view). Используется в системе прав Django для управления доступом к специфическим действиям. Каждое право — кортеж (codename, description).",
+    syntax: "class Meta:\n    permissions = [('codename', 'Описание')]",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    is_published = models.BooleanField(default=False)
+
+    class Meta:
+        permissions = [
+            ('can_publish', 'Может публиковать статьи'),
+            ('can_feature', 'Может выделять статьи на главной'),
+            ('can_archive', 'Может архивировать статьи'),
+        ]
+
+# Проверка прав в коде:
+def publish_article(request, pk):
+    if not request.user.has_perm('blog.can_publish'):
+        raise PermissionDenied
+    article = Article.objects.get(pk=pk)
+    article.is_published = True
+    article.save()
+
+# В шаблоне:
+# {% if perms.blog.can_publish %}
+#     <button>Опубликовать</button>
+# {% endif %}`,
+  },
+  {
+    name: "Meta.default_permissions",
+    category: "Models",
+    description:
+      "Управляет набором стандартных прав доступа, автоматически создаваемых Django для каждой модели. По умолчанию создаются права: add, change, delete, view. Можно ограничить этот набор, если некоторые права не нужны — например, для моделей, доступных только для чтения.",
+    syntax:
+      "class Meta:\n    default_permissions = ('add', 'change', 'delete', 'view')",
+    arguments: [],
+    example: `from django.db import models
+
+# Модель только для чтения — убираем лишние права:
+class ExchangeRate(models.Model):
+    currency = models.CharField(max_length=3)
+    rate = models.DecimalField(max_digits=12, decimal_places=6)
+    date = models.DateField()
+
+    class Meta:
+        # Только право просмотра — нельзя добавлять/изменять/удалять
+        default_permissions = ('view',)
+
+# Модель, для которой не нужны никакие стандартные права:
+class SystemLog(models.Model):
+    message = models.TextField()
+    logged_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        default_permissions = ()  # Никаких стандартных прав`,
+  },
+  {
+    name: "Meta.proxy",
+    category: "Models",
+    description:
+      'Превращает модель в прокси-модель. Прокси-модель не создаёт новую таблицу в БД — она работает с той же таблицей, что и родительская модель, но может иметь другие методы, менеджеры, Meta-опции (ordering и т.д.). Используется для создания различных "видов" одной и той же таблицы.',
+    syntax: "class Meta:\n    proxy = True",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    is_published = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+# Прокси: та же таблица, другое поведение
+class PublishedArticle(Article):
+    class Meta:
+        proxy = True
+        ordering = ['-created_at']
+        verbose_name = 'Опубликованная статья'
+
+    objects = PublishedManager()  # Только опубликованные
+
+    def notify_subscribers(self):
+        # Дополнительный метод только для опубликованных
+        pass
+
+# Обе модели используют таблицу myapp_article:
+Article.objects.count()           # Все статьи
+PublishedArticle.objects.count()  # Только опубликованные`,
+  },
+  {
+    name: "Meta.required_db_features",
+    category: "Models",
+    description:
+      "Список функций базы данных, которые должны поддерживаться для создания этой модели. Если текущая БД не поддерживает хотя бы одну из перечисленных функций — модель и её миграции будут пропущены. Используется для написания переносимого кода, рассчитанного на несколько СУБД.",
+    syntax: "class Meta:\n    required_db_features = ['feature_name']",
+    arguments: [],
+    example: `from django.db import models
+
+# Модель создаётся только если БД поддерживает JSONField:
+class ArticleMetadata(models.Model):
+    article = models.ForeignKey('Article', on_delete=models.CASCADE)
+    data = models.JSONField()
+
+    class Meta:
+        required_db_features = ['supports_json_field']
+
+# Модель только для PostgreSQL (поддерживает gis_enabled):
+class Location(models.Model):
+    name = models.CharField(max_length=100)
+    # point = gis_fields.PointField()
+
+    class Meta:
+        required_db_features = ['gis_enabled']
+
+# Доступные функции определены в:
+# django.db.backends.<backend>.features
+# Например: supports_transactions, can_return_rows_from_bulk_insert и др.`,
+  },
+  {
+    name: "Model",
+    category: "Models",
+    description:
+      "Базовый класс для всех моделей Django. Каждый класс модели описывает одну таблицу в базе данных, а каждый экземпляр — одну строку. Наследование от models.Model даёт доступ к ORM-методам: save, delete, objects и другим. Поля модели объявляются как атрибуты класса с использованием объектов полей (CharField, IntegerField и т.д.).",
+    syntax: "class MyModel(models.Model)",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200, verbose_name='Заголовок')
+    body = models.TextField(verbose_name='Содержание')
+    author = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='articles',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_published = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Статья'
+        verbose_name_plural = 'Статьи'
+
+    def __str__(self):
+        return self.title`,
+  },
+  {
+    name: "Model._meta",
+    category: "Models",
+    description:
+      "Объект Options, содержащий метаданные модели: информацию о полях, таблице, приложении, ограничениях и многом другом. Доступен через атрибут _meta на классе или экземпляре модели. Используется Django внутренне и в прикладном коде для интроспекции модели.",
+    syntax: "Model._meta",
+    arguments: [],
+    example: `from django.contrib.auth.models import User
+
+# Имя таблицы
+print(User._meta.db_table)          # 'auth_user'
+
+# Все поля модели
+for field in User._meta.get_fields():
+    print(field.name)
+
+# Получить конкретное поле
+field = User._meta.get_field('email')
+print(field.max_length)             # 254
+
+# Метки
+print(User._meta.verbose_name)      # 'user'
+print(User._meta.app_label)         # 'auth'
+print(User._meta.model_name)        # 'user'
+
+# Проверка, абстрактная ли модель
+print(User._meta.abstract)          # False`,
+  },
+  {
+    name: "Model.objects",
+    category: "Models",
+    description:
+      "Менеджер по умолчанию для каждой модели Django. Предоставляет интерфейс для выполнения запросов к базе данных: all(), filter(), get(), create(), update(), delete() и другие методы QuerySet. Можно переопределить или добавить пользовательские менеджеры.",
+    syntax: "Model.objects",
+    arguments: [],
+    example: `from myapp.models import Article
+
+# Получить все записи
+articles = Article.objects.all()
+
+# Фильтрация
+published = Article.objects.filter(is_published=True)
+
+# Получить одну запись (бросает исключение если нет или >1)
+article = Article.objects.get(pk=1)
+
+# Создать и сохранить
+article = Article.objects.create(title='Новая статья', body='...')
+
+# Обновить несколько записей за один запрос
+Article.objects.filter(is_published=False).update(is_published=True)
+
+# Пользовательский менеджер
+class PublishedManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_published=True)
+
+class Article(models.Model):
+    objects = models.Manager()       # Менеджер по умолчанию
+    published = PublishedManager()   # Дополнительный менеджер`,
+  },
+  {
+    name: "Model.pk",
+    category: "Models",
+    description:
+      "Псевдоним для первичного ключа модели. Всегда ссылается на поле, объявленное как primary_key=True. Если такое поле не объявлено явно, Django автоматически добавляет поле id (BigAutoField). Удобен тем, что работает независимо от реального имени поля первичного ключа.",
+    syntax: "Model.pk",
+    arguments: [],
+    example: `from myapp.models import Article
+
+article = Article.objects.get(pk=1)
+
+# pk — псевдоним для id (или другого первичного ключа)
+print(article.pk)    # 1
+print(article.id)    # 1  (то же самое)
+
+# Полезно в обобщённом коде:
+def get_object_pk(instance):
+    return instance.pk  # Работает для любой модели
+
+# Фильтрация по pk
+Article.objects.filter(pk__in=[1, 2, 3])
+
+# Новый объект до сохранения:
+new_article = Article(title='Черновик')
+print(new_article.pk)   # None — ещё не сохранён в БД`,
+  },
+  {
+    name: "Model.save",
+    category: "Models",
+    description:
+      "Сохраняет объект модели в базу данных. Если объект новый (pk=None) — выполняет INSERT, если уже существует — UPDATE. Перед сохранением вызывает pre_save сигнал, после — post_save. Можно переопределить для добавления собственной логики. Параметр update_fields позволяет сохранить только указанные поля.",
+    syntax:
+      "Model.save(force_insert=False, force_update=False, using=None, update_fields=None)",
+    arguments: [
+      {
+        name: "force_insert",
+        description:
+          "Принудительно выполнить INSERT, даже если объект уже существует в БД. По умолчанию False.",
+      },
+      {
+        name: "force_update",
+        description:
+          "Принудительно выполнить UPDATE. Вызовет ошибку, если строка не существует. По умолчанию False.",
+      },
+      {
+        name: "using",
+        description:
+          'Алиас базы данных из DATABASES, в которую сохранять. По умолчанию None (используется "default").',
+      },
+      {
+        name: "update_fields",
+        description:
+          "Итерируемый список имён полей — будет обновлён только этот набор полей (частичный UPDATE). По умолчанию None (обновляются все поля).",
+      },
+    ],
+    example: `from myapp.models import Article
+
+# Создание новой записи (INSERT)
+article = Article(title='Заголовок', body='Текст статьи')
+article.save()
+print(article.pk)   # Теперь pk установлен
+
+# Обновление записи (UPDATE)
+article.title = 'Новый заголовок'
+article.save()
+
+# Обновить только одно поле (экономит запрос)
+article.title = 'Оптимизированное обновление'
+article.save(update_fields=['title'])
+
+# Переопределение save() для добственной логики:
+class Article(models.Model):
+    slug = models.SlugField()
+    title = models.CharField(max_length=200)
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            from django.utils.text import slugify
+            self.slug = slugify(self.title)
+        super().save(*args, **kwargs)`,
+  },
+  {
+    name: "Model.save_base",
+    category: "Models",
+    description:
+      "Внутренний метод, реализующий фактическую логику сохранения Model.save(). Обрабатывает сигналы pre_save/post_save, наследование моделей и маршрутизацию по базам данных. Как правило, напрямую не вызывается — используйте save(). Может быть полезен при создании сложного наследования моделей.",
+    syntax:
+      "Model.save_base(raw=False, force_insert=False, force_update=False, using=None, update_fields=None)",
+    arguments: [
+      {
+        name: "raw",
+        description:
+          "Если True — сигналы pre_save/post_save не отправляются. Используется при загрузке фикстур. По умолчанию False.",
+      },
+      {
+        name: "force_insert",
+        description: "Принудительно выполнить INSERT. По умолчанию False.",
+      },
+      {
+        name: "force_update",
+        description: "Принудительно выполнить UPDATE. По умолчанию False.",
+      },
+      { name: "using", description: "Алиас базы данных. По умолчанию None." },
+      {
+        name: "update_fields",
+        description: "Список полей для частичного UPDATE. По умолчанию None.",
+      },
+    ],
+    example: `# save_base используется внутри Django при загрузке фикстур:
+# python manage.py loaddata fixture.json
+# → вызывает obj.save_base(raw=True) — без сигналов
+
+# Пример переопределения для кастомного наследования:
+class TimestampedModel(models.Model):
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save_base(self, *args, **kwargs):
+        # Логика до сохранения родителей в MTI
+        result = super().save_base(*args, **kwargs)
+        return result
+
+    class Meta:
+        abstract = True`,
+  },
+  {
+    name: "Model.delete",
+    category: "Models",
+    description:
+      "Удаляет объект из базы данных. Выполняет DELETE-запрос и отправляет сигналы pre_delete и post_delete. При наличии связанных объектов с on_delete=CASCADE они также удаляются. Возвращает кортеж (количество удалённых объектов, словарь с разбивкой по типам).",
+    syntax: "Model.delete(using=None, keep_parents=False)",
+    arguments: [
+      {
+        name: "using",
+        description:
+          'Алиас базы данных, из которой удалять. По умолчанию None (используется "default").',
+      },
+      {
+        name: "keep_parents",
+        description:
+          "Если True — при наследовании (MTI) удаляет только дочернюю запись, оставляя родительскую. По умолчанию False.",
+      },
+    ],
+    example: `from myapp.models import Article
+
+article = Article.objects.get(pk=1)
+
+# Удаление одного объекта
+deleted_count, details = article.delete()
+print(deleted_count)  # Общее число удалённых строк (включая каскадные)
+print(details)        # {'myapp.Article': 1, 'myapp.Comment': 5}
+
+# Массовое удаление через QuerySet (без сигналов для каждого объекта):
+Article.objects.filter(is_published=False).delete()
+
+# keep_parents=True при MTI-наследовании:
+class SpecialArticle(Article):
+    extra_field = models.CharField(max_length=100)
+
+special = SpecialArticle.objects.get(pk=2)
+special.delete(keep_parents=True)
+# Удалит только строку в specialarticle, оставив строку в article`,
+  },
+  {
+    name: "Model.refresh_from_db",
+    category: "Models",
+    description:
+      "Перезагружает значения полей объекта из базы данных, перезаписывая текущие значения в памяти. Полезно, когда другой процесс или код мог обновить запись в БД, и нужно получить актуальные данные без создания нового объекта.",
+    syntax: "Model.refresh_from_db(using=None, fields=None)",
+    arguments: [
+      {
+        name: "using",
+        description:
+          "Алиас базы данных, из которой перечитывать. По умолчанию None.",
+      },
+      {
+        name: "fields",
+        description:
+          "Список имён полей для обновления. Если None — перезагружаются все не отложенные (non-deferred) поля.",
+      },
+    ],
+    example: `from myapp.models import Article
+
+article = Article.objects.get(pk=1)
+print(article.title)  # 'Старый заголовок'
+
+# В другом потоке/процессе заголовок обновился в БД...
+Article.objects.filter(pk=1).update(title='Новый заголовок')
+
+# Обновить объект из БД
+article.refresh_from_db()
+print(article.title)  # 'Новый заголовок'
+
+# Обновить только конкретное поле
+article.refresh_from_db(fields=['title'])
+
+# Используется в тестах:
+from django.test import TestCase
+
+class ArticleTest(TestCase):
+    def test_save_updates_slug(self):
+        article = Article.objects.create(title='Тест')
+        article.refresh_from_db()
+        self.assertEqual(article.slug, 'test')`,
+  },
+  {
+    name: "Model.full_clean",
+    category: "Models",
+    description:
+      "Запускает полную валидацию объекта: вызывает clean_fields(), clean() и validate_unique() (и validate_constraints() с Django 4.1+) последовательно. Собирает все ошибки в ValidationError с разбивкой по полям. Django НЕ вызывает full_clean автоматически при save() — нужно вызывать вручную или в форме.",
+    syntax:
+      "Model.full_clean(exclude=None, validate_unique=True, validate_constraints=True)",
+    arguments: [
+      {
+        name: "exclude",
+        description:
+          "Список имён полей, которые следует пропустить при валидации. По умолчанию None.",
+      },
+      {
+        name: "validate_unique",
+        description:
+          "Выполнять ли проверку уникальности через validate_unique(). По умолчанию True.",
+      },
+      {
+        name: "validate_constraints",
+        description:
+          "Выполнять ли проверку ограничений через validate_constraints(). По умолчанию True (с Django 4.1).",
+      },
+    ],
+    example: `from django.core.exceptions import ValidationError
+from myapp.models import Article
+
+article = Article(title='', body='Текст')  # Пустой заголовок
+
+try:
+    article.full_clean()
+except ValidationError as e:
+    print(e.message_dict)
+    # {'title': ['This field cannot be blank.']}
+
+# В переопределённом save():
+class Article(models.Model):
+    def save(self, *args, **kwargs):
+        self.full_clean()  # Валидация перед сохранением
+        super().save(*args, **kwargs)`,
+  },
+  {
+    name: "Model.clean",
+    category: "Models",
+    description:
+      "Метод для пользовательской валидации на уровне модели. Вызывается из full_clean(). Предназначен для проверок, которые затрагивают несколько полей сразу или требуют бизнес-логики. При обнаружении ошибки должен вызывать ValidationError. По умолчанию ничего не делает.",
+    syntax: "Model.clean()",
+    arguments: [],
+    example: `from django.core.exceptions import ValidationError
+from django.db import models
+
+class Event(models.Model):
+    start_date = models.DateField()
+    end_date = models.DateField()
+    max_capacity = models.IntegerField()
+    registered = models.IntegerField(default=0)
+
+    def clean(self):
+        # Проверка межполевой логики
+        if self.end_date and self.start_date:
+            if self.end_date < self.start_date:
+                raise ValidationError({
+                    'end_date': 'Дата окончания не может быть раньше даты начала.',
+                })
+
+        if self.registered > self.max_capacity:
+            raise ValidationError(
+                'Число зарегистрированных превышает максимальную вместимость.'
+            )
+
+    class Meta:
+        app_label = 'myapp'`,
+  },
+  {
+    name: "Model.clean_fields",
+    category: "Models",
+    description:
+      "Валидирует каждое поле модели по отдельности, вызывая метод validate() каждого поля. Проверяет допустимость значений (тип, длину, null/blank и другие ограничения уровня поля). Вызывается из full_clean() до clean(). Собирает ошибки всех полей перед тем, как их выбросить.",
+    syntax: "Model.clean_fields(exclude=None)",
+    arguments: [
+      {
+        name: "exclude",
+        description:
+          "Список имён полей, которые следует пропустить при валидации. По умолчанию None.",
+      },
+    ],
+    example: `from django.core.exceptions import ValidationError
+from myapp.models import Article
+
+article = Article(
+    title='A' * 300,  # Превышает max_length=200
+    body='',
+)
+
+try:
+    article.clean_fields()
+except ValidationError as e:
+    print(e.message_dict)
+    # {'title': ['Ensure this value has at most 200 characters (it has 300).']}
+
+# Исключить поля из валидации:
+try:
+    article.clean_fields(exclude=['body'])
+except ValidationError as e:
+    print(e.message_dict)
+    # Только ошибки title, body пропущен`,
+  },
+  {
+    name: "Model.validate_unique",
+    category: "Models",
+    description:
+      "Проверяет уникальность объекта относительно существующих записей в базе данных — по полям с unique=True, unique_together и UniqueConstraint (без условия). Вызывается из full_clean(). При обнаружении дубликата вызывает ValidationError с описанием конфликта.",
+    syntax: "Model.validate_unique(exclude=None)",
+    arguments: [
+      {
+        name: "exclude",
+        description:
+          "Список имён полей, которые исключить из проверки уникальности. По умолчанию None.",
+      },
+    ],
+    example: `from django.core.exceptions import ValidationError
+from myapp.models import Article
+
+# Предположим, статья с slug='python-basics' уже существует
+article = Article(
+    title='Python основы',
+    slug='python-basics',  # Дубликат
+)
+
+try:
+    article.validate_unique()
+except ValidationError as e:
+    print(e.message_dict)
+    # {'slug': ['Article with this Slug already exists.']}
+
+# Проверка unique_together:
+# Если unique_together = [('author', 'slug')]
+try:
+    article.validate_unique()
+except ValidationError as e:
+    print(e.messages)
+    # ['Article with this Author and Slug already exists.']`,
+  },
+  {
+    name: "Model.validate_constraints",
+    category: "Models",
+    description:
+      "Проверяет ограничения модели, объявленные в Meta.constraints (UniqueConstraint с условием, CheckConstraint и др.) на уровне Python — без обращения к базе данных. Вызывается из full_clean(). Добавлено в Django 3.1.",
+    syntax: "Model.validate_constraints(exclude=None)",
+    arguments: [
+      {
+        name: "exclude",
+        description:
+          "Список имён полей, исключаемых из проверки ограничений. По умолчанию None.",
+      },
+    ],
+    example: `from django.core.exceptions import ValidationError
+from django.db import models
+
+class Product(models.Model):
+    name = models.CharField(max_length=100)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(price__gt=0),
+                name='positive_price',
+            ),
+            models.CheckConstraint(
+                check=models.Q(discount__lte=models.F('price')),
+                name='discount_lte_price',
+            ),
+        ]
+
+product = Product(name='Товар', price=-10)
+try:
+    product.validate_constraints()
+except ValidationError as e:
+    print(e.messages)
+    # ['Constraint "positive_price" is violated.']`,
+  },
+  {
+    name: "Model.unique_error_message",
+    category: "Models",
+    description:
+      "Возвращает сообщение об ошибке, когда нарушена проверка уникальности (unique, unique_together). Вызывается внутри validate_unique() для формирования текста ValidationError. Можно переопределить для получения пользовательских сообщений об ошибках уникальности.",
+    syntax: "Model.unique_error_message(model_class, unique_check)",
+    arguments: [
+      {
+        name: "model_class",
+        description:
+          "Класс модели, для которой обнаружено нарушение уникальности.",
+      },
+      {
+        name: "unique_check",
+        description:
+          "Кортеж имён полей, образующих нарушенное уникальное ограничение.",
+      },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+    author = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+
+    class Meta:
+        unique_together = [('author', 'slug')]
+
+    def unique_error_message(self, model_class, unique_check):
+        if unique_check == ('author', 'slug'):
+            return (
+                'У этого автора уже есть статья с таким адресом (slug). '
+                'Пожалуйста, измените заголовок.'
+            )
+        return super().unique_error_message(model_class, unique_check)`,
+  },
+  {
+    name: "Model.date_error_message",
+    category: "Models",
+    description:
+      "Возвращает сообщение об ошибке для полей с ограничениями дат (DateField, DateTimeField с параметрами limit_choices_to или при проверке unique_for_date/month/year). Вызывается внутри validate_unique(). Можно переопределить для кастомных сообщений.",
+    syntax: "Model.date_error_message(lookup_type, field_name, value)",
+    arguments: [
+      {
+        name: "lookup_type",
+        description: 'Тип временного ограничения: "date", "month" или "year".',
+      },
+      {
+        name: "field_name",
+        description:
+          "Имя поля, для которого сработало ограничение уникальности по дате.",
+      },
+      { name: "value", description: "Значение даты, вызвавшее конфликт." },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(
+        max_length=200,
+        unique_for_date='published_at',  # Уникален в пределах дня
+    )
+    published_at = models.DateField()
+
+    def date_error_message(self, lookup_type, field_name, value):
+        if field_name == 'title' and lookup_type == 'date':
+            return (
+                f'Статья с таким заголовком уже была опубликована '
+                f'{value.strftime("%d.%m.%Y")}. '
+                f'Измените заголовок или дату публикации.'
+            )
+        return super().date_error_message(lookup_type, field_name, value)`,
+  },
+  {
+    name: "Model.get_absolute_url",
+    category: "Models",
+    description:
+      "Возвращает URL, по которому доступен данный объект. Django и сторонние приложения (админка, sitemap) используют этот метод для построения ссылок на объект. Рекомендуется реализовывать через reverse(), чтобы URL всегда соответствовал актуальным URL-конфигурациям.",
+    syntax: "Model.get_absolute_url()",
+    arguments: [],
+    example: `from django.db import models
+from django.urls import reverse
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+
+    def get_absolute_url(self):
+        return reverse('article-detail', kwargs={'slug': self.slug})
+
+# urls.py
+# path('articles/<slug:slug>/', ArticleDetailView.as_view(), name='article-detail')
+
+# Использование в шаблоне:
+# <a href="{{ article.get_absolute_url }}">{{ article.title }}</a>
+
+# В Django Admin автоматически появится кнопка "View on site":
+# если get_absolute_url определён — она активна`,
+  },
+  {
+    name: "Model.get_deferred_fields",
+    category: "Models",
+    description:
+      "Возвращает множество (set) имён полей, которые были отложены (deferred) при загрузке объекта через QuerySet.defer() или QuerySet.only(). Отложенные поля не загружаются из БД при первом запросе, а запрашиваются отдельным запросом при первом обращении.",
+    syntax: "Model.get_deferred_fields()",
+    arguments: [],
+    example: `from myapp.models import Article
+
+# Загрузка только части полей:
+article = Article.objects.only('title', 'slug').get(pk=1)
+
+# Какие поля отложены?
+deferred = article.get_deferred_fields()
+print(deferred)
+# {'body', 'created_at', 'is_published', 'author_id'}
+
+# При обращении к отложенному полю — дополнительный SQL-запрос:
+body = article.body  # SELECT body FROM article WHERE id=1
+
+# После обращения поле больше не отложено:
+print(article.get_deferred_fields())
+# {'created_at', 'is_published', 'author_id'}`,
+  },
+  {
+    name: "Model.serializable_value",
+    category: "Models",
+    description:
+      "Возвращает значение указанного поля в виде, пригодном для сериализации. Для обычных полей возвращает их значение, для RelatedField — значение колонки (например, author_id вместо объекта User). Используется Django при сериализации объектов в JSON/XML (dumpdata, сигналы).",
+    syntax: "Model.serializable_value(field_name)",
+    arguments: [
+      {
+        name: "field_name",
+        description:
+          "Имя поля или аттрибута (строка), сериализуемое значение которого нужно получить.",
+      },
+    ],
+    example: `from myapp.models import Article
+
+article = Article.objects.get(pk=1)
+
+# Обычное поле — возвращает его значение
+print(article.serializable_value('title'))
+# 'Python основы'
+
+# ForeignKey — возвращает значение колонки (id), а не объект
+print(article.serializable_value('author'))
+# 42  (author_id)
+
+# DateTimeField — возвращает объект datetime
+print(article.serializable_value('created_at'))
+# datetime.datetime(2024, 1, 15, 10, 30, 0)
+
+# Используется в core/serializers при dumpdata:
+# python manage.py dumpdata myapp.Article --indent 2`,
+  },
+  {
+    name: "Meta.required_db_vendor",
+    category: "Models",
+    description:
+      'Ограничивает поддержку модели конкретным производителем СУБД. Если текущая база данных не совпадает с указанным вендором — модель и её миграции будут пропущены. Допустимые значения: "sqlite", "postgresql", "mysql", "oracle".',
+    syntax: "class Meta:\n    required_db_vendor = 'postgresql'",
+    arguments: [],
+    example: `from django.db import models
+
+# Модель только для PostgreSQL:
+class FullTextSearch(models.Model):
+    content = models.TextField()
+    search_vector = models.GeneratedField(
+        expression=models.Func('content', function='to_tsvector'),
+        output_field=models.TextField(),
+        db_persist=True,
+    )
+
+    class Meta:
+        required_db_vendor = 'postgresql'
+
+# Для SQLite:
+class LocalCache(models.Model):
+    key = models.CharField(max_length=200, unique=True)
+    value = models.TextField()
+
+    class Meta:
+        required_db_vendor = 'sqlite'`,
+  },
+  {
+    name: "Meta.select_on_save",
+    category: "Models",
+    description:
+      "Заставляет Django использовать алгоритм сохранения из Django 1.6 и более ранних версий — перед UPDATE выполняется SELECT для проверки существования записи. По умолчанию False: Django использует результат UPDATE (затронуто 0 строк → INSERT). Включайте только при проблемах совместимости с экзотическими БД.",
+    syntax: "class Meta:\n    select_on_save = True",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+
+    class Meta:
+        # При save() Django сначала делает:
+        # SELECT COUNT(*) WHERE pk = %s
+        # Затем — INSERT или UPDATE в зависимости от результата
+        select_on_save = True
+
+# По умолчанию (select_on_save=False) Django:
+# UPDATE ... WHERE pk = %s
+# Если rows_affected == 0 → INSERT
+# Это эффективнее, но может не работать с некоторыми СУБД`,
+  },
+  {
+    name: "Meta.indexes",
+    category: "Models",
+    description:
+      "Список индексов для модели, определённых через объекты models.Index. Предпочтительный способ создания индексов вместо устаревшего index_together. Поддерживает именованные индексы, составные индексы, индексы с сортировкой и частичные индексы (с условием).",
+    syntax:
+      "class Meta:\n    indexes = [models.Index(fields=['field1', 'field2'])]",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    author = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    published_at = models.DateTimeField(null=True)
+    is_published = models.BooleanField(default=False)
+
+    class Meta:
+        indexes = [
+            # Простой индекс
+            models.Index(fields=['title'], name='article_title_idx'),
+            # Составной индекс с убывающей сортировкой
+            models.Index(
+                fields=['author', '-published_at'],
+                name='article_author_date_idx',
+            ),
+            # Частичный индекс (только опубликованные)
+            models.Index(
+                fields=['published_at'],
+                name='published_articles_idx',
+                condition=models.Q(is_published=True),
+            ),
+        ]`,
+  },
+  {
+    name: "Meta.constraints",
+    category: "Models",
+    description:
+      "Список ограничений базы данных, определённых через объекты UniqueConstraint, CheckConstraint или ExclusionConstraint. Предпочтительный способ задания ограничений вместо устаревших unique_together. Поддерживает условные ограничения, отложенную проверку и ограничения с именованием.",
+    syntax:
+      "class Meta:\n    constraints = [models.UniqueConstraint(fields=['f1'], name='name')]",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    slug = models.SlugField()
+    author = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    rating = models.IntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            # Уникальная комбинация полей
+            models.UniqueConstraint(
+                fields=['author', 'slug'],
+                name='unique_author_slug',
+            ),
+            # Уникальность только для опубликованных
+            models.UniqueConstraint(
+                fields=['title'],
+                condition=models.Q(is_published=True),
+                name='unique_published_title',
+            ),
+            # Проверочное ограничение
+            models.CheckConstraint(
+                check=models.Q(rating__gte=0) & models.Q(rating__lte=10),
+                name='valid_rating',
+            ),
+        ]`,
+  },
+  {
+    name: "Meta.unique_together",
+    category: "Models",
+    description:
+      "Задаёт наборы полей, комбинации которых должны быть уникальны в таблице. Создаёт составное уникальное ограничение UNIQUE INDEX в базе данных. Устарело начиная с Django 4.2 — рекомендуется использовать Meta.constraints с UniqueConstraint.",
+    syntax: "class Meta:\n    unique_together = [['field1', 'field2']]",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    slug = models.SlugField()
+    author = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    language = models.CharField(max_length=10, default='ru')
+
+    class Meta:
+        # Один автор не может иметь две статьи с одинаковым slug
+        unique_together = [
+            ['author', 'slug'],
+            ['title', 'language'],  # Несколько ограничений
+        ]
+
+# Современная альтернатива (Django 4.2+):
+# class Meta:
+#     constraints = [
+#         models.UniqueConstraint(
+#             fields=['author', 'slug'],
+#             name='unique_author_slug',
+#         )
+#     ]`,
+  },
+  {
+    name: "Meta.index_together",
+    category: "Models",
+    description:
+      "Задаёт наборы полей для создания составных индексов. Устарело начиная с Django 4.2 — рекомендуется использовать Meta.indexes с объектами models.Index. В отличие от unique_together, не создаёт ограничение уникальности — только ускоряет запросы.",
+    syntax: "class Meta:\n    index_together = [['field1', 'field2']]",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    author = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    category = models.CharField(max_length=50)
+
+    class Meta:
+        # Составной индекс ускоряет запросы по author + created_at
+        index_together = [
+            ['author', 'created_at'],
+            ['category', 'created_at'],
+        ]
+
+# Современная альтернатива (Django 4.2+):
+# class Meta:
+#     indexes = [
+#         models.Index(fields=['author', 'created_at']),
+#         models.Index(fields=['category', 'created_at']),
+#     ]`,
+  },
+  {
+    name: "Meta.order_with_respect_to",
+    category: "Models",
+    description:
+      "Делает объекты модели упорядочиваемыми относительно связанного объекта. Добавляет в таблицу колонку _order и генерирует методы get_RELATED_order(), set_RELATED_order(), get_next_in_order(), get_previous_in_order(). Полезно для задания порядка дочерних объектов относительно родителя.",
+    syntax: "class Meta:\n    order_with_respect_to = 'foreign_key_field'",
+    arguments: [],
+    example: `from django.db import models
+
+class Question(models.Model):
+    text = models.TextField()
+
+class Answer(models.Model):
+    question = models.ForeignKey(Question, on_delete=models.CASCADE)
+    text = models.TextField()
+
+    class Meta:
+        order_with_respect_to = 'question'
+
+# Управление порядком:
+question = Question.objects.get(pk=1)
+
+# Получить текущий порядок:
+order = question.get_answer_order()   # [3, 1, 2]
+
+# Установить новый порядок:
+question.set_answer_order([1, 2, 3])
+
+# Навигация:
+answer = Answer.objects.get(pk=1)
+next_ans = answer.get_next_in_order()
+prev_ans = answer.get_previous_in_order()`,
+  },
+  {
+    name: "Meta.verbose_name",
+    category: "Models",
+    description:
+      'Задаёт читабельное название модели в единственном числе. Используется в Django Admin, формах и сообщениях об ошибках. Если не задано — Django автоматически генерирует его из имени класса, разбивая CamelCase на слова (ArticleComment → "article comment").',
+    syntax: "class Meta:\n    verbose_name = 'Статья'",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+
+    class Meta:
+        verbose_name = 'Статья'
+        verbose_name_plural = 'Статьи'
+
+# Использование в коде:
+print(Article._meta.verbose_name)        # 'Статья'
+print(Article._meta.verbose_name_plural) # 'Статьи'
+
+# Django Admin использует verbose_name:
+# Заголовок страницы списка: "Выберите статья для изменения"
+# Кнопка добавления: "Добавить статья"
+
+# Локализация через gettext:
+from django.utils.translation import gettext_lazy as _
+
+class Article(models.Model):
+    class Meta:
+        verbose_name = _('статья')
+        verbose_name_plural = _('статьи')`,
+  },
+  {
+    name: "Meta.verbose_name_plural",
+    category: "Models",
+    description:
+      'Задаёт читабельное название модели во множественном числе. Используется в Django Admin и других местах, где требуется форма множественного числа. Если не задано — Django добавляет "s" к verbose_name (что не подходит для русского языка).',
+    syntax: "class Meta:\n    verbose_name_plural = 'Статьи'",
+    arguments: [],
+    example: `from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+class Category(models.Model):
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        verbose_name = _('категория')
+        verbose_name_plural = _('категории')  # Не 'категорияs'!
+
+class Person(models.Model):
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        verbose_name = 'Человек'
+        verbose_name_plural = 'Люди'  # Нестандартное множественное
+
+# В Admin список отображается как "Люди"
+# Без verbose_name_plural было бы "Человекs"`,
+  },
+  {
+    name: "Meta.db_table_comment",
+    category: "Models",
+    description:
+      "Задаёт комментарий для таблицы в базе данных. Комментарий сохраняется на уровне СУБД и виден при просмотре схемы базы данных инструментами вроде pgAdmin, DBeaver и другими. Добавлено в Django 4.2. Поддерживается PostgreSQL, MySQL и Oracle.",
+    syntax: "class Meta:\n    db_table_comment = 'Описание таблицы'",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'content_articles'
+        db_table_comment = (
+            'Хранит все статьи блога. '
+            'Используется модулями blog и api. '
+            'Не удалять без согласования с командой!'
+        )
+
+# В PostgreSQL комментарий доступен через:
+# SELECT obj_description('content_articles'::regclass);
+# Или в pgAdmin: правой кнопкой → Properties → General → Comment`,
+  },
+  {
+    name: "Field",
+    category: "Models",
+    description:
+      "Базовый класс для всех полей модели Django. Поля описывают колонки таблицы базы данных: их тип, ограничения, значения по умолчанию и поведение. Все стандартные типы полей (CharField, IntegerField, ForeignKey и др.) наследуются от Field. Можно создавать пользовательские поля, наследуясь от Field или его подклассов.",
+    syntax: "class MyField(models.Field)",
+    arguments: [],
+    example: `from django.db import models
+
+# Стандартные поля, унаследованные от Field:
+class Article(models.Model):
+    title = models.CharField(max_length=200)   # Field → CharField
+    body = models.TextField()                   # Field → TextField
+    views = models.IntegerField(default=0)      # Field → IntegerField
+    published = models.BooleanField(default=False)
+
+# Пользовательское поле:
+class ColorField(models.CharField):
+    """Поле для хранения HEX-цвета (#RRGGBB)."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs['max_length'] = 7
+        super().__init__(*args, **kwargs)
+
+    def formfield(self, **kwargs):
+        from django.forms import TextInput
+        kwargs['widget'] = TextInput(attrs={'type': 'color'})
+        return super().formfield(**kwargs)`,
+  },
+  {
+    name: "Field.__init__",
+    category: "Models",
+    description:
+      "Конструктор базового класса Field. Принимает общие параметры, доступные для всех полей Django. Вызывается при объявлении поля в классе модели. При создании пользовательских полей необходимо принять нужные параметры и передать остальные через super().__init__().",
+    syntax:
+      'Field.__init__(verbose_name=None, name=None, primary_key=False, max_length=None, unique=False, blank=False, null=False, db_index=False, default=NOT_PROVIDED, editable=True, serialize=True, unique_for_date=None, unique_for_month=None, unique_for_year=None, choices=None, help_text="", db_column=None, db_tablespace=None, auto_created=False, validators=(), error_messages=None, db_comment=None, db_default=NOT_PROVIDED)',
+    arguments: [
+      {
+        name: "verbose_name",
+        description:
+          "Читабельное название поля для форм и Admin. По умолчанию генерируется из имени атрибута.",
+      },
+      {
+        name: "primary_key",
+        description:
+          "Если True — поле является первичным ключом. По умолчанию False.",
+      },
+      {
+        name: "max_length",
+        description: "Максимальная длина для CharField и его подклассов.",
+      },
+      {
+        name: "unique",
+        description:
+          "Если True — значение должно быть уникальным в таблице. По умолчанию False.",
+      },
+      {
+        name: "blank",
+        description:
+          "Если True — поле может быть пустым в формах Django. По умолчанию False.",
+      },
+      {
+        name: "null",
+        description:
+          "Если True — Django хранит пустые значения как NULL в БД. По умолчанию False.",
+      },
+      {
+        name: "db_index",
+        description:
+          "Если True — создаётся индекс для этого поля в БД. По умолчанию False.",
+      },
+      {
+        name: "default",
+        description:
+          "Значение по умолчанию для поля. Может быть значением или вызываемым объектом.",
+      },
+      {
+        name: "editable",
+        description:
+          "Если False — поле не отображается в Admin и формах. По умолчанию True.",
+      },
+      {
+        name: "choices",
+        description:
+          "Последовательность кортежей (value, display) для ограничения допустимых значений.",
+      },
+      {
+        name: "help_text",
+        description: "Поясняющий текст, отображаемый в формах рядом с полем.",
+      },
+      {
+        name: "db_column",
+        description:
+          "Имя колонки в базе данных. По умолчанию — имя атрибута модели.",
+      },
+      {
+        name: "validators",
+        description: "Список функций-валидаторов, применяемых к значению поля.",
+      },
+      {
+        name: "db_comment",
+        description: "Комментарий для колонки в базе данных (Django 4.2+).",
+      },
+      {
+        name: "db_default",
+        description:
+          "Значение по умолчанию на уровне базы данных (Django 5.0+).",
+      },
+    ],
+    example: `from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
+
+class Article(models.Model):
+    title = models.CharField(
+        verbose_name='Заголовок',
+        max_length=200,
+        unique=False,
+        blank=False,
+        null=False,
+        db_index=True,
+        help_text='Максимум 200 символов',
+        db_comment='Заголовок статьи',
+    )
+    rating = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(10)],
+        choices=[(i, str(i)) for i in range(11)],
+    )
+    internal_code = models.CharField(
+        max_length=20,
+        editable=False,   # Скрыто в Admin/формах
+        db_column='code', # Имя колонки в БД
+    )`,
+  },
+  {
+    name: "Field.deconstruct",
+    category: "Models",
+    description:
+      "Возвращает кортеж (name, path, args, kwargs), содержащий всю информацию для воссоздания поля в миграциях. Django вызывает deconstruct() при генерации файлов миграций командой makemigrations. При создании пользовательских полей необходимо переопределить этот метод, чтобы поле корректно сериализовалось в миграции.",
+    syntax: "Field.deconstruct()",
+    arguments: [],
+    example: `from django.db import models
+
+class ColorField(models.CharField):
+    """Пользовательское поле для HEX-цвета с именованным параметром."""
+
+    def __init__(self, *args, default_color='#000000', **kwargs):
+        self.default_color = default_color
+        kwargs.setdefault('max_length', 7)
+        super().__init__(*args, **kwargs)
+
+    def deconstruct(self):
+        name, path, args, kwargs = super().deconstruct()
+        # Добавляем наш параметр, чтобы миграция его сохранила
+        if self.default_color != '#000000':
+            kwargs['default_color'] = self.default_color
+        return name, path, args, kwargs
+
+# Пример вывода deconstruct():
+field = ColorField(default_color='#ff0000')
+print(field.deconstruct())
+# ('', 'myapp.fields.ColorField', [], {'default_color': '#ff0000', 'max_length': 7})`,
+  },
+  {
+    name: "Field.get_db_prep_value",
+    category: "Models",
+    description:
+      "Преобразует значение Python в формат, пригодный для передачи в базу данных с учётом особенностей конкретного подключения (connection). Вызывается перед каждым SQL-запросом. В отличие от get_prep_value(), получает объект соединения, что позволяет адаптировать значение под конкретную СУБД.",
+    syntax: "Field.get_db_prep_value(value, connection, prepared=False)",
+    arguments: [
+      {
+        name: "value",
+        description: "Значение Python, которое нужно подготовить для БД.",
+      },
+      {
+        name: "connection",
+        description: "Объект соединения с базой данных (DatabaseWrapper).",
+      },
+      {
+        name: "prepared",
+        description:
+          "Если True — значение уже прошло через get_prep_value() и не требует повторной обработки. По умолчанию False.",
+      },
+    ],
+    example: `from django.db import models
+
+class JSONTextField(models.TextField):
+    """Поле, хранящее Python-объект как JSON-строку."""
+
+    def from_db_value(self, value, expression, connection):
+        import json
+        if value is None:
+            return value
+        return json.loads(value)
+
+    def get_prep_value(self, value):
+        import json
+        if value is None:
+            return value
+        return json.dumps(value, ensure_ascii=False)
+
+    def get_db_prep_value(self, value, connection, prepared=False):
+        value = self.get_prep_value(value)
+        # Дополнительная обработка под конкретную СУБД при необходимости
+        return super().get_db_prep_value(value, connection, prepared=True)`,
+  },
+  {
+    name: "Field.get_prep_value",
+    category: "Models",
+    description:
+      'Преобразует значение Python в формат, пригодный для передачи в базу данных, без учёта особенностей конкретного подключения. Это первый этап подготовки значения: из Python-объекта в универсальный "базовый" тип (строку, число и т.д.). Вызывается из get_db_prep_value().',
+    syntax: "Field.get_prep_value(value)",
+    arguments: [
+      {
+        name: "value",
+        description:
+          "Значение Python (экземпляр, объект и т.д.), которое нужно преобразовать в примитив для сохранения в БД.",
+      },
+    ],
+    example: `from django.db import models
+
+class CommaSeparatedField(models.TextField):
+    """Хранит список строк Python как строку через запятую."""
+
+    def from_db_value(self, value, expression, connection):
+        if not value:
+            return []
+        return [v.strip() for v in value.split(',')]
+
+    def to_python(self, value):
+        if isinstance(value, list):
+            return value
+        if not value:
+            return []
+        return [v.strip() for v in value.split(',')]
+
+    def get_prep_value(self, value):
+        # list → строка для сохранения в БД
+        if isinstance(value, list):
+            return ','.join(str(v) for v in value)
+        return value
+
+# Использование:
+# article.tags = ['python', 'django', 'orm']
+# → сохраняется как 'python,django,orm'`,
+  },
+  {
+    name: "Field.pre_save",
+    category: "Models",
+    description:
+      "Вызывается непосредственно перед сохранением объекта в БД и возвращает значение, которое будет записано. Используется для полей с auto_now=True (DateTimeField) и auto_now_add=True, чтобы автоматически подставлять текущее время. Можно переопределить для вычисления значения поля на основе других полей модели перед сохранением.",
+    syntax: "Field.pre_save(model_instance, add)",
+    arguments: [
+      {
+        name: "model_instance",
+        description: "Экземпляр модели, который сохраняется.",
+      },
+      {
+        name: "add",
+        description:
+          "True если объект создаётся впервые (INSERT), False если обновляется (UPDATE).",
+      },
+    ],
+    example: `from django.db import models
+from django.utils.text import slugify
+
+class AutoSlugField(models.SlugField):
+    """Поле, автоматически генерирующее slug из другого поля."""
+
+    def __init__(self, populate_from, *args, **kwargs):
+        self.populate_from = populate_from
+        super().__init__(*args, **kwargs)
+
+    def pre_save(self, model_instance, add):
+        value = getattr(model_instance, self.attname)
+        if not value or (add and not value):
+            # Генерируем slug из указанного поля
+            source = getattr(model_instance, self.populate_from)
+            value = slugify(source)
+            setattr(model_instance, self.attname, value)
+        return value
+
+# Использование:
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    slug = AutoSlugField(populate_from='title', unique=True)`,
+  },
+  {
+    name: "Field.contribute_to_class",
+    category: "Models",
+    description:
+      "Вызывается при добавлении поля к классу модели (во время метакласса). Регистрирует поле в модели: добавляет дескрипторы, связывает поле с моделью (_meta), устанавливает имя. Переопределяется в пользовательских полях для добавления методов или сигналов к модели при её определении.",
+    syntax: "Field.contribute_to_class(cls, name, private_only=False)",
+    arguments: [
+      {
+        name: "cls",
+        description: "Класс модели, к которому добавляется поле.",
+      },
+      { name: "name", description: "Имя атрибута поля в классе модели." },
+      {
+        name: "private_only",
+        description:
+          "Если True — поле не добавляется в _meta.fields (используется для внутренних полей). По умолчанию False.",
+      },
+    ],
+    example: `from django.db import models
+
+class StatusField(models.CharField):
+    """Поле статуса, автоматически добавляющее методы к модели."""
+
+    def contribute_to_class(self, cls, name, **kwargs):
+        super().contribute_to_class(cls, name, **kwargs)
+
+        # Добавляем вспомогательный метод к модели
+        def is_active(self_model):
+            return getattr(self_model, name) == 'active'
+
+        cls.is_active = is_active
+
+        # Добавляем сигнал при изменении статуса
+        from django.db.models.signals import pre_save
+        pre_save.connect(self._check_status, sender=cls)
+
+    def _check_status(self, sender, instance, **kwargs):
+        pass  # Логика проверки статуса
+
+class Article(models.Model):
+    status = StatusField(max_length=20, default='draft')
+
+article = Article(status='active')
+print(article.is_active())  # True`,
+  },
+  {
+    name: "Field.formfield",
+    category: "Models",
+    description:
+      "Возвращает экземпляр поля Django-формы (forms.Field), соответствующего данному полю модели. Вызывается при автоматическом создании формы из модели (ModelForm). Переопределяется в пользовательских полях для замены виджета или типа поля формы.",
+    syntax: "Field.formfield(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description:
+          "Дополнительные аргументы, передаваемые конструктору поля формы (widget, label, required и др.). Позволяют переопределить параметры поля при вызове.",
+      },
+    ],
+    example: `from django import forms
+from django.db import models
+
+class RatingField(models.IntegerField):
+    """Поле рейтинга, отображаемое как ряд звёздочек в форме."""
+
+    def formfield(self, **kwargs):
+        # Переопределяем виджет и ограничения по умолчанию
+        kwargs.setdefault('widget', forms.RadioSelect(
+            choices=[(i, '★' * i) for i in range(1, 6)]
+        ))
+        kwargs.setdefault('min_value', 1)
+        kwargs.setdefault('max_value', 5)
+        return super().formfield(**kwargs)
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    rating = RatingField(default=3)
+
+# В ModelForm поле rating автоматически отобразится
+# как RadioSelect со звёздочками:
+class ArticleForm(forms.ModelForm):
+    class Meta:
+        model = Article
+        fields = ['title', 'rating']`,
+  },
+  {
+    name: "AutoField",
+    category: "Models",
+    description:
+      "Поле автоинкрементного целочисленного первичного ключа. Django автоматически добавляет его к каждой модели, у которой не задан явный первичный ключ. Значения генерируются базой данных при каждом INSERT. Диапазон: от 1 до 2 147 483 647 (32-битное целое).",
+    syntax: "AutoField(**options)",
+    arguments: [
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры поля (verbose_name, db_column и др.). primary_key=True задаётся автоматически.",
+      },
+    ],
+    example: `from django.db import models
+
+# Django добавляет AutoField неявно:
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    # id = models.AutoField(primary_key=True)  ← добавляется автоматически
+
+# Явное объявление (например, чтобы задать verbose_name):
+class Article(models.Model):
+    id = models.AutoField(primary_key=True, verbose_name='ID')
+    title = models.CharField(max_length=200)
+
+# Изменить тип автоключа для всех моделей (settings.py):
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'   # 32-бит (по умолчанию до Django 3.2)
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField' # 64-бит (по умолчанию с Django 3.2)`,
+  },
+  {
+    name: "BigAutoField",
+    category: "Models",
+    description:
+      "Поле автоинкрементного первичного ключа на 64 бита. Аналог AutoField, но поддерживает значения от 1 до 9 223 372 036 854 775 807 (2⁶³−1). Начиная с Django 3.2 является значением по умолчанию для DEFAULT_AUTO_FIELD. Рекомендуется для таблиц с большим числом записей.",
+    syntax: "BigAutoField(**options)",
+    arguments: [
+      { name: "**options", description: "Стандартные параметры поля Field." },
+    ],
+    example: `from django.db import models
+
+# В settings.py (глобально):
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Для конкретного приложения в apps.py:
+class MyAppConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+
+# Явное объявление в модели:
+class Article(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    title = models.CharField(max_length=200)
+
+article = Article.objects.create(title='Тест')
+print(type(article.pk))   # <class 'int'>
+print(article.pk)         # Например: 1`,
+  },
+  {
+    name: "BigIntegerField",
+    category: "Models",
+    description:
+      "Поле для хранения целых чисел в диапазоне от −9 223 372 036 854 775 808 до 9 223 372 036 854 775 807 (64-битный знаковый тип BIGINT). Используется когда значение может выйти за пределы IntegerField (±2 147 483 647). В формах представлен как IntegerField.",
+    syntax: "BigIntegerField(**options)",
+    arguments: [
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры поля Field (verbose_name, null, blank, default и др.).",
+      },
+    ],
+    example: `from django.db import models
+
+class Statistics(models.Model):
+    page = models.ForeignKey('Page', on_delete=models.CASCADE)
+    # Счётчик просмотров может превысить 2 млрд:
+    view_count = models.BigIntegerField(default=0)
+    byte_transferred = models.BigIntegerField(
+        default=0,
+        verbose_name='Передано байт',
+        help_text='Суммарный объём трафика в байтах',
+    )
+
+stats = Statistics.objects.get(pk=1)
+stats.view_count += 1
+stats.save(update_fields=['view_count'])`,
+  },
+  {
+    name: "BinaryField",
+    category: "Models",
+    description:
+      "Поле для хранения бинарных данных (байтовых строк). Хранит данные в колонке типа BLOB/BYTEA. В Python значение представляется как memoryview. Не рекомендуется хранить большие файлы в базе данных — лучше использовать FileField. Нельзя фильтровать по содержимому через ORM.",
+    syntax: "BinaryField(max_length=None, **options)",
+    arguments: [
+      {
+        name: "max_length",
+        description:
+          "Максимальная длина в байтах. Используется только для валидации на уровне Python (не ограничивает на уровне БД). По умолчанию None.",
+      },
+      { name: "**options", description: "Стандартные параметры поля Field." },
+    ],
+    example: `from django.db import models
+
+class Document(models.Model):
+    name = models.CharField(max_length=200)
+    content = models.BinaryField(
+        verbose_name='Содержимое файла',
+        help_text='Храним небольшие файлы в БД',
+    )
+    thumbnail = models.BinaryField(max_length=65536, null=True)
+
+# Сохранение:
+with open('document.pdf', 'rb') as f:
+    doc = Document.objects.create(name='doc.pdf', content=f.read())
+
+# Чтение:
+doc = Document.objects.get(pk=1)
+data = bytes(doc.content)  # memoryview → bytes
+with open('output.pdf', 'wb') as f:
+    f.write(data)`,
+  },
+  {
+    name: "BooleanField",
+    category: "Models",
+    description:
+      "Поле для хранения булевых значений True/False. В базе данных хранится как BOOLEAN (или TINYINT(1) в MySQL). По умолчанию отображается как CheckboxInput в формах. Для полей, допускающих None (три значения: True/False/None), используйте null=True.",
+    syntax: "BooleanField(**options)",
+    arguments: [
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры поля. Часто используется default=False или default=True.",
+      },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    is_published = models.BooleanField(
+        default=False,
+        verbose_name='Опубликована',
+        db_index=True,  # Для быстрой фильтрации
+    )
+    is_featured = models.BooleanField(default=False)
+    # Три состояния: True / False / None (неизвестно)
+    is_verified = models.BooleanField(null=True, default=None)
+
+# Фильтрация:
+Article.objects.filter(is_published=True)
+Article.objects.filter(is_verified__isnull=True)
+
+# В форме — автоматически чекбокс:
+# <input type="checkbox" name="is_published">`,
+  },
+  {
+    name: "CharField",
+    category: "Models",
+    description:
+      "Поле для хранения строк ограниченной длины. Обязательный параметр max_length задаёт максимальное число символов. В базе данных хранится как VARCHAR(max_length). В формах отображается как TextInput. Для длинных текстов без ограничений используйте TextField.",
+    syntax: "CharField(max_length=None, **options)",
+    arguments: [
+      {
+        name: "max_length",
+        description:
+          "Обязательный параметр. Максимальное число символов (используется для валидации и DDL VARCHAR).",
+      },
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры поля (blank, null, default, choices, db_index и др.).",
+      },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(
+        max_length=200,
+        verbose_name='Заголовок',
+        db_index=True,
+    )
+    slug = models.CharField(max_length=200, unique=True)
+    language = models.CharField(
+        max_length=10,
+        choices=[('ru', 'Русский'), ('en', 'English'), ('de', 'Deutsch')],
+        default='ru',
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=[('draft', 'Черновик'), ('published', 'Опубликовано')],
+        default='draft',
+    )
+
+# Хранение пустых строк vs NULL:
+# blank=True  → поле необязательно в форме
+# null=True   → хранится NULL в БД (для CharField не рекомендуется)`,
+  },
+  {
+    name: "DateField",
+    category: "Models",
+    description:
+      "Поле для хранения даты (без времени). В Python представляется объектом datetime.date. В базе данных хранится как DATE. Параметры auto_now и auto_now_add позволяют автоматически устанавливать дату при обновлении или создании объекта. В формах отображается как DateInput.",
+    syntax: "DateField(auto_now=False, auto_now_add=False, **options)",
+    arguments: [
+      {
+        name: "auto_now",
+        description:
+          "Если True — автоматически устанавливает дату на текущую при каждом сохранении объекта (аналог updated_at). Делает поле нередактируемым (editable=False).",
+      },
+      {
+        name: "auto_now_add",
+        description:
+          "Если True — устанавливает дату при первом создании объекта и никогда не меняет её (аналог created_at). Делает поле нередактируемым.",
+      },
+      { name: "**options", description: "Стандартные параметры поля." },
+    ],
+    example: `from django.db import models
+import datetime
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    publish_date = models.DateField(
+        verbose_name='Дата публикации',
+        null=True,
+        blank=True,
+    )
+    created_date = models.DateField(auto_now_add=True)  # Только при создании
+    updated_date = models.DateField(auto_now=True)      # При каждом save()
+
+# Фильтрация по датам:
+today = datetime.date.today()
+Article.objects.filter(publish_date=today)
+Article.objects.filter(publish_date__year=2024)
+Article.objects.filter(publish_date__gte=datetime.date(2024, 1, 1))`,
+  },
+  {
+    name: "DateTimeField",
+    category: "Models",
+    description:
+      "Поле для хранения даты и времени. В Python представляется объектом datetime.datetime. В базе данных хранится как DATETIME или TIMESTAMP. При USE_TZ=True хранит значения в UTC и автоматически конвертирует в локальный часовой пояс при отображении. Поддерживает те же параметры auto_now и auto_now_add, что и DateField.",
+    syntax: "DateTimeField(auto_now=False, auto_now_add=False, **options)",
+    arguments: [
+      {
+        name: "auto_now",
+        description:
+          "Если True — автоматически устанавливает текущие дату и время при каждом сохранении (updated_at). Поле становится нередактируемым.",
+      },
+      {
+        name: "auto_now_add",
+        description:
+          "Если True — устанавливает текущие дату и время только при создании объекта (created_at). Поле становится нередактируемым.",
+      },
+      { name: "**options", description: "Стандартные параметры поля." },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+
+# Фильтрация:
+from django.utils import timezone
+now = timezone.now()
+
+Article.objects.filter(published_at__lte=now)
+Article.objects.filter(created_at__date=now.date())
+Article.objects.filter(created_at__hour=12)
+
+# settings.py:
+USE_TZ = True        # Хранить в UTC (рекомендуется)
+TIME_ZONE = 'Europe/Moscow'`,
+  },
+  {
+    name: "DecimalField",
+    category: "Models",
+    description:
+      "Поле для хранения десятичных чисел с фиксированной точностью. В Python представляется объектом decimal.Decimal. В базе данных хранится как DECIMAL или NUMERIC. Обязательны параметры max_digits и decimal_places. Используется для финансовых данных, где важна точность (в отличие от FloatField с плавающей точкой).",
+    syntax: "DecimalField(max_digits=None, decimal_places=None, **options)",
+    arguments: [
+      {
+        name: "max_digits",
+        description:
+          "Обязательный. Максимальное общее количество цифр (включая цифры после запятой).",
+      },
+      {
+        name: "decimal_places",
+        description: "Обязательный. Количество цифр после десятичной запятой.",
+      },
+      { name: "**options", description: "Стандартные параметры поля." },
+    ],
+    example: `from django.db import models
+import decimal
+
+class Product(models.Model):
+    name = models.CharField(max_length=200)
+    # До 10 цифр, 2 после запятой: например 99999999.99
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name='Цена',
+    )
+    # Курс валюты с высокой точностью
+    exchange_rate = models.DecimalField(
+        max_digits=14,
+        decimal_places=6,
+        default=decimal.Decimal('1.000000'),
+    )
+
+product = Product.objects.get(pk=1)
+total = product.price * decimal.Decimal('1.2')  # НДС 20%
+print(total)  # Точное десятичное число`,
+  },
+  {
+    name: "DurationField",
+    category: "Models",
+    description:
+      "Поле для хранения промежутков времени. В Python представляется объектом datetime.timedelta. В PostgreSQL хранится как INTERVAL, в других СУБД — как BIGINT (микросекунды). Поддерживает арифметические операции и агрегацию. Удобно для хранения длительностей: видео, аудио, событий.",
+    syntax: "DurationField(**options)",
+    arguments: [
+      {
+        name: "**options",
+        description: "Стандартные параметры поля (null, blank, default и др.).",
+      },
+    ],
+    example: `from django.db import models
+import datetime
+
+class Video(models.Model):
+    title = models.CharField(max_length=200)
+    duration = models.DurationField(verbose_name='Длительность')
+
+# Создание:
+video = Video.objects.create(
+    title='Урок Python',
+    duration=datetime.timedelta(hours=1, minutes=30, seconds=45),
+)
+
+# Фильтрация:
+one_hour = datetime.timedelta(hours=1)
+Video.objects.filter(duration__gte=one_hour)
+
+# Аннотации (PostgreSQL):
+from django.db.models import Sum
+total = Video.objects.aggregate(total=Sum('duration'))
+print(total['total'])  # datetime.timedelta(...)`,
+  },
+  {
+    name: "EmailField",
+    category: "Models",
+    description:
+      "Поле для хранения адресов электронной почты. Является подклассом CharField с автоматической валидацией формата email через EmailValidator. В формах отображается как EmailInput. Значение по умолчанию max_length=254 (максимум по стандарту RFC 5321).",
+    syntax: "EmailField(**options)",
+    arguments: [
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры CharField. max_length по умолчанию 254.",
+      },
+    ],
+    example: `from django.db import models
+
+class UserProfile(models.Model):
+    username = models.CharField(max_length=150, unique=True)
+    email = models.EmailField(
+        unique=True,
+        verbose_name='Электронная почта',
+        help_text='Введите действующий email-адрес',
+    )
+    backup_email = models.EmailField(
+        blank=True,
+        null=True,
+        verbose_name='Резервный email',
+    )
+
+# Валидация происходит автоматически:
+# 'not-an-email' → ValidationError
+# 'user@example.com' → OK
+
+# В форме: <input type="email" ...>`,
+  },
+  {
+    name: "FileField",
+    category: "Models",
+    description:
+      "Поле для загрузки файлов. Хранит путь к файлу в базе данных как строку, а сам файл размещает в файловой системе (или облачном хранилище). Параметр upload_to задаёт подпапку или функцию для определения пути. В формах отображается как ClearableFileInput.",
+    syntax: "FileField(upload_to='', storage=None, max_length=100, **options)",
+    arguments: [
+      {
+        name: "upload_to",
+        description:
+          'Строка-шаблон пути или callable(instance, filename). Может содержать strftime-токены: "uploads/%Y/%m/%d/".',
+      },
+      {
+        name: "storage",
+        description:
+          "Объект хранилища (Storage). По умолчанию используется DEFAULT_FILE_STORAGE из settings.py.",
+      },
+      {
+        name: "max_length",
+        description:
+          "Максимальная длина хранимого пути в БД. По умолчанию 100.",
+      },
+    ],
+    example: `from django.db import models
+
+def upload_path(instance, filename):
+    """Динамический путь: uploads/user_1/document.pdf"""
+    return f'uploads/user_{instance.owner_id}/{filename}'
+
+class Document(models.Model):
+    owner = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    title = models.CharField(max_length=200)
+    # Статический путь:
+    file = models.FileField(upload_to='documents/')
+    # Динамический путь:
+    attachment = models.FileField(upload_to=upload_path, null=True)
+
+doc = Document.objects.get(pk=1)
+print(doc.file.name)    # 'documents/report.pdf'
+print(doc.file.url)     # '/media/documents/report.pdf'
+print(doc.file.size)    # Размер в байтах`,
+  },
+  {
+    name: "FilePathField",
+    category: "Models",
+    description:
+      "Поле CharField, ограниченное выбором файлов из конкретной директории файловой системы. Хранит путь к файлу как строку. В формах отображается как Select с перечнем файлов из указанной папки. Подходит для выбора шаблонов, конфигурационных файлов и других статических ресурсов.",
+    syntax:
+      "FilePathField(path='', match=None, recursive=False, allow_files=True, allow_folders=False, max_length=100, **options)",
+    arguments: [
+      {
+        name: "path",
+        description:
+          "Обязательный. Абсолютный путь к директории в файловой системе.",
+      },
+      {
+        name: "match",
+        description:
+          "Регулярное выражение для фильтрации файлов по имени. По умолчанию None (все файлы).",
+      },
+      {
+        name: "recursive",
+        description:
+          "Если True — включает файлы из вложенных папок. По умолчанию False.",
+      },
+      {
+        name: "allow_files",
+        description: "Включать ли файлы в список. По умолчанию True.",
+      },
+      {
+        name: "allow_folders",
+        description: "Включать ли директории в список. По умолчанию False.",
+      },
+    ],
+    example: `from django.db import models
+import os
+
+class Report(models.Model):
+    name = models.CharField(max_length=200)
+    # Выбор шаблона из папки:
+    template = models.FilePathField(
+        path='/var/www/templates/',
+        match=r'.*\\.html$',   # Только .html файлы
+        recursive=True,
+        verbose_name='Шаблон отчёта',
+    )
+    # Выбор папки с данными:
+    data_folder = models.FilePathField(
+        path='/var/data/',
+        allow_files=False,
+        allow_folders=True,
+    )`,
+  },
+  {
+    name: "FloatField",
+    category: "Models",
+    description:
+      "Поле для хранения чисел с плавающей запятой двойной точности. В Python представляется встроенным типом float. В базе данных хранится как REAL или DOUBLE PRECISION. В отличие от DecimalField, не гарантирует точного десятичного представления — не используйте для финансовых данных.",
+    syntax: "FloatField(**options)",
+    arguments: [
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры поля (null, blank, default, validators и др.).",
+      },
+    ],
+    example: `from django.db import models
+
+class SensorReading(models.Model):
+    sensor = models.ForeignKey('Sensor', on_delete=models.CASCADE)
+    temperature = models.FloatField(verbose_name='Температура (°C)')
+    humidity = models.FloatField(
+        verbose_name='Влажность (%)',
+        null=True,
+        blank=True,
+    )
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+# Агрегация:
+from django.db.models import Avg, Max, Min
+stats = SensorReading.objects.aggregate(
+    avg_temp=Avg('temperature'),
+    max_temp=Max('temperature'),
+    min_temp=Min('temperature'),
+)`,
+  },
+  {
+    name: "GenericIPAddressField",
+    category: "Models",
+    description:
+      "Поле для хранения IP-адресов (IPv4 или IPv6). Хранит адрес как строку в базе данных. Автоматически валидирует корректность IP-адреса. Поддерживает нормализацию IPv6 и распаковку IPv4-mapped IPv6 адресов (::ffff:192.0.2.1 → 192.0.2.1).",
+    syntax:
+      "GenericIPAddressField(protocol='both', unpack_ipv4=False, **options)",
+    arguments: [
+      {
+        name: "protocol",
+        description:
+          '"both" (по умолчанию) — принимает IPv4 и IPv6. "IPv4" — только IPv4. "IPv6" — только IPv6.',
+      },
+      {
+        name: "unpack_ipv4",
+        description:
+          'Если True — IPv4-mapped IPv6 адреса (::ffff:192.0.2.1) распаковываются в IPv4 (192.0.2.1). Работает только при protocol="both".',
+      },
+    ],
+    example: `from django.db import models
+
+class AccessLog(models.Model):
+    user = models.ForeignKey('auth.User', on_delete=models.CASCADE, null=True)
+    ip_address = models.GenericIPAddressField(
+        verbose_name='IP-адрес',
+        protocol='both',        # IPv4 и IPv6
+        unpack_ipv4=True,       # Нормализация IPv4-mapped
+    )
+    user_agent = models.TextField()
+    accessed_at = models.DateTimeField(auto_now_add=True)
+
+# Фильтрация:
+AccessLog.objects.filter(ip_address='192.168.1.1')
+AccessLog.objects.filter(ip_address__startswith='192.168.')`,
+  },
+  {
+    name: "ImageField",
+    category: "Models",
+    description:
+      "Поле для загрузки изображений. Является подклассом FileField с дополнительной валидацией: проверяет, что загружаемый файл является корректным изображением (с помощью библиотеки Pillow). Может автоматически сохранять высоту и ширину изображения в указанные поля модели.",
+    syntax:
+      "ImageField(upload_to='', height_field=None, width_field=None, max_length=100, **options)",
+    arguments: [
+      {
+        name: "upload_to",
+        description:
+          "Путь или callable для определения места сохранения файла.",
+      },
+      {
+        name: "height_field",
+        description:
+          "Имя поля модели, в которое автоматически записывается высота изображения в пикселях.",
+      },
+      {
+        name: "width_field",
+        description:
+          "Имя поля модели, в которое автоматически записывается ширина изображения в пикселях.",
+      },
+      {
+        name: "max_length",
+        description: "Максимальная длина пути в БД. По умолчанию 100.",
+      },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    cover = models.ImageField(
+        upload_to='covers/%Y/%m/',
+        verbose_name='Обложка',
+        null=True,
+        blank=True,
+        height_field='cover_height',
+        width_field='cover_width',
+    )
+    cover_height = models.IntegerField(null=True, editable=False)
+    cover_width = models.IntegerField(null=True, editable=False)
+
+# Требуется установить Pillow:
+# pip install Pillow
+
+article = Article.objects.get(pk=1)
+print(article.cover.url)          # '/media/covers/2024/01/image.jpg'
+print(article.cover_width)        # 1920
+print(article.cover_height)       # 1080`,
+  },
+  {
+    name: "IntegerField",
+    category: "Models",
+    description:
+      "Поле для хранения целых чисел в диапазоне от −2 147 483 648 до 2 147 483 647 (32-битный знаковый тип INT). В базе данных хранится как INTEGER. В формах представлен виджетом NumberInput. Для больших значений используйте BigIntegerField, для маленьких — SmallIntegerField.",
+    syntax: "IntegerField(**options)",
+    arguments: [
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры поля (null, blank, default, validators, choices и др.).",
+      },
+    ],
+    example: `from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    view_count = models.IntegerField(default=0)
+    rating = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(10)],
+        verbose_name='Рейтинг',
+    )
+    sort_order = models.IntegerField(default=0, db_index=True)
+
+# Атомарное обновление счётчика (без race condition):
+from django.db.models import F
+Article.objects.filter(pk=1).update(view_count=F('view_count') + 1)`,
+  },
+  {
+    name: "JSONField",
+    category: "Models",
+    description:
+      "Поле для хранения JSON-данных. В Python значение представляется как dict, list, str, int, float, bool или None. Нативно поддерживается в PostgreSQL (тип jsonb), MySQL 5.7.8+, Oracle и SQLite 3.9+. Поддерживает фильтрацию по вложенным ключам через lookups __contains, __has_key и другие.",
+    syntax: "JSONField(encoder=None, decoder=None, **options)",
+    arguments: [
+      {
+        name: "encoder",
+        description:
+          "Пользовательский класс JSON-энкодера (подкласс json.JSONEncoder) для сериализации нестандартных типов Python. По умолчанию None.",
+      },
+      {
+        name: "decoder",
+        description:
+          "Пользовательский класс JSON-декодера (подкласс json.JSONDecoder) для десериализации. По умолчанию None.",
+      },
+      {
+        name: "**options",
+        description: "Стандартные параметры поля (null, blank, default и др.).",
+      },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    metadata = models.JSONField(default=dict)
+    tags = models.JSONField(default=list)
+    settings = models.JSONField(null=True, blank=True)
+
+# Сохранение:
+article = Article.objects.create(
+    title='Python tips',
+    metadata={'author': 'Ivan', 'views': 0},
+    tags=['python', 'django'],
+)
+
+# Фильтрация по вложенным ключам:
+Article.objects.filter(metadata__author='Ivan')
+Article.objects.filter(tags__contains=['python'])
+Article.objects.filter(metadata__has_key='views')
+
+# Обновление вложенного значения:
+article.metadata['views'] += 1
+article.save(update_fields=['metadata'])`,
+  },
+  {
+    name: "PositiveBigIntegerField",
+    category: "Models",
+    description:
+      "Поле для хранения положительных целых чисел от 0 до 9 223 372 036 854 775 807 (64-битный беззнаковый тип). Аналог BigIntegerField, но с валидатором на стороне Python и ограничением на уровне базы данных. Подходит для счётчиков, размеров файлов, идентификаторов внешних систем.",
+    syntax: "PositiveBigIntegerField(**options)",
+    arguments: [
+      { name: "**options", description: "Стандартные параметры поля Field." },
+    ],
+    example: `from django.db import models
+
+class FileUpload(models.Model):
+    name = models.CharField(max_length=255)
+    file_size = models.PositiveBigIntegerField(
+        verbose_name='Размер файла (байт)',
+        help_text='Максимум ~9.2 ЭБ',
+    )
+    download_count = models.PositiveBigIntegerField(default=0)
+    external_id = models.PositiveBigIntegerField(unique=True, null=True)
+
+# Валидация: значение < 0 вызовет ValidationError
+# В БД (PostgreSQL): BIGINT с CHECK (value >= 0)`,
+  },
+  {
+    name: "PositiveIntegerField",
+    category: "Models",
+    description:
+      "Поле для хранения целых чисел от 0 до 2 147 483 647 (32-битный, только положительные значения и ноль). Аналог IntegerField с ограничением на отрицательные числа. Часто используется для счётчиков, порядковых номеров, возраста и подобных неотрицательных значений.",
+    syntax: "PositiveIntegerField(**options)",
+    arguments: [
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры поля (null, blank, default, validators и др.).",
+      },
+    ],
+    example: `from django.db import models
+
+class Product(models.Model):
+    name = models.CharField(max_length=200)
+    quantity = models.PositiveIntegerField(default=0, verbose_name='Количество')
+    age_rating = models.PositiveIntegerField(
+        default=0,
+        help_text='Минимальный возраст (0 = без ограничений)',
+    )
+    sort_order = models.PositiveIntegerField(default=0, db_index=True)
+
+# Атомарное уменьшение с проверкой:
+from django.db.models import F, Q
+updated = Product.objects.filter(
+    pk=1, quantity__gt=0
+).update(quantity=F('quantity') - 1)`,
+  },
+  {
+    name: "PositiveSmallIntegerField",
+    category: "Models",
+    description:
+      "Поле для хранения небольших положительных целых чисел от 0 до 32 767 (16-битный). Занимает минимум места в базе данных. Подходит для рейтингов, возраста, приоритетов, статусных кодов и любых числовых значений в ограниченном небольшом диапазоне.",
+    syntax: "PositiveSmallIntegerField(**options)",
+    arguments: [
+      { name: "**options", description: "Стандартные параметры поля Field." },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    PRIORITY_LOW = 1
+    PRIORITY_MEDIUM = 2
+    PRIORITY_HIGH = 3
+    PRIORITY_CHOICES = [
+        (PRIORITY_LOW, 'Низкий'),
+        (PRIORITY_MEDIUM, 'Средний'),
+        (PRIORITY_HIGH, 'Высокий'),
+    ]
+    priority = models.PositiveSmallIntegerField(
+        choices=PRIORITY_CHOICES,
+        default=PRIORITY_MEDIUM,
+    )
+    rating = models.PositiveSmallIntegerField(
+        default=0,
+        help_text='От 0 до 5',
+    )`,
+  },
+  {
+    name: "SlugField",
+    category: "Models",
+    description:
+      "Поле для хранения слагов — коротких меток, используемых в URL. Является подклассом CharField. По умолчанию принимает только ASCII-символы, цифры, дефисы и подчёркивания. При allow_unicode=True принимает Unicode-символы. Автоматически добавляет db_index=True.",
+    syntax: "SlugField(allow_unicode=False, **options)",
+    arguments: [
+      {
+        name: "allow_unicode",
+        description:
+          "Если True — разрешает Unicode-символы в слаге (помимо ASCII). По умолчанию False.",
+      },
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры CharField. max_length по умолчанию 50.",
+      },
+    ],
+    example: `from django.db import models
+from django.utils.text import slugify
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    slug = models.SlugField(
+        max_length=200,
+        unique=True,
+        verbose_name='URL-адрес',
+        help_text='Только буквы, цифры, дефисы и подчёркивания',
+    )
+    # Для русских URL:
+    slug_ru = models.SlugField(allow_unicode=True, max_length=200, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.title)          # ASCII slug
+            self.slug_ru = slugify(self.title, allow_unicode=True)  # Unicode slug
+        super().save(*args, **kwargs)`,
+  },
+  {
+    name: "SmallAutoField",
+    category: "Models",
+    description:
+      "Поле автоинкрементного первичного ключа на 16 бит. Поддерживает значения от 1 до 32 767. Используется только для очень маленьких таблиц (справочники, типы, статусы), где число записей заведомо не превысит 32 тысяч. В большинстве случаев предпочтительнее BigAutoField.",
+    syntax: "SmallAutoField(**options)",
+    arguments: [
+      { name: "**options", description: "Стандартные параметры поля Field." },
+    ],
+    example: `from django.db import models
+
+# Для маленьких справочников:
+class Country(models.Model):
+    id = models.SmallAutoField(primary_key=True)
+    code = models.CharField(max_length=2, unique=True)  # 'RU', 'US'
+    name = models.CharField(max_length=100)
+
+# Настройка для конкретного приложения:
+class DirectoryConfig(AppConfig):
+    name = 'directory'
+    default_auto_field = 'django.db.models.SmallAutoField'
+
+# Диапазон: 1 .. 32 767
+# Превышение вызовет ошибку БД (integer overflow)`,
+  },
+  {
+    name: "SmallIntegerField",
+    category: "Models",
+    description:
+      "Поле для хранения небольших целых чисел от −32 768 до 32 767 (16-битный знаковый тип SMALLINT). Занимает меньше места в базе данных, чем IntegerField. Подходит для хранения небольших числовых значений: рейтингов, кодов ошибок, месяцев, часов.",
+    syntax: "SmallIntegerField(**options)",
+    arguments: [
+      { name: "**options", description: "Стандартные параметры поля Field." },
+    ],
+    example: `from django.db import models
+
+class SurveyAnswer(models.Model):
+    question = models.ForeignKey('Question', on_delete=models.CASCADE)
+    score = models.SmallIntegerField(
+        verbose_name='Оценка',
+        help_text='От -100 до 100',
+    )
+    month = models.SmallIntegerField(
+        choices=[(i, str(i)) for i in range(1, 13)],
+    )
+
+# В PostgreSQL хранится как SMALLINT (2 байта vs 4 байта у INTEGER)
+# Экономия: 2 байта на запись × 1 000 000 строк = ~2 МБ`,
+  },
+  {
+    name: "TextField",
+    category: "Models",
+    description:
+      "Поле для хранения текстов произвольной длины. В базе данных хранится как TEXT. В формах отображается как Textarea. Не требует параметра max_length (в отличие от CharField), хотя его можно задать для валидации на уровне формы — ограничение не применяется на уровне БД.",
+    syntax: "TextField(**options)",
+    arguments: [
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры поля (blank, null, default, verbose_name, validators и др.).",
+      },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    body = models.TextField(verbose_name='Содержание')
+    summary = models.TextField(
+        blank=True,
+        max_length=500,    # Только валидация в форме, не в БД
+        verbose_name='Краткое описание',
+        help_text='Максимум 500 символов',
+    )
+    notes = models.TextField(blank=True, default='')
+
+# Полнотекстовый поиск (PostgreSQL):
+from django.contrib.postgres.search import SearchVector
+Article.objects.annotate(
+    search=SearchVector('title', 'body', config='russian')
+).filter(search='Python')`,
+  },
+  {
+    name: "TimeField",
+    category: "Models",
+    description:
+      "Поле для хранения времени (без даты). В Python представляется объектом datetime.time. В базе данных хранится как TIME. Поддерживает параметры auto_now и auto_now_add (аналогично DateField). В формах отображается как TimeInput.",
+    syntax: "TimeField(auto_now=False, auto_now_add=False, **options)",
+    arguments: [
+      {
+        name: "auto_now",
+        description:
+          "Если True — автоматически устанавливает текущее время при каждом сохранении объекта.",
+      },
+      {
+        name: "auto_now_add",
+        description:
+          "Если True — устанавливает время только при первом создании объекта.",
+      },
+      { name: "**options", description: "Стандартные параметры поля." },
+    ],
+    example: `from django.db import models
+import datetime
+
+class Schedule(models.Model):
+    title = models.CharField(max_length=200)
+    start_time = models.TimeField(verbose_name='Начало')
+    end_time = models.TimeField(verbose_name='Конец')
+    break_time = models.TimeField(null=True, blank=True)
+
+# Создание:
+schedule = Schedule.objects.create(
+    title='Урок',
+    start_time=datetime.time(9, 0),   # 09:00
+    end_time=datetime.time(10, 30),   # 10:30
+)
+
+# Фильтрация:
+Schedule.objects.filter(start_time__gte=datetime.time(9, 0))
+Schedule.objects.filter(start_time__hour=9)`,
+  },
+  {
+    name: "URLField",
+    category: "Models",
+    description:
+      'Поле для хранения URL-адресов. Является подклассом CharField с автоматической валидацией через URLValidator. В формах отображается как URLInput (<input type="url">). По умолчанию max_length=200.',
+    syntax: "URLField(**options)",
+    arguments: [
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры CharField. max_length по умолчанию 200.",
+      },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    source_url = models.URLField(
+        verbose_name='Источник',
+        blank=True,
+        help_text='Полный URL с протоколом: https://...',
+    )
+    thumbnail_url = models.URLField(max_length=500, blank=True)
+
+class SocialProfile(models.Model):
+    user = models.OneToOneField('auth.User', on_delete=models.CASCADE)
+    website = models.URLField(blank=True)
+    github = models.URLField(blank=True)
+    linkedin = models.URLField(blank=True)
+
+# Валидация: 'not-a-url' → ValidationError
+# 'https://example.com' → OK`,
+  },
+  {
+    name: "UUIDField",
+    category: "Models",
+    description:
+      "Поле для хранения универсально уникальных идентификаторов (UUID). В Python представляется объектом uuid.UUID. В PostgreSQL хранится нативно как UUID, в других СУБД — как CHAR(32). Часто используется вместо AutoField для публичных первичных ключей, скрывающих количество записей.",
+    syntax: "UUIDField(**options)",
+    arguments: [
+      {
+        name: "**options",
+        description:
+          "Стандартные параметры поля. Часто используется primary_key=True, default=uuid.uuid4.",
+      },
+    ],
+    example: `import uuid
+from django.db import models
+
+class Article(models.Model):
+    # UUID как первичный ключ (не раскрывает количество записей):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,  # Автогенерация на уровне Python
+        editable=False,
+    )
+    title = models.CharField(max_length=200)
+    public_token = models.UUIDField(
+        unique=True,
+        default=uuid.uuid4,
+        verbose_name='Публичный токен',
+    )
+
+article = Article.objects.create(title='Тест')
+print(article.id)
+# UUID('550e8400-e29b-41d4-a716-446655440000')
+print(str(article.id))
+# '550e8400-e29b-41d4-a716-446655440000'`,
+  },
+  {
+    name: "ForeignKey",
+    category: "Models",
+    description:
+      'Поле для создания отношения "многие-к-одному" (ManyToOne) между моделями. Создаёт столбец с внешним ключом в таблице. Обязательный параметр on_delete задаёт поведение при удалении связанного объекта. Создаёт обратное отношение (related_name) для доступа к связанным объектам.',
+    syntax: "ForeignKey(to, on_delete, **options)",
+    arguments: [
+      {
+        name: "to",
+        description:
+          'Класс модели или строка "app_label.ModelName". Для самореферентной связи: "self".',
+      },
+      {
+        name: "on_delete",
+        description:
+          "Обязательный. Поведение при удалении связанного объекта: CASCADE, PROTECT, SET_NULL, SET_DEFAULT, SET(), DO_NOTHING, RESTRICT.",
+      },
+      {
+        name: "related_name",
+        description:
+          'Имя обратного отношения на связанной модели. По умолчанию: modelname_set. "+" отключает обратную связь.',
+      },
+      {
+        name: "related_query_name",
+        description:
+          "Имя для обратных фильтров в QuerySet. По умолчанию совпадает с related_name.",
+      },
+      {
+        name: "db_index",
+        description:
+          "Создать индекс для столбца внешнего ключа. По умолчанию True.",
+      },
+      {
+        name: "limit_choices_to",
+        description:
+          "Словарь или Q-объект для ограничения доступных объектов в формах.",
+      },
+    ],
+    example: `from django.db import models
+
+class Category(models.Model):
+    name = models.CharField(max_length=100)
+    parent = models.ForeignKey(
+        'self',                    # Самореферентная связь
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='children',
+    )
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    author = models.ForeignKey(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='articles',
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,  # Нельзя удалить категорию со статьями
+        related_name='articles',
+        null=True,
+        blank=True,
+    )
+
+# Доступ к связанным объектам:
+user = User.objects.get(pk=1)
+user.articles.all()              # Обратное отношение
+user.articles.filter(is_published=True)
+
+# SQL JOIN:
+Article.objects.select_related('author', 'category')`,
+  },
+  {
+    name: "ManyToManyField",
+    category: "Models",
+    description:
+      'Поле для создания отношения "многие-ко-многим" (ManyToMany) между моделями. Django автоматически создаёт промежуточную таблицу. Для хранения дополнительных данных о связи используйте параметр through с явно определённой промежуточной моделью. Создаёт двусторонние обратные отношения.',
+    syntax: "ManyToManyField(to, **options)",
+    arguments: [
+      {
+        name: "to",
+        description: 'Класс связанной модели или строка "app_label.ModelName".',
+      },
+      {
+        name: "related_name",
+        description: "Имя обратного отношения. По умолчанию: modelname_set.",
+      },
+      {
+        name: "through",
+        description:
+          "Промежуточная модель для хранения дополнительных данных о связи.",
+      },
+      {
+        name: "through_fields",
+        description:
+          "Кортеж (field1, field2) — поля промежуточной модели, если их более двух.",
+      },
+      {
+        name: "symmetrical",
+        description:
+          "Для самореферентных M2M: если True (по умолчанию), связь двусторонняя.",
+      },
+      {
+        name: "db_table",
+        description:
+          "Имя промежуточной таблицы. По умолчанию генерируется автоматически.",
+      },
+    ],
+    example: `from django.db import models
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    tags = models.ManyToManyField(Tag, related_name='articles', blank=True)
+
+# Управление связями:
+article = Article.objects.get(pk=1)
+tag = Tag.objects.get(name='python')
+article.tags.add(tag)
+article.tags.remove(tag)
+article.tags.set([tag1, tag2])  # Заменить весь набор
+article.tags.clear()             # Удалить все связи
+
+# Промежуточная модель с доп. данными:
+class ArticleAuthor(models.Model):
+    article = models.ForeignKey(Article, on_delete=models.CASCADE)
+    author = models.ForeignKey('auth.User', on_delete=models.CASCADE)
+    role = models.CharField(max_length=50, default='author')
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+class Article(models.Model):
+    authors = models.ManyToManyField('auth.User', through=ArticleAuthor)`,
+  },
+  {
+    name: "OneToOneField",
+    category: "Models",
+    description:
+      'Поле для создания отношения "один-к-одному" между моделями. Аналог ForeignKey с unique=True. Создаёт уникальный внешний ключ — каждый объект может быть связан только с одним объектом другой модели. Часто используется для расширения встроенных моделей (User) без наследования.',
+    syntax: "OneToOneField(to, on_delete, **options)",
+    arguments: [
+      {
+        name: "to",
+        description: 'Класс связанной модели или строка "app_label.ModelName".',
+      },
+      {
+        name: "on_delete",
+        description:
+          "Обязательный. Поведение при удалении связанного объекта: CASCADE, PROTECT, SET_NULL и др.",
+      },
+      {
+        name: "related_name",
+        description:
+          "Имя обратного отношения. По умолчанию — имя класса в нижнем регистре (без _set, т.к. связь уникальна).",
+      },
+      {
+        name: "parent_link",
+        description:
+          "Если True — поле является ссылкой на родительскую модель при наследовании (MTI). По умолчанию False.",
+      },
+    ],
+    example: `from django.db import models
+from django.contrib.auth.models import User
+
+# Расширение модели User без наследования:
+class UserProfile(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='profile',
+    )
+    avatar = models.ImageField(upload_to='avatars/', null=True)
+    bio = models.TextField(blank=True)
+    website = models.URLField(blank=True)
+
+# Обратный доступ (не _set, а одиночный объект):
+user = User.objects.get(pk=1)
+print(user.profile.bio)        # Прямой доступ к профилю
+print(user.profile.website)
+
+# select_related работает в обе стороны:
+profiles = UserProfile.objects.select_related('user').all()
+articles = Article.objects.select_related('author__profile').all()`,
+  },
+  {
+    name: "Paginator",
+    category: "Paginator",
+    description:
+      "Класс для разбиения объектов на страницы. Принимает список объектов (или QuerySet) и размер страницы, предоставляя удобный API для навигации по страницам. Используется в представлениях для постраничного отображения данных без загрузки всей коллекции в память сразу.",
+    syntax:
+      "from django.core.paginator import Paginator\npaginator = Paginator(object_list, per_page)",
+    arguments: [
+      {
+        name: "object_list",
+        description:
+          "Список, кортеж, QuerySet или любой объект с методами count() и __getitem__. Для QuerySet — ленивая загрузка только нужной страницы.",
+      },
+      {
+        name: "per_page",
+        description: "Максимальное число объектов на одной странице.",
+      },
+      {
+        name: "orphans",
+        description:
+          "Если на последней странице осталось не более orphans объектов — они добавляются к предыдущей странице. По умолчанию 0.",
+      },
+      {
+        name: "allow_empty_first_page",
+        description:
+          "Если False — выбрасывает EmptyPage для пустого списка. По умолчанию True.",
+      },
+    ],
+    example: `from django.core.paginator import Paginator
+from django.shortcuts import render
+
+def article_list(request):
+    articles = Article.objects.order_by('-created_at')
+    paginator = Paginator(articles, per_page=10)  # 10 статей на страницу
+
+    page_number = request.GET.get('page', 1)
+    page = paginator.get_page(page_number)
+
+    return render(request, 'articles/list.html', {'page': page})
+
+# В шаблоне:
+# {% for article in page %}
+#     {{ article.title }}
+# {% endfor %}
+# {% if page.has_previous %}
+#     <a href="?page={{ page.previous_page_number }}">← Назад</a>
+# {% endif %}
+# Страница {{ page.number }} из {{ page.paginator.num_pages }}
+# {% if page.has_next %}
+#     <a href="?page={{ page.next_page_number }}">Вперёд →</a>
+# {% endif %}`,
+  },
+  {
+    name: "Paginator.__init__",
+    category: "Paginator",
+    description:
+      "Конструктор класса Paginator. Принимает коллекцию объектов и настройки разбивки на страницы. QuerySet передаётся как есть — срезы применяются лениво при обращении к конкретной странице. Все параметры сохраняются как атрибуты экземпляра.",
+    syntax:
+      "Paginator.__init__(object_list, per_page, orphans=0, allow_empty_first_page=True)",
+    arguments: [
+      {
+        name: "object_list",
+        description:
+          "Коллекция объектов: список, кортеж, QuerySet или объект с методами count() и __getitem__.",
+      },
+      {
+        name: "per_page",
+        description:
+          "Целое число — максимальное число элементов на одной странице.",
+      },
+      {
+        name: "orphans",
+        description:
+          "Если последняя страница содержит не более orphans элементов, они переносятся на предыдущую страницу. По умолчанию 0.",
+      },
+      {
+        name: "allow_empty_first_page",
+        description:
+          "Разрешить первую страницу быть пустой. По умолчанию True. Если False и список пуст — выбрасывается EmptyPage.",
+      },
+    ],
+    example: `from django.core.paginator import Paginator
+
+articles = Article.objects.filter(is_published=True).order_by('-created_at')
+
+# Базовый вариант:
+p = Paginator(articles, 10)
+
+# С параметром orphans: если осталось ≤ 3 на последней странице —
+# они добавляются к предпоследней:
+p = Paginator(articles, 10, orphans=3)
+
+# Запретить пустую первую страницу:
+from django.core.paginator import EmptyPage
+p = Paginator([], 10, allow_empty_first_page=False)
+try:
+    page = p.page(1)
+except EmptyPage:
+    print('Список пуст')`,
+  },
+  {
+    name: "Paginator.count",
+    category: "Paginator",
+    description:
+      "Атрибут (свойство). Возвращает общее число объектов во всей коллекции (по всем страницам). Для QuerySet вызывает SQL COUNT без загрузки всех строк в память. Результат кэшируется после первого обращения.",
+    syntax: "paginator.count",
+    arguments: [],
+    example: `from django.core.paginator import Paginator
+
+articles = Article.objects.filter(is_published=True)
+paginator = Paginator(articles, 10)
+
+total = paginator.count
+print(f'Всего статей: {total}')   # Например: 237
+
+# Для QuerySet выполняется: SELECT COUNT(*) FROM articles WHERE is_published = true
+# Для списка: len(object_list)
+
+# Использование в шаблоне:
+# Найдено {{ page.paginator.count }} статей`,
+  },
+  {
+    name: "Paginator.num_pages",
+    category: "Paginator",
+    description:
+      "Атрибут (свойство). Возвращает общее количество страниц. Вычисляется как ⌈count / per_page⌉ с учётом параметра orphans. Результат кэшируется. Если allow_empty_first_page=True и коллекция пуста — возвращает 1.",
+    syntax: "paginator.num_pages",
+    arguments: [],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.all(), 10)
+
+print(paginator.count)      # 237
+print(paginator.num_pages)  # 24  (237 / 10 = 23.7 → 24 страницы)
+
+# С параметром orphans=3:
+# Страница 24 получилась бы с 7 записями (237 - 23*10)
+# 7 > 3, поэтому страниц по-прежнему 24
+
+# Пустой список:
+p = Paginator([], 10)
+print(p.num_pages)  # 1 (allow_empty_first_page=True по умолчанию)`,
+  },
+  {
+    name: "Paginator.page_range",
+    category: "Paginator",
+    description:
+      "Атрибут (свойство). Возвращает объект range с номерами всех страниц (начиная с 1). Удобен для построения навигации по страницам в шаблонах. Например, для 24 страниц вернёт range(1, 25).",
+    syntax: "paginator.page_range",
+    arguments: [],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.all(), 10)
+
+print(paginator.page_range)        # range(1, 25)
+print(list(paginator.page_range))  # [1, 2, 3, ..., 24]
+
+# В представлении:
+context = {
+    'page': page,
+    'page_range': paginator.page_range,
+}
+
+# В шаблоне:
+# {% for num in page.paginator.page_range %}
+#     {% if num == page.number %}
+#         <strong>{{ num }}</strong>
+#     {% else %}
+#         <a href="?page={{ num }}">{{ num }}</a>
+#     {% endif %}
+# {% endfor %}`,
+  },
+  {
+    name: "Paginator.get_page",
+    category: "Paginator",
+    description:
+      'Возвращает объект Page для указанного номера страницы. В отличие от page(), не выбрасывает исключений: некорректные значения (строки, отрицательные числа, слишком большие номера) обрабатываются "мягко" — возвращается последняя или первая страница. Рекомендован для production-кода.',
+    syntax: "paginator.get_page(number)",
+    arguments: [
+      {
+        name: "number",
+        description:
+          "Номер страницы (целое число или строка). Нечисловые строки возвращают первую страницу. Номер за пределами диапазона — последнюю страницу.",
+      },
+    ],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.all(), 10)
+
+# Нормальное использование:
+page = paginator.get_page(3)
+print(page.number)   # 3
+
+# Безопасная обработка некорректного ввода из URL:
+page = paginator.get_page('abc')   # → страница 1
+page = paginator.get_page(-5)     # → страница 1
+page = paginator.get_page(9999)   # → последняя страница
+
+# В представлении (рекомендуемый способ):
+def article_list(request):
+    paginator = Paginator(Article.objects.all(), 10)
+    page = paginator.get_page(request.GET.get('page'))
+    return render(request, 'list.html', {'page': page})`,
+  },
+  {
+    name: "Paginator.page",
+    category: "Paginator",
+    description:
+      "Возвращает объект Page для указанного номера страницы. В отличие от get_page(), выбрасывает исключения при некорректных данных: InvalidPage (или PageNotAnInteger / EmptyPage). Требует явной обработки ошибок. Используется когда нужен строгий контроль над номером страницы.",
+    syntax: "paginator.page(number)",
+    arguments: [
+      {
+        name: "number",
+        description:
+          "Целое число — номер страницы (от 1 до num_pages включительно).",
+      },
+    ],
+    example: `from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
+
+paginator = Paginator(Article.objects.all(), 10)
+
+# Строгий способ — требует обработки исключений:
+try:
+    page = paginator.page(request.GET.get('page'))
+except PageNotAnInteger:
+    page = paginator.page(1)    # Нечисловое значение
+except EmptyPage:
+    page = paginator.page(paginator.num_pages)  # Слишком большой номер
+
+# Прямой вызов с известным корректным номером:
+page_3 = paginator.page(3)
+print(page_3.object_list)   # QuerySet со статьями 21-30`,
+  },
+  {
+    name: "Paginator.validate_number",
+    category: "Paginator",
+    description:
+      "Валидирует и нормализует номер страницы. Возвращает корректный целочисленный номер или выбрасывает исключение. Вызывается внутри метода page(). Можно переопределить в подклассе для нестандартной логики валидации.",
+    syntax: "paginator.validate_number(number)",
+    arguments: [
+      {
+        name: "number",
+        description:
+          "Значение для валидации. Преобразуется к int. Строки приводятся к числу.",
+      },
+    ],
+    example: `from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
+
+paginator = Paginator(Article.objects.all(), 10)
+
+# Корректные номера:
+print(paginator.validate_number(1))   # 1
+print(paginator.validate_number('3')) # 3
+
+# Некорректные — выбрасывают исключения:
+try:
+    paginator.validate_number('abc')
+except PageNotAnInteger as e:
+    print(e)  # That page number is not an integer
+
+try:
+    paginator.validate_number(9999)
+except EmptyPage as e:
+    print(e)  # That page contains no results
+
+# Переопределение для поддержки страницы "last":
+class CustomPaginator(Paginator):
+    def validate_number(self, number):
+        if number == 'last':
+            return self.num_pages
+        return super().validate_number(number)`,
+  },
+  {
+    name: "Page",
+    category: "Paginator",
+    description:
+      "Класс, представляющий одну страницу пагинатора. Возвращается методами Paginator.page() и Paginator.get_page(). Предоставляет доступ к объектам на странице и методы навигации. Является результатом работы Paginator — в коде создаётся через Paginator, а не напрямую.",
+    syntax: "from django.core.paginator import Page",
+    arguments: [
+      {
+        name: "object_list",
+        description:
+          "Список или QuerySet объектов на данной странице (срез от общего object_list).",
+      },
+      { name: "number", description: "Номер данной страницы (начиная с 1)." },
+      {
+        name: "paginator",
+        description: "Ссылка на родительский объект Paginator.",
+      },
+    ],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.order_by('-created_at'), 10)
+page = paginator.get_page(2)  # Вторая страница
+
+print(type(page))                   # <class 'django.core.paginator.Page'>
+print(page.number)                  # 2
+print(len(page.object_list))        # До 10 объектов
+print(page.has_previous())          # True
+print(page.has_next())              # True/False
+print(page.previous_page_number())  # 1
+print(page.next_page_number())      # 3
+print(page.start_index())           # 11 (первый элемент на странице)
+print(page.end_index())             # 20 (последний элемент на странице)
+
+# Итерация по объектам страницы:
+for article in page:
+    print(article.title)`,
+  },
+  {
+    name: "Page.__init__",
+    category: "Paginator",
+    description:
+      "Конструктор объекта Page. В обычном коде вызывается внутри Paginator.page() — создавать Page напрямую не нужно. Сохраняет срез коллекции, номер страницы и ссылку на Paginator как атрибуты экземпляра.",
+    syntax: "Page.__init__(object_list, number, paginator)",
+    arguments: [
+      {
+        name: "object_list",
+        description:
+          "Срез общего object_list, соответствующий данной странице.",
+      },
+      {
+        name: "number",
+        description: "Проверенный номер страницы (целое число).",
+      },
+      { name: "paginator", description: "Родительский объект Paginator." },
+    ],
+    example: `from django.core.paginator import Paginator, Page
+
+# Обычный способ получения Page (через Paginator):
+paginator = Paginator(Article.objects.all(), 10)
+page = paginator.get_page(1)
+
+# Прямое создание (редко нужно, например в тестах):
+items = list(range(1, 11))   # [1, 2, ..., 10]
+p = Paginator(list(range(1, 101)), 10)
+custom_page = Page(object_list=items, number=1, paginator=p)
+
+print(custom_page.number)        # 1
+print(custom_page.object_list)   # [1, 2, ..., 10]
+print(custom_page.paginator.num_pages)  # 10`,
+  },
+  {
+    name: "Page.object_list",
+    category: "Paginator",
+    description:
+      "Атрибут объекта Page. Содержит объекты текущей страницы — срез исходного object_list, переданного в Paginator. Для QuerySet это ленивый срез (LIMIT/OFFSET в SQL), который выполняется при первом обращении. Итерация по page объекту эквивалентна итерации по page.object_list.",
+    syntax: "page.object_list",
+    arguments: [],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.order_by('-created_at'), 10)
+page = paginator.get_page(3)
+
+# object_list — QuerySet с записями 21-30:
+print(page.object_list)
+# <QuerySet [<Article: ...>, ...]>
+
+# SQL: SELECT * FROM articles ORDER BY created_at DESC LIMIT 10 OFFSET 20
+
+# Итерация (эквивалентно for obj in page.object_list):
+for article in page:
+    print(article.title)
+
+# Длина:
+print(len(page.object_list))   # До 10 объектов
+
+# В шаблоне:
+# {% for article in page %}
+#     {{ article.title }}
+# {% endfor %}`,
+  },
+  {
+    name: "Page.number",
+    category: "Paginator",
+    description:
+      "Атрибут объекта Page. Содержит номер текущей страницы (целое число, начиная с 1). Используется в шаблонах для отображения номера текущей страницы и построения навигации.",
+    syntax: "page.number",
+    arguments: [],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.all(), 10)
+page = paginator.get_page(5)
+
+print(page.number)                   # 5
+print(paginator.num_pages)           # Общее кол-во страниц
+
+# В шаблоне:
+# Страница {{ page.number }} из {{ page.paginator.num_pages }}
+
+# Построение ссылок:
+# {% for num in page.paginator.page_range %}
+#     <a href="?page={{ num }}"
+#        {% if num == page.number %}class="active"{% endif %}>
+#        {{ num }}
+#     </a>
+# {% endfor %}`,
+  },
+  {
+    name: "Page.paginator",
+    category: "Paginator",
+    description:
+      "Атрибут объекта Page. Содержит ссылку на родительский объект Paginator, который создал данную страницу. Через этот атрибут можно получить доступ ко всем свойствам пагинатора: num_pages, count, page_range, per_page и другим.",
+    syntax: "page.paginator",
+    arguments: [],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.all(), 10)
+page = paginator.get_page(3)
+
+# Доступ к атрибутам родительского Paginator:
+print(page.paginator.num_pages)   # Общее кол-во страниц
+print(page.paginator.count)       # Общее кол-во объектов
+print(page.paginator.per_page)    # 10
+
+# В шаблоне:
+# Страница {{ page.number }} из {{ page.paginator.num_pages }}
+# Всего записей: {{ page.paginator.count }}
+
+# Страница является частью того же paginator:
+print(page.paginator is paginator)   # True`,
+  },
+  {
+    name: "Page.has_next",
+    category: "Paginator",
+    description:
+      "Метод объекта Page. Возвращает True, если существует следующая страница (то есть текущая страница не является последней). Используется в шаблонах для условного отображения кнопки «Следующая страница».",
+    syntax: "page.has_next()",
+    arguments: [],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.all(), 10)
+page = paginator.get_page(2)
+
+print(page.has_next())   # True  (если страниц больше 2)
+
+# Последняя страница:
+last_page = paginator.get_page(paginator.num_pages)
+print(last_page.has_next())  # False
+
+# В шаблоне:
+# {% if page.has_next %}
+#     <a href="?page={{ page.next_page_number }}">Вперёд →</a>
+# {% endif %}`,
+  },
+  {
+    name: "Page.has_previous",
+    category: "Paginator",
+    description:
+      "Метод объекта Page. Возвращает True, если существует предыдущая страница (то есть текущая страница не является первой). Используется для условного отображения кнопки «Предыдущая страница».",
+    syntax: "page.has_previous()",
+    arguments: [],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.all(), 10)
+page = paginator.get_page(3)
+
+print(page.has_previous())   # True
+
+# Первая страница:
+first_page = paginator.get_page(1)
+print(first_page.has_previous())  # False
+
+# В шаблоне:
+# {% if page.has_previous %}
+#     <a href="?page={{ page.previous_page_number }}">← Назад</a>
+# {% endif %}`,
+  },
+  {
+    name: "Page.has_other_pages",
+    category: "Paginator",
+    description:
+      "Метод объекта Page. Возвращает True, если существует хотя бы одна другая страница (то есть есть следующая или предыдущая). Эквивалентен has_previous() or has_next(). Удобен для условного отображения всего блока навигации.",
+    syntax: "page.has_other_pages()",
+    arguments: [],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.all(), 10)
+page = paginator.get_page(1)
+
+print(page.has_other_pages())  # True (если статей > 10)
+
+# Если все записи умещаются на одной странице:
+paginator2 = Paginator(Article.objects.all()[:5], 10)
+only_page = paginator2.get_page(1)
+print(only_page.has_other_pages())  # False
+
+# В шаблоне — скрыть пагинацию если она не нужна:
+# {% if page.has_other_pages %}
+#     <nav class="pagination">
+#         ... навигация ...
+#     </nav>
+# {% endif %}`,
+  },
+  {
+    name: "Page.next_page_number",
+    category: "Paginator",
+    description:
+      "Метод объекта Page. Возвращает номер следующей страницы. Выбрасывает InvalidPage, если следующей страницы не существует (текущая — последняя). Перед вызовом рекомендуется проверить has_next().",
+    syntax: "page.next_page_number()",
+    arguments: [],
+    example: `from django.core.paginator import Paginator, InvalidPage
+
+paginator = Paginator(Article.objects.all(), 10)
+page = paginator.get_page(3)
+
+print(page.next_page_number())   # 4
+
+# Безопасный вызов:
+if page.has_next():
+    next_num = page.next_page_number()
+
+# Или с обработкой исключения:
+try:
+    next_num = page.next_page_number()
+except InvalidPage:
+    next_num = None
+
+# В шаблоне:
+# {% if page.has_next %}
+#     <a href="?page={{ page.next_page_number }}">Следующая</a>
+# {% endif %}`,
+  },
+  {
+    name: "Page.previous_page_number",
+    category: "Paginator",
+    description:
+      "Метод объекта Page. Возвращает номер предыдущей страницы. Выбрасывает InvalidPage, если предыдущей страницы не существует (текущая — первая). Перед вызовом рекомендуется проверить has_previous().",
+    syntax: "page.previous_page_number()",
+    arguments: [],
+    example: `from django.core.paginator import Paginator, InvalidPage
+
+paginator = Paginator(Article.objects.all(), 10)
+page = paginator.get_page(5)
+
+print(page.previous_page_number())  # 4
+
+# Безопасный вызов:
+if page.has_previous():
+    prev_num = page.previous_page_number()
+
+# В шаблоне — полная навигация:
+# {% if page.has_previous %}
+#     <a href="?page=1">« Первая</a>
+#     <a href="?page={{ page.previous_page_number }}">‹ Назад</a>
+# {% endif %}
+# <span>{{ page.number }} / {{ page.paginator.num_pages }}</span>
+# {% if page.has_next %}
+#     <a href="?page={{ page.next_page_number }}">Вперёд ›</a>
+#     <a href="?page={{ page.paginator.num_pages }}">Последняя »</a>
+# {% endif %}`,
+  },
+  {
+    name: "Page.start_index",
+    category: "Paginator",
+    description:
+      'Метод объекта Page. Возвращает порядковый номер первого объекта на текущей странице в общем списке (индексация с 1). Используется для отображения диапазона записей в стиле "Показаны записи 11–20 из 237".',
+    syntax: "page.start_index()",
+    arguments: [],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.all(), 10)
+
+page1 = paginator.get_page(1)
+print(page1.start_index())   # 1
+
+page2 = paginator.get_page(2)
+print(page2.start_index())   # 11
+
+page3 = paginator.get_page(3)
+print(page3.start_index())   # 21
+
+# Для отображения диапазона в шаблоне:
+# Показаны статьи {{ page.start_index }}–{{ page.end_index }}
+# из {{ page.paginator.count }}`,
+  },
+  {
+    name: "Page.end_index",
+    category: "Paginator",
+    description:
+      "Метод объекта Page. Возвращает порядковый номер последнего объекта на текущей странице в общем списке (индексация с 1). На последней странице возвращает фактическое число объектов, а не расчётное максимальное. Используется вместе с start_index() для отображения диапазона.",
+    syntax: "page.end_index()",
+    arguments: [],
+    example: `from django.core.paginator import Paginator
+
+# Всего 237 статей, 10 на странице
+paginator = Paginator(Article.objects.all(), 10)
+
+page2 = paginator.get_page(2)
+print(page2.start_index())   # 11
+print(page2.end_index())     # 20
+
+# Последняя страница (страница 24, записи 231-237):
+last = paginator.get_page(paginator.num_pages)
+print(last.start_index())    # 231
+print(last.end_index())      # 237  (не 240)
+
+# В шаблоне:
+# Показаны {{ page.start_index }}–{{ page.end_index }} из {{ page.paginator.count }}`,
+  },
+  {
+    name: "Page.__getitem__",
+    category: "Paginator",
+    description:
+      "Метод объекта Page. Позволяет обращаться к отдельным объектам на странице по индексу или срезу, как у списка. Индексация с нуля. Используется при прямом обращении page[0], page[-1] или срезе page[2:5].",
+    syntax: "page.__getitem__(index)",
+    arguments: [
+      {
+        name: "index",
+        description:
+          "Целочисленный индекс (с нуля) или объект slice для получения среза объектов страницы.",
+      },
+    ],
+    example: `from django.core.paginator import Paginator
+
+paginator = Paginator(Article.objects.order_by('-created_at'), 10)
+page = paginator.get_page(1)
+
+# Получение первого объекта:
+first = page[0]
+print(first.title)
+
+# Получение последнего:
+last = page[-1]
+
+# Срез:
+top3 = page[0:3]   # Первые 3 объекта страницы
+
+# Итерация (использует __getitem__ внутри):
+for article in page:
+    print(article.title)
+
+# Примечание: page[0] != Article.objects.all()[0]
+# page[0] — первый объект ТЕКУЩЕЙ страницы`,
+  },
+  {
+    name: "EmptyPage",
+    category: "Paginator",
+    description:
+      "Исключение из модуля django.core.paginator. Выбрасывается методом Paginator.page() (и validate_number()) когда запрошенная страница не содержит объектов — то есть номер страницы меньше 1 или больше num_pages. Является подклассом InvalidPage.",
+    syntax: "from django.core.paginator import EmptyPage",
+    arguments: [],
+    example: `from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+
+paginator = Paginator(Article.objects.all(), 10)
+
+# EmptyPage при номере больше последней страницы:
+try:
+    page = paginator.page(9999)
+except EmptyPage:
+    page = paginator.page(paginator.num_pages)  # Вернуть последнюю
+
+# EmptyPage при пустом queryset (allow_empty_first_page=False):
+p2 = Paginator([], 10, allow_empty_first_page=False)
+try:
+    page = p2.page(1)
+except EmptyPage:
+    print('Нет данных для отображения')
+
+# Стандартный обработчик в представлении:
+try:
+    page = paginator.page(request.GET.get('page', 1))
+except PageNotAnInteger:
+    page = paginator.page(1)
+except EmptyPage:
+    page = paginator.page(paginator.num_pages)`,
+  },
+  {
+    name: "PageNotAnInteger",
+    category: "Paginator",
+    description:
+      "Исключение из модуля django.core.paginator. Выбрасывается методом Paginator.page() (и validate_number()) когда переданное значение номера страницы не является целым числом и не может быть приведено к нему. Является подклассом InvalidPage.",
+    syntax: "from django.core.paginator import PageNotAnInteger",
+    arguments: [],
+    example: `from django.core.paginator import Paginator, PageNotAnInteger, EmptyPage
+
+paginator = Paginator(Article.objects.all(), 10)
+
+# PageNotAnInteger для нечисловых значений:
+try:
+    page = paginator.page('abc')
+except PageNotAnInteger:
+    page = paginator.page(1)
+
+try:
+    page = paginator.page(None)
+except PageNotAnInteger:
+    page = paginator.page(1)
+
+try:
+    page = paginator.page(1.5)   # float тоже не принимается
+except PageNotAnInteger:
+    page = paginator.page(1)
+
+# get_page() обрабатывает это автоматически (возвращает стр. 1):
+page = paginator.get_page('invalid')   # Нет исключения → стр. 1`,
+  },
+  {
+    name: "InvalidPage",
+    category: "Paginator",
+    description:
+      "Базовое исключение для ошибок пагинации. Является родительским классом для EmptyPage и PageNotAnInteger. Выбрасывается Paginator.page() и validate_number() при любом некорректном номере страницы. Перехват InvalidPage позволяет обработать оба типа ошибок одним блоком except.",
+    syntax: "from django.core.paginator import InvalidPage",
+    arguments: [],
+    example: `from django.core.paginator import Paginator, InvalidPage
+
+paginator = Paginator(Article.objects.all(), 10)
+
+# Перехват всех ошибок пагинации одним блоком:
+try:
+    page = paginator.page(request.GET.get('page', 1))
+except InvalidPage:
+    page = paginator.page(1)   # Любая ошибка → первая страница
+
+# Иерархия исключений:
+# InvalidPage
+# ├── EmptyPage        (страница вне диапазона)
+# └── PageNotAnInteger (нечисловое значение)
+
+# Детальная обработка:
+try:
+    page = paginator.page(request.GET.get('page'))
+except PageNotAnInteger:
+    page = paginator.page(1)
+except EmptyPage:
+    page = paginator.page(paginator.num_pages)
+# Оба исключения можно поймать как InvalidPage`,
+  },
+  {
+    name: "HttpRequest.scheme",
+    category: "Request and response objects",
+    description:
+      'Атрибут объекта HttpRequest. Строка, указывающая протокол запроса: "http" или "https". Django определяет протокол на основе заголовка X-Forwarded-Proto (если SECURE_PROXY_SSL_HEADER настроен) или по типу соединения. Используется для формирования абсолютных URL.',
+    syntax: "request.scheme",
+    arguments: [],
+    example: `def my_view(request):
+    print(request.scheme)   # 'https' или 'http'
+
+    # Формирование абсолютного URL:
+    base_url = f'{request.scheme}://{request.get_host()}'
+    # Например: 'https://example.com'
+
+    # Или через встроенный метод:
+    absolute = request.build_absolute_uri('/path/')
+    # 'https://example.com/path/'
+
+    # settings.py для корректного определения за прокси:
+    # SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')`,
+  },
+  {
+    name: "HttpRequest.body",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Содержит сырое тело HTTP-запроса в виде байтовой строки (bytes). Используется для обработки нестандартных форматов данных: JSON API, XML, бинарных данных. После обращения к body Django буферизует весь входящий поток — не используйте одновременно с request.POST или обработчиками файлов.",
+    syntax: "request.body",
+    arguments: [],
+    example: `import json
+from django.http import JsonResponse, HttpResponseBadRequest
+from django.views.decorators.csrf import csrf_exempt
+
+@csrf_exempt
+def json_api(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return HttpResponseBadRequest('Invalid JSON')
+
+        name = data.get('name', '')
+        return JsonResponse({'received': name})
+
+# Для XML:
+from xml.etree import ElementTree
+tree = ElementTree.fromstring(request.body)
+
+# ВАЖНО: нельзя использовать request.body после request.POST`,
+  },
+  {
+    name: "HttpRequest.path",
+    category: "Request and response objects",
+    description:
+      'Атрибут объекта HttpRequest. Строка с полным путём URL запроса без схемы и домена, но без строки запроса (query string). Например, для URL https://example.com/articles/42/?page=2 значение будет "/articles/42/". Всегда начинается с "/".',
+    syntax: "request.path",
+    arguments: [],
+    example: `def my_view(request):
+    print(request.path)
+    # '/articles/42/'
+
+    # Полный URL с query string:
+    print(request.get_full_path())
+    # '/articles/42/?page=2'
+
+    # Абсолютный URL:
+    print(request.build_absolute_uri())
+    # 'https://example.com/articles/42/?page=2'
+
+    # Редирект с возвратом:
+    from django.shortcuts import redirect
+    next_url = request.GET.get('next', request.path)
+    return redirect(next_url)`,
+  },
+  {
+    name: "HttpRequest.path_info",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Часть пути URL после точки монтирования WSGI-приложения (SCRIPT_NAME). В большинстве конфигураций совпадает с path. Отличается от path только при развёртывании приложения не в корне хоста (например, на /myapp/). Django использует path_info для маршрутизации URL.",
+    syntax: "request.path_info",
+    arguments: [],
+    example: `# Если приложение смонтировано в /myapp/:
+# URL: https://example.com/myapp/articles/42/
+# request.path       → '/myapp/articles/42/'
+# request.path_info  → '/articles/42/'  (без префикса монтирования)
+
+# В обычном развёртывании в корне:
+# request.path       → '/articles/42/'
+# request.path_info  → '/articles/42/'  (одинаково)
+
+def my_view(request):
+    # Django роутинг использует path_info:
+    print(request.path_info)   # '/articles/42/'`,
+  },
+  {
+    name: "HttpRequest.method",
+    category: "Request and response objects",
+    description:
+      'Атрибут объекта HttpRequest. Строка в верхнем регистре, указывающая HTTP-метод запроса: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" и др. Используется в представлениях для различения типов запросов.',
+    syntax: "request.method",
+    arguments: [],
+    example: `from django.http import HttpResponse, JsonResponse
+
+def article_view(request, pk):
+    article = Article.objects.get(pk=pk)
+
+    if request.method == 'GET':
+        return JsonResponse({'title': article.title})
+
+    elif request.method == 'POST':
+        # Обработка создания
+        data = json.loads(request.body)
+        article.title = data['title']
+        article.save()
+        return JsonResponse({'status': 'updated'})
+
+    elif request.method == 'DELETE':
+        article.delete()
+        return HttpResponse(status=204)
+
+    return HttpResponse(status=405)  # Method Not Allowed`,
+  },
+  {
+    name: "HttpRequest.encoding",
+    category: "Request and response objects",
+    description:
+      'Атрибут объекта HttpRequest. Строка с кодировкой, используемой для декодирования данных формы. По умолчанию None (используется DEFAULT_CHARSET из settings.py, обычно "utf-8"). Можно задать вручную для переключения кодировки — это влияет на дальнейшее чтение request.GET и request.POST.',
+    syntax: "request.encoding",
+    arguments: [],
+    example: `def my_view(request):
+    print(request.encoding)   # None (использует utf-8 по умолчанию)
+
+    # Принудительная кодировка для legacy-форм (например, Windows-1251):
+    request.encoding = 'windows-1251'
+    name = request.POST.get('name')   # Декодируется в windows-1251
+
+    # Сброс на дефолтную кодировку:
+    request.encoding = None
+
+# settings.py:
+DEFAULT_CHARSET = 'utf-8'  # По умолчанию`,
+  },
+  {
+    name: "HttpRequest.content_type",
+    category: "Request and response objects",
+    description:
+      'Атрибут объекта HttpRequest. Строка, содержащая MIME-тип тела запроса (из заголовка Content-Type), без параметров. Например: "application/json", "multipart/form-data", "text/plain". Используется для определения формата данных в теле запроса.',
+    syntax: "request.content_type",
+    arguments: [],
+    example: `def api_view(request):
+    print(request.content_type)
+    # 'application/json'
+    # 'multipart/form-data'
+    # 'application/x-www-form-urlencoded'
+
+    if request.content_type == 'application/json':
+        data = json.loads(request.body)
+    elif request.content_type == 'application/x-www-form-urlencoded':
+        data = request.POST
+    else:
+        return HttpResponseBadRequest(
+            f'Неподдерживаемый Content-Type: {request.content_type}'
+        )
+
+    # Полный заголовок с параметрами — через request.headers:
+    print(request.headers.get('Content-Type'))
+    # 'application/json; charset=utf-8'`,
+  },
+  {
+    name: "HttpRequest.content_params",
+    category: "Request and response objects",
+    description:
+      'Атрибут объекта HttpRequest. Словарь с параметрами заголовка Content-Type (часть после типа). Например, для "multipart/form-data; boundary=----xyz" вернёт {"boundary": "----xyz"}. Для "application/json; charset=utf-8" вернёт {"charset": "utf-8"}.',
+    syntax: "request.content_params",
+    arguments: [],
+    example: `def my_view(request):
+    # Запрос: Content-Type: multipart/form-data; boundary=----WebKit123
+    print(request.content_type)
+    # 'multipart/form-data'
+
+    print(request.content_params)
+    # {'boundary': '----WebKit123'}
+
+    # Запрос: Content-Type: application/json; charset=utf-8
+    print(request.content_type)
+    # 'application/json'
+
+    print(request.content_params)
+    # {'charset': 'utf-8'}
+
+    # Запрос: Content-Type: text/plain
+    print(request.content_params)
+    # {}  (нет параметров)`,
+  },
+  {
+    name: "HttpRequest.GET",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Объект QueryDict с параметрами из строки URL-запроса (query string). Доступен для всех методов (не только GET). Является неизменяемым (immutable) по умолчанию. Поддерживает несколько значений для одного ключа через getlist().",
+    syntax: "request.GET",
+    arguments: [],
+    example: `# URL: /articles/?page=2&tag=python&tag=django&sort=date
+
+def article_list(request):
+    page = request.GET.get('page', 1)        # '2'
+    sort = request.GET.get('sort', 'date')   # 'date'
+    missing = request.GET.get('q', '')       # '' (значение по умолчанию)
+
+    # Несколько значений одного ключа:
+    tags = request.GET.getlist('tag')        # ['python', 'django']
+
+    # Проверка наличия ключа:
+    if 'search' in request.GET:
+        query = request.GET['search']
+
+    # Весь QueryDict:
+    print(request.GET)
+    # <QueryDict: {'page': ['2'], 'tag': ['python', 'django'], 'sort': ['date']}>
+
+    print(request.GET.urlencode())
+    # 'page=2&tag=python&tag=django&sort=date'`,
+  },
+  {
+    name: "HttpRequest.POST",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Объект QueryDict с данными из тела POST-запроса (только для типа application/x-www-form-urlencoded или multipart/form-data). Для JSON-тела используйте request.body. Является неизменяемым по умолчанию. Поддерживает несколько значений через getlist().",
+    syntax: "request.POST",
+    arguments: [],
+    example: `from django.shortcuts import render, redirect
+
+def create_article(request):
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        body = request.POST.get('body', '')
+        tags = request.POST.getlist('tags')  # Несколько чекбоксов
+
+        if not title:
+            return render(request, 'form.html', {'error': 'Заголовок обязателен'})
+
+        article = Article.objects.create(
+            title=title,
+            body=body,
+        )
+        article.tags.set(tags)
+        return redirect('article-detail', pk=article.pk)
+
+    return render(request, 'form.html')
+
+# ВАЖНО: request.POST пуст для JSON-запросов
+# Для JSON используйте json.loads(request.body)`,
+  },
+  {
+    name: "HttpRequest.COOKIES",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Стандартный словарь Python с куки-файлами запроса. Ключи и значения — строки. Куки устанавливаются через методы HttpResponse. Django использует подписанные куки через django.contrib.sessions для хранения сессий.",
+    syntax: "request.COOKIES",
+    arguments: [],
+    example: `def my_view(request):
+    # Чтение куки:
+    theme = request.COOKIES.get('theme', 'light')
+    lang = request.COOKIES.get('language', 'ru')
+    session_id = request.COOKIES.get('sessionid')
+
+    # Безопасное чтение подписанных куки:
+    from django.core.signing import BadSignature
+    try:
+        value = request.get_signed_cookie('my_key', salt='extra')
+    except (KeyError, BadSignature):
+        value = None
+
+    response = render(request, 'index.html', {'theme': theme})
+
+    # Установка куки в ответе:
+    response.set_cookie('theme', 'dark', max_age=30*24*3600)
+    response.set_cookie('token', 'abc', httponly=True, secure=True)
+    return response`,
+  },
+  {
+    name: "HttpRequest.FILES",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Объект MultiValueDict с загруженными файлами. Заполняется только при POST-запросе с Content-Type: multipart/form-data. Каждое значение — объект InMemoryUploadedFile или TemporaryUploadedFile с атрибутами name, size, content_type.",
+    syntax: "request.FILES",
+    arguments: [],
+    example: `from django.core.files.storage import default_storage
+
+def upload_view(request):
+    if request.method == 'POST':
+        # Один файл:
+        avatar = request.FILES.get('avatar')
+        if avatar:
+            print(avatar.name)          # 'photo.jpg'
+            print(avatar.size)          # Размер в байтах
+            print(avatar.content_type)  # 'image/jpeg'
+
+            # Сохранение через модель:
+            profile = request.user.profile
+            profile.avatar = avatar
+            profile.save()
+
+        # Несколько файлов (multiple):
+        for f in request.FILES.getlist('photos'):
+            default_storage.save(f'uploads/{f.name}', f)
+
+    # HTML: <form enctype="multipart/form-data">
+    #           <input type="file" name="avatar">`,
+  },
+  {
+    name: "HttpRequest.META",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Словарь с метаданными запроса и переменными окружения WSGI/ASGI. Заголовки HTTP доступны с префиксом HTTP_ (дефисы заменены подчёркиваниями, буквы — заглавные). Например, заголовок X-Custom-Header → HTTP_X_CUSTOM_HEADER. Для удобного доступа к заголовкам используйте request.headers.",
+    syntax: "request.META",
+    arguments: [],
+    example: `def my_view(request):
+    # Стандартные переменные WSGI:
+    print(request.META['REQUEST_METHOD'])    # 'GET'
+    print(request.META['SERVER_NAME'])       # 'example.com'
+    print(request.META['SERVER_PORT'])       # '443'
+    print(request.META['REMOTE_ADDR'])       # IP-адрес клиента
+    print(request.META['QUERY_STRING'])      # 'page=2&sort=date'
+    print(request.META['PATH_INFO'])         # '/articles/42/'
+
+    # HTTP-заголовки (с префиксом HTTP_):
+    user_agent = request.META.get('HTTP_USER_AGENT', '')
+    accept_lang = request.META.get('HTTP_ACCEPT_LANGUAGE', '')
+    auth = request.META.get('HTTP_AUTHORIZATION', '')
+
+    # IP за прокси:
+    ip = request.META.get('HTTP_X_FORWARDED_FOR',
+                           request.META.get('REMOTE_ADDR'))`,
+  },
+  {
+    name: "HttpRequest.headers",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Регистронезависимый словарь (dict-like) HTTP-заголовков запроса. Более удобная альтернатива request.META для работы с заголовками — не требует знания префикса HTTP_ и нормализации имён. Доступен начиная с Django 2.2.",
+    syntax: "request.headers",
+    arguments: [],
+    example: `def my_view(request):
+    # Регистронезависимый доступ:
+    user_agent = request.headers.get('User-Agent', '')
+    content_type = request.headers['Content-Type']
+    accept = request.headers.get('Accept', '*/*')
+
+    # Авторизация Bearer-токена:
+    auth = request.headers.get('Authorization', '')
+    if auth.startswith('Bearer '):
+        token = auth.split(' ', 1)[1]
+
+    # Проверка AJAX-запроса:
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+    # Все заголовки:
+    print(dict(request.headers))
+    # {'Content-Type': 'application/json', 'Host': 'example.com', ...}`,
+  },
+  {
+    name: "HttpRequest.resolver_match",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Экземпляр ResolverMatch с информацией о совпавшем URL-шаблоне. Доступен после разрешения URL (то есть внутри представления или middleware). Содержит имя URL, пространство имён, kwargs и args, извлечённые из URL.",
+    syntax: "request.resolver_match",
+    arguments: [],
+    example: `def my_view(request, pk):
+    match = request.resolver_match
+    print(match.url_name)         # 'article-detail'
+    print(match.namespace)        # 'blog'
+    print(match.view_name)        # 'blog:article-detail'
+    print(match.kwargs)           # {'pk': 42}
+    print(match.args)             # ()
+    print(match.route)            # 'articles/<int:pk>/'
+    print(match.func)             # <function article_detail>
+
+    # В middleware — проверка имени представления:
+    class MyMiddleware:
+        def __call__(self, request):
+            response = self.get_response(request)
+            if request.resolver_match.url_name == 'login':
+                pass  # Особая обработка
+            return response`,
+  },
+  {
+    name: "HttpRequest.current_app",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Строка, указывающая текущее приложение (application instance) для разрешения URL с пространствами имён через тег {% url %}. Используется в представлениях для управления тем, какой экземпляр приложения будет использоваться при реверсе URL.",
+    syntax: "request.current_app",
+    arguments: [],
+    example: `# urls.py:
+# app_name = 'polls'
+# Два экземпляра одного приложения:
+# path('polls/current/', include('polls.urls', namespace='current')),
+# path('polls/2024/',    include('polls.urls', namespace='2024')),
+
+def index(request):
+    # Указываем, какой экземпляр приложения "текущий":
+    request.current_app = 'current'
+
+    # Теперь тег {% url 'polls:index' %} резолвится в 'current'
+    return render(request, 'polls/index.html')
+
+# В шаблоне:
+# {% url 'polls:vote' question.pk %}
+# → разрешается в /polls/current/vote/42/ (для current_app='current')`,
+  },
+  {
+    name: "HttpRequest.urlconf",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Строка с путём к модулю URL-конфигурации, которая будет использована для данного запроса вместо ROOT_URLCONF из settings.py. Устанавливается в middleware для динамической замены URL-конфигурации на основе запроса (например, для мультидоменных сайтов).",
+    syntax: "request.urlconf",
+    arguments: [],
+    example: `# Middleware для мультидоменной маршрутизации:
+class MultiDomainMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        host = request.get_host()
+        if host == 'api.example.com':
+            request.urlconf = 'myproject.api_urls'
+        elif host == 'admin.example.com':
+            request.urlconf = 'myproject.admin_urls'
+        # else: используется ROOT_URLCONF из settings.py
+        return self.get_response(request)
+
+# settings.py:
+ROOT_URLCONF = 'myproject.urls'  # Используется по умолчанию`,
+  },
+  {
+    name: "HttpRequest.exception_reporter_filter",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Экземпляр фильтра отчётов об ошибках. Используется для фильтрации конфиденциальных данных из отчётов об ошибках (например, скрытия паролей и токенов). По умолчанию определяется настройкой DEFAULT_EXCEPTION_REPORTER_FILTER в settings.py.",
+    syntax: "request.exception_reporter_filter",
+    arguments: [],
+    example: `# settings.py:
+DEFAULT_EXCEPTION_REPORTER_FILTER = (
+    'django.views.debug.SafeExceptionReporterFilter'
+)
+# SafeExceptionReporterFilter скрывает значения переменных,
+# чьи имена содержат: API, KEY, PASS, SECRET, SIGNATURE, TOKEN
+
+# Пользовательский фильтр:
+from django.views.debug import SafeExceptionReporterFilter
+
+class MyFilter(SafeExceptionReporterFilter):
+    hidden_settings = re.compile(
+        r'API|TOKEN|KEY|SECRET|PASSWORD|SIGNATURE|CARD',
+        re.IGNORECASE,
+    )
+
+# Применение к конкретному запросу в middleware:
+class CustomReporterMiddleware:
+    def __call__(self, request):
+        request.exception_reporter_filter = MyFilter()
+        return self.get_response(request)`,
+  },
+  {
+    name: "HttpRequest.exception_reporter_class",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Класс, используемый для генерации HTML-отчётов об ошибках (страница отладки Django). По умолчанию определяется настройкой DEFAULT_EXCEPTION_REPORTER в settings.py. Можно переопределить для каждого запроса в middleware.",
+    syntax: "request.exception_reporter_class",
+    arguments: [],
+    example: `# settings.py:
+DEFAULT_EXCEPTION_REPORTER = 'django.views.debug.ExceptionReporter'
+
+# Пользовательский класс репортера:
+from django.views.debug import ExceptionReporter
+
+class MyExceptionReporter(ExceptionReporter):
+    def get_traceback_html(self):
+        # Кастомная HTML-страница ошибки
+        html = super().get_traceback_html()
+        # Дополнительная обработка...
+        return html
+
+# Применение к запросу через middleware:
+class CustomReporterMiddleware:
+    def __call__(self, request):
+        request.exception_reporter_class = MyExceptionReporter
+        return self.get_response(request)`,
+  },
+  {
+    name: "HttpRequest.session",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Объект сессии (dict-like), доступный после подключения SessionMiddleware. Хранит данные между запросами одного пользователя. Изменения автоматически сохраняются при завершении запроса. Поддерживает бэкенды: база данных, кэш, куки, файловая система.",
+    syntax: "request.session",
+    arguments: [],
+    example: `def login_view(request):
+    if request.method == 'POST':
+        user = authenticate(request, **request.POST.dict())
+        if user:
+            login(request, user)
+            # Сохранение данных в сессии:
+            request.session['last_login_ip'] = request.META.get('REMOTE_ADDR')
+            request.session['preferences'] = {'theme': 'dark'}
+            return redirect('dashboard')
+
+def dashboard(request):
+    # Чтение из сессии:
+    theme = request.session.get('preferences', {}).get('theme', 'light')
+    visits = request.session.get('visit_count', 0)
+    request.session['visit_count'] = visits + 1
+
+    # Удаление ключа:
+    request.session.pop('temp_data', None)
+
+    # Полная очистка сессии:
+    request.session.flush()`,
+  },
+  {
+    name: "HttpRequest.site",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Объект текущего сайта (модель Site из django.contrib.sites). Доступен при подключении CurrentSiteMiddleware. Позволяет получить домен и имя текущего сайта без обращения к базе данных в каждом представлении.",
+    syntax: "request.site",
+    arguments: [],
+    example: `# settings.py:
+INSTALLED_APPS = ['django.contrib.sites', ...]
+MIDDLEWARE = ['django.contrib.sites.middleware.CurrentSiteMiddleware', ...]
+SITE_ID = 1
+
+# В представлении:
+def my_view(request):
+    site = request.site
+    print(site.domain)   # 'example.com'
+    print(site.name)     # 'Example Site'
+
+    # Формирование абсолютного URL:
+    url = f'https://{site.domain}/articles/42/'
+
+    # Без middleware — через get_current_site:
+    from django.contrib.sites.shortcuts import get_current_site
+    site = get_current_site(request)`,
+  },
+  {
+    name: "HttpRequest.user",
+    category: "Request and response objects",
+    description:
+      "Атрибут объекта HttpRequest. Объект пользователя, связанного с запросом. Устанавливается AuthenticationMiddleware. Для аутентифицированных пользователей — экземпляр модели User. Для анонимных — экземпляр AnonymousUser. Имеет атрибут is_authenticated для проверки.",
+    syntax: "request.user",
+    arguments: [],
+    example: `from django.contrib.auth.decorators import login_required
+
+def my_view(request):
+    if request.user.is_authenticated:
+        # Аутентифицированный пользователь:
+        print(request.user.username)    # 'ivan'
+        print(request.user.email)      # 'ivan@example.com'
+        print(request.user.is_staff)   # True/False
+        print(request.user.pk)         # 42
+    else:
+        # Анонимный пользователь:
+        print(request.user.is_authenticated)  # False
+        print(type(request.user))   # <class 'AnonymousUser'>
+
+@login_required
+def protected_view(request):
+    # Гарантированно аутентифицирован:
+    articles = Article.objects.filter(author=request.user)`,
+  },
+  {
+    name: "HttpRequest.auser",
+    category: "Request and response objects",
+    description:
+      "Асинхронный метод объекта HttpRequest. Асинхронный аналог атрибута request.user для использования в асинхронных представлениях (async views). Возвращает объект пользователя через await. Доступен начиная с Django 4.1. Использует асинхронный бэкенд сессий.",
+    syntax: "await request.auser()",
+    arguments: [],
+    example: `from django.http import JsonResponse
+
+async def async_view(request):
+    # В асинхронном представлении используйте auser():
+    user = await request.auser()
+
+    if user.is_authenticated:
+        return JsonResponse({
+            'user': user.username,
+            'email': user.email,
+        })
+    else:
+        return JsonResponse({'error': 'Не авторизован'}, status=401)
+
+# Синхронный request.user также доступен, но может вызвать
+# SynchronousOnlyOperation в async-контексте при обращении к БД.
+# Используйте await request.auser() в async views.`,
+  },
+  {
+    name: "HttpRequest.get_host",
+    category: "Request and response objects",
+    description:
+      "Метод объекта HttpRequest. Возвращает хост запроса (домен и порт, если нестандартный) из заголовков HTTP_X_FORWARDED_HOST (если USE_X_FORWARDED_HOST=True) или HTTP_HOST, или SERVER_NAME/SERVER_PORT. Проверяет значение по ALLOWED_HOSTS и выбрасывает DisallowedHost при несоответствии.",
+    syntax: "request.get_host()",
+    arguments: [],
+    example: `def my_view(request):
+    print(request.get_host())
+    # 'example.com'       (стандартный порт 80/443)
+    # 'example.com:8080'  (нестандартный порт)
+
+    # Формирование базового URL:
+    base = f'{request.scheme}://{request.get_host()}'
+    # 'https://example.com'
+
+    # settings.py:
+    ALLOWED_HOSTS = ['example.com', 'www.example.com', 'localhost']
+    USE_X_FORWARDED_HOST = True  # Доверять заголовку за прокси
+
+    # При несоответствии ALLOWED_HOSTS:
+    # → django.core.exceptions.DisallowedHost`,
+  },
+  {
+    name: "HttpRequest.get_port",
+    category: "Request and response objects",
+    description:
+      'Метод объекта HttpRequest. Возвращает порт запроса в виде строки. Берёт значение из заголовка HTTP_X_FORWARDED_PORT (если USE_X_FORWARDED_PORT=True) или из SERVER_PORT. Возвращает "80" для HTTP и "443" для HTTPS при стандартных конфигурациях.',
+    syntax: "request.get_port()",
+    arguments: [],
+    example: `def my_view(request):
+    port = request.get_port()
+    print(port)   # '443' или '80' или '8000'
+
+    # Стандартные порты:
+    # HTTP  → '80'
+    # HTTPS → '443'
+    # Dev   → '8000' (обычно)
+
+    # Нестандартный порт включается в get_host():
+    # request.get_host() → 'example.com:8080'
+
+    # settings.py для работы за прокси:
+    USE_X_FORWARDED_PORT = True`,
+  },
+  {
+    name: "HttpRequest.get_full_path",
+    category: "Request and response objects",
+    description:
+      'Метод объекта HttpRequest. Возвращает path вместе со строкой запроса (query string), если она есть. Например, для запроса /articles/?page=2&sort=date вернёт "/articles/?page=2&sort=date". Всегда начинается с "/".',
+    syntax: "request.get_full_path()",
+    arguments: [],
+    example: `def my_view(request):
+    # URL: /articles/?page=2&sort=date
+    print(request.path)              # '/articles/'
+    print(request.get_full_path())   # '/articles/?page=2&sort=date'
+
+    # Без параметров:
+    # URL: /articles/42/
+    print(request.get_full_path())   # '/articles/42/'
+
+    # Сохранение текущего URL для редиректа после логина:
+    from django.utils.http import urlencode
+    next_url = request.get_full_path()
+    login_url = f'/login/?next={next_url}'
+
+    # Аналог в шаблоне:
+    # <a href="/login/?next={{ request.get_full_path }}">Войти</a>`,
+  },
+  {
+    name: "HttpRequest.get_full_path_info",
+    category: "Request and response objects",
+    description:
+      "Метод объекта HttpRequest. Аналог get_full_path(), но использует path_info вместо path. Возвращает путь относительно точки монтирования WSGI-приложения вместе со строкой запроса. Полезен при развёртывании приложения не в корне хоста.",
+    syntax: "request.get_full_path_info()",
+    arguments: [],
+    example: `# Если приложение смонтировано в /myapp/:
+# URL: https://example.com/myapp/articles/?page=2
+
+def my_view(request):
+    print(request.path)                    # '/myapp/articles/'
+    print(request.path_info)              # '/articles/'
+
+    print(request.get_full_path())         # '/myapp/articles/?page=2'
+    print(request.get_full_path_info())    # '/articles/?page=2'
+
+# В стандартном развёртывании (в корне):
+# get_full_path() и get_full_path_info() возвращают одинаковый результат`,
+  },
+  {
+    name: "HttpRequest.build_absolute_uri",
+    category: "Request and response objects",
+    description:
+      "Метод объекта HttpRequest. Строит и возвращает абсолютный URI (с протоколом и доменом) для переданного location. Если location не указан — использует request.get_full_path(). Если location уже является абсолютным URI — возвращает его без изменений.",
+    syntax: "request.build_absolute_uri(location=None)",
+    arguments: [
+      {
+        name: "location",
+        description:
+          "Относительный или абсолютный URI. Если None — используется текущий полный путь (get_full_path()).",
+      },
+    ],
+    example: `def my_view(request):
+    # Текущий URL → абсолютный:
+    print(request.build_absolute_uri())
+    # 'https://example.com/articles/?page=2'
+
+    # Конкретный путь:
+    print(request.build_absolute_uri('/about/'))
+    # 'https://example.com/about/'
+
+    # Уже абсолютный — без изменений:
+    print(request.build_absolute_uri('https://other.com/path/'))
+    # 'https://other.com/path/'
+
+    # Использование с reverse():
+    from django.urls import reverse
+    url = request.build_absolute_uri(reverse('article-detail', args=[42]))
+    # 'https://example.com/articles/42/'
+
+    # Отправка в письме:
+    activate_url = request.build_absolute_uri(f'/activate/{token}/')`,
+  },
+  {
+    name: "HttpRequest.get_signed_cookie",
+    category: "Request and response objects",
+    description:
+      "Метод объекта HttpRequest. Читает куки с проверкой криптографической подписи (HMAC). Использует SECRET_KEY Django для подписи. Выбрасывает KeyError если куки отсутствуют, BadSignature если подпись неверна, SignatureExpired если истёк max_age.",
+    syntax:
+      "request.get_signed_cookie(key, default=RAISE_ERROR, salt='', max_age=None)",
+    arguments: [
+      { name: "key", description: "Имя куки." },
+      {
+        name: "default",
+        description:
+          "Значение по умолчанию при отсутствии куки. Если не задан — выбрасывает KeyError.",
+      },
+      {
+        name: "salt",
+        description:
+          "Дополнительная соль для подписи. Должна совпадать со значением при установке куки.",
+      },
+      {
+        name: "max_age",
+        description:
+          "Максимальный возраст куки в секундах. Если истёк — выбрасывает SignatureExpired.",
+      },
+    ],
+    example: `from django.core.signing import BadSignature, SignatureExpired
+from django.http import HttpResponse
+
+def set_signed_cookie(request):
+    response = HttpResponse('OK')
+    response.set_signed_cookie(
+        'user_id',
+        value=str(request.user.pk),
+        salt='user-cookie',
+        max_age=3600,    # 1 час
+        httponly=True,
+    )
+    return response
+
+def read_signed_cookie(request):
+    try:
+        user_id = request.get_signed_cookie(
+            'user_id',
+            salt='user-cookie',
+            max_age=3600,
+        )
+    except KeyError:
+        user_id = None    # Куки нет
+    except BadSignature:
+        user_id = None    # Подпись неверна (подделка)
+    except SignatureExpired:
+        user_id = None    # Куки устарело`,
+  },
+  {
+    name: "HttpRequest.is_secure",
+    category: "Request and response objects",
+    description:
+      'Метод объекта HttpRequest. Возвращает True, если запрос выполнен по протоколу HTTPS. Эквивалентен проверке request.scheme == "https". При работе за прокси требует корректной настройки SECURE_PROXY_SSL_HEADER в settings.py для правильного определения протокола.',
+    syntax: "request.is_secure()",
+    arguments: [],
+    example: `def my_view(request):
+    if request.is_secure():
+        print('HTTPS запрос')
+    else:
+        print('HTTP запрос')
+
+    # Эквивалентная проверка:
+    # request.scheme == 'https'
+
+    # Принудительный редирект на HTTPS:
+    if not request.is_secure():
+        secure_url = request.build_absolute_uri().replace('http://', 'https://')
+        return redirect(secure_url, permanent=True)
+
+# settings.py для работы за прокси (nginx, Load Balancer):
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Автоматический редирект через настройку:
+SECURE_SSL_REDIRECT = True`,
+  },
 ];
