@@ -12379,4 +12379,2320 @@ def my_view(request):
             raise BadRequest("Параметр 'count' должен быть целым числом")
     # дальнейшая логика представления`,
   },
+  {
+    name: "RequestAborted",
+    category: "Django Exceptions",
+    description:
+      "Возникает, когда HTTP-соединение было разорвано клиентом в процессе обработки запроса. Django использует это исключение внутри себя для корректного завершения обработки прерванных запросов, например при потоковой передаче данных.",
+    syntax:
+      "from django.http import UnreadablePostError  # связанное исключение\n# RequestAborted находится в django.core.handlers.exception",
+    arguments: [],
+    example: `# Django вызывает это исключение автоматически внутри обработчика.
+# Пример перехвата в собственном middleware:
+
+class AbortHandlerMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        try:
+            return self.get_response(request)
+        except Exception as e:
+            if e.__class__.__name__ == 'RequestAborted':
+                # Клиент разорвал соединение — тихо завершаем
+                return None
+            raise`,
+  },
+  {
+    name: "SynchronousOnlyOperation",
+    category: "Django Exceptions",
+    description:
+      "Возникает при попытке вызвать синхронную операцию Django (например, запрос к ORM) из асинхронного контекста без соответствующей обёртки. Защищает от случайных блокировок event loop при смешивании синхронного и асинхронного кода.",
+    syntax: "from django.core.exceptions import SynchronousOnlyOperation",
+    arguments: [],
+    example: `import asyncio
+from django.core.exceptions import SynchronousOnlyOperation
+
+async def bad_async_view(request):
+    try:
+        # Нельзя вызывать ORM напрямую из async-функции
+        from myapp.models import Article
+        article = Article.objects.get(pk=1)
+    except SynchronousOnlyOperation:
+        print("Используйте sync_to_async для ORM-запросов в async-коде")
+
+# Правильный способ:
+from asgiref.sync import sync_to_async
+
+async def good_async_view(request):
+    get_article = sync_to_async(lambda: Article.objects.get(pk=1))
+    article = await get_article()`,
+  },
+  {
+    name: "Resolver404",
+    category: "Django Exceptions",
+    description:
+      "Возникает в функции resolve() модуля django.urls, когда переданный путь не совпадает ни с одним URL-шаблоном из urlconf. Используется внутри Django для генерации ответа 404 Not Found.",
+    syntax: "from django.urls import Resolver404",
+    arguments: [],
+    example: `from django.urls import resolve, Resolver404
+
+def check_url(path):
+    try:
+        match = resolve(path)
+        print(f"Найдено представление: {match.func.__name__}")
+    except Resolver404:
+        print(f"Маршрут '{path}' не найден в urlconf")`,
+  },
+  {
+    name: "NoReverseMatch",
+    category: "Django Exceptions",
+    description:
+      "Возникает в функции reverse() или теге {% url %} шаблона, когда не удаётся построить URL по имени маршрута и переданным аргументам. Указывает на несоответствие имени маршрута или переданных параметров.",
+    syntax: "from django.urls import NoReverseMatch",
+    arguments: [],
+    example: `from django.urls import reverse, NoReverseMatch
+
+try:
+    url = reverse('article-detail', kwargs={'pk': 42})
+    print(f"URL: {url}")
+except NoReverseMatch as e:
+    print(f"Не удалось построить URL: {e}")`,
+  },
+  {
+    name: "Error",
+    category: "Django Exceptions",
+    description:
+      "Базовый класс для всех исключений базы данных в Django DB API. Наследуется от стандартного Exception. Все остальные исключения, связанные с БД (DatabaseError, IntegrityError и др.), являются его подклассами.",
+    syntax: "from django.db import Error",
+    arguments: [],
+    example: `from django.db import Error
+
+try:
+    from myapp.models import Article
+    Article.objects.create(title="Тест")
+except Error as e:
+    print(f"Произошла ошибка базы данных: {e}")`,
+  },
+  {
+    name: "InterfaceError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при ошибках, связанных с интерфейсом базы данных, а не с самой БД. Например, при попытке использовать уже закрытое соединение или курсор. Соответствует InterfaceError из DB-API 2.0 (PEP 249).",
+    syntax: "from django.db import InterfaceError",
+    arguments: [],
+    example: `from django.db import InterfaceError
+from django.db import connection
+
+try:
+    cursor = connection.cursor()
+    connection.close()
+    # Попытка использовать курсор после закрытия соединения
+    cursor.execute("SELECT 1")
+except InterfaceError as e:
+    print(f"Ошибка интерфейса БД: {e}")`,
+  },
+  {
+    name: "DatabaseError",
+    category: "Django Exceptions",
+    description:
+      "Базовый класс для исключений, связанных с ошибками самой базы данных. Все специфические ошибки БД (DataError, OperationalError, IntegrityError и др.) являются его подклассами. Соответствует DatabaseError из DB-API 2.0.",
+    syntax: "from django.db import DatabaseError",
+    arguments: [],
+    example: `from django.db import DatabaseError
+
+try:
+    from myapp.models import Article
+    Article.objects.raw("INVALID SQL QUERY")[0]
+except DatabaseError as e:
+    print(f"Ошибка базы данных: {e}")`,
+  },
+  {
+    name: "DataError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при ошибках, связанных с некорректными данными — например, при попытке записать значение, выходящее за пределы допустимого диапазона поля, или строку, превышающую максимальную длину. Соответствует DataError из DB-API 2.0.",
+    syntax: "from django.db import DataError",
+    arguments: [],
+    example: `from django.db import DataError
+
+try:
+    from myapp.models import Article
+    # Попытка сохранить строку длиннее допустимого значения поля
+    Article.objects.create(title="A" * 10000)
+except DataError as e:
+    print(f"Некорректные данные: {e}")`,
+  },
+  {
+    name: "OperationalError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при операционных ошибках базы данных, не зависящих от программиста: потеря соединения, тайм-аут, сбой сервера БД. Соответствует OperationalError из DB-API 2.0. Часто требует повторной попытки операции.",
+    syntax: "from django.db import OperationalError",
+    arguments: [],
+    example: `from django.db import OperationalError
+
+def safe_query():
+    try:
+        from myapp.models import Article
+        return Article.objects.all().count()
+    except OperationalError as e:
+        print(f"Операционная ошибка БД (соединение?): {e}")
+        return None`,
+  },
+  {
+    name: "IntegrityError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при нарушении ограничений целостности базы данных: попытка вставить дублирующееся значение уникального поля, нарушение ограничения внешнего ключа или NOT NULL. Соответствует IntegrityError из DB-API 2.0.",
+    syntax: "from django.db import IntegrityError",
+    arguments: [],
+    example: `from django.db import IntegrityError
+
+try:
+    from myapp.models import User
+    # email помечен как unique=True
+    User.objects.create(email="existing@example.com")
+    User.objects.create(email="existing@example.com")
+except IntegrityError as e:
+    print(f"Нарушение уникальности: {e}")`,
+  },
+  {
+    name: "InternalError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при внутренних ошибках базы данных, например при невалидном состоянии курсора или транзакции. Соответствует InternalError из DB-API 2.0. Как правило, указывает на ошибку в логике управления транзакциями.",
+    syntax: "from django.db import InternalError",
+    arguments: [],
+    example: `from django.db import InternalError, transaction
+
+try:
+    with transaction.atomic():
+        from myapp.models import Article
+        Article.objects.create(title="Тест")
+        # Выполнение недопустимой операции внутри транзакции
+        raise InternalError("Недопустимое состояние транзакции")
+except InternalError as e:
+    print(f"Внутренняя ошибка БД: {e}")`,
+  },
+  {
+    name: "ProgrammingError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при программных ошибках работы с БД: некорректный SQL-запрос, обращение к несуществующей таблице или столбцу, неверное количество параметров. Соответствует ProgrammingError из DB-API 2.0.",
+    syntax: "from django.db import ProgrammingError",
+    arguments: [],
+    example: `from django.db import ProgrammingError, connection
+
+try:
+    with connection.cursor() as cursor:
+        # Запрос к несуществующей таблице
+        cursor.execute("SELECT * FROM nonexistent_table")
+except ProgrammingError as e:
+    print(f"Ошибка SQL-запроса: {e}")`,
+  },
+  {
+    name: "NotSupportedError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при попытке использовать метод или функцию, которые не поддерживаются данным бэкендом базы данных. Например, при использовании специфичной для PostgreSQL функции в SQLite. Соответствует NotSupportedError из DB-API 2.0.",
+    syntax: "from django.db import NotSupportedError",
+    arguments: [],
+    example: `from django.db import NotSupportedError
+
+try:
+    from myapp.models import Article
+    # Некоторые возможности доступны только в определённых БД
+    qs = Article.objects.all().explain()
+except NotSupportedError as e:
+    print(f"Операция не поддерживается текущей БД: {e}")`,
+  },
+  {
+    name: "ProtectedError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при попытке удалить объект, на который ссылаются другие объекты через ForeignKey с параметром on_delete=PROTECT. Содержит атрибуты protected_objects — набор объектов, заблокировавших удаление.",
+    syntax: "from django.db.models import ProtectedError",
+    arguments: [],
+    example: `from django.db.models import ProtectedError
+
+try:
+    from myapp.models import Author, Article
+    # Article.author = ForeignKey(Author, on_delete=PROTECT)
+    author = Author.objects.get(pk=1)
+    author.delete()
+except ProtectedError as e:
+    print(f"Нельзя удалить: объект используется")
+    print(f"Защищённые объекты: {e.protected_objects}")`,
+  },
+  {
+    name: "RestrictedError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при попытке удалить объект, на который ссылаются другие объекты через ForeignKey с параметром on_delete=RESTRICT. В отличие от PROTECT, RESTRICT допускает удаление, если связанные объекты также удаляются в той же операции.",
+    syntax: "from django.db.models import RestrictedError",
+    arguments: [],
+    example: `from django.db.models import RestrictedError
+
+try:
+    from myapp.models import Publisher, Book
+    # Book.publisher = ForeignKey(Publisher, on_delete=RESTRICT)
+    publisher = Publisher.objects.get(pk=1)
+    publisher.delete()
+except RestrictedError as e:
+    print(f"Удаление ограничено: {e.restricted_objects}")`,
+  },
+  {
+    name: "UnreadablePostError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при чтении данных POST-запроса, если клиент разорвал соединение до завершения передачи тела запроса. Django генерирует это исключение при обращении к request.POST или request.FILES для незавершённых загрузок.",
+    syntax: "from django.http import UnreadablePostError",
+    arguments: [],
+    example: `from django.http import UnreadablePostError
+
+def upload_view(request):
+    try:
+        # Чтение данных формы или файла
+        file = request.FILES.get('document')
+        if file:
+            content = file.read()
+    except UnreadablePostError:
+        # Клиент прервал загрузку
+        return HttpResponse("Загрузка прервана", status=400)`,
+  },
+  {
+    name: "SessionInterrupted",
+    category: "Django Exceptions",
+    description:
+      "Возникает при сбое во время работы с сессией, когда сессионные данные не могут быть корректно прочитаны или сохранены. Обычно означает повреждение данных сессии или несовместимость её формата.",
+    syntax: "from django.contrib.sessions.exceptions import SessionInterrupted",
+    arguments: [],
+    example: `from django.contrib.sessions.exceptions import SessionInterrupted
+
+def session_view(request):
+    try:
+        user_data = request.session['user_data']
+    except SessionInterrupted:
+        # Сессия повреждена — сбрасываем её
+        request.session.flush()
+        print("Сессия была прервана и сброшена")`,
+  },
+  {
+    name: "TransactionManagementError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при ошибках управления транзакциями: попытка выполнить запрос в сломанной транзакции, некорректная вложенность savepoint, или нарушение правил атомарных блоков. Указывает на проблемы в логике работы с транзакциями.",
+    syntax: "from django.db import TransactionManagementError",
+    arguments: [],
+    example: `from django.db import TransactionManagementError, transaction
+
+try:
+    with transaction.atomic():
+        from myapp.models import Article
+        Article.objects.create(title="Статья 1")
+        try:
+            with transaction.atomic():
+                Article.objects.create(title=None)  # нарушение NOT NULL
+        except Exception:
+            pass  # транзакция помечена как "сломанная"
+        # Следующий запрос вызовет TransactionManagementError
+        Article.objects.create(title="Статья 2")
+except TransactionManagementError as e:
+    print(f"Ошибка управления транзакцией: {e}")`,
+  },
+  {
+    name: "RedirectCycleError",
+    category: "Django Exceptions",
+    description:
+      "Возникает в CommonMiddleware или RedirectFallbackMiddleware при обнаружении цикла перенаправлений — когда URL перенаправляет на самого себя или образует кольцо редиректов. Предотвращает бесконечные циклы перенаправлений.",
+    syntax: "from django.middleware.common import RedirectCycleError",
+    arguments: [],
+    example: `from django.middleware.common import RedirectCycleError
+
+# Пример возникновения: если APPEND_SLASH=True и URL
+# /about/ перенаправляет обратно на /about/ или цикл
+# /a/ -> /b/ -> /a/
+
+# Перехват в собственном middleware:
+class SafeRedirectMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        try:
+            return self.get_response(request)
+        except RedirectCycleError as e:
+            print(f"Обнаружен цикл редиректов: {e.final_response}")
+            raise`,
+  },
+  {
+    name: "File(file_object, name=None)",
+    category: "File handling",
+    description:
+      "Базовый класс Django для работы с файлами. Оборачивает стандартный файловый объект Python, добавляя дополнительные атрибуты и методы, необходимые для работы с файловым хранилищем Django. Используется как основа для ContentFile и ImageFile.",
+    syntax:
+      "from django.core.files import File\n\nf = File(file_object, name=None)",
+    arguments: [
+      {
+        name: "file_object",
+        description:
+          "Стандартный файловый объект Python, открытый в режиме чтения или записи.",
+      },
+      {
+        name: "name",
+        description:
+          "Имя файла. Если не указано, берётся из атрибута name файлового объекта.",
+      },
+    ],
+    example: `from django.core.files import File
+
+# Открываем файл и оборачиваем в File
+with open('/tmp/example.txt', 'w') as f:
+    my_file = File(f, name='example.txt')
+    print(my_file.name)   # 'example.txt'
+    print(my_file.mode)   # 'w'`,
+  },
+  {
+    name: "File.name",
+    category: "File handling",
+    description:
+      "Атрибут, содержащий имя файла, включая относительный путь от корня файлового хранилища. Если файл был создан без имени, значение может быть пустой строкой или None.",
+    syntax: "file.name",
+    arguments: [],
+    example: `from django.core.files import File
+
+with open('/tmp/report.pdf', 'rb') as f:
+    my_file = File(f, name='reports/report.pdf')
+    print(my_file.name)  # 'reports/report.pdf'`,
+  },
+  {
+    name: "File.size",
+    category: "File handling",
+    description:
+      "Атрибут, возвращающий размер файла в байтах. Для файлов на диске использует os.path.getsize(). Для файлов в памяти (ContentFile) возвращает длину содержимого.",
+    syntax: "file.size",
+    arguments: [],
+    example: `from django.core.files import File
+
+with open('/tmp/document.txt', 'rb') as f:
+    my_file = File(f)
+    print(my_file.size)  # размер в байтах, например 1024`,
+  },
+  {
+    name: "File.file",
+    category: "File handling",
+    description:
+      "Атрибут, предоставляющий доступ к исходному файловому объекту Python, который лежит в основе экземпляра File. Позволяет использовать низкоуровневые методы стандартного файлового объекта.",
+    syntax: "file.file",
+    arguments: [],
+    example: `from django.core.files import File
+
+with open('/tmp/data.txt', 'rb') as f:
+    my_file = File(f)
+    # Доступ к исходному файловому объекту
+    raw = my_file.file
+    print(type(raw))   # <class '_io.BufferedReader'>
+    raw.seek(0)
+    content = raw.read()`,
+  },
+  {
+    name: "File.mode",
+    category: "File handling",
+    description:
+      'Атрибут, возвращающий режим открытия файла: "rb", "wb", "r", "w" и т. д. Берётся из атрибута mode исходного файлового объекта.',
+    syntax: "file.mode",
+    arguments: [],
+    example: `from django.core.files import File
+
+with open('/tmp/image.png', 'rb') as f:
+    my_file = File(f)
+    print(my_file.mode)  # 'rb'`,
+  },
+  {
+    name: "File.open(mode=None, *args, **kwargs)",
+    category: "File handling",
+    description:
+      "Открывает или повторно открывает файл в указанном режиме. Если файл уже открыт, выполняет seek(0). Может использоваться как контекстный менеджер. Полезно для повторного открытия файла после его закрытия или для смены режима доступа.",
+    syntax: "file.open(mode=None, *args, **kwargs)",
+    arguments: [
+      {
+        name: "mode",
+        description:
+          'Режим открытия файла: "rb", "wb", "r", "w" и др. Если None — использует текущий режим файла.',
+      },
+      {
+        name: "*args, **kwargs",
+        description: "Дополнительные аргументы, передаваемые функции open().",
+      },
+    ],
+    example: `from django.core.files import File
+
+with open('/tmp/sample.txt', 'rb') as f:
+    my_file = File(f)
+
+    # Использование как контекстного менеджера
+    with my_file.open('rb') as opened:
+        data = opened.read()
+        print(data)`,
+  },
+  {
+    name: "File.__iter__()",
+    category: "File handling",
+    description:
+      "Позволяет итерироваться по файлу построчно с помощью цикла for. Каждая итерация возвращает одну строку файла в виде байтовой строки (bytes) или строки (str) в зависимости от режима открытия.",
+    syntax: "for line in file:\n    ...",
+    arguments: [],
+    example: `from django.core.files import File
+
+with open('/tmp/log.txt', 'r') as f:
+    my_file = File(f)
+    for line in my_file:
+        print(line.strip())`,
+  },
+  {
+    name: "File.chunks(chunk_size=None)",
+    category: "File handling",
+    description:
+      "Генератор, который читает файл частями (чанками) указанного размера. Используется для эффективной обработки больших файлов без загрузки всего содержимого в память. По умолчанию размер чанка — 64 КБ.",
+    syntax: "file.chunks(chunk_size=None)",
+    arguments: [
+      {
+        name: "chunk_size",
+        description:
+          "Размер одного чанка в байтах. По умолчанию File.DEFAULT_CHUNK_SIZE = 65536 (64 КБ).",
+      },
+    ],
+    example: `from django.core.files import File
+
+with open('/tmp/large_file.bin', 'rb') as f:
+    my_file = File(f)
+    total = 0
+    for chunk in my_file.chunks(chunk_size=8192):
+        total += len(chunk)
+        # обработка чанка, например запись в другой файл
+    print(f"Прочитано байт: {total}")`,
+  },
+  {
+    name: "File.multiple_chunks(chunk_size=None)",
+    category: "File handling",
+    description:
+      "Возвращает True, если файл достаточно велик, чтобы потребовать нескольких чанков при чтении с указанным chunk_size. Используется для определения стратегии обработки: читать целиком или по частям.",
+    syntax: "file.multiple_chunks(chunk_size=None)",
+    arguments: [
+      {
+        name: "chunk_size",
+        description:
+          "Размер чанка в байтах для сравнения с размером файла. По умолчанию File.DEFAULT_CHUNK_SIZE = 65536 (64 КБ).",
+      },
+    ],
+    example: `from django.core.files import File
+
+with open('/tmp/document.pdf', 'rb') as f:
+    my_file = File(f)
+    if my_file.multiple_chunks():
+        # Файл большой — читаем по частям
+        for chunk in my_file.chunks():
+            process(chunk)
+    else:
+        # Файл маленький — читаем целиком
+        content = my_file.read()`,
+  },
+  {
+    name: "File.close()",
+    category: "File handling",
+    description:
+      "Закрывает файловый объект, освобождая связанные с ним ресурсы. После вызова close() обращение к файлу вызовет ошибку. Рекомендуется использовать конструкцию with для автоматического закрытия.",
+    syntax: "file.close()",
+    arguments: [],
+    example: `from django.core.files import File
+
+f = open('/tmp/data.txt', 'rb')
+my_file = File(f)
+
+try:
+    content = my_file.read()
+finally:
+    my_file.close()  # гарантированное закрытие`,
+  },
+  {
+    name: "ContentFile(content, name=None)",
+    category: "File handling",
+    description:
+      'Подкласс File, хранящий содержимое файла в памяти, а не на диске. Принимает строку или байты и предоставляет файловый интерфейс. Удобен для создания файлов "на лету" без записи на диск, например при генерации файлов в представлениях.',
+    syntax:
+      "from django.core.files.base import ContentFile\n\nf = ContentFile(content, name=None)",
+    arguments: [
+      {
+        name: "content",
+        description: "Содержимое файла в виде строки (str) или байтов (bytes).",
+      },
+      {
+        name: "name",
+        description:
+          "Имя файла. Необязательный параметр, используется при сохранении в хранилище.",
+      },
+    ],
+    example: `from django.core.files.base import ContentFile
+
+# Создание текстового файла в памяти
+text_file = ContentFile("Hello, Django!", name="hello.txt")
+print(text_file.size)   # 14
+
+# Создание бинарного файла в памяти
+binary_file = ContentFile(b"\\x89PNG...", name="image.png")
+
+# Сохранение в поле FileField модели
+from myapp.models import Document
+doc = Document()
+doc.file.save("hello.txt", text_file, save=True)`,
+  },
+  {
+    name: "ImageFile(file_object, name=None)",
+    category: "File handling",
+    description:
+      "Подкласс File, предназначенный для работы с изображениями. Добавляет атрибуты width и height, которые возвращают размеры изображения. Используется полем ImageField модели Django. Требует установленной библиотеки Pillow.",
+    syntax:
+      "from django.core.files.images import ImageFile\n\nf = ImageFile(file_object, name=None)",
+    arguments: [
+      {
+        name: "file_object",
+        description:
+          "Файловый объект, содержащий изображение в поддерживаемом формате (JPEG, PNG, GIF и др.).",
+      },
+      {
+        name: "name",
+        description: "Имя файла изображения. Необязательный параметр.",
+      },
+    ],
+    example: `from django.core.files.images import ImageFile
+
+with open('/tmp/photo.jpg', 'rb') as f:
+    img = ImageFile(f, name='photo.jpg')
+    print(img.width)   # ширина в пикселях, например 1920
+    print(img.height)  # высота в пикселях, например 1080`,
+  },
+  {
+    name: "ImageFile.width",
+    category: "File handling",
+    description:
+      "Атрибут, возвращающий ширину изображения в пикселях. Вычисляется при первом обращении с помощью библиотеки Pillow. Используется автоматически полем ImageField при указании параметров width_field.",
+    syntax: "image_file.width",
+    arguments: [],
+    example: `from django.core.files.images import ImageFile
+
+with open('/tmp/banner.png', 'rb') as f:
+    img = ImageFile(f)
+    print(f"Ширина: {img.width}px")  # например: Ширина: 1200px`,
+  },
+  {
+    name: "ImageFile.height",
+    category: "File handling",
+    description:
+      "Атрибут, возвращающий высоту изображения в пикселях. Вычисляется при первом обращении с помощью библиотеки Pillow. Используется автоматически полем ImageField при указании параметров height_field.",
+    syntax: "image_file.height",
+    arguments: [],
+    example: `from django.core.files.images import ImageFile
+
+with open('/tmp/banner.png', 'rb') as f:
+    img = ImageFile(f)
+    print(f"Высота: {img.height}px")  # например: Высота: 400px`,
+  },
+  {
+    name: "File.save(name, content, save=True)",
+    category: "File handling",
+    description:
+      "Метод файлового дескриптора поля FileField/ImageField модели. Сохраняет файл в хранилище под указанным именем и при необходимости сразу сохраняет экземпляр модели. Автоматически генерирует уникальное имя файла при конфликтах.",
+    syntax: "instance.field.save(name, content, save=True)",
+    arguments: [
+      {
+        name: "name",
+        description:
+          "Желаемое имя файла. Хранилище может изменить его для обеспечения уникальности.",
+      },
+      {
+        name: "content",
+        description:
+          "Объект File или ContentFile с содержимым файла для сохранения.",
+      },
+      {
+        name: "save",
+        description:
+          "Если True (по умолчанию), автоматически вызывает instance.save() после сохранения файла.",
+      },
+    ],
+    example: `from django.core.files.base import ContentFile
+from myapp.models import UserProfile
+
+profile = UserProfile.objects.get(pk=1)
+
+# Создаём файл в памяти и сохраняем в поле
+avatar_content = ContentFile(b"...binary image data...", name="avatar.jpg")
+profile.avatar.save("avatar.jpg", avatar_content, save=True)
+
+print(profile.avatar.url)   # URL сохранённого файла
+print(profile.avatar.name)  # путь в хранилище`,
+  },
+  {
+    name: "File.delete(save=True)",
+    category: "File handling",
+    description:
+      "Метод файлового дескриптора поля FileField/ImageField модели. Удаляет связанный файл из хранилища и очищает значение поля. При save=True автоматически сохраняет экземпляр модели после удаления файла.",
+    syntax: "instance.field.delete(save=True)",
+    arguments: [
+      {
+        name: "save",
+        description:
+          "Если True (по умолчанию), автоматически вызывает instance.save() после удаления файла, чтобы очистить значение поля в базе данных.",
+      },
+    ],
+    example: `from myapp.models import UserProfile
+
+profile = UserProfile.objects.get(pk=1)
+
+if profile.avatar:
+    print(f"Удаляем файл: {profile.avatar.name}")
+    # Удаляем файл из хранилища и обновляем запись в БД
+    profile.avatar.delete(save=True)
+    print(f"Поле после удаления: '{profile.avatar}'")  # ''`,
+  },
+  {
+    name: "Storage.get_alternative_name(file_root, file_ext)",
+    category: "File handling",
+    description:
+      "Возвращает альтернативное имя файла путём добавления случайного суффикса к корневому имени. Вызывается внутри get_available_name() при конфликте имён. Можно переопределить в собственном классе хранилища для изменения стратегии генерации уникальных имён.",
+    syntax: "storage.get_alternative_name(file_root, file_ext)",
+    arguments: [
+      {
+        name: "file_root",
+        description: "Корневая часть имени файла — без расширения.",
+      },
+      {
+        name: "file_ext",
+        description: 'Расширение файла вместе с точкой, например ".jpg".',
+      },
+    ],
+    example: `from django.core.files.storage import FileSystemStorage
+
+storage = FileSystemStorage()
+
+# Генерируем альтернативное имя при конфликте
+alt_name = storage.get_alternative_name('photo', '.jpg')
+print(alt_name)  # 'photo_5f3a2c.jpg' (суффикс случайный)`,
+  },
+  {
+    name: "Storage.get_available_name(name, max_length=None)",
+    category: "File handling",
+    description:
+      "Возвращает имя файла, доступное в хранилище. Если файл с таким именем уже существует, добавляет случайный суффикс через get_alternative_name() до получения уникального имени. Учитывает ограничение max_length для итогового имени.",
+    syntax: "storage.get_available_name(name, max_length=None)",
+    arguments: [
+      { name: "name", description: "Желаемое имя файла." },
+      {
+        name: "max_length",
+        description:
+          "Максимально допустимая длина итогового имени файла. Если None — ограничений нет.",
+      },
+    ],
+    example: `from django.core.files.storage import default_storage
+
+# Получаем гарантированно уникальное имя
+available = default_storage.get_available_name('uploads/photo.jpg')
+print(available)
+# 'uploads/photo.jpg' если файла нет
+# 'uploads/photo_a3f9b1.jpg' если уже существует`,
+  },
+  {
+    name: "Storage.get_created_time(name)",
+    category: "File handling",
+    description:
+      "Возвращает объект datetime с временем создания файла. Время возвращается с учётом настройки USE_TZ: если USE_TZ=True, возвращается aware datetime в UTC. Не все бэкенды хранилища поддерживают эту операцию.",
+    syntax: "storage.get_created_time(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя файла (относительный путь в хранилище).",
+      },
+    ],
+    example: `from django.core.files.storage import default_storage
+
+created_at = default_storage.get_created_time('uploads/document.pdf')
+print(created_at)  # datetime(2024, 3, 15, 10, 30, 0, tzinfo=UTC)`,
+  },
+  {
+    name: "Storage.get_modified_time(name)",
+    category: "File handling",
+    description:
+      "Возвращает объект datetime с временем последнего изменения файла. Время возвращается с учётом настройки USE_TZ. Полезно для реализации кэширования на основе времени изменения файлов.",
+    syntax: "storage.get_modified_time(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя файла (относительный путь в хранилище).",
+      },
+    ],
+    example: `from django.core.files.storage import default_storage
+
+modified_at = default_storage.get_modified_time('uploads/report.xlsx')
+print(modified_at)  # datetime(2024, 5, 1, 14, 22, 37, tzinfo=UTC)
+
+# Проверка актуальности кэша
+from django.utils import timezone
+age = timezone.now() - modified_at
+print(f"Файл изменён {age.days} дней назад")`,
+  },
+  {
+    name: "Storage.get_valid_name(name)",
+    category: "File handling",
+    description:
+      "Возвращает корректное имя файла, пригодное для использования в конкретном хранилище. Удаляет или заменяет недопустимые символы. Базовая реализация заменяет пробелы на подчёркивания и удаляет все символы, кроме букв, цифр, дефисов и точек.",
+    syntax: "storage.get_valid_name(name)",
+    arguments: [
+      {
+        name: "name",
+        description:
+          "Исходное имя файла, которое нужно привести к допустимому виду.",
+      },
+    ],
+    example: `from django.core.files.storage import FileSystemStorage
+
+storage = FileSystemStorage()
+
+print(storage.get_valid_name('Мой файл (2024).pdf'))
+# 'my_file_2024.pdf'
+
+print(storage.get_valid_name('report 2024-05-01.xlsx'))
+# 'report_2024-05-01.xlsx'`,
+  },
+  {
+    name: "Storage.generate_filename(filename)",
+    category: "File handling",
+    description:
+      "Генерирует итоговое имя файла для хранилища: последовательно вызывает get_valid_name() для очистки имени, затем get_available_name() для обеспечения уникальности. Это точка входа, которую вызывает Django перед сохранением любого файла.",
+    syntax: "storage.generate_filename(filename)",
+    arguments: [
+      {
+        name: "filename",
+        description:
+          "Исходное имя файла, которое нужно обработать и сделать уникальным.",
+      },
+    ],
+    example: `from django.core.files.storage import default_storage
+
+# Получаем финальное имя, которое будет использовано при сохранении
+final_name = default_storage.generate_filename('uploads/My Photo.JPG')
+print(final_name)  # 'uploads/My_Photo.JPG' (или с суффиксом если существует)`,
+  },
+  {
+    name: "Storage.listdir(path)",
+    category: "File handling",
+    description:
+      "Возвращает содержимое указанной директории в хранилище в виде кортежа из двух списков: (directories, files). Первый список содержит имена поддиректорий, второй — имена файлов. Поведение зависит от реализации бэкенда хранилища.",
+    syntax: "storage.listdir(path)",
+    arguments: [
+      {
+        name: "path",
+        description:
+          "Путь к директории внутри хранилища, содержимое которой нужно получить.",
+      },
+    ],
+    example: `from django.core.files.storage import default_storage
+
+dirs, files = default_storage.listdir('uploads/')
+
+print("Поддиректории:", dirs)
+# ['avatars', 'documents', 'thumbnails']
+
+print("Файлы:", files)
+# ['readme.txt', 'config.json']
+
+# Рекурсивный обход
+for filename in files:
+    path = f"uploads/{filename}"
+    print(f"{path} — {default_storage.size(path)} байт")`,
+  },
+  {
+    name: "Storage.open(name, mode='rb')",
+    category: "File handling",
+    description:
+      "Открывает файл из хранилища и возвращает объект File. По умолчанию открывает в бинарном режиме чтения ('rb'). Поддерживает использование как контекстного менеджера для автоматического закрытия файла.",
+    syntax: "storage.open(name, mode='rb')",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя файла (путь относительно корня хранилища).",
+      },
+      {
+        name: "mode",
+        description:
+          "Режим открытия файла. По умолчанию 'rb' (бинарное чтение).",
+      },
+    ],
+    example: `from django.core.files.storage import default_storage
+
+# Чтение файла из хранилища
+with default_storage.open('uploads/report.pdf', 'rb') as f:
+    content = f.read()
+    print(f"Размер: {len(content)} байт")
+
+# Запись в хранилище
+with default_storage.open('uploads/output.txt', 'wb') as f:
+    f.write(b"Hello, Storage!")`,
+  },
+  {
+    name: "Storage.path(name)",
+    category: "File handling",
+    description:
+      "Возвращает абсолютный путь к файлу в локальной файловой системе. Доступен только для хранилищ на основе локальной ФС (FileSystemStorage). Для удалённых хранилищ (S3 и др.) вызывает NotImplementedError.",
+    syntax: "storage.path(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя файла (относительный путь в хранилище).",
+      },
+    ],
+    example: `from django.core.files.storage import default_storage
+
+# Получаем абсолютный путь (только для FileSystemStorage)
+abs_path = default_storage.path('uploads/document.pdf')
+print(abs_path)
+# '/home/user/project/media/uploads/document.pdf'
+
+import os
+print(os.path.exists(abs_path))  # True`,
+  },
+  {
+    name: "Storage.save(name, content, max_length=None)",
+    category: "File handling",
+    description:
+      "Сохраняет новый файл в хранилище, используя содержимое объекта content. Если файл с таким именем уже существует, автоматически генерирует уникальное имя. Возвращает фактическое имя, под которым файл был сохранён.",
+    syntax: "storage.save(name, content, max_length=None)",
+    arguments: [
+      { name: "name", description: "Желаемое имя файла для сохранения." },
+      {
+        name: "content",
+        description: "Объект File или ContentFile с содержимым файла.",
+      },
+      {
+        name: "max_length",
+        description:
+          "Максимальная длина итогового имени файла. Передаётся в get_available_name().",
+      },
+    ],
+    example: `from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+
+# Сохраняем файл в хранилище
+content = ContentFile(b"PDF content here", name="report.pdf")
+saved_name = default_storage.save('uploads/report.pdf', content)
+
+print(saved_name)
+# 'uploads/report.pdf' или 'uploads/report_a3f9.pdf' при конфликте
+
+print(default_storage.url(saved_name))
+# '/media/uploads/report.pdf'`,
+  },
+  {
+    name: "Storage.size(name)",
+    category: "File handling",
+    description:
+      "Возвращает размер файла в байтах. Если файл не существует или хранилище не поддерживает эту операцию, вызывает NotImplementedError. Используется для валидации загружаемых файлов и отображения информации.",
+    syntax: "storage.size(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя файла (относительный путь в хранилище).",
+      },
+    ],
+    example: `from django.core.files.storage import default_storage
+
+file_size = default_storage.size('uploads/video.mp4')
+print(f"Размер: {file_size} байт")
+
+# Форматирование для отображения
+def human_size(size):
+    for unit in ['Б', 'КБ', 'МБ', 'ГБ']:
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+
+print(human_size(file_size))  # например: '15.3 МБ'`,
+  },
+  {
+    name: "Storage.url(name)",
+    category: "File handling",
+    description:
+      "Возвращает URL, по которому можно получить доступ к файлу через HTTP. Для FileSystemStorage формирует URL на основе MEDIA_URL. Для облачных хранилищ (S3, GCS и др.) возвращает публичный или подписанный URL. Используется в шаблонах для отображения ссылок на файлы.",
+    syntax: "storage.url(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя файла (относительный путь в хранилище).",
+      },
+    ],
+    example: `from django.core.files.storage import default_storage
+
+url = default_storage.url('uploads/photo.jpg')
+print(url)  # '/media/uploads/photo.jpg'
+
+# В шаблоне Django:
+# <img src="{{ profile.avatar.url }}" alt="Аватар">
+
+# В представлении:
+from myapp.models import UserProfile
+profile = UserProfile.objects.get(pk=1)
+print(profile.avatar.url)  # использует storage.url() внутри`,
+  },
+  {
+    name: "FileSystemStorage.get_created_time(name)",
+    category: "File handling",
+    description:
+      "Возвращает объект datetime с временем создания файла в локальной файловой системе. Если USE_TZ=True — возвращает aware datetime в UTC. Переопределяет базовый метод Storage.get_created_time() с реализацией через os.path.getctime().",
+    syntax:
+      "from django.core.files.storage import FileSystemStorage\n\nstorage = FileSystemStorage()\nstorage.get_created_time(name)",
+    arguments: [
+      {
+        name: "name",
+        description:
+          "Имя файла — относительный путь внутри хранилища (от location).",
+      },
+    ],
+    example: `from django.core.files.storage import FileSystemStorage
+
+storage = FileSystemStorage(location='/media')
+
+created = storage.get_created_time('uploads/photo.jpg')
+print(created)
+# datetime(2024, 3, 10, 8, 45, 0, tzinfo=UTC)
+
+from django.utils import timezone
+age = timezone.now() - created
+print(f"Файл создан {age.days} дней назад")`,
+  },
+  {
+    name: "InMemoryStorage.location",
+    category: "File handling",
+    description:
+      "Атрибут хранилища InMemoryStorage. Всегда возвращает пустую строку, поскольку файлы хранятся в оперативной памяти и не имеют пути в файловой системе. Используется в тестах и временных операциях без записи на диск.",
+    syntax:
+      'from django.core.files.storage import InMemoryStorage\n\nstorage = InMemoryStorage()\nprint(storage.location)  # ""',
+    arguments: [],
+    example: `from django.core.files.storage import InMemoryStorage
+from django.core.files.base import ContentFile
+
+storage = InMemoryStorage()
+print(repr(storage.location))  # ''
+
+# Сохраняем файл в памяти
+storage.save('test.txt', ContentFile(b"Hello"))
+print(storage.listdir(''))  # ([''], ['test.txt'])`,
+  },
+  {
+    name: "InMemoryStorage.base_url",
+    category: "File handling",
+    description:
+      "Базовый URL для формирования ссылок на файлы в InMemoryStorage. По умолчанию равен None — вызов url() вернёт ошибку. Задаётся при создании экземпляра. Используется в тестах, где нужна проверка URL без реального хранилища.",
+    syntax: 'InMemoryStorage(base_url="/files/")\nstorage.base_url',
+    arguments: [],
+    example: `from django.core.files.storage import InMemoryStorage
+from django.core.files.base import ContentFile
+
+storage = InMemoryStorage(base_url='/memory-files/')
+
+storage.save('report.pdf', ContentFile(b"PDF data"))
+print(storage.base_url)    # '/memory-files/'
+print(storage.url('report.pdf'))  # '/memory-files/report.pdf'`,
+  },
+  {
+    name: "InMemoryStorage.file_permissions_mode",
+    category: "File handling",
+    description:
+      "Атрибут InMemoryStorage, определяющий режим доступа к файлу. Всегда возвращает None, поскольку файлы хранятся в памяти и не имеют разрешений файловой системы. Присутствует для соблюдения интерфейса базового класса Storage.",
+    syntax: "storage.file_permissions_mode",
+    arguments: [],
+    example: `from django.core.files.storage import InMemoryStorage
+
+storage = InMemoryStorage()
+print(storage.file_permissions_mode)  # None
+
+# В отличие от FileSystemStorage, где можно задать, например, 0o644`,
+  },
+  {
+    name: "InMemoryStorage.directory_permissions_mode",
+    category: "File handling",
+    description:
+      "Атрибут InMemoryStorage, определяющий режим доступа к директориям. Всегда возвращает None, так как директории в памяти не имеют разрешений файловой системы. Присутствует для соответствия интерфейсу базового класса Storage.",
+    syntax: "storage.directory_permissions_mode",
+    arguments: [],
+    example: `from django.core.files.storage import InMemoryStorage
+
+storage = InMemoryStorage()
+print(storage.directory_permissions_mode)  # None
+
+# В отличие от FileSystemStorage, где можно задать, например, 0o755`,
+  },
+  {
+    name: "FileSystemStorage.location",
+    category: "File handling",
+    description:
+      "Абсолютный путь к корневой директории хранилища в локальной файловой системе. По умолчанию равен значению настройки MEDIA_ROOT. Все операции с файлами выполняются относительно этого пути.",
+    syntax:
+      'from django.core.files.storage import FileSystemStorage\n\nstorage = FileSystemStorage(location="/var/media")\nprint(storage.location)',
+    arguments: [],
+    example: `from django.core.files.storage import FileSystemStorage
+
+# Хранилище по умолчанию — использует MEDIA_ROOT
+default_storage = FileSystemStorage()
+print(default_storage.location)
+# '/home/user/project/media'
+
+# Кастомное хранилище с другим путём
+custom_storage = FileSystemStorage(location='/var/uploads')
+print(custom_storage.location)  # '/var/uploads'`,
+  },
+  {
+    name: "FileSystemStorage.base_url",
+    category: "File handling",
+    description:
+      "Базовый URL для формирования ссылок на файлы хранилища. По умолчанию равен настройке MEDIA_URL. Используется методом url() для построения полного URL к файлу.",
+    syntax:
+      'from django.core.files.storage import FileSystemStorage\n\nstorage = FileSystemStorage(base_url="/media/")\nprint(storage.base_url)',
+    arguments: [],
+    example: `from django.core.files.storage import FileSystemStorage
+
+storage = FileSystemStorage(
+    location='/var/uploads',
+    base_url='/user-files/'
+)
+
+print(storage.base_url)             # '/user-files/'
+print(storage.url('photo.jpg'))     # '/user-files/photo.jpg'`,
+  },
+  {
+    name: "FileSystemStorage.file_permissions_mode",
+    category: "File handling",
+    description:
+      "Режим доступа (chmod), устанавливаемый для файлов при их сохранении в хранилище. По умолчанию берётся из настройки FILE_UPLOAD_PERMISSIONS. Задаётся в восьмеричном формате (например, 0o644).",
+    syntax:
+      "FileSystemStorage(file_permissions_mode=0o644)\nstorage.file_permissions_mode",
+    arguments: [],
+    example: `from django.core.files.storage import FileSystemStorage
+
+# Файлы будут доступны на чтение всем, на запись только владельцу
+storage = FileSystemStorage(
+    location='/var/uploads',
+    file_permissions_mode=0o644
+)
+
+print(oct(storage.file_permissions_mode))  # '0o644'`,
+  },
+  {
+    name: "FileSystemStorage.directory_permissions_mode",
+    category: "File handling",
+    description:
+      "Режим доступа (chmod), устанавливаемый для директорий при их создании в хранилище. По умолчанию берётся из настройки FILE_UPLOAD_DIRECTORY_PERMISSIONS. Задаётся в восьмеричном формате (например, 0o755).",
+    syntax:
+      "FileSystemStorage(directory_permissions_mode=0o755)\nstorage.directory_permissions_mode",
+    arguments: [],
+    example: `from django.core.files.storage import FileSystemStorage
+
+storage = FileSystemStorage(
+    location='/var/uploads',
+    directory_permissions_mode=0o755
+)
+
+print(oct(storage.directory_permissions_mode))  # '0o755'`,
+  },
+  {
+    name: "FileSystemStorage.allow_overwrite",
+    category: "File handling",
+    description:
+      "Булев атрибут, определяющий поведение при сохранении файла с уже существующим именем. Если False (по умолчанию) — вызывается get_available_name() для генерации уникального имени. Если True — существующий файл перезаписывается без изменения имени.",
+    syntax: "FileSystemStorage(allow_overwrite=False)\nstorage.allow_overwrite",
+    arguments: [],
+    example: `from django.core.files.storage import FileSystemStorage
+from django.core.files.base import ContentFile
+
+# allow_overwrite=True — файл перезаписывается
+storage = FileSystemStorage(
+    location='/tmp/uploads',
+    allow_overwrite=True
+)
+
+content = ContentFile(b"version 1", name="config.json")
+storage.save('config.json', content)
+
+content2 = ContentFile(b"version 2", name="config.json")
+saved = storage.save('config.json', content2)
+print(saved)  # 'config.json' — имя не изменилось`,
+  },
+  {
+    name: "UploadedFile.read()",
+    category: "File handling",
+    description:
+      "Читает и возвращает всё содержимое загруженного файла в виде байтов. Аналогичен методу read() стандартного файлового объекта Python. Для больших файлов рекомендуется использовать chunks() во избежание переполнения памяти.",
+    syntax: "uploaded_file.read()",
+    arguments: [],
+    example: `def handle_upload(request):
+    uploaded = request.FILES['document']
+
+    # Для небольших файлов — читаем целиком
+    if not uploaded.multiple_chunks():
+        content = uploaded.read()
+        print(f"Получено {len(content)} байт")
+    else:
+        # Для больших файлов — читаем по частям
+        for chunk in uploaded.chunks():
+            process(chunk)`,
+  },
+  {
+    name: "UploadedFile.multiple_chunks(chunk_size=None)",
+    category: "File handling",
+    description:
+      "Возвращает True, если загруженный файл достаточно велик, чтобы потребовать нескольких чанков при чтении. Используется для выбора стратегии обработки: read() для маленьких файлов и chunks() для больших.",
+    syntax: "uploaded_file.multiple_chunks(chunk_size=None)",
+    arguments: [
+      {
+        name: "chunk_size",
+        description:
+          "Размер чанка в байтах для сравнения с размером файла. По умолчанию 64 КБ.",
+      },
+    ],
+    example: `def upload_view(request):
+    f = request.FILES['file']
+
+    if f.multiple_chunks():
+        print(f"Файл большой ({f.size} байт) — читаем чанками")
+        for chunk in f.chunks():
+            save_chunk(chunk)
+    else:
+        print(f"Файл маленький — читаем целиком")
+        data = f.read()`,
+  },
+  {
+    name: "UploadedFile.chunks(chunk_size=None)",
+    category: "File handling",
+    description:
+      "Генератор, последовательно читающий загруженный файл частями заданного размера. Позволяет эффективно обрабатывать большие файлы без загрузки всего содержимого в память. Используется при потоковой записи в хранилище.",
+    syntax: "uploaded_file.chunks(chunk_size=None)",
+    arguments: [
+      {
+        name: "chunk_size",
+        description:
+          "Размер одного чанка в байтах. По умолчанию 64 КБ (File.DEFAULT_CHUNK_SIZE).",
+      },
+    ],
+    example: `import hashlib
+
+def handle_large_upload(request):
+    f = request.FILES['video']
+    hasher = hashlib.md5()
+
+    with open(f'/tmp/{f.name}', 'wb') as dest:
+        for chunk in f.chunks(chunk_size=1024 * 1024):  # 1 МБ
+            dest.write(chunk)
+            hasher.update(chunk)
+
+    print(f"MD5: {hasher.hexdigest()}")`,
+  },
+  {
+    name: "UploadedFile.name",
+    category: "File handling",
+    description:
+      "Атрибут, содержащий оригинальное имя загруженного файла, переданное браузером клиента. Не гарантирует безопасность — имя может содержать пути или специальные символы. Перед использованием рекомендуется обрабатывать через os.path.basename().",
+    syntax: "uploaded_file.name",
+    arguments: [],
+    example: `import os
+
+def upload_view(request):
+    f = request.FILES['document']
+
+    # Небезопасно использовать напрямую!
+    print(f.name)  # например: '../../etc/passwd' от злоумышленника
+
+    # Безопасное использование:
+    safe_name = os.path.basename(f.name)
+    print(safe_name)  # 'passwd'`,
+  },
+  {
+    name: "UploadedFile.size",
+    category: "File handling",
+    description:
+      "Атрибут, содержащий размер загруженного файла в байтах. Используется для валидации — проверки допустимого размера файла до его сохранения в хранилище.",
+    syntax: "uploaded_file.size",
+    arguments: [],
+    example: `from django.core.exceptions import ValidationError
+
+MAX_SIZE = 5 * 1024 * 1024  # 5 МБ
+
+def upload_view(request):
+    f = request.FILES['photo']
+
+    if f.size > MAX_SIZE:
+        raise ValidationError(
+            f"Файл слишком большой: {f.size} байт. "
+            f"Максимум {MAX_SIZE} байт."
+        )
+
+    print(f"Размер файла: {f.size} байт")`,
+  },
+  {
+    name: "UploadedFile.content_type",
+    category: "File handling",
+    description:
+      'Атрибут, содержащий MIME-тип загруженного файла, переданный браузером (например, "image/jpeg", "application/pdf"). Не является надёжной проверкой типа файла — браузер может указать любое значение. Для надёжной проверки используйте python-magic.',
+    syntax: "uploaded_file.content_type",
+    arguments: [],
+    example: `def upload_view(request):
+    f = request.FILES['file']
+
+    print(f.content_type)
+    # 'image/jpeg', 'application/pdf', 'text/plain' и т.д.
+
+    # Базовая проверка (ненадёжна — доверять нельзя!)
+    ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif']
+    if f.content_type not in ALLOWED_TYPES:
+        raise ValueError("Разрешены только изображения")`,
+  },
+  {
+    name: "UploadedFile.content_type_extra",
+    category: "File handling",
+    description:
+      'Словарь с дополнительными параметрами из заголовка Content-Type загруженного файла. Например, при Content-Type: text/plain; charset=utf-8 содержит {"charset": "utf-8"}. Обычно пустой для большинства загрузок.',
+    syntax: "uploaded_file.content_type_extra",
+    arguments: [],
+    example: `def upload_view(request):
+    f = request.FILES['document']
+
+    print(f.content_type)
+    # 'text/plain'
+
+    print(f.content_type_extra)
+    # {'charset': 'utf-8'}  — если передан charset в заголовке
+    # {}  — если дополнительных параметров нет
+
+    charset = f.content_type_extra.get('charset', 'utf-8')`,
+  },
+  {
+    name: "UploadedFile.charset",
+    category: "File handling",
+    description:
+      "Кодировка символов загруженного текстового файла, переданная браузером в заголовке Content-Type. Доступна только для текстовых файлов. Для бинарных файлов равна None. Используется при декодировании текстового содержимого файла.",
+    syntax: "uploaded_file.charset",
+    arguments: [],
+    example: `def upload_text_file(request):
+    f = request.FILES['textfile']
+
+    print(f.charset)
+    # 'utf-8' или 'windows-1251' или None
+
+    # Декодирование с учётом переданной кодировки
+    encoding = f.charset or 'utf-8'
+    content = f.read().decode(encoding)
+    print(content)`,
+  },
+  {
+    name: "TemporaryUploadedFile.temporary_file_path()",
+    category: "File handling",
+    description:
+      "Возвращает абсолютный путь к временному файлу на диске, в котором хранится загруженный файл. Доступен только для файлов, обработанных TemporaryFileUploadHandler (файлы крупнее FILE_UPLOAD_MAX_MEMORY_SIZE). Позволяет передавать файл другим процессам без копирования в память.",
+    syntax: "uploaded_file.temporary_file_path()",
+    arguments: [],
+    example: `def handle_upload(request):
+    f = request.FILES['video']
+
+    # temporary_file_path() доступен только у TemporaryUploadedFile
+    from django.core.files.uploadedfile import TemporaryUploadedFile
+
+    if isinstance(f, TemporaryUploadedFile):
+        tmp_path = f.temporary_file_path()
+        print(f"Временный файл: {tmp_path}")
+        # '/tmp/tmpXk93ls.upload'
+
+        # Можно передать путь внешнему инструменту без загрузки в память
+        import subprocess
+        subprocess.run(['ffprobe', tmp_path])
+    else:
+        # Файл в памяти — InMemoryUploadedFile
+        data = f.read()`,
+  },
+  {
+    name: "InMemoryUploadedFile",
+    category: "File handling",
+    description:
+      "Подкласс UploadedFile, хранящий загруженный файл целиком в оперативной памяти с помощью BytesIO. Используется для небольших файлов (меньше FILE_UPLOAD_MAX_MEMORY_SIZE, по умолчанию 2.5 МБ), обработанных MemoryFileUploadHandler. Быстрее TemporaryUploadedFile, но расходует RAM.",
+    syntax:
+      "from django.core.files.uploadedfile import InMemoryUploadedFile\n\nInMemoryUploadedFile(file, field_name, name, content_type, size, charset)",
+    arguments: [
+      {
+        name: "file",
+        description: "Объект BytesIO с содержимым файла в памяти.",
+      },
+      {
+        name: "field_name",
+        description: "Имя поля формы, из которого был загружен файл.",
+      },
+      { name: "name", description: "Оригинальное имя файла." },
+      { name: "content_type", description: "MIME-тип файла." },
+      { name: "size", description: "Размер файла в байтах." },
+      {
+        name: "charset",
+        description: "Кодировка для текстовых файлов или None.",
+      },
+    ],
+    example: `from django.core.files.uploadedfile import InMemoryUploadedFile
+import io
+
+# Создание InMemoryUploadedFile вручную (полезно в тестах)
+content = b"Hello, world!"
+file_obj = io.BytesIO(content)
+
+uploaded = InMemoryUploadedFile(
+    file=file_obj,
+    field_name='document',
+    name='hello.txt',
+    content_type='text/plain',
+    size=len(content),
+    charset='utf-8'
+)
+
+print(uploaded.name)          # 'hello.txt'
+print(uploaded.size)          # 13
+print(uploaded.read())        # b'Hello, world!'`,
+  },
+  {
+    name: "MemoryFileUploadHandler",
+    category: "File handling",
+    description:
+      "Обработчик загрузки файлов, хранящий данные в оперативной памяти (BytesIO). Активируется по умолчанию для файлов, размер которых не превышает FILE_UPLOAD_MAX_MEMORY_SIZE (2.5 МБ). При превышении лимита передаёт обработку TemporaryFileUploadHandler.",
+    syntax:
+      "from django.core.files.uploadhandler import MemoryFileUploadHandler",
+    arguments: [],
+    example: `# Принудительное использование только MemoryFileUploadHandler
+# в конкретном представлении (например, для тестов)
+from django.core.files.uploadhandler import MemoryFileUploadHandler
+from django.views.decorators.csrf import csrf_exempt
+
+def memory_only_upload(request):
+    request.upload_handlers = [MemoryFileUploadHandler()]
+    f = request.FILES['file']
+    print(type(f).__name__)  # 'InMemoryUploadedFile'
+    return HttpResponse("OK")`,
+  },
+  {
+    name: "TemporaryFileUploadHandler",
+    category: "File handling",
+    description:
+      "Обработчик загрузки файлов, сохраняющий данные во временный файл на диске. Используется для крупных файлов, превышающих FILE_UPLOAD_MAX_MEMORY_SIZE. Временный файл автоматически удаляется после завершения обработки запроса.",
+    syntax:
+      "from django.core.files.uploadhandler import TemporaryFileUploadHandler",
+    arguments: [],
+    example: `from django.core.files.uploadhandler import TemporaryFileUploadHandler
+from django.core.files.uploadedfile import TemporaryUploadedFile
+
+# Принудительное сохранение всех загрузок во временные файлы
+def large_file_upload(request):
+    request.upload_handlers = [TemporaryFileUploadHandler()]
+    f = request.FILES['video']
+
+    print(type(f).__name__)  # 'TemporaryUploadedFile'
+    print(f.temporary_file_path())  # '/tmp/tmpXyz123.upload'`,
+  },
+  {
+    name: "FileUploadHandler.receive_data_chunk(raw_data, start)",
+    category: "File handling",
+    description:
+      "Метод обработчика, вызываемый Django для каждого чанка данных в процессе загрузки файла. Должен возвращать данные чанка (или None, чтобы пропустить их). Переопределяется в собственных обработчиках для кастомной обработки потока загрузки.",
+    syntax: "handler.receive_data_chunk(raw_data, start)",
+    arguments: [
+      {
+        name: "raw_data",
+        description: "Байты текущего чанка данных загружаемого файла.",
+      },
+      {
+        name: "start",
+        description:
+          "Позиция (смещение в байтах) начала текущего чанка в общем потоке данных.",
+      },
+    ],
+    example: `from django.core.files.uploadhandler import FileUploadHandler
+
+class ProgressUploadHandler(FileUploadHandler):
+    def receive_data_chunk(self, raw_data, start):
+        # Отслеживаем прогресс загрузки
+        received = start + len(raw_data)
+        if self.content_length:
+            pct = received / self.content_length * 100
+            print(f"Загружено: {pct:.1f}%")
+
+        # Обязательно возвращаем данные для дальнейшей обработки
+        return raw_data`,
+  },
+  {
+    name: "FileUploadHandler.file_complete(file_size)",
+    category: "File handling",
+    description:
+      "Вызывается Django после получения всех данных файла. Должен вернуть объект UploadedFile (или его подкласс) либо None, если данный обработчик не обрабатывает этот файл. Именно здесь создаётся итоговый объект файла.",
+    syntax: "handler.file_complete(file_size)",
+    arguments: [
+      {
+        name: "file_size",
+        description: "Итоговый размер загруженного файла в байтах.",
+      },
+    ],
+    example: `from django.core.files.uploadhandler import FileUploadHandler
+from django.core.files.uploadedfile import InMemoryUploadedFile
+import io
+
+class CustomUploadHandler(FileUploadHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.buffer = io.BytesIO()
+
+    def receive_data_chunk(self, raw_data, start):
+        self.buffer.write(raw_data)
+        return raw_data
+
+    def file_complete(self, file_size):
+        self.buffer.seek(0)
+        return InMemoryUploadedFile(
+            self.buffer, self.field_name, self.file_name,
+            self.content_type, file_size, self.charset
+        )`,
+  },
+  {
+    name: "FileUploadHandler.chunk_size",
+    category: "File handling",
+    description:
+      "Атрибут, задающий размер чанка (в байтах), которым Django считывает загружаемый файл и передаёт в receive_data_chunk(). По умолчанию 65536 байт (64 КБ). Можно переопределить в кастомном обработчике для изменения гранулярности обработки.",
+    syntax: "handler.chunk_size",
+    arguments: [],
+    example: `from django.core.files.uploadhandler import FileUploadHandler
+
+class LargeChunkHandler(FileUploadHandler):
+    # Читаем файл блоками по 1 МБ вместо 64 КБ по умолчанию
+    chunk_size = 1024 * 1024  # 1 МБ
+
+    def receive_data_chunk(self, raw_data, start):
+        print(f"Получен чанк {len(raw_data)} байт")
+        return raw_data
+
+    def file_complete(self, file_size):
+        return None  # делегируем следующему обработчику`,
+  },
+  {
+    name: "FileUploadHandler.new_file(field_name, file_name, content_type, content_length, charset, content_type_extra)",
+    category: "File handling",
+    description:
+      "Вызывается Django в начале загрузки каждого нового файла, до передачи каких-либо данных. Используется для инициализации ресурсов обработчика: открытия временных файлов, создания буферов и т. д. Может вызвать StopFutureHandlers для отмены последующих обработчиков.",
+    syntax:
+      "handler.new_file(field_name, file_name, content_type, content_length, charset, content_type_extra)",
+    arguments: [
+      {
+        name: "field_name",
+        description: "Имя поля формы HTML, из которого загружается файл.",
+      },
+      { name: "file_name", description: "Оригинальное имя файла от клиента." },
+      {
+        name: "content_type",
+        description: "MIME-тип файла, переданный браузером.",
+      },
+      {
+        name: "content_length",
+        description: "Размер файла в байтах (может быть None если не указан).",
+      },
+      {
+        name: "charset",
+        description: "Кодировка для текстовых файлов или None.",
+      },
+      {
+        name: "content_type_extra",
+        description: "Словарь дополнительных параметров Content-Type.",
+      },
+    ],
+    example: `from django.core.files.uploadhandler import FileUploadHandler
+import io
+
+class LoggingUploadHandler(FileUploadHandler):
+    def new_file(self, field_name, file_name, content_type,
+                 content_length, charset=None, content_type_extra=None):
+        super().new_file(field_name, file_name, content_type,
+                         content_length, charset, content_type_extra)
+        print(f"Начало загрузки: {file_name}")
+        print(f"Тип: {content_type}, Размер: {content_length} байт")
+        self.buffer = io.BytesIO()
+
+    def receive_data_chunk(self, raw_data, start):
+        self.buffer.write(raw_data)
+        return raw_data
+
+    def file_complete(self, file_size):
+        print(f"Загрузка завершена: {file_size} байт")
+        return None`,
+  },
+  {
+    name: "FileUploadHandler.upload_complete()",
+    category: "File handling",
+    description:
+      "Вызывается Django после завершения загрузки всего запроса (всех файлов и полей формы). Используется для освобождения ресурсов, финальной обработки, отправки уведомлений или записи статистики. Вызывается для каждого обработчика в цепочке.",
+    syntax: "handler.upload_complete()",
+    arguments: [],
+    example: `from django.core.files.uploadhandler import FileUploadHandler
+import time
+
+class TimedUploadHandler(FileUploadHandler):
+    def new_file(self, *args, **kwargs):
+        super().new_file(*args, **kwargs)
+        self.start_time = time.time()
+
+    def receive_data_chunk(self, raw_data, start):
+        return raw_data
+
+    def file_complete(self, file_size):
+        return None
+
+    def upload_complete(self):
+        elapsed = time.time() - self.start_time
+        print(f"Загрузка завершена за {elapsed:.2f} сек.")`,
+  },
+  {
+    name: "FileUploadHandler.upload_interrupted()",
+    category: "File handling",
+    description:
+      "Вызывается Django, если загрузка файла была прервана до завершения — например, при разрыве соединения с клиентом. Используется для очистки ресурсов: удаления частично записанных файлов, освобождения буферов, отката транзакций.",
+    syntax: "handler.upload_interrupted()",
+    arguments: [],
+    example: `from django.core.files.uploadhandler import TemporaryFileUploadHandler
+import os
+
+class CleanupUploadHandler(TemporaryFileUploadHandler):
+    def upload_interrupted(self):
+        # Удаляем частично загруженный временный файл
+        if hasattr(self, 'file') and self.file:
+            tmp_path = self.file.name
+            self.file.close()
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                print(f"Временный файл удалён: {tmp_path}")
+        super().upload_interrupted()`,
+  },
+  {
+    name: "FileUploadHandler.handle_raw_input(input_data, META, content_length, boundary, encoding)",
+    category: "File handling",
+    description:
+      "Позволяет обработчику полностью перехватить и обработать весь сырой HTTP-поток загрузки до его стандартного разбора. Если возвращает не None, Django использует возвращённое значение вместо стандартного разбора multipart. Используется для нестандартных форматов загрузки.",
+    syntax:
+      "handler.handle_raw_input(input_data, META, content_length, boundary, encoding=None)",
+    arguments: [
+      {
+        name: "input_data",
+        description:
+          "Объект, подобный файлу, представляющий сырые данные HTTP-запроса.",
+      },
+      {
+        name: "META",
+        description: "Словарь request.META с заголовками HTTP-запроса.",
+      },
+      {
+        name: "content_length",
+        description: "Значение заголовка Content-Length в байтах.",
+      },
+      {
+        name: "boundary",
+        description: "MIME-граница для разделения частей multipart-запроса.",
+      },
+      { name: "encoding", description: "Кодировка запроса или None." },
+    ],
+    example: `from django.core.files.uploadhandler import FileUploadHandler
+
+class PassthroughHandler(FileUploadHandler):
+    def handle_raw_input(self, input_data, META, content_length,
+                         boundary, encoding=None):
+        # Возвращаем None — стандартный разбор не прерывается
+        # Можно логировать метаданные запроса
+        print(f"Загрузка: {content_length} байт, boundary={boundary}")
+        return None  # None = продолжаем стандартную обработку
+
+    def receive_data_chunk(self, raw_data, start):
+        return raw_data
+
+    def file_complete(self, file_size):
+        return None`,
+  },
+  {
+    name: "Form",
+    category: "Forms",
+    description:
+      "Базовый класс для всех форм Django. Предоставляет механизм валидации данных, рендеринга HTML и доступа к очищенным данным. Каждая форма определяется как подкласс Form с набором полей. Может использоваться как связанная (с данными) или несвязанная (пустая) форма.",
+    syntax:
+      "from django import forms\n\nclass MyForm(forms.Form):\n    field = forms.CharField()",
+    arguments: [],
+    example: `from django import forms
+
+class ContactForm(forms.Form):
+    name = forms.CharField(max_length=100, label="Имя")
+    email = forms.EmailField(label="Email")
+    message = forms.CharField(widget=forms.Textarea, label="Сообщение")
+
+# Несвязанная форма (пустая)
+form = ContactForm()
+
+# Связанная форма (с данными POST)
+form = ContactForm(data=request.POST)
+if form.is_valid():
+    print(form.cleaned_data)`,
+  },
+  {
+    name: "Form.__init__(data=None, files=None, auto_id='id_%s', prefix=None, initial=None, error_class=ErrorList, label_suffix=None, empty_permitted=False, field_order=None, use_required_attribute=None, renderer=None)",
+    category: "Forms",
+    description:
+      "Конструктор класса Form. Принимает данные запроса для создания связанной формы или вызывается без аргументов для несвязанной. Позволяет настроить идентификаторы полей, начальные значения, префиксы для форм-наборов и другие параметры отображения.",
+    syntax:
+      "Form(data=None, files=None, auto_id='id_%s', prefix=None, initial=None, ...)",
+    arguments: [
+      {
+        name: "data",
+        description:
+          "Словарь данных (обычно request.POST). Если передан — форма становится связанной.",
+      },
+      {
+        name: "files",
+        description:
+          "Словарь файлов (обычно request.FILES). Нужен для форм с FileField/ImageField.",
+      },
+      {
+        name: "auto_id",
+        description:
+          'Шаблон для генерации атрибутов id полей. По умолчанию "id_%s". Можно отключить, передав False.',
+      },
+      {
+        name: "prefix",
+        description:
+          "Префикс для имён полей — позволяет использовать несколько форм на одной странице.",
+      },
+      {
+        name: "initial",
+        description: "Словарь начальных значений полей для несвязанной формы.",
+      },
+      {
+        name: "error_class",
+        description: "Класс для отображения ошибок. По умолчанию ErrorList.",
+      },
+      {
+        name: "label_suffix",
+        description: 'Строка, добавляемая после метки поля. По умолчанию ":".',
+      },
+      {
+        name: "empty_permitted",
+        description:
+          "Разрешает отправку полностью пустой формы без ошибок. По умолчанию False.",
+      },
+      {
+        name: "field_order",
+        description:
+          "Список имён полей для управления порядком их отображения.",
+      },
+      {
+        name: "use_required_attribute",
+        description:
+          "Если True — добавляет атрибут required к обязательным полям HTML.",
+      },
+      {
+        name: "renderer",
+        description: "Пользовательский рендерер для генерации HTML формы.",
+      },
+    ],
+    example: `from django import forms
+
+class OrderForm(forms.Form):
+    product = forms.CharField()
+    quantity = forms.IntegerField()
+
+# Несвязанная с начальными значениями
+form = OrderForm(initial={'quantity': 1})
+
+# Связанная — с данными POST и файлами
+form = OrderForm(
+    data=request.POST,
+    files=request.FILES,
+    prefix='order'  # поля будут называться order-product, order-quantity
+)
+
+# Две формы на одной странице через prefix
+form_a = OrderForm(request.POST, prefix='a')
+form_b = OrderForm(request.POST, prefix='b')`,
+  },
+  {
+    name: "Form.is_bound",
+    category: "Forms",
+    description:
+      "Булев атрибут, показывающий, является ли форма связанной (содержит данные) или несвязанной (пустая). Форма становится связанной, если в конструктор передан аргумент data. Несвязанная форма всегда невалидна — is_valid() возвращает False.",
+    syntax: "form.is_bound",
+    arguments: [],
+    example: `from django import forms
+
+class SearchForm(forms.Form):
+    query = forms.CharField()
+
+# Несвязанная форма
+empty_form = SearchForm()
+print(empty_form.is_bound)  # False
+
+# Связанная форма
+bound_form = SearchForm(data={'query': 'Django'})
+print(bound_form.is_bound)  # True
+
+# Форма с пустым словарём тоже связана!
+bound_empty = SearchForm(data={})
+print(bound_empty.is_bound)  # True`,
+  },
+  {
+    name: "Form.data",
+    category: "Forms",
+    description:
+      "Словарь с сырыми (необработанными) данными, переданными в форму. Содержит данные из request.POST или другого источника до какой-либо валидации или очистки. Для несвязанной формы — пустой словарь.",
+    syntax: "form.data",
+    arguments: [],
+    example: `from django import forms
+
+class LoginForm(forms.Form):
+    username = forms.CharField()
+    password = forms.CharField(widget=forms.PasswordInput)
+
+form = LoginForm(data={'username': '  admin  ', 'password': 'secret'})
+
+# Сырые данные — до очистки
+print(form.data)
+# {'username': '  admin  ', 'password': 'secret'}
+
+form.is_valid()
+
+# Очищенные данные — после валидации
+print(form.cleaned_data)
+# {'username': 'admin', 'password': 'secret'}`,
+  },
+  {
+    name: "Form.files",
+    category: "Forms",
+    description:
+      "Словарь загруженных файлов, переданных в форму (обычно request.FILES). Используется полями FileField и ImageField для получения загруженных файлов. Для форм без файловых полей не требуется.",
+    syntax: "form.files",
+    arguments: [],
+    example: `from django import forms
+
+class UploadForm(forms.Form):
+    title = forms.CharField()
+    document = forms.FileField()
+
+form = UploadForm(
+    data=request.POST,
+    files=request.FILES
+)
+
+# Доступ к сырым данным файлов
+print(form.files)
+# {'document': <InMemoryUploadedFile: report.pdf>}
+
+if form.is_valid():
+    uploaded_file = form.cleaned_data['document']
+    print(uploaded_file.name)`,
+  },
+  {
+    name: "Form.errors",
+    category: "Forms",
+    description:
+      'Словарь ошибок валидации формы. Ключи — имена полей (или "__all__" для ошибок всей формы), значения — списки сообщений об ошибках. Обращение к errors автоматически запускает full_clean(), если она ещё не выполнялась. Для несвязанной формы возвращает пустой словарь.',
+    syntax: "form.errors",
+    arguments: [],
+    example: `from django import forms
+
+class RegisterForm(forms.Form):
+    username = forms.CharField(min_length=3)
+    email = forms.EmailField()
+
+form = RegisterForm(data={'username': 'ab', 'email': 'not-an-email'})
+
+print(form.errors)
+# {
+#   'username': ['Убедитесь, что это значение содержит не менее 3 символов.'],
+#   'email': ['Введите правильный адрес электронной почты.']
+# }
+
+print(form.errors.as_json())
+# JSON-представление ошибок`,
+  },
+  {
+    name: "Form.cleaned_data",
+    category: "Forms",
+    description:
+      "Словарь с очищенными и валидированными данными формы. Доступен только после успешного вызова is_valid(). Значения приведены к нужным типам Python (например, строка даты → объект date). Содержит только поля, прошедшие валидацию.",
+    syntax: "form.cleaned_data",
+    arguments: [],
+    example: `from django import forms
+import datetime
+
+class EventForm(forms.Form):
+    title = forms.CharField(max_length=200)
+    date = forms.DateField()
+    seats = forms.IntegerField(min_value=1)
+
+form = EventForm(data={
+    'title': 'Конференция Django',
+    'date': '2024-09-15',
+    'seats': '150'
+})
+
+if form.is_valid():
+    data = form.cleaned_data
+    print(data['title'])   # 'Конференция Django'  (str)
+    print(data['date'])    # datetime.date(2024, 9, 15)  (date!)
+    print(data['seats'])   # 150  (int, не строка!)`,
+  },
+  {
+    name: "Form.is_valid()",
+    category: "Forms",
+    description:
+      "Запускает полную валидацию формы и возвращает True, если форма связана и все поля прошли проверку без ошибок. При первом вызове выполняет full_clean(), заполняя errors и cleaned_data. Несвязанная форма всегда возвращает False.",
+    syntax: "form.is_valid()",
+    arguments: [],
+    example: `from django import forms
+
+class ContactForm(forms.Form):
+    name = forms.CharField()
+    email = forms.EmailField()
+
+def contact_view(request):
+    if request.method == 'POST':
+        form = ContactForm(request.POST)
+        if form.is_valid():
+            # cleaned_data доступен только здесь
+            name = form.cleaned_data['name']
+            email = form.cleaned_data['email']
+            send_email(name, email)
+            return redirect('success')
+    else:
+        form = ContactForm()
+    return render(request, 'contact.html', {'form': form})`,
+  },
+  {
+    name: "Form.full_clean()",
+    category: "Forms",
+    description:
+      "Выполняет полный цикл валидации формы: сначала вызывает clean() каждого поля, затем clean_<fieldname>() для каждого поля при наличии, затем clean() формы. Заполняет errors и cleaned_data. Вызывается автоматически из is_valid() — прямой вызов нужен редко.",
+    syntax: "form.full_clean()",
+    arguments: [],
+    example: `from django import forms
+
+class PriceForm(forms.Form):
+    min_price = forms.DecimalField()
+    max_price = forms.DecimalField()
+
+    def clean(self):
+        data = super().clean()
+        min_p = data.get('min_price')
+        max_p = data.get('max_price')
+        if min_p and max_p and min_p > max_p:
+            raise forms.ValidationError(
+                "Минимальная цена не может быть больше максимальной."
+            )
+        return data
+
+form = PriceForm(data={'min_price': '500', 'max_price': '100'})
+form.full_clean()  # вызывается автоматически через is_valid()
+print(form.errors['__all__'])`,
+  },
+  {
+    name: "Form.clean()",
+    category: "Forms",
+    description:
+      "Метод для валидации на уровне всей формы — вызывается после валидации каждого поля. Переопределяется для проверок, требующих нескольких полей сразу (например, совпадение паролей). Должен возвращать словарь cleaned_data. Ошибки добавляются через ValidationError.",
+    syntax:
+      "def clean(self):\n    data = super().clean()\n    # валидация\n    return data",
+    arguments: [],
+    example: `from django import forms
+
+class PasswordChangeForm(forms.Form):
+    password1 = forms.CharField(widget=forms.PasswordInput, label="Пароль")
+    password2 = forms.CharField(widget=forms.PasswordInput, label="Подтверждение")
+
+    def clean(self):
+        data = super().clean()
+        p1 = data.get('password1')
+        p2 = data.get('password2')
+
+        if p1 and p2 and p1 != p2:
+            raise forms.ValidationError("Пароли не совпадают.")
+
+        return data
+
+form = PasswordChangeForm(data={'password1': 'abc123', 'password2': 'xyz456'})
+print(form.is_valid())         # False
+print(form.errors['__all__'])  # ['Пароли не совпадают.']`,
+  },
+  {
+    name: "Form.add_error(field, error)",
+    category: "Forms",
+    description:
+      'Добавляет ошибку к указанному полю формы программно — после или вместо стандартной валидации. Если field равен None — ошибка добавляется к "__all__" (ошибки формы в целом). Автоматически удаляет поле из cleaned_data при добавлении ошибки.',
+    syntax: "form.add_error(field, error)",
+    arguments: [
+      {
+        name: "field",
+        description:
+          "Имя поля, к которому добавляется ошибка. None — для ошибки уровня формы.",
+      },
+      {
+        name: "error",
+        description:
+          "Строка с сообщением, экземпляр ValidationError или список ошибок.",
+      },
+    ],
+    example: `from django import forms
+from django.core.exceptions import ValidationError
+
+class RegistrationForm(forms.Form):
+    username = forms.CharField()
+    email = forms.EmailField()
+
+def register_view(request):
+    form = RegistrationForm(request.POST)
+    if form.is_valid():
+        username = form.cleaned_data['username']
+        # Проверка уникальности через БД
+        if User.objects.filter(username=username).exists():
+            form.add_error('username', 'Это имя уже занято.')
+        else:
+            form.add_error(None, ValidationError('Общая ошибка формы.'))
+    return render(request, 'register.html', {'form': form})`,
+  },
+  {
+    name: "Form.has_error(field, code=None)",
+    category: "Forms",
+    description:
+      "Возвращает True, если указанное поле содержит ошибку. Если передан code — проверяет наличие ошибки с конкретным кодом. Для проверки ошибок уровня формы используйте NON_FIELD_ERRORS вместо имени поля.",
+    syntax: "form.has_error(field, code=None)",
+    arguments: [
+      {
+        name: "field",
+        description:
+          "Имя поля для проверки. Используйте forms.NON_FIELD_ERRORS для ошибок всей формы.",
+      },
+      {
+        name: "code",
+        description:
+          'Код ошибки (например, "required", "invalid") для проверки конкретного типа ошибки.',
+      },
+    ],
+    example: `from django import forms
+
+class LoginForm(forms.Form):
+    username = forms.CharField()
+    password = forms.CharField(widget=forms.PasswordInput)
+
+form = LoginForm(data={'username': '', 'password': ''})
+form.is_valid()
+
+# Проверка наличия ошибки в поле
+print(form.has_error('username'))           # True
+print(form.has_error('username', 'required'))  # True
+print(form.has_error('username', 'invalid'))   # False
+
+# Проверка ошибок всей формы
+print(form.has_error(forms.NON_FIELD_ERRORS))  # False`,
+  },
+  {
+    name: "Form.get_context()",
+    category: "Forms",
+    description:
+      'Возвращает словарь контекста для рендеринга формы шаблонизатором. Включает ключ "form" с объектом BoundForm, содержащим поля и их состояние. Вызывается автоматически методами render() и as_*(), но может быть переопределён для передачи дополнительных данных в шаблон формы.',
+    syntax: "form.get_context()",
+    arguments: [],
+    example: `from django import forms
+
+class FeedbackForm(forms.Form):
+    rating = forms.IntegerField(min_value=1, max_value=5)
+    comment = forms.CharField(widget=forms.Textarea)
+
+form = FeedbackForm(initial={'rating': 5})
+
+# Получаем контекст для рендеринга
+ctx = form.get_context()
+print(ctx.keys())  # dict_keys(['form'])
+
+# Используется шаблонизатором при render()
+html = form.render()  # вызывает get_context() внутри`,
+  },
+  {
+    name: "Form.render(template_name=None)",
+    category: "Forms",
+    description:
+      "Рендерит форму в HTML-строку с использованием указанного шаблона. Если template_name не задан — используется шаблон по умолчанию из атрибута Form.template_name. Вызывает get_context() для получения данных шаблона. Возвращает SafeString — готовую HTML-разметку.",
+    syntax: "form.render(template_name=None)",
+    arguments: [
+      {
+        name: "template_name",
+        description:
+          "Путь к шаблону для рендеринга. Если None — используется Form.template_name.",
+      },
+    ],
+    example: `from django import forms
+
+class CommentForm(forms.Form):
+    author = forms.CharField(label="Автор")
+    text = forms.CharField(widget=forms.Textarea, label="Текст")
+
+form = CommentForm()
+
+# Рендеринг с шаблоном по умолчанию
+html = form.render()
+
+# Рендеринг с кастомным шаблоном
+html = form.render(template_name='forms/custom_form.html')
+
+# В шаблоне Django — эквивалентно {{ form }}
+# {% autoescape off %}{{ form.render }}{% endautoescape %}`,
+  },
+  {
+    name: "Form.as_table()",
+    category: "Forms",
+    description:
+      "Рендерит форму в виде HTML-таблицы: каждое поле — отдельная строка <tr> с ячейками <th> для метки и <td> для виджета. Не включает теги <table> и </table> — их нужно добавить вручную. Ошибки отображаются перед соответствующей строкой.",
+    syntax: "form.as_table()",
+    arguments: [],
+    example: `from django import forms
+
+class ProfileForm(forms.Form):
+    first_name = forms.CharField(label="Имя")
+    last_name = forms.CharField(label="Фамилия")
+    age = forms.IntegerField(label="Возраст")
+
+form = ProfileForm(initial={'age': 25})
+print(form.as_table())
+# <tr><th><label for="id_first_name">Имя:</label></th>
+#     <td><input type="text" name="first_name" id="id_first_name"></td></tr>
+# ...
+
+# В шаблоне:
+# <table>{{ form.as_table }}</table>`,
+  },
+  {
+    name: "Form.as_ul()",
+    category: "Forms",
+    description:
+      "Рендерит форму в виде HTML-списка: каждое поле — элемент <li> с меткой и виджетом. Не включает теги <ul> и </ul> — их нужно добавить вручную. Более семантически гибкий вариант по сравнению с as_table().",
+    syntax: "form.as_ul()",
+    arguments: [],
+    example: `from django import forms
+
+class SignupForm(forms.Form):
+    username = forms.CharField(label="Имя пользователя")
+    email = forms.EmailField(label="Email")
+    password = forms.CharField(widget=forms.PasswordInput, label="Пароль")
+
+form = SignupForm()
+print(form.as_ul())
+# <li><label for="id_username">Имя пользователя:</label>
+#     <input type="text" name="username" id="id_username"></li>
+# ...
+
+# В шаблоне:
+# <ul>{{ form.as_ul }}</ul>`,
+  },
+  {
+    name: "Form.as_p()",
+    category: "Forms",
+    description:
+      "Рендерит форму в виде HTML-параграфов: каждое поле оборачивается в тег <p> вместе с меткой. Наиболее простой и распространённый способ быстрого отображения формы. Ошибки валидации выводятся отдельным параграфом перед соответствующим полем.",
+    syntax: "form.as_p()",
+    arguments: [],
+    example: `from django import forms
+
+class FeedbackForm(forms.Form):
+    name = forms.CharField(label="Ваше имя")
+    rating = forms.IntegerField(label="Оценка", min_value=1, max_value=5)
+    comment = forms.CharField(widget=forms.Textarea, label="Комментарий")
+
+form = FeedbackForm()
+print(form.as_p())
+# <p>
+#   <label for="id_name">Ваше имя:</label>
+#   <input type="text" name="name" id="id_name">
+# </p>
+# ...
+
+# В шаблоне — самый удобный вариант для быстрого прототипа:
+# <form method="post">{% csrf_token %}{{ form.as_p }}<button>Отправить</button></form>`,
+  },
+  {
+    name: "Form.as_div()",
+    category: "Forms",
+    description:
+      "Рендерит форму в виде блоков <div>: каждое поле оборачивается в <div> с меткой и виджетом. Является методом рендеринга по умолчанию начиная с Django 4.1 и соответствует современным стандартам HTML без использования устаревшей табличной разметки.",
+    syntax: "form.as_div()",
+    arguments: [],
+    example: `from django import forms
+
+class SubscribeForm(forms.Form):
+    email = forms.EmailField(label="Email адрес")
+    agree = forms.BooleanField(label="Согласен с условиями")
+
+form = SubscribeForm()
+print(form.as_div())
+# <div>
+#   <label for="id_email">Email адрес:</label>
+#   <input type="email" name="email" id="id_email" required>
+# </div>
+# <div>
+#   <label for="id_agree">Согласен с условиями:</label>
+#   <input type="checkbox" name="agree" id="id_agree" required>
+# </div>
+
+# Эквивалентно {{ form }} в шаблоне (начиная с Django 4.1)`,
+  },
+  {
+    name: "Form.hidden_fields()",
+    category: "Forms",
+    description:
+      "Возвращает список объектов BoundField для всех скрытых полей формы (тех, чей виджет является подклассом HiddenInput). Используется в шаблонах для явного управления отображением скрытых полей, например при кастомной разметке формы.",
+    syntax: "form.hidden_fields()",
+    arguments: [],
+    example: `from django import forms
+
+class CheckoutForm(forms.Form):
+    product_id = forms.IntegerField(widget=forms.HiddenInput)
+    quantity = forms.IntegerField(label="Количество")
+    address = forms.CharField(label="Адрес доставки")
+
+form = CheckoutForm(initial={'product_id': 42})
+
+hidden = form.hidden_fields()
+print(len(hidden))           # 1
+print(hidden[0].name)        # 'product_id'
+print(hidden[0].as_widget())
+# <input type="hidden" name="product_id" value="42" id="id_product_id">
+
+# В шаблоне для кастомной разметки:
+# {% for field in form.hidden_fields %}{{ field }}{% endfor %}`,
+  },
+  {
+    name: "Form.visible_fields()",
+    category: "Forms",
+    description:
+      "Возвращает список объектов BoundField для всех видимых полей формы — то есть всех полей, кроме скрытых (HiddenInput). Используется в шаблонах для итерации только по отображаемым полям при кастомной разметке формы.",
+    syntax: "form.visible_fields()",
+    arguments: [],
+    example: `from django import forms
+
+class ProfileForm(forms.Form):
+    user_id = forms.IntegerField(widget=forms.HiddenInput)
+    first_name = forms.CharField(label="Имя")
+    last_name = forms.CharField(label="Фамилия")
+    bio = forms.CharField(widget=forms.Textarea, label="О себе")
+
+form = ProfileForm()
+
+visible = form.visible_fields()
+print(len(visible))  # 3  (user_id скрыт, не входит)
+
+# Кастомный рендеринг в шаблоне:
+# {% for field in form.visible_fields %}
+#   <div class="field {% if field.errors %}error{% endif %}">
+#     {{ field.label_tag }} {{ field }} {{ field.errors }}
+#   </div>
+# {% endfor %}`,
+  },
+  {
+    name: "Form.non_field_errors()",
+    category: "Forms",
+    description:
+      "Возвращает объект ErrorList с ошибками, не привязанными к конкретному полю — то есть ошибками уровня формы, добавленными через Form.clean() или Form.add_error(None, ...). Используется в шаблонах для явного отображения общих ошибок формы.",
+    syntax: "form.non_field_errors()",
+    arguments: [],
+    example: `from django import forms
+
+class TransferForm(forms.Form):
+    from_account = forms.IntegerField(label="Со счёта")
+    to_account = forms.IntegerField(label="На счёт")
+    amount = forms.DecimalField(label="Сумма")
+
+    def clean(self):
+        data = super().clean()
+        if data.get('from_account') == data.get('to_account'):
+            raise forms.ValidationError(
+                "Нельзя перевести деньги на тот же счёт."
+            )
+        return data
+
+form = TransferForm(data={'from_account': '1', 'to_account': '1', 'amount': '100'})
+form.is_valid()
+
+errors = form.non_field_errors()
+print(errors)  # ['Нельзя перевести деньги на тот же счёт.']
+
+# В шаблоне:
+# {{ form.non_field_errors }}`,
+  },
+  {
+    name: "Form.bound_field_class",
+    category: "Forms",
+    description:
+      "Атрибут класса, определяющий класс объекта BoundField, используемого для представления полей формы при итерации и доступе через form[name]. По умолчанию — django.forms.BoundField. Переопределяется в подклассе для добавления кастомной логики к полям формы.",
+    syntax: "class MyForm(forms.Form):\n    bound_field_class = MyBoundField",
+    arguments: [],
+    example: `from django import forms
+from django.forms import BoundField
+
+class BootstrapBoundField(BoundField):
+    """BoundField с автоматическим добавлением CSS-класса Bootstrap."""
+    def css_classes(self, extra_classes=None):
+        classes = super().css_classes(extra_classes)
+        return f"form-group {classes}".strip()
+
+    def as_widget(self, widget=None, attrs=None, only_initial=False):
+        attrs = attrs or {}
+        attrs['class'] = 'form-control'
+        return super().as_widget(widget, attrs, only_initial)
+
+class BootstrapForm(forms.Form):
+    bound_field_class = BootstrapBoundField
+
+    name = forms.CharField(label="Имя")
+    email = forms.EmailField(label="Email")
+
+form = BootstrapForm()
+print(type(form['name']))  # <class 'BootstrapBoundField'>`,
+  },
+  {
+    name: "Form.template_name",
+    category: "Forms",
+    description:
+      'Атрибут класса, задающий путь к шаблону по умолчанию, используемому методом render() и оператором {{ form }} в шаблонах Django. Начиная с Django 4.1 значение по умолчанию — "django/forms/div.html" (рендеринг через <div>). Переопределяется для использования кастомного шаблона.',
+    syntax:
+      'class MyForm(forms.Form):\n    template_name = "myapp/custom_form.html"',
+    arguments: [],
+    example: `from django import forms
+
+# Использование встроенного шаблона на основе <p>
+class LegacyForm(forms.Form):
+    template_name = 'django/forms/p.html'
+    name = forms.CharField()
+
+# Полностью кастомный шаблон
+class StyledForm(forms.Form):
+    template_name = 'myapp/forms/styled_form.html'
+    name = forms.CharField(label="Имя")
+    email = forms.EmailField(label="Email")
+
+# В шаблоне myapp/forms/styled_form.html:
+# {% for field in form %}
+#   <div class="mb-3">
+#     {{ field.label_tag }}
+#     {{ field }}
+#     {% if field.errors %}<div class="error">{{ field.errors }}</div>{% endif %}
+#   </div>
+# {% endfor %}
+
+form = StyledForm()
+html = form.render()  # использует template_name`,
+  },
 ];
