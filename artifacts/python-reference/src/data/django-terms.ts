@@ -12117,4 +12117,266 @@ except SystemExit as e:
     if e.code != 0:
         raise RuntimeError('Есть непримененные миграции')`,
   },
+  {
+    name: "AppRegistryNotReady",
+    category: "Django Exceptions",
+    description:
+      "Возникает при попытке использовать модели или обращаться к реестру приложений до того, как Django завершил инициализацию приложений (то есть до окончания работы метода AppConfig.ready()). Чаще всего встречается при импорте моделей на уровне модуля вне приложения Django.",
+    syntax: "from django.core.exceptions import AppRegistryNotReady",
+    arguments: [],
+    example: `from django.core.exceptions import AppRegistryNotReady
+
+try:
+    from myapp.models import MyModel
+except AppRegistryNotReady:
+    print("Реестр приложений ещё не готов")`,
+  },
+  {
+    name: "ObjectDoesNotExist",
+    category: "Django Exceptions",
+    description:
+      "Базовый класс для исключений Model.DoesNotExist. Перехват ObjectDoesNotExist позволяет обрабатывать ошибку отсутствия объекта для любой модели. Возникает при вызове QuerySet.get(), если объект не найден.",
+    syntax: "from django.core.exceptions import ObjectDoesNotExist",
+    arguments: [],
+    example: `from django.core.exceptions import ObjectDoesNotExist
+from myapp.models import Article
+
+try:
+    article = Article.objects.get(pk=999)
+except ObjectDoesNotExist:
+    print("Объект не найден")`,
+  },
+  {
+    name: "ObjectNotUpdated",
+    category: "Django Exceptions",
+    description:
+      "Возникает при вызове Model.save() с параметром update_fields, если ни одна строка в базе данных не была обновлена. Это означает, что объект с таким первичным ключом не существует в базе.",
+    syntax: "from django.core.exceptions import ObjectNotUpdated",
+    arguments: [],
+    example: `from django.core.exceptions import ObjectNotUpdated
+from myapp.models import Article
+
+try:
+    article = Article(pk=999, title="Тест")
+    article.save(update_fields=["title"])
+except ObjectNotUpdated:
+    print("Объект не был обновлён — запись не найдена")`,
+  },
+  {
+    name: "EmptyResultSet",
+    category: "Django Exceptions",
+    description:
+      "Возникает внутри компилятора запросов, когда QuerySet гарантированно не вернёт ни одного результата, например при использовании пустого списка в условии IN. Обычно используется во внутренней логике Django ORM.",
+    syntax: "from django.core.exceptions import EmptyResultSet",
+    arguments: [],
+    example: `from django.core.exceptions import EmptyResultSet
+
+# Django ORM использует это исключение внутренне
+# Пример: запрос с пустым списком значений
+from myapp.models import Article
+
+qs = Article.objects.filter(pk__in=[])
+# Django может вызвать EmptyResultSet внутри компилятора`,
+  },
+  {
+    name: "FullResultSet",
+    category: "Django Exceptions",
+    description:
+      "Внутреннее исключение Django ORM, которое сигнализирует о том, что условие фильтрации охватывает все возможные строки и может быть полностью опущено в SQL-запросе. Не предназначено для использования в пользовательском коде.",
+    syntax: "from django.core.exceptions import FullResultSet",
+    arguments: [],
+    example: `from django.core.exceptions import FullResultSet
+
+# Используется исключительно во внутренней логике ORM Django
+# при компиляции SQL-запросов. Не предназначено для перехвата
+# в пользовательском коде.`,
+  },
+  {
+    name: "FieldDoesNotExist",
+    category: "Django Exceptions",
+    description:
+      "Возникает при вызове метода Options.get_field(), если запрошенное поле не существует в модели. Позволяет проверить наличие поля в модели без обращения к базе данных.",
+    syntax: "from django.core.exceptions import FieldDoesNotExist",
+    arguments: [],
+    example: `from django.core.exceptions import FieldDoesNotExist
+from myapp.models import Article
+
+try:
+    field = Article._meta.get_field('nonexistent_field')
+except FieldDoesNotExist:
+    print("Поле не найдено в модели")`,
+  },
+  {
+    name: "MultipleObjectsReturned",
+    category: "Django Exceptions",
+    description:
+      "Возникает при вызове QuerySet.get(), если запрос вернул более одного объекта. Каждая модель имеет собственный подкласс MultipleObjectsReturned, унаследованный от базового. Означает, что условие выборки не уникально.",
+    syntax: "from django.core.exceptions import MultipleObjectsReturned",
+    arguments: [],
+    example: `from django.core.exceptions import MultipleObjectsReturned
+from myapp.models import Article
+
+try:
+    article = Article.objects.get(status='published')
+except MultipleObjectsReturned:
+    print("Найдено несколько объектов, уточните запрос")`,
+  },
+  {
+    name: "SuspiciousOperation",
+    category: "Django Exceptions",
+    description:
+      "Возникает, когда пользователь выполнил операцию, которая считается подозрительной с точки зрения безопасности, например попытку манипуляции с куки или обход пути файловой системы. Django автоматически возвращает ответ 400 Bad Request при перехвате этого исключения.",
+    syntax: "from django.core.exceptions import SuspiciousOperation",
+    arguments: [],
+    example: `from django.core.exceptions import SuspiciousOperation
+
+def my_view(request):
+    user_path = request.GET.get('path', '')
+    if '..' in user_path:
+        raise SuspiciousOperation("Обнаружена попытка обхода пути")`,
+  },
+  {
+    name: "PermissionDenied",
+    category: "Django Exceptions",
+    description:
+      "Возникает, когда пользователь не имеет прав для выполнения запрошенного действия. Django автоматически возвращает ответ 403 Forbidden при перехвате этого исключения в представлении.",
+    syntax: "from django.core.exceptions import PermissionDenied",
+    arguments: [],
+    example: `from django.core.exceptions import PermissionDenied
+
+def admin_view(request):
+    if not request.user.is_staff:
+        raise PermissionDenied("Доступ разрешён только администраторам")
+    # дальнейшая логика представления`,
+  },
+  {
+    name: "ViewDoesNotExist",
+    category: "Django Exceptions",
+    description:
+      "Возникает в модуле django.urls, когда указанная функция представления не может быть найдена. Чаще всего появляется при неверно указанном пути к представлению в конфигурации URL.",
+    syntax: "from django.core.exceptions import ViewDoesNotExist",
+    arguments: [],
+    example: `# Возникает автоматически при некорректной конфигурации URL
+# urls.py
+from django.urls import path
+
+urlpatterns = [
+    # Если 'myapp.views.nonexistent' не существует,
+    # Django вызовет ViewDoesNotExist при старте
+    path('about/', 'myapp.views.nonexistent'),
+]`,
+  },
+  {
+    name: "MiddlewareNotUsed",
+    category: "Django Exceptions",
+    description:
+      "Может быть вызвано в методе __init__() промежуточного слоя (middleware), чтобы сообщить Django, что данный middleware не должен быть включён в цепочку обработки запросов. Django удалит его из списка активных middleware.",
+    syntax: "from django.core.exceptions import MiddlewareNotUsed",
+    arguments: [],
+    example: `from django.core.exceptions import MiddlewareNotUsed
+
+class DebugMiddleware:
+    def __init__(self, get_response):
+        import django.conf
+        if not django.conf.settings.DEBUG:
+            raise MiddlewareNotUsed("DebugMiddleware работает только в режиме DEBUG")
+        self.get_response = get_response
+
+    def __call__(self, request):
+        return self.get_response(request)`,
+  },
+  {
+    name: "ImproperlyConfigured",
+    category: "Django Exceptions",
+    description:
+      "Возникает при неправильной конфигурации Django — например, при ошибках в settings.py, отсутствии обязательных настроек или некорректных значениях параметров. Сигнализирует о проблемах настройки до запуска приложения.",
+    syntax: "from django.core.exceptions import ImproperlyConfigured",
+    arguments: [],
+    example: `from django.core.exceptions import ImproperlyConfigured
+from django.conf import settings
+
+def get_api_key():
+    key = getattr(settings, 'EXTERNAL_API_KEY', None)
+    if not key:
+        raise ImproperlyConfigured(
+            "Необходимо задать EXTERNAL_API_KEY в settings.py"
+        )
+    return key`,
+  },
+  {
+    name: "FieldError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при проблемах с полями модели: неверное имя поля в запросе, конфликт имён полей, неверные аргументы в фильтре QuerySet и других ошибках, связанных с полями ORM.",
+    syntax: "from django.core.exceptions import FieldError",
+    arguments: [],
+    example: `from django.core.exceptions import FieldError
+from myapp.models import Article
+
+try:
+    articles = Article.objects.filter(nonexistent_field="value")
+except FieldError as e:
+    print(f"Ошибка поля: {e}")`,
+  },
+  {
+    name: "ValidationError",
+    category: "Django Exceptions",
+    description:
+      "Возникает при неудачной проверке данных в формах, полях модели или валидаторах. Содержит сообщение об ошибке, код ошибки и параметры для форматирования. Используется как в формах Django, так и в методе Model.full_clean().",
+    syntax: "ValidationError(message, code=None, params=None)",
+    arguments: [
+      {
+        name: "message",
+        description:
+          "Сообщение об ошибке. Может быть строкой, экземпляром lazy-перевода, списком или словарём сообщений.",
+      },
+      {
+        name: "code",
+        description:
+          'Код ошибки — строковый идентификатор типа ошибки (например, "required", "invalid"). Используется для программной обработки ошибок.',
+      },
+      {
+        name: "params",
+        description:
+          "Словарь параметров для подстановки в строку сообщения через форматирование. Позволяет создавать динамические сообщения об ошибках.",
+      },
+    ],
+    example: `from django.core.exceptions import ValidationError
+
+def validate_positive(value):
+    if value <= 0:
+        raise ValidationError(
+            "Значение %(value)s должно быть положительным.",
+            code='invalid',
+            params={'value': value}
+        )
+
+# Использование в модели
+from django.db import models
+
+class Product(models.Model):
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[validate_positive]
+    )`,
+  },
+  {
+    name: "BadRequest",
+    category: "Django Exceptions",
+    description:
+      "Возникает для обозначения некорректного HTTP-запроса. Django автоматически возвращает ответ 400 Bad Request при перехвате этого исключения в представлении. Используется для явного отклонения запросов с неверными данными.",
+    syntax: "from django.core.exceptions import BadRequest",
+    arguments: [],
+    example: `from django.core.exceptions import BadRequest
+
+def my_view(request):
+    value = request.GET.get('count')
+    if value is not None:
+        try:
+            count = int(value)
+        except ValueError:
+            raise BadRequest("Параметр 'count' должен быть целым числом")
+    # дальнейшая логика представления`,
+  },
 ];
