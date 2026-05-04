@@ -14695,4 +14695,3902 @@ class StyledForm(forms.Form):
 form = StyledForm()
 html = form.render()  # использует template_name`,
   },
+  {
+    name: "ModelForm",
+    category: "Формы",
+    description: `ModelForm — класс Django, позволяющий автоматически создавать HTML-форму на основе модели базы данных. Он связывает поля модели с полями формы, избавляя от необходимости дублировать их описание вручную.
+
+При объявлении класса-наследника необходимо определить вложенный класс Meta, в котором указываются модель (model) и список полей (fields или exclude). Django сам генерирует нужные виджеты и валидаторы, исходя из типов полей модели.
+
+ModelForm поддерживает сохранение данных формы непосредственно в базу данных через метод save(), а также связывает экземпляр модели с формой для последующего редактирования.`,
+    syntax: `class MyForm(ModelForm):
+    class Meta:
+        model = MyModel
+        fields = ['field1', 'field2']`,
+    arguments: [],
+    example: `from django import forms
+from myapp.models import Article
+
+class ArticleForm(forms.ModelForm):
+    class Meta:
+        model = Article
+        fields = ['title', 'content', 'published']
+
+# Создание формы с данными запроса
+form = ArticleForm(request.POST)
+if form.is_valid():
+    article = form.save()  # сохраняет новую запись в БД
+
+# Редактирование существующего объекта
+article = Article.objects.get(pk=1)
+form = ArticleForm(instance=article)`,
+  },
+  {
+    name: "ModelForm.__init__()",
+    category: "Формы",
+    description: `Конструктор ModelForm инициализирует форму, привязывая её к данным запроса, файлам и/или существующему экземпляру модели. Принимает все параметры BaseForm, плюс параметр instance, специфичный для ModelForm.
+
+Если передан instance, форма будет заполнена данными этого объекта и при сохранении обновит именно его. Если instance не передан, save() создаст новый объект модели.
+
+Параметр initial позволяет задать начальные значения полей, которые перекрываются данными из instance, если тот передан.`,
+    syntax: `ModelForm.__init__(data=None, files=None, auto_id='id_%s', prefix=None, initial=None, error_class=ErrorList, label_suffix=None, empty_permitted=False, field_order=None, use_required_attribute=None, renderer=None, instance=None)`,
+    arguments: [
+      {
+        name: "data",
+        description:
+          "Словарь с данными формы (обычно request.POST). Если None — форма несвязанная (unbound).",
+      },
+      {
+        name: "files",
+        description:
+          "Словарь с загруженными файлами (обычно request.FILES). Используется для FileField и ImageField.",
+      },
+      {
+        name: "auto_id",
+        description:
+          "Шаблон для автогенерации атрибутов id у полей формы. По умолчанию 'id_%s', где %s — имя поля.",
+      },
+      {
+        name: "prefix",
+        description:
+          "Строковый префикс для имён полей формы. Полезен при использовании нескольких форм на одной странице.",
+      },
+      {
+        name: "initial",
+        description:
+          "Словарь начальных значений полей. Отображается только у несвязанных форм.",
+      },
+      {
+        name: "error_class",
+        description:
+          "Класс для отображения ошибок валидации. По умолчанию ErrorList.",
+      },
+      {
+        name: "label_suffix",
+        description:
+          "Строка, добавляемая после label каждого поля. По умолчанию — двоеточие.",
+      },
+      {
+        name: "empty_permitted",
+        description:
+          "Если True, форма считается валидной даже при пустых данных. Используется в формсетах.",
+      },
+      {
+        name: "field_order",
+        description:
+          "Список имён полей для управления порядком их отображения.",
+      },
+      {
+        name: "use_required_attribute",
+        description:
+          "Если True, добавляет HTML-атрибут required к обязательным полям.",
+      },
+      {
+        name: "renderer",
+        description: "Кастомный рендерер для отрисовки виджетов формы.",
+      },
+      {
+        name: "instance",
+        description:
+          "Экземпляр модели для редактирования. Если передан, форма заполнится его данными и save() обновит именно этот объект.",
+      },
+    ],
+    example: `from myapp.models import Article
+from myapp.forms import ArticleForm
+
+# Новая форма (несвязанная)
+form = ArticleForm()
+
+# Форма с данными POST-запроса
+form = ArticleForm(data=request.POST, files=request.FILES)
+
+# Форма для редактирования существующего объекта
+article = Article.objects.get(pk=1)
+form = ArticleForm(data=request.POST, instance=article)
+
+# Форма с начальными значениями
+form = ArticleForm(initial={'title': 'Черновик'})
+
+# Форма с префиксом (две формы на одной странице)
+form1 = ArticleForm(request.POST, prefix='first')
+form2 = ArticleForm(request.POST, prefix='second')`,
+  },
+  {
+    name: "ModelForm.save()",
+    category: "Формы",
+    description: `Сохраняет данные валидированной формы в базу данных и возвращает сохранённый экземпляр модели.
+
+Если форма создавалась без instance, метод создаёт новый объект. Если instance был передан при инициализации, метод обновляет этот объект.
+
+При commit=False возвращает экземпляр модели без записи в БД. Это полезно, если нужно изменить объект перед сохранением. В этом случае для корректного сохранения ManyToMany-связей необходимо вызвать метод save_m2m() вручную.
+
+Метод вызывает исключение ValueError, если форма не прошла валидацию.`,
+    syntax: "ModelForm.save(commit=True)",
+    arguments: [
+      {
+        name: "commit",
+        description:
+          "Если True (по умолчанию) — сохраняет объект в БД. Если False — возвращает экземпляр модели без сохранения, требуется ручной вызов save() и save_m2m().",
+      },
+    ],
+    example: `form = ArticleForm(request.POST)
+if form.is_valid():
+    # Сохранение с записью в БД
+    article = form.save()
+
+# Сохранение без записи в БД (commit=False)
+form = ArticleForm(request.POST)
+if form.is_valid():
+    article = form.save(commit=False)
+    article.author = request.user  # добавляем автора вручную
+    article.save()
+    form.save_m2m()  # сохраняем ManyToMany-поля
+
+# Обновление существующего объекта
+article = Article.objects.get(pk=1)
+form = ArticleForm(request.POST, instance=article)
+if form.is_valid():
+    updated_article = form.save()  # обновляет запись в БД`,
+  },
+  {
+    name: "ModelForm._meta",
+    category: "Формы",
+    description: `Внутренний объект, хранящий конфигурацию ModelForm, объявленную во вложенном классе Meta. Является экземпляром класса ModelFormOptions и содержит обработанные параметры формы.
+
+Основные атрибуты объекта _meta:
+- model — класс модели, с которой связана форма
+- fields — список или '__all__' — разрешённые поля
+- exclude — список исключённых полей
+- widgets — словарь кастомных виджетов
+- labels — словарь кастомных меток полей
+- help_texts — словарь вспомогательных текстов
+- error_messages — словарь кастомных сообщений об ошибках
+- field_classes — словарь кастомных классов полей
+
+Используется внутри Django для построения формы, но может быть полезен при кастомизации или интроспекции формы.`,
+    syntax: "ModelForm._meta",
+    arguments: [],
+    example: `from myapp.forms import ArticleForm
+
+form = ArticleForm()
+
+# Получение модели, связанной с формой
+print(form._meta.model)        # <class 'myapp.models.Article'>
+
+# Получение разрешённых полей
+print(form._meta.fields)       # ['title', 'content', 'published']
+
+# Получение исключённых полей
+print(form._meta.exclude)      # []
+
+# Пример задания Meta-атрибутов
+class ArticleForm(forms.ModelForm):
+    class Meta:
+        model = Article
+        fields = ['title', 'content']
+        widgets = {
+            'content': forms.Textarea(attrs={'rows': 10}),
+        }
+        labels = {
+            'title': 'Заголовок статьи',
+        }
+        help_texts = {
+            'title': 'Введите заголовок не длиннее 200 символов.',
+        }`,
+  },
+  {
+    name: "BaseForm",
+    category: "Формы",
+    description: `BaseForm — базовый класс для всех форм Django. Содержит основную логику обработки данных, валидации, рендеринга полей и управления ошибками. Как ModelForm, так и обычный Form наследуются от BaseForm.
+
+Класс реализует следующую функциональность:
+- Привязку данных и файлов к полям формы
+- Валидацию данных через метод is_valid()
+- Хранение ошибок валидации в атрибуте errors
+- Доступ к очищенным данным через cleaned_data
+- Рендеринг HTML через методы as_p(), as_ul(), as_table() и as_div()
+- Поддержку префиксов для использования нескольких форм на странице
+
+Напрямую BaseForm используется редко — обычно наследуются от Form или ModelForm, которые расширяют его возможностями декларативного объявления полей и привязки к модели.`,
+    syntax: `class MyForm(BaseForm):
+    pass`,
+    arguments: [],
+    example: `from django.forms import BaseForm, CharField, EmailField
+
+# BaseForm требует явной передачи словаря base_fields
+MyForm = type('MyForm', (BaseForm,), {
+    'base_fields': {
+        'username': CharField(),
+        'email': EmailField(),
+    }
+})
+
+form = MyForm(data={'username': 'ivan', 'email': 'ivan@example.com'})
+if form.is_valid():
+    print(form.cleaned_data)
+    # {'username': 'ivan', 'email': 'ivan@example.com'}
+
+# На практике используют Form или ModelForm:
+from django import forms
+
+class LoginForm(forms.Form):  # Form наследует BaseForm
+    username = forms.CharField()
+    password = forms.CharField(widget=forms.PasswordInput)`,
+  },
+  {
+    name: "BaseForm.__init__()",
+    category: "Формы",
+    description: `Конструктор базового класса всех форм Django. Инициализирует форму, привязывая её к данным, настраивая идентификаторы, префиксы, начальные значения и параметры отображения.
+
+Форма считается связанной (bound), если переданы data или files. Несвязанная форма всегда считается невалидной и служит только для отображения пустого бланка.
+
+Параметры конструктора наследуются всеми подклассами, в том числе Form и ModelForm (который дополнительно принимает instance).`,
+    syntax: `BaseForm.__init__(data=None, files=None, auto_id='id_%s', prefix=None, initial=None, error_class=ErrorList, label_suffix=None, empty_permitted=False, field_order=None, use_required_attribute=None, renderer=None)`,
+    arguments: [
+      {
+        name: "data",
+        description:
+          "Словарь с данными формы (обычно request.POST). Если None — форма несвязанная.",
+      },
+      {
+        name: "files",
+        description: "Словарь с загруженными файлами (обычно request.FILES).",
+      },
+      {
+        name: "auto_id",
+        description: "Шаблон для атрибутов id полей. По умолчанию 'id_%s'.",
+      },
+      {
+        name: "prefix",
+        description:
+          "Строковый префикс для имён полей. Позволяет размещать несколько форм на одной странице без конфликтов имён.",
+      },
+      {
+        name: "initial",
+        description: "Словарь с начальными значениями для несвязанной формы.",
+      },
+      {
+        name: "error_class",
+        description: "Класс для представления ошибок. По умолчанию ErrorList.",
+      },
+      {
+        name: "label_suffix",
+        description:
+          'Строка после label каждого поля. По умолчанию двоеточие ":".',
+      },
+      {
+        name: "empty_permitted",
+        description:
+          "Разрешает форме быть валидной при полностью пустых данных. Применяется в формсетах.",
+      },
+      {
+        name: "field_order",
+        description: "Список имён полей, задающий порядок их отображения.",
+      },
+      {
+        name: "use_required_attribute",
+        description:
+          "Управляет добавлением HTML-атрибута required к обязательным полям.",
+      },
+      {
+        name: "renderer",
+        description: "Кастомный рендерер для отрисовки виджетов.",
+      },
+    ],
+    example: `from django import forms
+
+class ContactForm(forms.Form):
+    name = forms.CharField()
+    email = forms.EmailField()
+    message = forms.CharField(widget=forms.Textarea)
+
+# Несвязанная форма (для отображения)
+form = ContactForm()
+
+# Связанная форма (для валидации)
+form = ContactForm(data=request.POST)
+
+# С начальными значениями
+form = ContactForm(initial={'name': 'Иван'})
+
+# С префиксом (две формы на странице)
+form_a = ContactForm(request.POST, prefix='contact')
+form_b = ContactForm(request.POST, prefix='billing')
+
+# Кастомный порядок полей
+form = ContactForm(field_order=['email', 'name', 'message'])`,
+  },
+  {
+    name: "FormSet",
+    category: "Формы",
+    description: `FormSet — механизм Django для работы с набором однотипных форм на одной странице. Позволяет пользователю создавать, редактировать или удалять сразу несколько объектов в рамках одного запроса.
+
+Существуют несколько видов формсетов:
+- formset_factory() — для обычных форм
+- modelformset_factory() — для форм, связанных с моделью
+- inlineformset_factory() — для форм, связанных с родительским объектом через ForeignKey
+
+FormSet управляет нумерацией форм через префикс, отслеживает количество форм (initial_form_count, total_form_count), поддерживает возможность удаления (can_delete) и добавления новых форм (can_order, extra).
+
+Управляющие данные (количество форм, версия и т.д.) передаются через скрытые поля MANAGEMENT_FORM.`,
+    syntax: `FormSetClass = formset_factory(MyForm, extra=3)
+formset = FormSetClass(data=request.POST)`,
+    arguments: [],
+    example: `from django.forms import formset_factory
+from myapp.forms import ArticleForm
+
+ArticleFormSet = formset_factory(ArticleForm, extra=3)
+
+# Инициализация формсета
+formset = ArticleFormSet()
+
+# Связанный формсет (с данными POST)
+formset = ArticleFormSet(data=request.POST)
+
+# ModelFormSet
+from django.forms import modelformset_factory
+from myapp.models import Article
+
+ArticleModelFormSet = modelformset_factory(Article, fields=['title', 'content'])
+formset = ArticleModelFormSet(queryset=Article.objects.filter(published=True))
+
+# InlineFormSet (дочерние объекты)
+from django.forms import inlineformset_factory
+CommentFormSet = inlineformset_factory(Article, Comment, fields=['text'], extra=2)
+formset = CommentFormSet(instance=article)`,
+  },
+  {
+    name: "FormSet.__init__()",
+    category: "Формы",
+    description: `Конструктор FormSet инициализирует набор форм, распределяя данные по каждой отдельной форме согласно префиксам и управляющим данным (management form).
+
+При инициализации формсет разбирает management form, определяющую количество начальных и общее количество форм. Если management form отсутствует в данных POST, Django выбрасывает исключение ManagementForm.
+
+Параметр form_kwargs позволяет передать дополнительные ключевые аргументы в каждую дочернюю форму — например, текущего пользователя или queryset для поля.`,
+    syntax: `FormSet.__init__(data=None, files=None, auto_id='id_%s', prefix=None, initial=None, error_class=ErrorList, label_suffix=None, empty_permitted=False, form_kwargs=None, absolute_max=None, can_delete_extra=True, renderer=None)`,
+    arguments: [
+      {
+        name: "data",
+        description:
+          "Словарь с данными форм (обычно request.POST). Включает управляющие поля (TOTAL_FORMS, INITIAL_FORMS и т.д.).",
+      },
+      {
+        name: "files",
+        description: "Словарь с загруженными файлами (request.FILES).",
+      },
+      {
+        name: "auto_id",
+        description: "Шаблон для атрибутов id полей. По умолчанию 'id_%s'.",
+      },
+      {
+        name: "prefix",
+        description:
+          "Префикс для всего формсета. По умолчанию 'form'. Каждая дочерняя форма получает вид prefix-N.",
+      },
+      {
+        name: "initial",
+        description:
+          "Список словарей с начальными значениями для каждой формы в формсете.",
+      },
+      {
+        name: "error_class",
+        description: "Класс для отображения ошибок. По умолчанию ErrorList.",
+      },
+      { name: "label_suffix", description: "Строка после label каждого поля." },
+      {
+        name: "empty_permitted",
+        description: "Разрешает пустые формы считаться валидными.",
+      },
+      {
+        name: "form_kwargs",
+        description:
+          "Словарь дополнительных аргументов, передаваемых в каждую дочернюю форму при её создании.",
+      },
+      {
+        name: "absolute_max",
+        description:
+          "Абсолютный максимум форм в формсете (защита от DoS). По умолчанию max_num + DEFAULT_MAX_NUM.",
+      },
+      {
+        name: "can_delete_extra",
+        description:
+          "Если True, дополнительные (extra) формы могут быть помечены для удаления.",
+      },
+      {
+        name: "renderer",
+        description: "Кастомный рендерер для отрисовки виджетов.",
+      },
+    ],
+    example: `from django.forms import formset_factory
+from myapp.forms import ArticleForm
+
+ArticleFormSet = formset_factory(ArticleForm, extra=2)
+
+# Пустой формсет
+formset = ArticleFormSet()
+
+# Связанный формсет
+formset = ArticleFormSet(data=request.POST, files=request.FILES)
+
+# С начальными значениями
+initial_data = [
+    {'title': 'Статья 1'},
+    {'title': 'Статья 2'},
+]
+formset = ArticleFormSet(initial=initial_data)
+
+# С дополнительными аргументами для каждой формы
+formset = ArticleFormSet(
+    request.POST,
+    form_kwargs={'user': request.user}
+)
+
+# С кастомным префиксом
+formset = ArticleFormSet(request.POST, prefix='articles')`,
+  },
+  {
+    name: "FormSet.is_valid()",
+    category: "Формы",
+    description: `Проверяет валидность всех форм в формсете. Возвращает True только если каждая отдельная форма прошла валидацию и сам формсет не имеет ошибок на уровне набора (non_form_errors).
+
+Перед вызовом is_valid() необходимо убедиться, что формсет связан (передан data). Несвязанный формсет всегда возвращает False.
+
+Метод запускает full_clean(), который последовательно валидирует каждую форму, а затем вызывает clean() самого формсета для проверки межформовых зависимостей.
+
+После успешного is_valid() доступен атрибут cleaned_data — список словарей с очищенными данными каждой формы.`,
+    syntax: "FormSet.is_valid()",
+    arguments: [],
+    example: `from django.forms import formset_factory
+from myapp.forms import ArticleForm
+
+ArticleFormSet = formset_factory(ArticleForm)
+formset = ArticleFormSet(data=request.POST)
+
+if formset.is_valid():
+    # Все формы прошли валидацию
+    for form in formset:
+        if form.cleaned_data:
+            print(form.cleaned_data)
+else:
+    # Вывод ошибок отдельных форм
+    for form in formset:
+        print(form.errors)
+    # Ошибки на уровне формсета
+    print(formset.non_form_errors())`,
+  },
+  {
+    name: "FormSet.full_clean()",
+    category: "Формы",
+    description: `Выполняет полную валидацию формсета: вызывает is_valid() для каждой дочерней формы, собирает их ошибки, а затем вызывает метод clean() самого формсета.
+
+Метод вызывается автоматически при первом обращении к атрибутам errors или cleaned_data, а также при явном вызове is_valid(). Прямой вызов full_clean() требуется редко — обычно достаточно is_valid().
+
+Если во время выполнения clean() возникает ValidationError, она сохраняется в non_form_errors() и недоступна через отдельные формы.`,
+    syntax: "FormSet.full_clean()",
+    arguments: [],
+    example: `from django.forms import formset_factory, BaseFormSet, ValidationError
+from myapp.forms import ArticleForm
+
+class UniqueArticleFormSet(BaseFormSet):
+    def full_clean(self):
+        super().full_clean()
+        # Дополнительная логика после стандартной очистки
+        if hasattr(self, 'cleaned_data'):
+            titles = [f['title'] for f in self.cleaned_data if f]
+            print(f'Заголовки после full_clean: {titles}')
+
+ArticleFormSet = formset_factory(ArticleForm, formset=UniqueArticleFormSet)
+formset = ArticleFormSet(data=request.POST)
+
+# full_clean() вызывается автоматически через is_valid()
+formset.is_valid()
+
+# или явный вызов
+formset.full_clean()`,
+  },
+  {
+    name: "FormSet.clean()",
+    category: "Формы",
+    description: `Метод для добавления валидации на уровне всего формсета. Переопределяется в пользовательском подклассе BaseFormSet для проверки данных сразу нескольких форм — например, уникальности значений между формами или суммарного ограничения.
+
+Вызывается автоматически в конце full_clean() после того, как все дочерние формы прошли валидацию. Если какая-либо дочерняя форма содержит ошибки, clean() не вызывается.
+
+При обнаружении ошибки нужно выбросить ValidationError — она появится в non_form_errors(), а не в ошибках отдельной формы.
+
+Внутри clean() доступен атрибут self.forms со списком всех форм и self.cleaned_data с уже очищенными данными.`,
+    syntax: "FormSet.clean()",
+    arguments: [],
+    example: `from django.forms import formset_factory, BaseFormSet, ValidationError
+from myapp.forms import ArticleForm
+
+class UniqueArticleFormSet(BaseFormSet):
+    def clean(self):
+        """Проверяет уникальность заголовков среди всех форм формсета."""
+        if any(self.errors):
+            # Не проверяем, если есть другие ошибки
+            return
+
+        titles = []
+        for form in self.forms:
+            if self.can_delete and self._should_delete_form(form):
+                continue
+            title = form.cleaned_data.get('title')
+            if title:
+                if title in titles:
+                    raise ValidationError(
+                        f'Заголовок "{title}" встречается несколько раз.'
+                    )
+                titles.append(title)
+
+ArticleFormSet = formset_factory(ArticleForm, formset=UniqueArticleFormSet, extra=3)
+formset = ArticleFormSet(data=request.POST)
+
+if formset.is_valid():
+    print('Все заголовки уникальны')
+else:
+    print(formset.non_form_errors())`,
+  },
+  {
+    name: "FormSet.save()",
+    category: "Формы",
+    description: `Сохраняет данные всех форм формсета в базу данных. Метод доступен только в ModelFormSet и InlineFormSet (не в обычном FormSet, основанном на formset_factory).
+
+Метод проходит по всем формам формсета: создаёт новые объекты, обновляет изменённые и удаляет помеченные для удаления (если can_delete=True).
+
+При commit=False возвращает список экземпляров модели без сохранения в БД. В этом случае для ManyToMany-связей необходимо вызвать save_m2m() у каждого объекта или у самого формсета.
+
+Возвращает список сохранённых объектов.`,
+    syntax: "FormSet.save(commit=True)",
+    arguments: [
+      {
+        name: "commit",
+        description:
+          "Если True (по умолчанию) — сохраняет объекты в БД. Если False — возвращает список экземпляров без записи.",
+      },
+    ],
+    example: `from django.forms import modelformset_factory
+from myapp.models import Article
+
+ArticleFormSet = modelformset_factory(Article, fields=['title', 'content'])
+formset = ArticleFormSet(data=request.POST)
+
+if formset.is_valid():
+    # Сохранение всех форм формсета в БД
+    instances = formset.save()
+    print(f'Сохранено объектов: {len(instances)}')
+
+# Сохранение без записи в БД
+if formset.is_valid():
+    instances = formset.save(commit=False)
+    for instance in instances:
+        instance.author = request.user  # добавляем автора
+        instance.save()
+    formset.save_m2m()  # сохраняем ManyToMany-связи
+
+# InlineFormSet с удалением
+from django.forms import inlineformset_factory
+CommentFormSet = inlineformset_factory(
+    Article, Comment, fields=['text'], can_delete=True
+)
+formset = CommentFormSet(request.POST, instance=article)
+if formset.is_valid():
+    formset.save()  # создаст новые, обновит изменённые, удалит помеченные`,
+  },
+  {
+    name: "FormSet.non_form_errors()",
+    category: "Формы",
+    description: `Возвращает список ошибок, возникших на уровне формсета в целом — то есть тех, что были выброшены методом clean() как ValidationError, а не принадлежащих конкретной форме.
+
+В отличие от ошибок отдельных форм (доступных через form.errors), non_form_errors() содержит ошибки межформовой валидации — например, нарушение уникальности данных среди нескольких форм.
+
+Возвращает объект ErrorList (итерируемый), который рендерится как список HTML при выводе в шаблон. Если ошибок нет — возвращает пустой ErrorList.`,
+    syntax: "FormSet.non_form_errors()",
+    arguments: [],
+    example: `from django.forms import formset_factory, BaseFormSet, ValidationError
+from myapp.forms import ArticleForm
+
+class StrictFormSet(BaseFormSet):
+    def clean(self):
+        if any(self.errors):
+            return
+        count = sum(
+            1 for f in self.forms
+            if f.cleaned_data and not f.cleaned_data.get('DELETE', False)
+        )
+        if count < 1:
+            raise ValidationError('Необходимо заполнить хотя бы одну форму.')
+
+ArticleFormSet = formset_factory(ArticleForm, formset=StrictFormSet)
+formset = ArticleFormSet(data=request.POST)
+
+if not formset.is_valid():
+    # Ошибки отдельных форм
+    for i, form in enumerate(formset):
+        if form.errors:
+            print(f'Форма {i}: {form.errors}')
+
+    # Ошибки на уровне формсета
+    errors = formset.non_form_errors()
+    if errors:
+        print('Ошибки формсета:', errors)
+
+# В шаблоне:
+# {{ formset.non_form_errors }}`,
+  },
+  {
+    name: "FormSet.errors",
+    category: "Формы",
+    description: `Атрибут, возвращающий список словарей ошибок для каждой формы в формсете. Каждый элемент списка соответствует форме с тем же индексом и является словарём вида {имя_поля: [список ошибок]}.
+
+При первом обращении к errors запускается full_clean(), если валидация ещё не была выполнена.
+
+Чтобы также получить ошибки на уровне самого формсета (не отдельной формы), используйте non_form_errors().
+
+Ошибки доступны через errors только у связанного (bound) формсета — то есть когда был передан data.`,
+    syntax: "FormSet.errors",
+    arguments: [],
+    example: `from django.forms import formset_factory
+from myapp.forms import ArticleForm
+
+ArticleFormSet = formset_factory(ArticleForm, extra=2)
+formset = ArticleFormSet(data=request.POST)
+
+# Вызов is_valid() запускает валидацию
+formset.is_valid()
+
+# Список словарей ошибок по каждой форме
+print(formset.errors)
+# [{'title': ['Обязательное поле.']}, {}, {'content': ['Обязательное поле.']}]
+
+# Проверка наличия ошибок
+if any(formset.errors):
+    print('Есть ошибки в формах')
+
+# Обход ошибок каждой формы
+for i, form_errors in enumerate(formset.errors):
+    if form_errors:
+        print(f'Форма {i} содержит ошибки:')
+        for field, errors in form_errors.items():
+            print(f'  {field}: {errors}')
+
+# Ошибки конкретной формы
+print(formset.errors[0])  # ошибки первой формы
+
+# В шаблоне Django:
+# {% for form in formset %}
+#     {{ form.errors }}
+# {% endfor %}`,
+  },
+  {
+    name: "FormSet.cleaned_data",
+    category: "Формы",
+    description: `Атрибут, содержащий список словарей с очищенными и валидированными данными всех форм формсета. Доступен только после успешного вызова is_valid(), вернувшего True.
+
+Каждый элемент списка — словарь {имя_поля: значение} для соответствующей формы. Если форма была пустой (extra-форма без введённых данных), её словарь будет пустым {}.
+
+Если формсет создавался с can_delete=True, в словари добавляется служебный ключ 'DELETE' со значением True/False.
+
+При обращении к cleaned_data до вызова is_valid() или при невалидных данных выбрасывается AttributeError.`,
+    syntax: "FormSet.cleaned_data",
+    arguments: [],
+    example: `from django.forms import formset_factory
+from myapp.forms import ArticleForm
+
+ArticleFormSet = formset_factory(ArticleForm, extra=2)
+formset = ArticleFormSet(data=request.POST)
+
+if formset.is_valid():
+    # Список словарей с данными всех форм
+    print(formset.cleaned_data)
+    # [
+    #   {'title': 'Статья 1', 'content': 'Содержание...'},
+    #   {'title': 'Статья 2', 'content': 'Содержание...'},
+    #   {}  # пустая extra-форма
+    # ]
+
+    # Обработка заполненных форм
+    for form_data in formset.cleaned_data:
+        if form_data:  # пропускаем пустые extra-формы
+            title = form_data['title']
+            print(f'Заголовок: {title}')
+
+# С can_delete=True
+ArticleFormSet = formset_factory(ArticleForm, can_delete=True)
+formset = ArticleFormSet(data=request.POST)
+
+if formset.is_valid():
+    for form_data in formset.cleaned_data:
+        if form_data.get('DELETE'):
+            print('Эта запись помечена для удаления')
+        elif form_data:
+            print('Данные формы:', form_data)`,
+  },
+  {
+    name: "FormSet.deleted_forms",
+    category: "Формы",
+    description: `Атрибут, возвращающий список форм, помеченных для удаления. Доступен только если формсет был создан с параметром can_delete=True.
+
+Форма попадает в deleted_forms, когда пользователь устанавливает галочку в поле DELETE соответствующей формы. При вызове FormSet.save() все формы из этого списка будут удалены из базы данных (для ModelFormSet).
+
+Список доступен после вызова is_valid(). Для обычного FormSet (не ModelFormSet) удаление нужно обрабатывать вручную, итерируя по deleted_forms.`,
+    syntax: "FormSet.deleted_forms",
+    arguments: [],
+    example: `from django.forms import modelformset_factory
+from myapp.models import Article
+
+ArticleFormSet = modelformset_factory(Article, fields=['title'], can_delete=True)
+formset = ArticleFormSet(data=request.POST)
+
+if formset.is_valid():
+    # Список форм, помеченных для удаления
+    print(formset.deleted_forms)
+
+    # Ручная обработка удаления (для обычного FormSet)
+    for form in formset.deleted_forms:
+        print('Будет удалено:', form.cleaned_data)
+
+    # Для ModelFormSet save() удаляет их автоматически
+    formset.save()
+
+# Проверка, есть ли формы к удалению
+if formset.deleted_forms:
+    print(f'К удалению: {len(formset.deleted_forms)} форм(ы)')`,
+  },
+  {
+    name: "FormSet.extra_forms",
+    category: "Формы",
+    description: `Атрибут, возвращающий список дополнительных (пустых) форм в формсете — тех, что добавлены параметром extra при создании через formset_factory.
+
+Эти формы предназначены для ввода новых данных. Пустые extra-формы не проходят валидацию как обязательные — они могут быть оставлены незаполненными.
+
+При сохранении ModelFormSet заполненные extra-формы создают новые объекты в БД, незаполненные — игнорируются. Атрибут доступен после инициализации формсета.`,
+    syntax: "FormSet.extra_forms",
+    arguments: [],
+    example: `from django.forms import formset_factory
+from myapp.forms import ArticleForm
+
+# extra=3 означает 3 дополнительные пустые формы
+ArticleFormSet = formset_factory(ArticleForm, extra=3)
+formset = ArticleFormSet(data=request.POST)
+
+# Список дополнительных форм
+print(formset.extra_forms)
+print(f'Количество extra-форм: {len(formset.extra_forms)}')
+
+# Проверка, заполнена ли extra-форма
+for form in formset.extra_forms:
+    if form.has_changed():
+        print('Пользователь заполнил extra-форму:', form.changed_data)
+
+# После is_valid() заполненные extra-формы попадают в cleaned_data
+if formset.is_valid():
+    for form in formset.extra_forms:
+        if form.cleaned_data:
+            print('Новые данные:', form.cleaned_data)`,
+  },
+  {
+    name: "FormSet.initial_forms",
+    category: "Формы",
+    description: `Атрибут, возвращающий список форм, соответствующих уже существующим объектам (начальным данным). В отличие от extra_forms, эти формы были предзаполнены данными из базы данных или переданными через initial.
+
+Количество initial_forms определяется значением INITIAL_FORMS в management form. Эти формы обязательно проходят полную валидацию — они не могут быть оставлены пустыми без возникновения ошибок.
+
+В ModelFormSet initial_forms соответствуют записям из queryset, переданного при инициализации формсета.`,
+    syntax: "FormSet.initial_forms",
+    arguments: [],
+    example: `from django.forms import modelformset_factory
+from myapp.models import Article
+
+ArticleFormSet = modelformset_factory(Article, fields=['title', 'content'])
+queryset = Article.objects.all()
+formset = ArticleFormSet(data=request.POST, queryset=queryset)
+
+# Список форм с существующими данными
+print(formset.initial_forms)
+print(f'Существующих записей: {len(formset.initial_forms)}')
+
+# Обход форм с существующими данными
+for form in formset.initial_forms:
+    print('Экземпляр:', form.instance)
+    print('pk:', form.instance.pk)
+
+if formset.is_valid():
+    # Данные изменённых initial-форм
+    for form in formset.initial_forms:
+        if form.has_changed():
+            print('Изменено:', form.changed_data)
+    formset.save()`,
+  },
+  {
+    name: "FormSet.total_form_count()",
+    category: "Формы",
+    description: `Возвращает общее количество форм в формсете, включая как начальные (initial_forms), так и дополнительные (extra_forms). Значение берётся из поля TOTAL_FORMS management form.
+
+Метод используется внутри Django для определения, сколько форм нужно отрендерить и обработать. Может быть переопределён в подклассе для кастомизации логики подсчёта.
+
+При связанном формсете значение определяется данными POST (TOTAL_FORMS). При несвязанном — вычисляется как сумма начальных и extra-форм.`,
+    syntax: "FormSet.total_form_count()",
+    arguments: [],
+    example: `from django.forms import formset_factory
+from myapp.forms import ArticleForm
+
+ArticleFormSet = formset_factory(ArticleForm, extra=2)
+
+# Несвязанный формсет
+formset = ArticleFormSet()
+print(formset.total_form_count())  # 2 (только extra, нет initial)
+
+# С начальными данными
+formset = ArticleFormSet(initial=[{'title': 'Статья 1'}])
+print(formset.total_form_count())  # 3 (1 initial + 2 extra)
+
+# Связанный формсет — значение из POST
+formset = ArticleFormSet(data=request.POST)
+print(formset.total_form_count())  # значение из TOTAL_FORMS в POST
+
+# Использование для итерации
+for i in range(formset.total_form_count()):
+    form = formset.forms[i]
+    print(f'Форма {i}: {form}')`,
+  },
+  {
+    name: "FormSet.initial_form_count()",
+    category: "Формы",
+    description: `Возвращает количество начальных форм в формсете — тех, что соответствуют уже существующим данным (объектам модели или переданным через initial). Значение берётся из поля INITIAL_FORMS management form.
+
+Метод используется внутри Django для разграничения существующих и новых данных. Формы с индексом меньше initial_form_count() считаются начальными, остальные — дополнительными.
+
+Может быть переопределён в подклассе BaseFormSet для кастомной логики.`,
+    syntax: "FormSet.initial_form_count()",
+    arguments: [],
+    example: `from django.forms import formset_factory
+from myapp.forms import ArticleForm
+
+ArticleFormSet = formset_factory(ArticleForm, extra=2)
+
+# Без начальных данных
+formset = ArticleFormSet()
+print(formset.initial_form_count())  # 0
+
+# С начальными данными
+formset = ArticleFormSet(initial=[
+    {'title': 'Статья 1'},
+    {'title': 'Статья 2'},
+])
+print(formset.initial_form_count())  # 2
+print(formset.total_form_count())    # 4 (2 initial + 2 extra)
+
+# Разграничение initial и extra форм вручную
+count = formset.initial_form_count()
+initial = formset.forms[:count]   # начальные формы
+extra = formset.forms[count:]     # дополнительные формы
+print(f'Initial: {len(initial)}, Extra: {len(extra)}')`,
+  },
+  {
+    name: "FormSet.management_form",
+    category: "Формы",
+    description: `Атрибут, возвращающий объект управляющей формы (ManagementForm) формсета. Management form содержит скрытые поля, необходимые Django для корректной обработки формсета на стороне сервера.
+
+Скрытые поля management form:
+- TOTAL_FORMS — общее количество форм
+- INITIAL_FORMS — количество начальных форм
+- MIN_NUM_FORMS — минимальное количество форм
+- MAX_NUM_FORMS — максимальное количество форм
+
+Management form обязательно должна присутствовать в HTML-шаблоне: {{ formset.management_form }}. Если при POST-запросе management form отсутствует или содержит некорректные данные, Django выбрасывает ValidationError.`,
+    syntax: "FormSet.management_form",
+    arguments: [],
+    example: `from django.forms import formset_factory
+from myapp.forms import ArticleForm
+
+ArticleFormSet = formset_factory(ArticleForm, extra=2)
+formset = ArticleFormSet()
+
+# Получение management form
+mgmt = formset.management_form
+print(mgmt)
+
+# Поля management form
+print(mgmt['TOTAL_FORMS'])    # скрытое поле с общим количеством форм
+print(mgmt['INITIAL_FORMS'])  # скрытое поле с количеством начальных форм
+
+# В шаблоне Django (обязательно!):
+# <form method="post">
+#     {% csrf_token %}
+#     {{ formset.management_form }}
+#     {% for form in formset %}
+#         {{ form.as_p }}
+#     {% endfor %}
+#     <button type="submit">Сохранить</button>
+# </form>
+
+# Ошибка при отсутствии management form в POST:
+# django.core.exceptions.ValidationError:
+# ManagementForm data is missing or has been tampered with.`,
+  },
+  {
+    name: "BaseFormSet",
+    category: "Формы",
+    description: `BaseFormSet — базовый класс для всех формсетов Django. Содержит основную логику управления набором форм: инициализацию, валидацию, рендеринг и сохранение.
+
+При использовании formset_factory(), modelformset_factory() или inlineformset_factory() Django создаёт подкласс BaseFormSet. Для добавления кастомной логики (например, межформовой валидации) нужно создать собственный подкласс BaseFormSet и передать его в параметр formset фабричной функции.
+
+Ключевые возможности BaseFormSet:
+- Управление management form (TOTAL_FORMS, INITIAL_FORMS)
+- Итерация по формам через __iter__ и __getitem__
+- Атрибуты initial_forms, extra_forms, deleted_forms
+- Методы валидации: is_valid(), full_clean(), clean()
+- Методы для рендеринга: as_p(), as_ul(), as_table()`,
+    syntax: `class MyFormSet(BaseFormSet):
+    def clean(self):
+        # кастомная валидация
+        pass
+
+MyFormSetClass = formset_factory(MyForm, formset=MyFormSet)`,
+    arguments: [],
+    example: `from django.forms import BaseFormSet, formset_factory, ValidationError
+from myapp.forms import ArticleForm
+
+class LimitedFormSet(BaseFormSet):
+    """Формсет с ограничением: не более 5 заполненных форм."""
+
+    def clean(self):
+        if any(self.errors):
+            return
+        filled = [f for f in self.forms if f.cleaned_data and not f.cleaned_data.get('DELETE')]
+        if len(filled) > 5:
+            raise ValidationError('Нельзя добавить более 5 статей за раз.')
+
+    def get_form_kwargs(self, index):
+        kwargs = super().get_form_kwargs(index)
+        # Передаём дополнительные данные в каждую форму
+        kwargs['user'] = self.user
+        return kwargs
+
+ArticleFormSet = formset_factory(ArticleForm, formset=LimitedFormSet, extra=3)
+formset = ArticleFormSet(data=request.POST)
+formset.user = request.user  # передаём пользователя
+
+if formset.is_valid():
+    print('Валидация прошла успешно')
+else:
+    print(formset.non_form_errors())`,
+  },
+  {
+    name: "BaseFormSet.__init__()",
+    category: "Формы",
+    description: `Конструктор BaseFormSet — инициализирует формсет, принимая данные запроса, файлы и конфигурационные параметры. Все эти параметры наследуются подклассами, создаваемыми через formset_factory(), modelformset_factory() и inlineformset_factory().
+
+При инициализации формсет:
+1. Сохраняет переданные данные и параметры
+2. Строит management form для определения количества форм
+3. Создаёт экземпляры дочерних форм с нужными префиксами
+4. Распределяет данные POST по соответствующим формам
+
+Если data содержит management form с некорректными данными — выбрасывается ValidationError.`,
+    syntax: `BaseFormSet.__init__(data=None, files=None, auto_id='id_%s', prefix=None, initial=None, error_class=ErrorList, label_suffix=None, empty_permitted=False, form_kwargs=None, absolute_max=None, can_delete_extra=True, renderer=None)`,
+    arguments: [
+      {
+        name: "data",
+        description:
+          "Словарь с данными форм (обычно request.POST). Включает management form и данные всех дочерних форм.",
+      },
+      {
+        name: "files",
+        description: "Словарь с загруженными файлами (request.FILES).",
+      },
+      {
+        name: "auto_id",
+        description: "Шаблон для атрибутов id. По умолчанию 'id_%s'.",
+      },
+      {
+        name: "prefix",
+        description:
+          "Префикс формсета. По умолчанию 'form'. Дочерние формы получают префиксы вида prefix-0, prefix-1 и т.д.",
+      },
+      {
+        name: "initial",
+        description:
+          "Список словарей с начальными значениями для каждой дочерней формы.",
+      },
+      {
+        name: "error_class",
+        description: "Класс для представления ошибок. По умолчанию ErrorList.",
+      },
+      { name: "label_suffix", description: "Строка после label каждого поля." },
+      {
+        name: "empty_permitted",
+        description: "Разрешает пустые формы считаться валидными.",
+      },
+      {
+        name: "form_kwargs",
+        description:
+          "Словарь дополнительных аргументов, передаваемых каждой дочерней форме.",
+      },
+      {
+        name: "absolute_max",
+        description:
+          "Абсолютный максимум форм (защита от DoS). По умолчанию max_num + DEFAULT_MAX_NUM (1000).",
+      },
+      {
+        name: "can_delete_extra",
+        description: "Если True, extra-формы могут быть помечены для удаления.",
+      },
+      { name: "renderer", description: "Кастомный рендерер для виджетов." },
+    ],
+    example: `from django.forms import BaseFormSet, formset_factory
+from myapp.forms import ArticleForm
+
+class ArticleBaseFormSet(BaseFormSet):
+    def __init__(self, *args, **kwargs):
+        # Извлекаем кастомный параметр до передачи в super()
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+
+ArticleFormSet = formset_factory(ArticleForm, formset=ArticleBaseFormSet)
+
+# Передача кастомного параметра
+formset = ArticleFormSet(
+    data=request.POST,
+    files=request.FILES,
+    prefix='articles',
+    form_kwargs={'extra_data': 'value'},
+    user=request.user,
+)
+
+# Стандартный вызов без переопределения __init__
+formset = ArticleFormSet(
+    data=request.POST,
+    initial=[{'title': 'Статья 1'}],
+    absolute_max=50,
+)`,
+  },
+  {
+    name: "BaseFormSet.save()",
+    category: "Формы",
+    description: `Сохраняет изменения всех форм формсета в базу данных. Метод определён в ModelBaseFormSet (используется внутри modelformset_factory и inlineformset_factory), а не в самом BaseFormSet.
+
+Алгоритм работы:
+1. Для каждой заполненной extra-формы вызывает save_new() — создаёт новый объект
+2. Для каждой изменённой initial-формы вызывает form.save() — обновляет объект
+3. Для форм, помеченных DELETE, вызывает delete_existing() — удаляет объект
+
+Возвращает список сохранённых (созданных или обновлённых) объектов. Удалённые объекты в список не включаются.`,
+    syntax: "BaseFormSet.save(commit=True)",
+    arguments: [
+      {
+        name: "commit",
+        description:
+          "Если True (по умолчанию) — записывает изменения в БД. Если False — возвращает список экземпляров без сохранения. При commit=False необходимо вручную вызвать save() для каждого объекта и save_m2m() для ManyToMany-связей.",
+      },
+    ],
+    example: `from django.forms import modelformset_factory
+from myapp.models import Article
+
+ArticleFormSet = modelformset_factory(
+    Article,
+    fields=['title', 'content'],
+    can_delete=True
+)
+formset = ArticleFormSet(data=request.POST)
+
+if formset.is_valid():
+    # Сохранение: создание новых, обновление изменённых, удаление помеченных
+    saved = formset.save()
+    print(f'Сохранено/обновлено объектов: {len(saved)}')
+
+# Сохранение без записи в БД
+if formset.is_valid():
+    instances = formset.save(commit=False)
+    for obj in instances:
+        obj.author = request.user
+        obj.save()
+    formset.save_m2m()  # сохраняем ManyToMany
+
+# Доступ к удалённым объектам отдельно
+for form in formset.deleted_forms:
+    print('Удалён:', form.instance)`,
+  },
+  {
+    name: "BaseFormSet.save_new()",
+    category: "Формы",
+    description: `Вызывается внутри save() для сохранения каждой новой формы (extra-формы с заполненными данными). Создаёт новый объект модели на основе данных формы.
+
+Метод можно переопределить в подклассе для добавления дополнительной логики при создании новых объектов — например, для автоматического заполнения полей (автор, дата создания, связанный объект).
+
+Принимает форму и флаг commit. При commit=False возвращает несохранённый экземпляр модели.`,
+    syntax: "BaseFormSet.save_new(form, commit=True)",
+    arguments: [
+      {
+        name: "form",
+        description:
+          "Экземпляр формы с валидированными данными для создания нового объекта.",
+      },
+      {
+        name: "commit",
+        description:
+          "Если True — сохраняет объект в БД. Если False — возвращает несохранённый экземпляр.",
+      },
+    ],
+    example: `from django.forms import BaseModelFormSet, modelformset_factory
+from myapp.models import Article
+
+class AuthorFormSet(BaseModelFormSet):
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user')
+        super().__init__(*args, **kwargs)
+
+    def save_new(self, form, commit=True):
+        """Автоматически устанавливает автора при создании новой статьи."""
+        instance = form.save(commit=False)
+        instance.author = self.user  # подставляем автора
+        if commit:
+            instance.save()
+            form.save_m2m()
+        return instance
+
+ArticleFormSet = modelformset_factory(Article, fields=['title', 'content'],
+                                       formset=AuthorFormSet)
+formset = ArticleFormSet(request.POST, user=request.user)
+
+if formset.is_valid():
+    formset.save()  # новые объекты создаются через save_new()`,
+  },
+  {
+    name: "BaseFormSet.delete_existing()",
+    category: "Формы",
+    description: `Вызывается внутри save() для удаления объектов, помеченных в формах с флагом DELETE. Выполняет фактическое удаление записи из базы данных.
+
+Метод можно переопределить в подклассе для изменения поведения при удалении — например, для мягкого удаления (soft delete), когда вместо физического удаления устанавливается флаг is_deleted или archived.
+
+Принимает форму (содержащую instance удаляемого объекта) и флаг commit.`,
+    syntax: "BaseFormSet.delete_existing(form, commit=True)",
+    arguments: [
+      {
+        name: "form",
+        description:
+          "Экземпляр формы с атрибутом instance, указывающим на объект, который нужно удалить.",
+      },
+      {
+        name: "commit",
+        description:
+          "Если True — удаляет объект из БД. Если False — объект не удаляется (используется редко).",
+      },
+    ],
+    example: `from django.forms import BaseModelFormSet, modelformset_factory
+from myapp.models import Article
+
+class SoftDeleteFormSet(BaseModelFormSet):
+    def delete_existing(self, form, commit=True):
+        """Мягкое удаление: помечает объект как архивный вместо физического удаления."""
+        if commit:
+            obj = form.instance
+            obj.is_archived = True  # устанавливаем флаг архивации
+            obj.save()
+            # Физическое удаление НЕ вызывается: obj.delete()
+
+class HardDeleteFormSet(BaseModelFormSet):
+    def delete_existing(self, form, commit=True):
+        """Стандартное удаление с дополнительным логированием."""
+        if commit:
+            print(f'Удаление объекта: {form.instance}')
+            form.instance.delete()
+
+ArticleFormSet = modelformset_factory(
+    Article,
+    fields=['title'],
+    can_delete=True,
+    formset=SoftDeleteFormSet
+)
+formset = ArticleFormSet(request.POST)
+if formset.is_valid():
+    formset.save()  # помеченные формы обработаются через delete_existing()`,
+  },
+  {
+    name: "BaseInlineFormSet",
+    category: "Формы",
+    description: `BaseInlineFormSet — базовый класс для формсетов, создаваемых через inlineformset_factory(). Расширяет BaseModelFormSet логикой работы со связанными объектами (ForeignKey), автоматически фильтруя и сохраняя дочерние объекты относительно родительского экземпляра.
+
+При инициализации требует передачи instance — родительского объекта, к которому привязаны все дочерние формы. Все новые объекты, созданные через этот формсет, автоматически получают ссылку на родительский экземпляр через поле ForeignKey.
+
+Используется для сценариев «один ко многим»: статья и её комментарии, заказ и его позиции, автор и его книги.`,
+    syntax: `InlineFormSet = inlineformset_factory(ParentModel, ChildModel, fields=[...])
+formset = InlineFormSet(instance=parent_object)`,
+    arguments: [],
+    example: `from django.forms import BaseInlineFormSet, inlineformset_factory, ValidationError
+from myapp.models import Article, Comment
+
+class CommentInlineFormSet(BaseInlineFormSet):
+    """Кастомный inline-формсет с дополнительной валидацией."""
+
+    def clean(self):
+        super().clean()
+        # Проверяем, что не более 10 комментариев
+        valid_forms = [
+            f for f in self.forms
+            if f.cleaned_data and not f.cleaned_data.get('DELETE')
+        ]
+        if len(valid_forms) > 10:
+            raise ValidationError('Нельзя добавить более 10 комментариев.')
+
+CommentFormSet = inlineformset_factory(
+    Article,          # родительская модель
+    Comment,          # дочерняя модель
+    formset=CommentInlineFormSet,
+    fields=['text', 'author'],
+    extra=2,
+    can_delete=True,
+)
+
+# Использование в представлении
+article = Article.objects.get(pk=1)
+formset = CommentFormSet(instance=article)           # пустой формсет
+formset = CommentFormSet(request.POST, instance=article)  # с данными
+
+if formset.is_valid():
+    formset.save()  # все комментарии привязываются к article автоматически`,
+  },
+  {
+    name: "BaseInlineFormSet.save_new()",
+    category: "Формы",
+    description: `Переопределение метода save_new() из BaseModelFormSet для inline-формсетов. Автоматически устанавливает ForeignKey-связь между новым дочерним объектом и родительским экземпляром (instance) перед сохранением.
+
+Благодаря этому методу при создании нового объекта через InlineFormSet не нужно вручную указывать поле ForeignKey — Django подставляет родительский instance автоматически.
+
+Метод можно переопределить в подклассе BaseInlineFormSet для добавления дополнительной логики при создании связанных объектов.`,
+    syntax: "BaseInlineFormSet.save_new(form, commit=True)",
+    arguments: [
+      {
+        name: "form",
+        description:
+          "Экземпляр формы с валидированными данными для создания нового дочернего объекта.",
+      },
+      {
+        name: "commit",
+        description:
+          "Если True — сохраняет объект в БД с автоматической установкой ForeignKey. Если False — возвращает несохранённый экземпляр с установленным ForeignKey.",
+      },
+    ],
+    example: `from django.forms import BaseInlineFormSet, inlineformset_factory
+from myapp.models import Article, Comment
+
+class TimestampedInlineFormSet(BaseInlineFormSet):
+    def save_new(self, form, commit=True):
+        """Добавляет IP-адрес автора при создании нового комментария."""
+        instance = form.save(commit=False)
+        # ForeignKey (article) уже установлен родительским save_new()
+        # Добавляем дополнительные поля
+        instance.ip_address = self.request_ip
+        if commit:
+            instance.save()
+            form.save_m2m()
+        return instance
+
+CommentFormSet = inlineformset_factory(
+    Article,
+    Comment,
+    formset=TimestampedInlineFormSet,
+    fields=['text'],
+    extra=1,
+)
+
+article = Article.objects.get(pk=1)
+formset = CommentFormSet(request.POST, instance=article)
+formset.request_ip = request.META.get('REMOTE_ADDR')
+
+if formset.is_valid():
+    # save_new() вызывается автоматически для каждой новой формы
+    formset.save()`,
+  },
+  {
+    name: "Field",
+    category: "Поля форм",
+    description: `Field — базовый класс для всех полей форм Django. Отвечает за валидацию, преобразование и отображение одного значения формы.
+
+Каждое поле формы выполняет три ключевые задачи:
+1. Валидация — проверяет, соответствует ли введённое значение ожидаемому типу и ограничениям
+2. Нормализация — преобразует сырые данные (строку из POST) в нужный Python-тип
+3. Отображение — рендерит HTML-виджет для ввода значения
+
+Django предоставляет множество встроенных подклассов: CharField, IntegerField, EmailField, DateField, FileField и др. Все они наследуют логику Field и добавляют собственную валидацию и преобразование типов.
+
+Для создания кастомного поля достаточно унаследоваться от Field (или подходящего подкласса) и переопределить метод to_python() и при необходимости validate().`,
+    syntax: `class MyField(Field):
+    def to_python(self, value):
+        # преобразование типа
+        return value`,
+    arguments: [],
+    example: `from django import forms
+
+# Встроенные поля
+class RegistrationForm(forms.Form):
+    username = forms.CharField(max_length=150)
+    email = forms.EmailField()
+    age = forms.IntegerField(min_value=0, max_value=120)
+    birthday = forms.DateField()
+    avatar = forms.ImageField(required=False)
+
+# Кастомное поле
+class CommaSeparatedIntegerField(forms.Field):
+    def to_python(self, value):
+        if not value:
+            return []
+        try:
+            return [int(v.strip()) for v in value.split(',')]
+        except ValueError:
+            raise forms.ValidationError('Введите числа через запятую.')
+
+    def validate(self, value):
+        super().validate(value)
+        if len(value) > 10:
+            raise forms.ValidationError('Не более 10 чисел.')
+
+class MyForm(forms.Form):
+    numbers = CommaSeparatedIntegerField()`,
+  },
+  {
+    name: "Field.__init__()",
+    category: "Поля форм",
+    description: `Конструктор базового класса Field. Принимает параметры, общие для всех полей форм Django. Подклассы могут добавлять собственные параметры, вызывая super().__init__() с остальными kwargs.
+
+Параметры конструктора определяют поведение поля: обязательность, виджет отображения, метку, начальное значение, вспомогательный текст, сообщения об ошибках и валидаторы.
+
+Переопределяя __init__() в подклассе, можно динамически настраивать поле — например, менять queryset в зависимости от пользователя или добавлять CSS-классы к виджету.`,
+    syntax: `Field.__init__(required=True, widget=None, label=None, initial=None, help_text='', error_messages=None, show_hidden_initial=False, validators=(), localize=False, disabled=False, label_suffix=None)`,
+    arguments: [
+      {
+        name: "required",
+        description:
+          "Если True (по умолчанию) — поле обязательно для заполнения. Пустое значение вызовет ошибку валидации.",
+      },
+      {
+        name: "widget",
+        description:
+          "Виджет для отрисовки HTML-элемента ввода. По умолчанию TextInput. Можно передать класс или экземпляр виджета.",
+      },
+      {
+        name: "label",
+        description:
+          "Метка поля, отображаемая в HTML. Если не задана, генерируется автоматически из имени поля.",
+      },
+      {
+        name: "initial",
+        description:
+          "Начальное значение поля для несвязанных форм. Не является значением по умолчанию — не используется при валидации.",
+      },
+      {
+        name: "help_text",
+        description:
+          "Вспомогательный текст, отображаемый рядом с полем для подсказки пользователю.",
+      },
+      {
+        name: "error_messages",
+        description:
+          "Словарь для переопределения стандартных сообщений об ошибках. Ключи: required, invalid, max_length и др.",
+      },
+      {
+        name: "show_hidden_initial",
+        description:
+          "Если True, рендерит скрытый виджет с начальным значением для сравнения при проверке изменений.",
+      },
+      {
+        name: "validators",
+        description:
+          "Список или кортеж функций-валидаторов, вызываемых при валидации значения.",
+      },
+      {
+        name: "localize",
+        description:
+          "Если True, включает локализацию значения (форматирование чисел, дат по настройкам локали).",
+      },
+      {
+        name: "disabled",
+        description:
+          "Если True, поле отображается как отключённое (disabled). Значение из POST игнорируется — используется initial.",
+      },
+      {
+        name: "label_suffix",
+        description:
+          "Строка после метки поля. Переопределяет label_suffix формы для этого поля.",
+      },
+    ],
+    example: `from django import forms
+from django.core.validators import MinLengthValidator, RegexValidator
+
+class ProfileForm(forms.Form):
+    # Обязательное поле с валидаторами
+    username = forms.CharField(
+        required=True,
+        label='Имя пользователя',
+        help_text='Только буквы, цифры и знак подчёркивания.',
+        validators=[
+            MinLengthValidator(3),
+            RegexValidator(r'^[\\w]+$', 'Недопустимые символы.'),
+        ],
+        error_messages={
+            'required': 'Пожалуйста, введите имя пользователя.',
+            'invalid': 'Недопустимый формат.',
+        },
+    )
+
+    # Необязательное поле с кастомным виджетом
+    bio = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'rows': 4, 'class': 'bio-field'}),
+        label='О себе',
+        initial='Расскажите о себе...',
+    )
+
+    # Отключённое поле (значение нельзя изменить через форму)
+    created_at = forms.DateField(
+        disabled=True,
+        initial='2024-01-01',
+        label='Дата регистрации',
+    )`,
+  },
+  {
+    name: "Field.clean()",
+    category: "Поля форм",
+    description: `Основной метод валидации поля. Выполняет полный цикл обработки значения: преобразование типа, проверку обязательности и запуск валидаторов. Возвращает очищенное (нормализованное) значение или выбрасывает ValidationError.
+
+Порядок выполнения внутри clean():
+1. to_python(value) — преобразует сырое значение в Python-тип
+2. validate(value) — проверяет обязательность и базовые ограничения
+3. run_validators(value) — запускает все валидаторы из списка validators
+
+Метод вызывается автоматически при валидации формы. В большинстве случаев переопределять clean() не нужно — достаточно переопределить to_python() или validate(). Для межполевой валидации используйте clean_<fieldname>() или clean() на уровне формы.`,
+    syntax: "Field.clean(value)",
+    arguments: [
+      {
+        name: "value",
+        description:
+          "Сырое значение из данных формы (обычно строка из POST-запроса).",
+      },
+    ],
+    example: `from django import forms
+
+class AgeField(forms.IntegerField):
+    def clean(self, value):
+        # Вызываем родительский clean() для базовой валидации
+        age = super().clean(value)
+        # Дополнительная проверка после нормализации
+        if age is not None and age < 18:
+            raise forms.ValidationError('Возраст должен быть не менее 18 лет.')
+        return age
+
+class SignupForm(forms.Form):
+    age = AgeField()
+
+# Вызов clean() происходит автоматически при is_valid()
+form = SignupForm(data={'age': '15'})
+form.is_valid()  # False
+print(form.errors)  # {'age': ['Возраст должен быть не менее 18 лет.']}
+
+form = SignupForm(data={'age': '25'})
+form.is_valid()  # True
+print(form.cleaned_data)  # {'age': 25}`,
+  },
+  {
+    name: "Field.to_python()",
+    category: "Поля форм",
+    description: `Преобразует сырое значение (обычно строку из POST-запроса) в соответствующий Python-тип. Это первый шаг в цепочке валидации, вызываемый внутри clean().
+
+В базовом Field метод возвращает значение как есть. Подклассы переопределяют его для конкретного преобразования:
+- IntegerField: строку → int
+- DateField: строку → datetime.date
+- BooleanField: строку → bool
+- ModelChoiceField: pk → экземпляр модели
+
+Если преобразование невозможно, метод должен выбросить ValidationError с понятным сообщением. Не следует выполнять здесь бизнес-логику — только конвертацию типа.`,
+    syntax: "Field.to_python(value)",
+    arguments: [
+      {
+        name: "value",
+        description:
+          "Сырое значение из данных формы. Обычно строка, None или пустая строка.",
+      },
+    ],
+    example: `from django import forms
+import json
+
+class JSONField(forms.Field):
+    """Поле для ввода и валидации JSON-данных."""
+
+    def to_python(self, value):
+        if not value:
+            return None
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError as e:
+            raise forms.ValidationError(f'Некорректный JSON: {e}')
+
+class CoordinateField(forms.Field):
+    """Поле для ввода координат в формате 'lat,lng'."""
+
+    def to_python(self, value):
+        if not value:
+            return None
+        try:
+            parts = value.split(',')
+            if len(parts) != 2:
+                raise ValueError
+            return {'lat': float(parts[0]), 'lng': float(parts[1])}
+        except (ValueError, IndexError):
+            raise forms.ValidationError(
+                'Введите координаты в формате: 55.7558,37.6176'
+            )
+
+class LocationForm(forms.Form):
+    data = JSONField(required=False)
+    coords = CoordinateField()`,
+  },
+  {
+    name: "Field.validate()",
+    category: "Поля форм",
+    description: `Проверяет значение, уже преобразованное методом to_python(). Отвечает за валидацию обязательности (required) и пустых значений. Вызывается вторым шагом внутри clean(), после to_python().
+
+В базовом Field метод проверяет, что значение не является пустым, если поле обязательно (required=True). Подклассы могут переопределить validate() для добавления специфических проверок значения нормализованного типа.
+
+Отличие от run_validators(): validate() — это встроенная логика поля (обязательность, допустимые значения), run_validators() запускает внешние функции-валидаторы из списка validators.`,
+    syntax: "Field.validate(value)",
+    arguments: [
+      {
+        name: "value",
+        description:
+          "Значение, уже преобразованное методом to_python() в нужный Python-тип.",
+      },
+    ],
+    example: `from django import forms
+
+class PositiveIntegerField(forms.IntegerField):
+    def validate(self, value):
+        # Сначала вызываем родительскую валидацию (проверка required и т.д.)
+        super().validate(value)
+        # Затем добавляем собственную проверку
+        if value is not None and value <= 0:
+            raise forms.ValidationError(
+                'Значение должно быть положительным числом.'
+            )
+
+class RatingField(forms.IntegerField):
+    def validate(self, value):
+        super().validate(value)
+        if value is not None and value not in range(1, 6):
+            raise forms.ValidationError(
+                'Рейтинг должен быть от 1 до 5.'
+            )
+
+class ReviewForm(forms.Form):
+    rating = RatingField(label='Оценка')
+    quantity = PositiveIntegerField(label='Количество')
+
+form = ReviewForm(data={'rating': '6', 'quantity': '-1'})
+form.is_valid()  # False
+print(form.errors)
+# {'rating': ['Рейтинг должен быть от 1 до 5.'],
+#  'quantity': ['Значение должно быть положительным числом.']}`,
+  },
+  {
+    name: "Field.run_validators()",
+    category: "Поля форм",
+    description: `Запускает все внешние валидаторы из списка Field.validators. Вызывается третьим шагом внутри clean(), после to_python() и validate().
+
+Метод проходит по каждому валидатору и вызывает его с нормализованным значением. Если один или несколько валидаторов выбрасывают ValidationError, все их сообщения собираются и выбрасываются как одна сводная ValidationError.
+
+Валидаторы из параметра validators — это любые вызываемые объекты (функции или классы с __call__), принимающие одно значение. Django предоставляет набор встроенных валидаторов: MinValueValidator, MaxValueValidator, RegexValidator, EmailValidator и др.`,
+    syntax: "Field.run_validators(value)",
+    arguments: [
+      {
+        name: "value",
+        description:
+          "Нормализованное значение, прошедшее to_python() и validate(), передаётся в каждый валидатор.",
+      },
+    ],
+    example: `from django import forms
+from django.core.validators import (
+    MinLengthValidator,
+    MaxLengthValidator,
+    RegexValidator,
+)
+
+def no_spaces_validator(value):
+    """Кастомный валидатор: запрещает пробелы."""
+    if ' ' in value:
+        raise forms.ValidationError('Пробелы не допускаются.')
+
+def no_digits_validator(value):
+    """Кастомный валидатор: запрещает цифры."""
+    if any(c.isdigit() for c in value):
+        raise forms.ValidationError('Цифры не допускаются.')
+
+class UsernameForm(forms.Form):
+    username = forms.CharField(
+        validators=[
+            MinLengthValidator(3),
+            MaxLengthValidator(20),
+            RegexValidator(r'^[a-zA-Z_]', 'Должен начинаться с буквы.'),
+            no_spaces_validator,
+            no_digits_validator,
+        ]
+    )
+
+form = UsernameForm(data={'username': 'ab'})
+form.is_valid()  # False — MinLengthValidator сработал
+print(form.errors['username'])
+
+# run_validators() можно вызвать напрямую для отладки
+field = forms.CharField(validators=[no_spaces_validator])
+field.run_validators('hello world')  # ValidationError: Пробелы не допускаются.`,
+  },
+  {
+    name: "Field.prepare_value()",
+    category: "Поля форм",
+    description: `Подготавливает значение перед передачей его в виджет для отрисовки. Вызывается при рендеринге HTML-формы, позволяя преобразовать Python-объект в формат, понятный виджету.
+
+В базовом Field метод возвращает значение без изменений. Подклассы переопределяют его для корректного отображения: например, DateField преобразует объект datetime.date в строку формата 'YYYY-MM-DD', ModelChoiceField возвращает pk объекта вместо самого объекта.
+
+Метод полезен при создании кастомных полей, где Python-представление данных отличается от того, что должен получить виджет для отрисовки.`,
+    syntax: "Field.prepare_value(value)",
+    arguments: [
+      {
+        name: "value",
+        description:
+          "Python-значение (из cleaned_data или initial), которое нужно подготовить для передачи в виджет.",
+      },
+    ],
+    example: `from django import forms
+import json
+
+class JSONField(forms.Field):
+    def to_python(self, value):
+        if not value:
+            return None
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            raise forms.ValidationError('Некорректный JSON.')
+
+    def prepare_value(self, value):
+        """Преобразует Python-объект обратно в JSON-строку для отображения в виджете."""
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, ensure_ascii=False, indent=2)
+        return value  # строка или None — возвращаем как есть
+
+class TagListField(forms.Field):
+    def to_python(self, value):
+        if not value:
+            return []
+        return [tag.strip() for tag in value.split(',') if tag.strip()]
+
+    def prepare_value(self, value):
+        """Список тегов → строка через запятую для отображения."""
+        if isinstance(value, list):
+            return ', '.join(value)
+        return value
+
+class ArticleForm(forms.Form):
+    tags = TagListField(widget=forms.TextInput(attrs={'placeholder': 'тег1, тег2'}))
+    metadata = JSONField(widget=forms.Textarea)`,
+  },
+  {
+    name: "Field.has_changed()",
+    category: "Поля форм",
+    description: `Определяет, изменилось ли значение поля по сравнению с начальным. Используется Django для оптимизации — например, чтобы не сохранять объект в БД, если ни одно поле не изменилось.
+
+Метод сравнивает initial (исходное значение, например из БД) и data (введённое пользователем). Перед сравнением оба значения нормализуются через prepare_value() и str().
+
+Подклассы могут переопределить has_changed() для нестандартного сравнения — например, если нужно игнорировать пробелы или сравнивать с учётом регистра. В формсетах пустая extra-форма считается незменённой, даже если её поля содержат initial.`,
+    syntax: "Field.has_changed(initial, data)",
+    arguments: [
+      {
+        name: "initial",
+        description:
+          "Исходное значение поля (из БД или переданное через initial при инициализации формы).",
+      },
+      {
+        name: "data",
+        description: "Текущее значение из данных POST-запроса (сырая строка).",
+      },
+    ],
+    example: `from django import forms
+
+class TrimmedCharField(forms.CharField):
+    def has_changed(self, initial, data):
+        """Считает поле неизменённым, если значения совпадают после strip()."""
+        initial = (initial or '').strip()
+        data = (data or '').strip()
+        return initial != data
+
+class ProfileForm(forms.Form):
+    name = TrimmedCharField()
+    bio = forms.CharField(required=False)
+
+# Проверка изменений вручную
+field = forms.CharField()
+print(field.has_changed('Иван', 'Иван'))    # False
+print(field.has_changed('Иван', 'Пётр'))    # True
+print(field.has_changed(None, ''))           # False (пустое == пустое)
+print(field.has_changed('Иван', None))       # True
+
+# Использование в форме
+form = ProfileForm(
+    data={'name': 'Иван', 'bio': ''},
+    initial={'name': 'Иван', 'bio': ''}
+)
+form.is_valid()
+print(form.has_changed())         # False — ничего не изменилось
+print(form.changed_data)          # []`,
+  },
+  {
+    name: "Field.widget",
+    category: "Поля форм",
+    description: `Атрибут, определяющий виджет, используемый для рендеринга HTML-элемента поля. Виджет отвечает за генерацию HTML-кода и получение значения из данных запроса.
+
+Каждый подкласс Field имеет виджет по умолчанию:
+- CharField → TextInput
+- IntegerField → NumberInput
+- BooleanField → CheckboxInput
+- DateField → DateInput
+- FileField → ClearableFileInput
+- ChoiceField → Select
+- MultipleChoiceField → SelectMultiple
+
+Виджет можно заменить, передав его в параметре widget при создании поля. Для настройки HTML-атрибутов виджета используется аргумент attrs.`,
+    syntax: "Field.widget",
+    arguments: [],
+    example: `from django import forms
+
+class ArticleForm(forms.Form):
+    # Стандартный виджет (TextInput)
+    title = forms.CharField()
+
+    # Замена виджета на Textarea
+    content = forms.CharField(
+        widget=forms.Textarea(attrs={
+            'rows': 10,
+            'cols': 80,
+            'class': 'content-editor',
+            'placeholder': 'Введите текст статьи...',
+        })
+    )
+
+    # Поле даты с виджетом для date picker
+    publish_date = forms.DateField(
+        widget=forms.DateInput(attrs={'type': 'date'})
+    )
+
+    # Выбор из списка с пользовательскими атрибутами
+    status = forms.ChoiceField(
+        choices=[('draft', 'Черновик'), ('published', 'Опубликовано')],
+        widget=forms.RadioSelect,
+    )
+
+# Замена виджета после создания поля
+form = ArticleForm()
+form.fields['title'].widget = forms.HiddenInput()
+form.fields['title'].widget.attrs['class'] = 'highlight'`,
+  },
+  {
+    name: "Field.required",
+    category: "Поля форм",
+    description: `Атрибут, определяющий, является ли поле обязательным для заполнения. Если True (по умолчанию), пустое значение вызывает ошибку валидации с сообщением «Обязательное поле».
+
+Пустыми считаются: None, пустая строка '', пустой список [], пустой QuerySet.
+
+При required=False поле принимает пустые значения и возвращает значение по умолчанию (обычно None или ''). Атрибут можно изменять динамически после создания поля — например, в __init__() формы в зависимости от контекста или прав пользователя.
+
+При required=True Django также добавляет HTML-атрибут required к виджету (если не отключено параметром use_required_attribute=False).`,
+    syntax: "Field.required",
+    arguments: [],
+    example: `from django import forms
+
+class OrderForm(forms.Form):
+    name = forms.CharField(required=True)   # обязательное
+    promo_code = forms.CharField(required=False)  # необязательное
+    address = forms.CharField()  # required=True по умолчанию
+
+# Динамическое изменение required
+class ProfileForm(forms.Form):
+    phone = forms.CharField(required=False)
+    company = forms.CharField(required=False)
+
+    def __init__(self, *args, **kwargs):
+        is_business = kwargs.pop('is_business', False)
+        super().__init__(*args, **kwargs)
+        if is_business:
+            # Для бизнес-аккаунта компания обязательна
+            self.fields['company'].required = True
+            self.fields['phone'].required = True
+
+form = ProfileForm(is_business=True)
+print(form.fields['company'].required)  # True
+
+# Проверка при валидации
+form = OrderForm(data={'name': '', 'promo_code': ''})
+form.is_valid()  # False
+print(form.errors)  # {'name': ['Обязательное поле.']}`,
+  },
+  {
+    name: "Field.label",
+    category: "Поля форм",
+    description: `Атрибут, задающий текстовую метку поля, отображаемую в HTML рядом с элементом ввода. Если label не задан явно, Django автоматически генерирует его из имени поля: заменяет подчёркивания на пробелы и делает первую букву заглавной.
+
+Метка рендерится как HTML-элемент <label> с атрибутом for, ссылающимся на id поля. Это обеспечивает доступность формы.
+
+Атрибут можно задать как строку или как ленивый перевод (gettext_lazy) для многоязычных приложений. Для HTML-разметки внутри метки используйте mark_safe().`,
+    syntax: "Field.label",
+    arguments: [],
+    example: `from django import forms
+from django.utils.translation import gettext_lazy as _
+from django.utils.safestring import mark_safe
+
+class ContactForm(forms.Form):
+    # Автогенерированная метка: "First name"
+    first_name = forms.CharField()
+
+    # Явная метка
+    last_name = forms.CharField(label='Фамилия')
+
+    # Ленивый перевод для i18n
+    email = forms.EmailField(label=_('Адрес электронной почты'))
+
+    # HTML внутри метки (ссылка на политику)
+    agree = forms.BooleanField(
+        label=mark_safe(
+            'Я принимаю <a href="/terms/">условия использования</a>'
+        )
+    )
+
+    # Метка без текста (для полей с placeholder)
+    search = forms.CharField(
+        label='',
+        widget=forms.TextInput(attrs={'placeholder': 'Поиск...'}),
+    )
+
+# Изменение метки после создания формы
+form = ContactForm()
+form.fields['first_name'].label = 'Имя'
+print(form.fields['first_name'].label)  # 'Имя'`,
+  },
+  {
+    name: "Field.help_text",
+    category: "Поля форм",
+    description: `Атрибут, задающий вспомогательный текст, отображаемый рядом с полем формы. Используется для подсказок пользователю: формат ввода, допустимые значения, ограничения.
+
+При рендеринге через as_p(), as_ul() или as_table() help_text оборачивается в <span class="helptext">. В кастомных шаблонах доступен через {{ field.help_text }}.
+
+Поддерживает HTML-разметку при использовании mark_safe() и ленивый перевод через gettext_lazy() для многоязычных проектов. По умолчанию — пустая строка.`,
+    syntax: "Field.help_text",
+    arguments: [],
+    example: `from django import forms
+from django.utils.translation import gettext_lazy as _
+from django.utils.safestring import mark_safe
+
+class RegistrationForm(forms.Form):
+    username = forms.CharField(
+        help_text='Только буквы, цифры и знак подчёркивания. От 3 до 150 символов.'
+    )
+
+    password = forms.CharField(
+        widget=forms.PasswordInput,
+        help_text=_('Минимум 8 символов. Не используйте простые пароли.')
+    )
+
+    # HTML внутри help_text
+    website = forms.URLField(
+        required=False,
+        help_text=mark_safe(
+            'Необязательно. Пример: <code>https://example.com</code>'
+        )
+    )
+
+# Чтение help_text
+form = RegistrationForm()
+print(form.fields['username'].help_text)
+# 'Только буквы, цифры и знак подчёркивания. От 3 до 150 символов.'
+
+# В шаблоне:
+# {% for field in form %}
+#     {{ field.label_tag }}
+#     {{ field }}
+#     {% if field.help_text %}
+#         <span class="help">{{ field.help_text }}</span>
+#     {% endif %}
+# {% endfor %}`,
+  },
+  {
+    name: "Field.initial",
+    category: "Поля форм",
+    description: `Атрибут, задающий начальное значение поля для несвязанных форм (без переданных данных POST). Отображается в виджете при первом показе формы, но не участвует в валидации — пользователь может оставить поле пустым.
+
+Важное отличие от значения по умолчанию: initial — это лишь подсказка в интерфейсе. Если форма получает данные (bound form), initial игнорируется и используются данные из POST.
+
+Может быть вызываемым объектом (функцией) — в этом случае значение вычисляется при каждом создании экземпляра формы. Это удобно для динамических значений, например текущей даты.`,
+    syntax: "Field.initial",
+    arguments: [],
+    example: `from django import forms
+from datetime import date
+
+class EventForm(forms.Form):
+    title = forms.CharField(initial='Новое событие')
+
+    # Callable initial — вычисляется при каждом создании формы
+    event_date = forms.DateField(
+        initial=date.today,  # функция, не вызов!
+        widget=forms.DateInput(attrs={'type': 'date'}),
+    )
+
+    priority = forms.IntegerField(initial=5)
+
+# Несвязанная форма — initial отображается
+form = EventForm()
+print(form['title'].value())       # 'Новое событие'
+print(form['event_date'].value())  # '2024-01-15' (сегодня)
+
+# Связанная форма — initial игнорируется
+form = EventForm(data={'title': '', 'event_date': '2025-12-31', 'priority': '1'})
+print(form['title'].value())       # '' (из POST)
+
+# initial на уровне формы (перекрывает field.initial)
+form = EventForm(initial={'title': 'Конференция', 'priority': 10})
+print(form['title'].value())       # 'Конференция'`,
+  },
+  {
+    name: "Field.error_messages",
+    category: "Поля форм",
+    description: `Атрибут-словарь, содержащий сообщения об ошибках для различных условий валидации. Позволяет переопределить стандартные тексты ошибок Django на кастомные.
+
+Каждый ключ соответствует типу ошибки. Общие ключи для всех полей:
+- required — значение обязательно
+- invalid — значение имеет неверный формат
+
+Дополнительные ключи зависят от типа поля:
+- CharField: max_length, min_length
+- IntegerField: max_value, min_value
+- EmailField: invalid
+- URLField: invalid
+- FileField: missing, empty, max_length
+
+Сообщения поддерживают ленивый перевод (gettext_lazy) и форматирование через %(param)s.`,
+    syntax: "Field.error_messages",
+    arguments: [],
+    example: `from django import forms
+from django.utils.translation import gettext_lazy as _
+
+class ContactForm(forms.Form):
+    name = forms.CharField(
+        max_length=100,
+        error_messages={
+            'required': 'Пожалуйста, введите ваше имя.',
+            'max_length': 'Имя не должно превышать %(max)d символов.',
+        }
+    )
+
+    email = forms.EmailField(
+        error_messages={
+            'required': _('Адрес электронной почты обязателен.'),
+            'invalid': _('Введите корректный адрес электронной почты.'),
+        }
+    )
+
+    age = forms.IntegerField(
+        min_value=0,
+        max_value=120,
+        error_messages={
+            'required': 'Укажите возраст.',
+            'invalid': 'Введите целое число.',
+            'min_value': 'Возраст не может быть отрицательным.',
+            'max_value': 'Некорректный возраст (максимум %(limit_value)d).',
+        }
+    )
+
+form = ContactForm(data={'name': '', 'email': 'not-an-email', 'age': '200'})
+form.is_valid()
+print(form.errors['name'])   # ['Пожалуйста, введите ваше имя.']
+print(form.errors['email'])  # ['Введите корректный адрес электронной почты.']
+print(form.errors['age'])    # ['Некорректный возраст (максимум 120).']`,
+  },
+  {
+    name: "django.utils.log",
+    category: "Логирование",
+    description: `Модуль django.utils.log содержит инструменты логирования, специфичные для Django. Предоставляет фильтры, обработчики и форматтеры, расширяющие стандартный модуль Python logging.
+
+Основные компоненты модуля:
+- AdminEmailHandler — отправляет письма администраторам при ошибках
+- RequireDebugFalse — фильтр, пропускающий записи только в production
+- RequireDebugTrue — фильтр, пропускающий записи только при DEBUG=True
+- CallbackFilter — фильтр с пользовательской функцией-условием
+- ServerFormatter — форматтер для вывода HTTP-запросов в runserver
+- setup_logging() — функция инициализации системы логирования
+
+Модуль интегрируется с настройкой LOGGING в settings.py и стандартным Python logging через dictConfig.`,
+    syntax: `import django.utils.log
+from django.utils.log import AdminEmailHandler, RequireDebugFalse`,
+    arguments: [],
+    example: `# Импорт компонентов модуля
+from django.utils.log import (
+    AdminEmailHandler,
+    RequireDebugFalse,
+    RequireDebugTrue,
+    CallbackFilter,
+    ServerFormatter,
+)
+
+# Использование в LOGGING (settings.py)
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+    },
+    'handlers': {
+        'mail_admins': {
+            'level': 'ERROR',
+            'filters': ['require_debug_false'],
+            'class': 'django.utils.log.AdminEmailHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['mail_admins'],
+            'level': 'ERROR',
+        },
+    },
+}`,
+  },
+  {
+    name: "setup_logging()",
+    category: "Логирование",
+    description: `Функция, инициализирующая систему логирования Django на основе настройки LOGGING из settings.py. Вызывается автоматически при старте Django-приложения через AppConfig.ready().
+
+Внутри вызывает logging.config.dictConfig(settings.LOGGING), применяя конфигурацию к стандартному Python-логгеру. Если LOGGING_CONFIG задан как None, автоматическая настройка пропускается и разработчик может настроить логирование вручную.
+
+Прямой вызов setup_logging() требуется редко — только в нестандартных сценариях запуска, не через стандартный Django-сервер.`,
+    syntax: "django.utils.log.setup_logging()",
+    arguments: [],
+    example: `# Автоматический вызов при старте Django (не нужно вызывать вручную)
+# Происходит внутри django.setup()
+
+# Пример ручного вызова (нестандартный сценарий)
+import django
+from django.utils.log import setup_logging
+
+django.setup()
+setup_logging()
+
+# Отключение автоматической настройки логирования (settings.py)
+LOGGING_CONFIG = None  # Django не будет вызывать setup_logging()
+
+# Ручная настройка в этом случае:
+import logging.config
+LOGGING_CONFIG = None
+LOGGING = { ... }
+
+def configure_logging():
+    logging.config.dictConfig(LOGGING)`,
+  },
+  {
+    name: "AdminEmailHandler",
+    category: "Логирование",
+    description: `Обработчик логирования, отправляющий письма с отчётом об ошибке на адреса из ADMINS при каждом событии с уровнем ERROR или выше.
+
+Письмо содержит полную информацию об ошибке: traceback, данные HTTP-запроса, заголовки и переменные окружения. При include_html=True дополнительно прикрепляется HTML-версия отчёта (аналог страницы отладки Django).
+
+Обработчик используется совместно с фильтром RequireDebugFalse, чтобы письма отправлялись только в production (при DEBUG=False), а не во время разработки.`,
+    syntax: `class AdminEmailHandler(logging.Handler):
+    pass`,
+    arguments: [],
+    example: `# settings.py — стандартная конфигурация с AdminEmailHandler
+ADMINS = [('Иван Петров', 'admin@example.com')]
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+    },
+    'handlers': {
+        'mail_admins': {
+            'level': 'ERROR',
+            'class': 'django.utils.log.AdminEmailHandler',
+            'filters': ['require_debug_false'],
+            'include_html': True,  # HTML-отчёт в письме
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['mail_admins'],
+            'level': 'ERROR',
+            'propagate': True,
+        },
+    },
+}
+
+# Ручная отправка письма через логгер
+import logging
+logger = logging.getLogger('django')
+logger.error('Критическая ошибка в приложении')`,
+  },
+  {
+    name: "AdminEmailHandler.__init__()",
+    category: "Логирование",
+    description: `Конструктор AdminEmailHandler. Настраивает параметры отправки писем: формат отчёта, бекенд для отправки и класс формирования отчёта об ошибке.
+
+Параметры позволяют гибко настраивать обработчик: например, использовать отдельный почтовый бекенд для писем об ошибках или кастомный класс отчёта с дополнительной информацией.`,
+    syntax:
+      "AdminEmailHandler.__init__(include_html=False, email_backend=None, reporter_class=None)",
+    arguments: [
+      {
+        name: "include_html",
+        description:
+          "Если True — в письмо добавляется HTML-версия отчёта об ошибке (аналог страницы отладки Django). По умолчанию False.",
+      },
+      {
+        name: "email_backend",
+        description:
+          "Строка с путём к почтовому бекенду (например, 'django.core.mail.backends.smtp.EmailBackend'). Если None — используется EMAIL_BACKEND из settings.",
+      },
+      {
+        name: "reporter_class",
+        description:
+          "Строка с путём к классу формирования отчёта об ошибке. По умолчанию django.views.debug.ExceptionReporter.",
+      },
+    ],
+    example: `# В конфигурации LOGGING (settings.py)
+LOGGING = {
+    'version': 1,
+    'handlers': {
+        # Базовый обработчик (только текст)
+        'mail_admins': {
+            'class': 'django.utils.log.AdminEmailHandler',
+            'include_html': False,
+        },
+
+        # С HTML-отчётом
+        'mail_admins_html': {
+            'class': 'django.utils.log.AdminEmailHandler',
+            'include_html': True,
+        },
+
+        # С отдельным почтовым бекендом
+        'mail_admins_custom': {
+            'class': 'django.utils.log.AdminEmailHandler',
+            'include_html': True,
+            'email_backend': 'django.core.mail.backends.smtp.EmailBackend',
+            'reporter_class': 'myapp.debug.CustomExceptionReporter',
+        },
+    },
+}
+
+# Прямое создание экземпляра
+from django.utils.log import AdminEmailHandler
+handler = AdminEmailHandler(include_html=True)`,
+  },
+  {
+    name: "AdminEmailHandler.emit()",
+    category: "Логирование",
+    description: `Метод, вызываемый стандартным Python-логгером при каждой записи, достигающей обработчика. Формирует и отправляет письмо администраторам на основе данных LogRecord.
+
+Внутри emit() происходит:
+1. Получение информации о запросе из record (если ошибка возникла во время HTTP-запроса)
+2. Формирование темы письма из первой строки сообщения
+3. Создание ExceptionReporter для генерации отчёта
+4. Отправка письма через mail_admins()
+
+Метод безопасен: если отправка письма завершается исключением, оно перехватывается и выводится в stderr, не прерывая работу приложения.`,
+    syntax: "AdminEmailHandler.emit(record)",
+    arguments: [
+      {
+        name: "record",
+        description:
+          "Объект logging.LogRecord, содержащий информацию о событии: сообщение, уровень, исключение, HTTP-запрос и другие метаданные.",
+      },
+    ],
+    example: `import logging
+from django.utils.log import AdminEmailHandler
+
+# emit() вызывается автоматически при логировании ошибки
+logger = logging.getLogger('myapp')
+
+# Это автоматически вызывает emit() у AdminEmailHandler
+try:
+    result = 1 / 0
+except ZeroDivisionError:
+    logger.error('Деление на ноль', exc_info=True)
+
+# Ручной вызов emit() (для тестирования)
+handler = AdminEmailHandler(include_html=True)
+record = logging.LogRecord(
+    name='test',
+    level=logging.ERROR,
+    pathname='',
+    lineno=0,
+    msg='Тестовая ошибка',
+    args=(),
+    exc_info=None,
+)
+handler.emit(record)  # отправит письмо администраторам`,
+  },
+  {
+    name: "RequireDebugFalse",
+    category: "Логирование",
+    description: `Фильтр логирования, пропускающий записи только когда DEBUG=False (то есть в production-окружении). Используется совместно с AdminEmailHandler, чтобы письма об ошибках не отправлялись во время разработки.
+
+Наследует стандартный logging.Filter. Метод filter() проверяет значение settings.DEBUG и возвращает True (пропустить запись) только если DEBUG is False.
+
+Без этого фильтра AdminEmailHandler будет отправлять письма при каждой ошибке даже на локальной машине разработчика.`,
+    syntax: `class RequireDebugFalse(logging.Filter):
+    def filter(self, record):
+        return not settings.DEBUG`,
+    arguments: [],
+    example: `# settings.py
+LOGGING = {
+    'version': 1,
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+    },
+    'handlers': {
+        'mail_admins': {
+            'level': 'ERROR',
+            'class': 'django.utils.log.AdminEmailHandler',
+            'filters': ['require_debug_false'],  # только в production
+        },
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['mail_admins', 'console'],
+            'level': 'ERROR',
+        },
+    },
+}
+
+# Ручное использование
+from django.utils.log import RequireDebugFalse
+import logging
+
+f = RequireDebugFalse()
+record = logging.LogRecord('test', logging.ERROR, '', 0, 'msg', (), None)
+
+# При DEBUG=True: filter() вернёт False → запись не пройдёт
+# При DEBUG=False: filter() вернёт True → запись пройдёт`,
+  },
+  {
+    name: "RequireDebugFalse.filter()",
+    category: "Логирование",
+    description: `Метод фильтрации записей логирования. Возвращает True (запись проходит) только если settings.DEBUG равен False, то есть в production-режиме.
+
+Вызывается стандартным Python-логгером автоматически для каждой записи, достигающей обработчика с этим фильтром. Если метод возвращает False — запись отбрасывается и до обработчика не доходит.`,
+    syntax: "RequireDebugFalse.filter(record)",
+    arguments: [
+      {
+        name: "record",
+        description:
+          "Объект logging.LogRecord с информацией о событии логирования.",
+      },
+    ],
+    example: `from django.utils.log import RequireDebugFalse
+from django.conf import settings
+import logging
+
+f = RequireDebugFalse()
+record = logging.LogRecord('django', logging.ERROR, '', 0, 'Ошибка', (), None)
+
+# Результат зависит от значения settings.DEBUG
+settings.DEBUG = True
+print(f.filter(record))   # False — запись отброшена
+
+settings.DEBUG = False
+print(f.filter(record))   # True — запись прошла
+
+# В LOGGING конфигурации filter() вызывается автоматически:
+LOGGING = {
+    'filters': {
+        'require_debug_false': {'()': 'django.utils.log.RequireDebugFalse'},
+    },
+    'handlers': {
+        'mail_admins': {
+            'class': 'django.utils.log.AdminEmailHandler',
+            'filters': ['require_debug_false'],
+        },
+    },
+}`,
+  },
+  {
+    name: "RequireDebugTrue",
+    category: "Логирование",
+    description: `Фильтр логирования, пропускающий записи только когда DEBUG=True (в режиме разработки). Противоположность RequireDebugFalse — используется для обработчиков, которые должны работать только во время разработки, но не в production.
+
+Типичное применение — вывод подробных отладочных сообщений в консоль только при DEBUG=True, чтобы не засорять production-логи.`,
+    syntax: `class RequireDebugTrue(logging.Filter):
+    def filter(self, record):
+        return settings.DEBUG`,
+    arguments: [],
+    example: `# settings.py — вывод SQL-запросов только при DEBUG=True
+LOGGING = {
+    'version': 1,
+    'filters': {
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'filters': ['require_debug_true'],  # только при DEBUG=True
+        },
+    },
+    'loggers': {
+        # Логирование SQL-запросов только в режиме разработки
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'filters': ['require_debug_true'],
+        },
+        # Логирование запросов runserver
+        'django.server': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'filters': ['require_debug_true'],
+        },
+    },
+}`,
+  },
+  {
+    name: "RequireDebugTrue.filter()",
+    category: "Логирование",
+    description: `Метод фильтрации записей логирования. Возвращает True (запись проходит) только если settings.DEBUG равен True, то есть в режиме разработки.
+
+Вызывается автоматически для каждой записи логирования, достигающей обработчика с этим фильтром. Если метод возвращает False — запись отбрасывается и до обработчика не доходит.`,
+    syntax: "RequireDebugTrue.filter(record)",
+    arguments: [
+      {
+        name: "record",
+        description:
+          "Объект logging.LogRecord с информацией о событии логирования.",
+      },
+    ],
+    example: `from django.utils.log import RequireDebugTrue
+from django.conf import settings
+import logging
+
+f = RequireDebugTrue()
+record = logging.LogRecord('django', logging.DEBUG, '', 0, 'SQL запрос', (), None)
+
+settings.DEBUG = True
+print(f.filter(record))   # True — запись прошла (режим разработки)
+
+settings.DEBUG = False
+print(f.filter(record))   # False — запись отброшена (production)
+
+# Пример в конфигурации LOGGING:
+LOGGING = {
+    'filters': {
+        'require_debug_true': {'()': 'django.utils.log.RequireDebugTrue'},
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'filters': ['require_debug_true'],
+        },
+    },
+    'loggers': {
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+    },
+}`,
+  },
+  {
+    name: "CallbackFilter",
+    category: "Логирование",
+    description: `Фильтр логирования, использующий пользовательскую функцию-callback для принятия решения о пропуске записи. Позволяет задавать произвольные условия фильтрации без создания полноценного подкласса Filter.
+
+Callback получает объект LogRecord и должен вернуть True (пропустить запись) или False (отбросить запись). Это удобно для условий, зависящих от содержимого записи: уровня, имени логгера, данных запроса, конкретного текста сообщения и т.д.`,
+    syntax: `class CallbackFilter(logging.Filter):
+    def __init__(self, callback):
+        self.callback = callback`,
+    arguments: [],
+    example: `from django.utils.log import CallbackFilter
+import logging
+
+# Фильтр, отбрасывающий записи от определённых IP
+def skip_health_check(record):
+    """Пропускает записи, не связанные с health check."""
+    request = getattr(record, 'request', None)
+    if request and request.path == '/healthz/':
+        return False  # отбрасываем health check логи
+    return True
+
+# Фильтр, пропускающий только записи с request
+def require_request(record):
+    return hasattr(record, 'request')
+
+# Использование в LOGGING
+LOGGING = {
+    'version': 1,
+    'filters': {
+        'skip_health': {
+            '()': 'django.utils.log.CallbackFilter',
+            'callback': skip_health_check,
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'filters': ['skip_health'],
+        },
+    },
+}`,
+  },
+  {
+    name: "CallbackFilter.__init__()",
+    category: "Логирование",
+    description: `Конструктор CallbackFilter. Принимает единственный параметр — функцию-callback, которая будет вызываться для каждой записи логирования.
+
+Callback сохраняется как атрибут self.callback и вызывается внутри метода filter(). Функция должна принимать один аргумент (LogRecord) и возвращать bool.`,
+    syntax: "CallbackFilter.__init__(callback)",
+    arguments: [
+      {
+        name: "callback",
+        description:
+          "Вызываемый объект (функция или лямбда), принимающий logging.LogRecord и возвращающий True (пропустить запись) или False (отбросить запись).",
+      },
+    ],
+    example: `from django.utils.log import CallbackFilter
+import logging
+
+# Простая функция-callback
+def only_errors(record):
+    return record.levelno >= logging.ERROR
+
+# Лямбда
+skip_warnings = lambda record: record.levelno != logging.WARNING
+
+# Callback с замыканием
+def make_path_filter(excluded_paths):
+    def filter_func(record):
+        request = getattr(record, 'request', None)
+        if request:
+            return request.path not in excluded_paths
+        return True
+    return filter_func
+
+# Создание экземпляра фильтра
+f1 = CallbackFilter(only_errors)
+f2 = CallbackFilter(skip_warnings)
+f3 = CallbackFilter(make_path_filter(['/healthz/', '/ping/']))
+
+# В LOGGING через строку пути к callback
+def my_callback(record):
+    return 'error' not in record.getMessage().lower()
+
+LOGGING = {
+    'filters': {
+        'my_filter': {
+            '()': 'django.utils.log.CallbackFilter',
+            'callback': my_callback,
+        },
+    },
+}`,
+  },
+  {
+    name: "CallbackFilter.filter()",
+    category: "Логирование",
+    description: `Метод фильтрации записей. Вызывает сохранённую функцию-callback с объектом LogRecord и возвращает её результат (True — пропустить запись, False — отбросить).
+
+Вызывается стандартным Python-логгером автоматически для каждой записи, достигающей обработчика с этим фильтром.`,
+    syntax: "CallbackFilter.filter(record)",
+    arguments: [
+      {
+        name: "record",
+        description:
+          "Объект logging.LogRecord, передаваемый в callback-функцию для анализа и принятия решения о фильтрации.",
+      },
+    ],
+    example: `from django.utils.log import CallbackFilter
+import logging
+
+# Создание фильтра
+def no_debug(record):
+    return record.levelno > logging.DEBUG
+
+f = CallbackFilter(no_debug)
+
+# Ручной вызов filter() для тестирования
+debug_record = logging.LogRecord('test', logging.DEBUG, '', 0, 'debug msg', (), None)
+error_record = logging.LogRecord('test', logging.ERROR, '', 0, 'error msg', (), None)
+
+print(f.filter(debug_record))  # False — отброшено
+print(f.filter(error_record))  # True — прошло
+
+# Тестирование callback-фильтра
+def sensitive_data_filter(record):
+    """Фильтрует записи с конфиденциальными данными."""
+    msg = record.getMessage()
+    sensitive_keywords = ['password', 'token', 'secret', 'credit_card']
+    return not any(kw in msg.lower() for kw in sensitive_keywords)
+
+f2 = CallbackFilter(sensitive_data_filter)
+safe_record = logging.LogRecord('test', logging.INFO, '', 0, 'User logged in', (), None)
+leak_record = logging.LogRecord('test', logging.INFO, '', 0, 'password=123', (), None)
+
+print(f2.filter(safe_record))  # True
+print(f2.filter(leak_record))  # False`,
+  },
+  {
+    name: "ServerFormatter",
+    category: "Логирование",
+    description: `Форматтер логирования, используемый Django для форматирования HTTP-запросов в выводе сервера разработки (runserver). Добавляет цветовую подсветку кодов ответа HTTP в терминалах, поддерживающих ANSI-коды.
+
+Коды ответа форматируются следующим образом:
+- 1xx (информационные) — без подсветки
+- 2xx (успешные) — зелёный цвет
+- 3xx (перенаправления) — жёлтый цвет
+- 4xx (ошибки клиента) — красный цвет
+- 5xx (ошибки сервера) — жирный красный цвет
+
+Используется по умолчанию в конфигурации логгера django.server.`,
+    syntax: `class ServerFormatter(logging.Formatter):
+    pass`,
+    arguments: [],
+    example: `# Стандартная конфигурация логгера runserver (используется Django по умолчанию)
+LOGGING = {
+    'version': 1,
+    'formatters': {
+        'django.server': {
+            '()': 'django.utils.log.ServerFormatter',
+            'format': '[{server_time}] {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'django.server': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'django.server',
+        },
+    },
+    'loggers': {
+        'django.server': {
+            'handlers': ['django.server'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+# Прямое создание экземпляра
+from django.utils.log import ServerFormatter
+formatter = ServerFormatter(fmt='[{server_time}] {message}', style='{')`,
+  },
+  {
+    name: "ServerFormatter.__init__()",
+    category: "Логирование",
+    description: `Конструктор ServerFormatter. Расширяет стандартный logging.Formatter, добавляя поддержку атрибута server_time в строке формата.
+
+Параметры идентичны стандартному Formatter: fmt — шаблон строки, datefmt — формат даты/времени, style — стиль подстановки (%, {, или $).
+
+Для использования переменной {server_time} в fmt необходимо указать style='{'.`,
+    syntax: `ServerFormatter.__init__(fmt=None, datefmt=None, style='%')`,
+    arguments: [
+      {
+        name: "fmt",
+        description:
+          "Строка формата. Поддерживает атрибут server_time (время HTTP-запроса). Пример: '[{server_time}] {message}' при style='{'.",
+      },
+      {
+        name: "datefmt",
+        description:
+          "Строка формата даты и времени в стиле strftime. Если None — используется ISO 8601.",
+      },
+      {
+        name: "style",
+        description:
+          "Стиль подстановки: '%' (по умолчанию, как в %), '{' (str.format), '$' (string.Template).",
+      },
+    ],
+    example: `from django.utils.log import ServerFormatter
+
+# Стандартное использование с style='{'
+formatter = ServerFormatter(
+    fmt='[{server_time}] {message}',
+    style='{',
+)
+
+# Без server_time (стандартный style)
+formatter2 = ServerFormatter(
+    fmt='%(asctime)s %(levelname)s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
+
+# В конфигурации LOGGING
+LOGGING = {
+    'formatters': {
+        'server': {
+            '()': 'django.utils.log.ServerFormatter',
+            'format': '[{server_time}] {message}',
+            'style': '{',
+        },
+        'verbose': {
+            '()': 'django.utils.log.ServerFormatter',
+            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+            'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+    },
+}`,
+  },
+  {
+    name: "ServerFormatter.format()",
+    category: "Логирование",
+    description: `Метод форматирования записи логирования. Расширяет стандартный Formatter.format(), добавляя атрибут server_time к объекту LogRecord перед форматированием.
+
+server_time берётся из атрибута record.server_time (устанавливается логгером django.server при обработке HTTP-запроса), либо вычисляется на основе record.created.
+
+После добавления server_time вызывается родительский format(), который применяет шаблон строки формата и возвращает итоговую строку с цветовой подсветкой кода ответа.`,
+    syntax: "ServerFormatter.format(record)",
+    arguments: [
+      {
+        name: "record",
+        description:
+          "Объект logging.LogRecord с данными HTTP-запроса. Должен содержать атрибуты msg (статус ответа) и server_time (время запроса).",
+      },
+    ],
+    example: `from django.utils.log import ServerFormatter
+import logging
+
+formatter = ServerFormatter(fmt='[{server_time}] {message}', style='{')
+
+# format() вызывается автоматически при выводе лога
+# Например, runserver выводит:
+# [15/Jan/2024 12:34:56] "GET /api/users/ HTTP/1.1" 200 1234
+
+# Ручной вызов для тестирования форматирования
+record = logging.LogRecord(
+    name='django.server',
+    level=logging.INFO,
+    pathname='',
+    lineno=0,
+    msg='"GET /api/ HTTP/1.1" 200 512',
+    args=(),
+    exc_info=None,
+)
+record.server_time = '15/Jan/2024 12:34:56'
+
+result = formatter.format(record)
+print(result)
+# [15/Jan/2024 12:34:56] "GET /api/ HTTP/1.1" 200 512`,
+  },
+  {
+    name: "LOGGING",
+    category: "Логирование",
+    description: `Настройка в settings.py, определяющая конфигурацию системы логирования Django. Представляет собой словарь Python в формате dictConfig стандартного модуля logging.
+
+Обязательные ключи верхнего уровня:
+- version — всегда 1
+- disable_existing_loggers — отключает ли конфиг существующие логгеры (рекомендуется False)
+
+Дополнительные ключи:
+- formatters — словарь форматтеров (как форматировать записи)
+- filters — словарь фильтров (какие записи пропускать)
+- handlers — словарь обработчиков (куда писать: файл, консоль, email)
+- loggers — словарь логгеров с привязкой к обработчикам
+
+Встроенные логгеры Django: django, django.request, django.server, django.template, django.db.backends, django.security.`,
+    syntax: `LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': { ... },
+    'filters': { ... },
+    'handlers': { ... },
+    'loggers': { ... },
+}`,
+    arguments: [],
+    example: `# settings.py — полная конфигурация логирования
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+        'server': {
+            '()': 'django.utils.log.ServerFormatter',
+            'format': '[{server_time}] {message}',
+            'style': '{',
+        },
+    },
+
+    'filters': {
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
+        },
+    },
+
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'filters': ['require_debug_true'],
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'level': 'WARNING',
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'logs/django.log',
+            'formatter': 'verbose',
+        },
+        'mail_admins': {
+            'level': 'ERROR',
+            'filters': ['require_debug_false'],
+            'class': 'django.utils.log.AdminEmailHandler',
+            'include_html': True,
+        },
+    },
+
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'django.request': {
+            'handlers': ['mail_admins'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'filters': ['require_debug_true'],
+        },
+        'myapp': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+        },
+    },
+}
+
+# Использование логгера в коде приложения
+import logging
+logger = logging.getLogger('myapp')
+logger.debug('Отладочное сообщение')
+logger.info('Пользователь вошёл в систему')
+logger.warning('Необычная активность')
+logger.error('Ошибка обработки запроса', exc_info=True)`,
+  },
+  {
+    name: "SecurityMiddleware",
+    category: "Middleware",
+    description: `Middleware безопасности Django. Применяет набор HTTP-заголовков и перенаправлений для защиты приложения от распространённых веб-угроз. Должен стоять первым в списке MIDDLEWARE для максимальной защиты.
+
+Функциональность SecurityMiddleware управляется настройками в settings.py:
+- SECURE_HSTS_SECONDS — включает заголовок HSTS (HTTP Strict Transport Security)
+- SECURE_SSL_REDIRECT — перенаправляет все HTTP-запросы на HTTPS
+- SECURE_CONTENT_TYPE_NOSNIFF — добавляет X-Content-Type-Options: nosniff
+- SECURE_REFERRER_POLICY — задаёт политику Referrer-Policy
+- SECURE_CROSS_ORIGIN_OPENER_POLICY — задаёт Cross-Origin-Opener-Policy
+- SESSION_COOKIE_SECURE и CSRF_COOKIE_SECURE — флаги Secure для куков`,
+    syntax: `MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    ...
+]`,
+    arguments: [],
+    example: `# settings.py
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',  # первым!
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    # ...
+]
+
+# Настройки безопасности для production
+SECURE_SSL_REDIRECT = True           # редирект HTTP → HTTPS
+SECURE_HSTS_SECONDS = 31536000       # HSTS на 1 год
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+SECURE_CONTENT_TYPE_NOSNIFF = True   # X-Content-Type-Options: nosniff
+SECURE_REFERRER_POLICY = 'same-origin'
+SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
+SESSION_COOKIE_SECURE = True         # Secure-флаг для куки сессии
+CSRF_COOKIE_SECURE = True            # Secure-флаг для CSRF-куки
+
+# Настройки для разработки
+SECURE_SSL_REDIRECT = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False`,
+  },
+  {
+    name: "SecurityMiddleware.process_request()",
+    category: "Middleware",
+    description: `Метод, вызываемый Django при получении каждого HTTP-запроса до передачи его в view. В SecurityMiddleware отвечает за проверку протокола и выполнение перенаправления с HTTP на HTTPS.
+
+Если SECURE_SSL_REDIRECT=True и запрос пришёл по незащищённому HTTP (определяется по request.is_secure()), метод возвращает HttpResponsePermanentRedirect (301) на HTTPS-версию того же URL.
+
+Исключения из редиректа задаются через SECURE_REDIRECT_EXEMPT — список регулярных выражений для URL, которые не нужно перенаправлять (например, эндпоинты health check за балансировщиком нагрузки).
+
+Если перенаправление не требуется — возвращает None, и обработка запроса продолжается.`,
+    syntax: "SecurityMiddleware.process_request(request)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект HttpRequest текущего запроса. Метод проверяет request.is_secure() и request.path для принятия решения о редиректе.",
+      },
+    ],
+    example: `# settings.py
+SECURE_SSL_REDIRECT = True
+SECURE_REDIRECT_EXEMPT = [
+    r'^healthz/$',      # health check не перенаправляем
+    r'^internal/.*$',   # внутренние эндпоинты
+]
+
+# Поведение process_request():
+# GET http://example.com/page/ → 301 https://example.com/page/
+# GET https://example.com/page/ → None (продолжаем обработку)
+# GET http://example.com/healthz/ → None (в списке исключений)
+
+# Пример кастомного middleware с аналогичной логикой
+from django.http import HttpResponsePermanentRedirect
+
+class ForceHttpsMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if not request.is_secure() and not settings.DEBUG:
+            url = request.build_absolute_uri(request.get_full_path())
+            secure_url = url.replace('http://', 'https://', 1)
+            return HttpResponsePermanentRedirect(secure_url)
+        return self.get_response(request)`,
+  },
+  {
+    name: "SecurityMiddleware.process_response()",
+    category: "Middleware",
+    description: `Метод, вызываемый Django после формирования HTTP-ответа view. В SecurityMiddleware добавляет заголовки безопасности к каждому ответу на основе настроек в settings.py.
+
+Добавляемые заголовки (при соответствующих настройках):
+- Strict-Transport-Security — при SECURE_HSTS_SECONDS > 0
+- X-Content-Type-Options: nosniff — при SECURE_CONTENT_TYPE_NOSNIFF=True
+- Referrer-Policy — при заданном SECURE_REFERRER_POLICY
+- Cross-Origin-Opener-Policy — при заданном SECURE_CROSS_ORIGIN_OPENER_POLICY
+- Cross-Origin-Embedder-Policy — при заданном SECURE_CROSS_ORIGIN_EMBEDDER_POLICY
+
+Всегда возвращает объект response (изменённый или исходный).`,
+    syntax: "SecurityMiddleware.process_response(request, response)",
+    arguments: [
+      { name: "request", description: "Объект HttpRequest текущего запроса." },
+      {
+        name: "response",
+        description:
+          "Объект HttpResponse, сформированный view. Метод добавляет к нему заголовки безопасности.",
+      },
+    ],
+    example: `# Заголовки, которые добавляет process_response() при настройках:
+
+# SECURE_HSTS_SECONDS = 31536000
+# → Strict-Transport-Security: max-age=31536000
+
+# SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+# → Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# SECURE_HSTS_PRELOAD = True
+# → Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+# SECURE_CONTENT_TYPE_NOSNIFF = True
+# → X-Content-Type-Options: nosniff
+
+# SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+# → Referrer-Policy: strict-origin-when-cross-origin
+
+# SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin'
+# → Cross-Origin-Opener-Policy: same-origin
+
+# Проверка заголовков в тестах
+from django.test import TestCase, Client
+
+class SecurityHeadersTest(TestCase):
+    def test_security_headers(self):
+        response = self.client.get('/')
+        self.assertEqual(
+            response['X-Content-Type-Options'], 'nosniff'
+        )`,
+  },
+  {
+    name: "SessionMiddleware",
+    category: "Middleware",
+    description: `Middleware для работы с сессиями Django. Обеспечивает поддержку механизма сессий: загружает данные сессии из хранилища при запросе и сохраняет их обратно при ответе.
+
+Хранилище сессий задаётся настройкой SESSION_ENGINE (по умолчанию django.contrib.sessions.backends.db — в базе данных). Доступные бекенды:
+- db — в базе данных (по умолчанию)
+- cache — в кеше (быстрее, но без гарантий сохранности)
+- cached_db — в кеше с резервным хранением в БД
+- file — в файлах на сервере
+- signed_cookies — в подписанных куках клиента
+
+После добавления SessionMiddleware объект request получает атрибут session — словареподобный объект для хранения данных сессии.`,
+    syntax: `MIDDLEWARE = [
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    ...
+]`,
+    arguments: [],
+    example: `# settings.py
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    # ...
+]
+
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_COOKIE_AGE = 1209600        # 2 недели в секундах
+SESSION_COOKIE_NAME = 'sessionid'
+SESSION_COOKIE_SECURE = True        # только HTTPS
+SESSION_COOKIE_HTTPONLY = True      # недоступна через JS
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_SAVE_EVERY_REQUEST = False
+
+# Использование сессии в view
+def my_view(request):
+    visits = request.session.get('visits', 0)       # чтение
+    request.session['visits'] = visits + 1          # запись
+    request.session.modified = True                 # пометить как изменённую
+    request.session.flush()                         # очистить и сбросить`,
+  },
+  {
+    name: "SessionMiddleware.process_request()",
+    category: "Middleware",
+    description: `Метод, вызываемый при получении каждого запроса. Привязывает объект сессии к запросу, делая его доступным через request.session.
+
+Метод не загружает данные сессии немедленно — используется ленивая загрузка. Данные извлекаются из хранилища только при первом обращении к request.session. Это позволяет избежать лишних запросов к БД/кешу для view, не работающих с сессиями.
+
+Идентификатор сессии берётся из куки SESSION_COOKIE_NAME (по умолчанию 'sessionid').`,
+    syntax: "SessionMiddleware.process_request(request)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект HttpRequest. Метод добавляет к нему атрибут session — объект сессии для текущего пользователя.",
+      },
+    ],
+    example: `def cart_view(request):
+    # request.session доступен благодаря SessionMiddleware
+    cart = request.session.get('cart', {})
+    return JsonResponse(cart)
+
+def add_to_cart(request, product_id):
+    cart = request.session.setdefault('cart', {})
+    cart[str(product_id)] = cart.get(str(product_id), 0) + 1
+    request.session.modified = True
+    return JsonResponse({'status': 'ok'})
+
+def profile_view(request):
+    if 'user_preferences' not in request.session:
+        request.session['user_preferences'] = {'theme': 'light'}
+    return render(request, 'profile.html')`,
+  },
+  {
+    name: "SessionMiddleware.process_response()",
+    category: "Middleware",
+    description: `Метод, вызываемый после формирования ответа view. Сохраняет данные сессии в хранилище и устанавливает или обновляет сессионную куку в ответе.
+
+Сессия сохраняется если:
+- Данные сессии были изменены (session.modified = True)
+- SESSION_SAVE_EVERY_REQUEST = True
+
+Если вызывался session.flush() или session.delete() — куки удаляется из браузера. Метод также отвечает за установку атрибутов куки: expires, max_age, domain, path, secure, httponly, samesite.`,
+    syntax: "SessionMiddleware.process_response(request, response)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект HttpRequest с атрибутом session, содержащим данные сессии.",
+      },
+      {
+        name: "response",
+        description:
+          "Объект HttpResponse. Метод добавляет к нему Set-Cookie заголовок с сессионной кукой.",
+      },
+    ],
+    example: `def login_view(request):
+    if authenticate(request):
+        request.session['user_id'] = user.pk
+        request.session['is_authenticated'] = True
+        # process_response() сохранит сессию в БД
+        # и установит Set-Cookie: sessionid=xxx
+        return redirect('/')
+
+def logout_view(request):
+    request.session.flush()
+    # process_response() удалит сессионную куку из браузера
+    return redirect('/login/')
+
+def ping_view(request):
+    request.session.modified = True  # принудительно обновить expiry
+    return HttpResponse('pong')
+
+# SESSION_SAVE_EVERY_REQUEST = True — process_response() всегда
+# сохраняет сессию, обновляя время её истечения`,
+  },
+  {
+    name: "CommonMiddleware",
+    category: "Middleware",
+    description: `Middleware с набором общих утилит для HTTP-запросов. Выполняет нормализацию URL, перенаправления и проверки, полезные для большинства Django-приложений.
+
+Основные функции CommonMiddleware:
+- Нормализация URL с добавлением слеша в конце (APPEND_SLASH=True) — перенаправляет /page → /page/
+- Перенаправление с www → без www или наоборот (PREPEND_WWW=True)
+- Запрет запросов с User-Agent из DISALLOWED_USER_AGENTS
+- Установка заголовка Content-Length для ответов без потоковой передачи`,
+    syntax: `MIDDLEWARE = [
+    ...
+    'django.middleware.common.CommonMiddleware',
+    ...
+]`,
+    arguments: [],
+    example: `# settings.py
+APPEND_SLASH = True   # редирект /page → /page/ (по умолчанию True)
+PREPEND_WWW = False   # редирект example.com → www.example.com
+
+import re
+DISALLOWED_USER_AGENTS = [
+    re.compile(r'BadBot'),
+    re.compile(r'Scraper/\\d+'),
+]
+
+# Поведение APPEND_SLASH:
+# GET /about → 301 /about/  (если /about/ есть в urlpatterns)
+
+# Поведение PREPEND_WWW (при PREPEND_WWW=True):
+# GET http://example.com/ → 301 http://www.example.com/
+
+# Отключение APPEND_SLASH для конкретного view
+from django.views.decorators.common import no_append_slash
+
+@no_append_slash
+def api_view(request):
+    return JsonResponse({'status': 'ok'})`,
+  },
+  {
+    name: "CommonMiddleware.process_request()",
+    category: "Middleware",
+    description: `Метод, вызываемый при получении каждого запроса. Выполняет проверку User-Agent и перенаправление с добавлением www-префикса.
+
+Последовательность проверок:
+1. Если User-Agent совпадает с паттерном из DISALLOWED_USER_AGENTS — возвращает 403 Forbidden
+2. Если PREPEND_WWW=True и хост не начинается с www. — возвращает 301 редирект на www-версию
+
+Если ни одно условие не выполнено — возвращает None и обработка продолжается.`,
+    syntax: "CommonMiddleware.process_request(request)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект HttpRequest. Метод анализирует HTTP_USER_AGENT и get_host() для принятия решений.",
+      },
+    ],
+    example: `import re
+
+# При DISALLOWED_USER_AGENTS:
+# User-Agent: BadBot/1.0 → 403 Forbidden
+
+# При PREPEND_WWW = True:
+# GET http://example.com/page/ → 301 http://www.example.com/page/
+# GET http://www.example.com/page/ → None (продолжаем)
+
+# Пример кастомного middleware с похожей логикой
+class UserAgentMiddleware:
+    BLOCKED = [re.compile(r'BadBot'), re.compile(r'Crawler')]
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        ua = request.META.get('HTTP_USER_AGENT', '')
+        if any(p.search(ua) for p in self.BLOCKED):
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden('Access denied')
+        return self.get_response(request)`,
+  },
+  {
+    name: "CommonMiddleware.process_response()",
+    category: "Middleware",
+    description: `Метод, вызываемый после формирования ответа. Выполняет нормализацию URL (добавление слеша) и установку заголовка Content-Length.
+
+При APPEND_SLASH=True и получении 404 проверяет, существует ли URL со слешем в urlpatterns — если да, возвращает 301 редирект. Это позволяет избежать ошибки 404 при обращении к /page вместо /page/.
+
+Также устанавливает заголовок Content-Length для не-потоковых ответов, если он ещё не установлен — это улучшает поддержку keep-alive соединений.`,
+    syntax: "CommonMiddleware.process_response(request, response)",
+    arguments: [
+      { name: "request", description: "Объект HttpRequest текущего запроса." },
+      {
+        name: "response",
+        description:
+          "Объект HttpResponse. При необходимости заменяется редиректом или дополняется заголовком Content-Length.",
+      },
+    ],
+    example: `# urls.py
+urlpatterns = [
+    path('about/', views.about),  # URL со слешем
+]
+
+# С APPEND_SLASH = True:
+# GET /about  → view вернул 404 → process_response() → 301 /about/
+# GET /about/ → 200 OK
+
+# С APPEND_SLASH = False:
+# GET /about  → 404 Not Found
+
+# Установка Content-Length:
+# HTTP/1.1 200 OK
+# Content-Type: text/html; charset=utf-8
+# Content-Length: 4821   ← добавлено CommonMiddleware`,
+  },
+  {
+    name: "CsrfViewMiddleware",
+    category: "Middleware",
+    description: `Middleware защиты от CSRF-атак (Cross-Site Request Forgery). Проверяет наличие и корректность CSRF-токена в POST, PUT, PATCH и DELETE запросах.
+
+Принцип работы:
+1. При GET-запросе устанавливается CSRF-куки (csrftoken) с уникальным токеном
+2. При небезопасных запросах (POST и др.) проверяется совпадение токена из куки с токеном из заголовка X-CSRFToken или поля csrfmiddlewaretoken
+
+Если токен отсутствует или не совпадает — возвращается 403 Forbidden.
+
+View исключается из проверки декоратором @csrf_exempt. Для AJAX нужно передавать токен в заголовке X-CSRFToken.`,
+    syntax: `MIDDLEWARE = [
+    ...
+    'django.middleware.csrf.CsrfViewMiddleware',
+    ...
+]`,
+    arguments: [],
+    example: `# В HTML-шаблоне — добавить CSRF-токен в форму
+# <form method="post">
+#     {% csrf_token %}
+#     ...
+# </form>
+
+# В AJAX-запросах (JavaScript)
+# fetch('/api/data/', {
+#     method: 'POST',
+#     headers: { 'X-CSRFToken': getCookie('csrftoken') },
+#     body: JSON.stringify(data),
+# })
+
+# Исключение view из CSRF-проверки
+from django.views.decorators.csrf import csrf_exempt
+
+@csrf_exempt
+def webhook(request):
+    # Этот view не проверяет CSRF (для внешних вебхуков)
+    return HttpResponse('ok')
+
+# Принудительная установка CSRF-куки для SPA
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+@ensure_csrf_cookie
+def index(request):
+    return render(request, 'index.html')`,
+  },
+  {
+    name: "CsrfViewMiddleware.process_view()",
+    category: "Middleware",
+    description: `Метод, вызываемый перед выполнением view (после маршрутизации). Выполняет основную проверку CSRF-токена для небезопасных HTTP-методов.
+
+Последовательность проверок:
+1. Если view помечен @csrf_exempt — пропускает проверку (возвращает None)
+2. Для безопасных методов (GET, HEAD, OPTIONS, TRACE) — пропускает проверку
+3. Для HTTPS-запросов — проверяет заголовок Referer (должен совпадать с хостом)
+4. Извлекает CSRF-токен из куки csrftoken
+5. Сравнивает с токеном из POST-поля csrfmiddlewaretoken или заголовка X-CSRFToken
+6. При несовпадении — возвращает 403 Forbidden`,
+    syntax:
+      "CsrfViewMiddleware.process_view(request, callback, callback_args, callback_kwargs)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект HttpRequest. Метод читает CSRF-токен из куки и сравнивает с токеном из POST или заголовка.",
+      },
+      {
+        name: "callback",
+        description:
+          "Функция view, которая будет вызвана. Метод проверяет наличие атрибута csrf_exempt на функции.",
+      },
+      { name: "callback_args", description: "Позиционные аргументы для view." },
+      {
+        name: "callback_kwargs",
+        description: "Именованные аргументы для view.",
+      },
+    ],
+    example: `from django.views.decorators.csrf import csrf_exempt, csrf_protect, requires_csrf_token
+
+# @csrf_exempt — process_view() пропустит проверку
+@csrf_exempt
+def public_api(request):
+    return JsonResponse({'status': 'ok'})
+
+# @csrf_protect — принудительно включает проверку даже без middleware
+@csrf_protect
+def secure_view(request):
+    return render(request, 'form.html')
+
+# @requires_csrf_token — рендерит токен, но не проверяет
+@requires_csrf_token
+def my_view(request):
+    return render(request, 'template.html')
+
+# Тест с принудительной CSRF-проверкой
+from django.test import Client
+
+client = Client(enforce_csrf_checks=True)
+response = client.post('/form/', {'name': 'test'})
+self.assertEqual(response.status_code, 403)  # нет токена → 403`,
+  },
+  {
+    name: "CsrfViewMiddleware.process_response()",
+    category: "Middleware",
+    description: `Метод, вызываемый после формирования ответа. Устанавливает CSRF-куку (csrftoken) в ответ, если она ещё не установлена или требует обновления.
+
+CSRF-куки устанавливается при каждом запросе, где был использован токен (через тег шаблона csrf_token или декоратор ensure_csrf_cookie). Настройки куки:
+- CSRF_COOKIE_NAME — имя (по умолчанию 'csrftoken')
+- CSRF_COOKIE_AGE — срок жизни (по умолчанию ~1 год)
+- CSRF_COOKIE_SECURE — только HTTPS
+- CSRF_COOKIE_HTTPONLY — обычно False, чтобы JS мог читать токен
+- CSRF_COOKIE_SAMESITE — политика SameSite`,
+    syntax: "CsrfViewMiddleware.process_response(request, response)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект HttpRequest. Метод проверяет, нужно ли обновить CSRF-куку.",
+      },
+      {
+        name: "response",
+        description:
+          "Объект HttpResponse. Метод устанавливает Set-Cookie заголовок с CSRF-токеном.",
+      },
+    ],
+    example: `# settings.py
+CSRF_COOKIE_NAME = 'csrftoken'
+CSRF_COOKIE_AGE = 31449600          # ~1 год
+CSRF_COOKIE_SECURE = True           # только HTTPS
+CSRF_COOKIE_HTTPONLY = False        # JS должен читать токен
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_TRUSTED_ORIGINS = [
+    'https://example.com',
+    'https://api.example.com',
+]
+
+# Чтение токена в JavaScript
+# function getCsrfToken() {
+#     return document.cookie.split(';')
+#         .find(c => c.trim().startsWith('csrftoken='))
+#         ?.split('=')[1];
+# }
+
+# fetch('/api/submit/', {
+#     method: 'POST',
+#     headers: {
+#         'Content-Type': 'application/json',
+#         'X-CSRFToken': getCsrfToken(),
+#     },
+#     body: JSON.stringify({ data: 'value' }),
+# });`,
+  },
+  {
+    name: "AuthenticationMiddleware",
+    category: "Middleware",
+    description: `Middleware аутентификации Django. Привязывает к каждому запросу объект текущего пользователя, делая его доступным через request.user.
+
+Использует ленивую загрузку: объект пользователя не извлекается из базы данных немедленно, а только при первом обращении к request.user. Это исключает лишние SQL-запросы для view, не работающих с пользователем.
+
+Требует наличия SessionMiddleware перед собой в MIDDLEWARE, так как идентификатор пользователя хранится в сессии (_auth_user_id).
+
+request.user всегда присутствует:
+- Для аутентифицированных пользователей — экземпляр модели User
+- Для анонимных — экземпляр AnonymousUser`,
+    syntax: `MIDDLEWARE = [
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    ...
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    ...
+]`,
+    arguments: [],
+    example: `# settings.py
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+]
+
+# Использование request.user в view
+def profile_view(request):
+    if request.user.is_authenticated:
+        print(f'Пользователь: {request.user.username}')
+        print(f'Email: {request.user.email}')
+        print(f'Суперпользователь: {request.user.is_superuser}')
+    else:
+        print(request.user.is_anonymous)  # True
+
+# Защита view — только для авторизованных
+from django.contrib.auth.decorators import login_required
+
+@login_required
+def dashboard(request):
+    return render(request, 'dashboard.html', {'user': request.user})
+
+# В шаблоне Django:
+# {% if user.is_authenticated %}
+#     Привет, {{ user.username }}!
+# {% else %}
+#     <a href="/login/">Войти</a>
+# {% endif %}`,
+  },
+  {
+    name: "AuthenticationMiddleware.process_request()",
+    category: "Middleware",
+    description: `Метод, вызываемый при получении каждого запроса. Привязывает к объекту запроса атрибут user — текущего пользователя, определённого по данным сессии.
+
+Метод устанавливает request.user как ленивый объект (SimpleLazyObject): реальный запрос к базе данных выполняется только при первом обращении к request.user. Если пользователь не аутентифицирован (нет данных сессии или данные устарели) — request.user будет экземпляром AnonymousUser.
+
+Идентификатор пользователя извлекается из сессии по ключу _auth_user_id, бекенд аутентификации — по ключу _auth_user_backend. Для корректной работы требуется SessionMiddleware перед AuthenticationMiddleware в списке MIDDLEWARE.`,
+    syntax: "AuthenticationMiddleware.process_request(request)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект HttpRequest. Метод устанавливает атрибут request.user как ленивый объект пользователя.",
+      },
+    ],
+    example: `# После AuthenticationMiddleware.process_request() доступно:
+def my_view(request):
+    # Ленивая загрузка — SQL-запрос выполняется здесь
+    user = request.user
+
+    # Проверка аутентификации
+    if request.user.is_authenticated:
+        # Аутентифицированный пользователь (экземпляр User)
+        username = request.user.username
+        email = request.user.email
+        groups = request.user.groups.all()
+    else:
+        # Анонимный пользователь (AnonymousUser)
+        # AnonymousUser.is_authenticated == False
+        # AnonymousUser.is_anonymous == True
+        pass
+
+# Декораторы, использующие request.user
+from django.contrib.auth.decorators import login_required, permission_required
+
+@login_required(login_url='/login/')
+def protected_view(request):
+    return render(request, 'dashboard.html')
+
+@permission_required('myapp.can_edit')
+def editor_view(request):
+    return render(request, 'editor.html')
+
+# Порядок MIDDLEWARE (обязателен):
+MIDDLEWARE = [
+    'django.contrib.sessions.middleware.SessionMiddleware',  # раньше!
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+]`,
+  },
+  {
+    name: "MessageMiddleware",
+    category: "Middleware",
+    description: `Middleware системы сообщений Django (django.contrib.messages). Обеспечивает поддержку одноразовых уведомлений для пользователей — сообщений, которые показываются один раз и исчезают после отображения.
+
+Сообщения хранятся в хранилище, определяемом MESSAGE_STORAGE (по умолчанию FallbackStorage — сначала куки, затем сессии). После прочтения сообщения удаляются из хранилища.
+
+Уровни сообщений (аналог уровней логирования):
+- messages.DEBUG — отладочные
+- messages.INFO — информационные
+- messages.SUCCESS — успешные операции
+- messages.WARNING — предупреждения
+- messages.ERROR — ошибки
+
+Для работы требует SessionMiddleware или другого бекенда хранилища.`,
+    syntax: `MIDDLEWARE = [
+    ...
+    'django.contrib.messages.middleware.MessageMiddleware',
+    ...
+]`,
+    arguments: [],
+    example: `# settings.py
+MIDDLEWARE = [
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+]
+
+INSTALLED_APPS = [
+    'django.contrib.messages',
+    # ...
+]
+
+MESSAGE_STORAGE = 'django.contrib.messages.storage.fallback.FallbackStorage'
+
+# Использование в view
+from django.contrib import messages
+
+def create_post(request):
+    if form.is_valid():
+        form.save()
+        messages.success(request, 'Публикация создана успешно!')
+        return redirect('post-list')
+    messages.error(request, 'Исправьте ошибки в форме.')
+    return render(request, 'create.html', {'form': form})
+
+# В шаблоне:
+# {% for message in messages %}
+#     <div class="alert alert-{{ message.tags }}">
+#         {{ message }}
+#     </div>
+# {% endfor %}`,
+  },
+  {
+    name: "MessageMiddleware.process_request()",
+    category: "Middleware",
+    description: `Метод, вызываемый при получении каждого запроса. Инициализирует хранилище сообщений и привязывает его к запросу через атрибут _messages.
+
+Метод не читает сообщения сразу — хранилище инициализируется лениво при первом обращении к messages. Это позволяет избежать лишних операций для запросов, которые не используют систему сообщений.
+
+После process_request() в шаблонах и view становятся доступны функции django.contrib.messages (add_message, success, error, warning, info, debug).`,
+    syntax: "MessageMiddleware.process_request(request)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект HttpRequest. Метод устанавливает атрибут request._messages — хранилище сообщений для данного запроса.",
+      },
+    ],
+    example: `from django.contrib import messages
+
+def order_view(request):
+    # request._messages инициализирован process_request()
+    # Добавление сообщений разных уровней:
+    messages.debug(request, 'Отладочная информация о заказе')
+    messages.info(request, 'Заказ №1234 принят в обработку')
+    messages.success(request, 'Оплата прошла успешно!')
+    messages.warning(request, 'Товар заканчивается на складе')
+    messages.error(request, 'Ошибка при обработке платежа')
+
+    # Добавление с дополнительными CSS-классами
+    messages.success(request, 'Готово!', extra_tags='toast fade-in')
+
+    return redirect('order-detail', pk=order.pk)
+
+# Получение сообщений без удаления (peek)
+storage = messages.get_messages(request)
+storage.used = False  # не помечать как прочитанные`,
+  },
+  {
+    name: "MessageMiddleware.process_response()",
+    category: "Middleware",
+    description: `Метод, вызываемый после формирования ответа. Сохраняет накопленные за время обработки запроса сообщения в хранилище (куки или сессия) и обновляет ответ.
+
+Если сообщения были добавлены и не прочитаны — они сохраняются в хранилище для отображения при следующем запросе (обычно после redirect). Если сообщения уже прочитаны (например, в шаблоне через тег messages) — хранилище очищается.
+
+При хранении в куках метод устанавливает Set-Cookie с закодированными сообщениями. При переполнении куки (MESSAGE_COOKIE_MAX_AGE) происходит автоматический переход к сессионному хранилищу (FallbackStorage).`,
+    syntax: "MessageMiddleware.process_response(request, response)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект HttpRequest с накопленными сообщениями в request._messages.",
+      },
+      {
+        name: "response",
+        description:
+          "Объект HttpResponse. При хранении в куках метод добавляет Set-Cookie заголовок с сообщениями.",
+      },
+    ],
+    example: `# Типичный сценарий: сообщение → редирект → отображение
+
+# 1. View добавляет сообщение и делает редирект
+def delete_post(request, pk):
+    post = get_object_or_404(Post, pk=pk)
+    post.delete()
+    messages.success(request, f'Публикация "{post.title}" удалена.')
+    return redirect('post-list')  # ← process_response() сохраняет сообщение
+
+# 2. После редиректа новый запрос — сообщение читается в шаблоне
+# и process_response() очищает хранилище
+
+# Настройки хранилища сообщений
+MESSAGE_STORAGE = 'django.contrib.messages.storage.cookie.CookieStorage'
+# или
+MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
+# или (по умолчанию — куки с fallback на сессию)
+MESSAGE_STORAGE = 'django.contrib.messages.storage.fallback.FallbackStorage'
+
+# Фильтрация уровней сообщений
+import logging
+MESSAGE_LEVEL = logging.INFO  # игнорировать DEBUG-сообщения`,
+  },
+  {
+    name: "XFrameOptionsMiddleware",
+    category: "Middleware",
+    description: `Middleware защиты от кликджекинга (clickjacking). Добавляет заголовок X-Frame-Options к каждому ответу, запрещая или ограничивая встраивание страниц сайта в <iframe> на других доменах.
+
+Значение заголовка определяется настройкой X_FRAME_OPTIONS в settings.py:
+- 'DENY' — запрещает встраивание в iframe на любом сайте (включая собственный)
+- 'SAMEORIGIN' — разрешает встраивание только с того же домена (по умолчанию)
+
+Для исключения конкретных view из защиты используются декораторы:
+- @xframe_options_exempt — полностью отключает заголовок
+- @xframe_options_deny — принудительно DENY для view
+- @xframe_options_sameorigin — принудительно SAMEORIGIN для view`,
+    syntax: `MIDDLEWARE = [
+    ...
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    ...
+]`,
+    arguments: [],
+    example: `# settings.py
+X_FRAME_OPTIONS = 'SAMEORIGIN'  # по умолчанию
+# или
+X_FRAME_OPTIONS = 'DENY'        # строже
+
+# Для конкретных view — переопределение через декораторы
+from django.views.decorators.clickjacking import (
+    xframe_options_exempt,
+    xframe_options_deny,
+    xframe_options_sameorigin,
+)
+
+# Разрешить встраивание (например, для виджетов, встраиваемых на другие сайты)
+@xframe_options_exempt
+def embeddable_widget(request):
+    return render(request, 'widget.html')
+
+# Принудительно запретить встраивание для конкретного view
+@xframe_options_deny
+def sensitive_page(request):
+    return render(request, 'bank_transfer.html')
+
+# Результат в HTTP-ответе:
+# X-Frame-Options: SAMEORIGIN
+# или
+# X-Frame-Options: DENY`,
+  },
+  {
+    name: "XFrameOptionsMiddleware.process_response()",
+    category: "Middleware",
+    description: `Метод, вызываемый после формирования ответа. Добавляет заголовок X-Frame-Options к ответу, если он ещё не установлен.
+
+Метод не перезаписывает заголовок, если он уже присутствует в ответе — это позволяет view или другому middleware самостоятельно управлять значением. Также пропускает добавление заголовка, если на view установлен атрибут xframe_options_exempt=True (через декоратор @xframe_options_exempt).
+
+Для streaming-ответов (StreamingHttpResponse) заголовок также добавляется.`,
+    syntax: "XFrameOptionsMiddleware.process_response(request, response)",
+    arguments: [
+      { name: "request", description: "Объект HttpRequest текущего запроса." },
+      {
+        name: "response",
+        description:
+          "Объект HttpResponse. Метод добавляет заголовок X-Frame-Options, если он отсутствует и view не помечен как exempt.",
+      },
+    ],
+    example: `# X-Frame-Options добавляется автоматически ко всем ответам
+
+# Проверка заголовка в тестах
+from django.test import TestCase
+
+class XFrameOptionsTest(TestCase):
+    def test_default_header(self):
+        response = self.client.get('/')
+        self.assertEqual(response['X-Frame-Options'], 'SAMEORIGIN')
+
+    def test_exempt_view(self):
+        response = self.client.get('/widget/')
+        # @xframe_options_exempt — заголовок отсутствует
+        self.assertNotIn('X-Frame-Options', response)
+
+# Ручная установка заголовка в view (process_response не перезапишет)
+def custom_frame_view(request):
+    response = render(request, 'page.html')
+    response['X-Frame-Options'] = 'ALLOW-FROM https://partner.com'
+    return response
+
+# Content Security Policy как современная альтернатива:
+# Content-Security-Policy: frame-ancestors 'self' https://partner.com`,
+  },
+  {
+    name: "GZipMiddleware",
+    category: "Middleware",
+    description: `Middleware сжатия HTTP-ответов с помощью алгоритма gzip. Уменьшает размер передаваемых данных, что ускоряет загрузку страниц при медленном соединении.
+
+GZipMiddleware применяет сжатие если:
+- Браузер поддерживает gzip (заголовок Accept-Encoding: gzip)
+- Размер ответа больше 200 байт (мелкие ответы не стоит сжимать)
+- Ответ не является потоковым (StreamingHttpResponse сжимается отдельно)
+- Ответ ещё не сжат (нет заголовка Content-Encoding)
+
+При сжатии устанавливаются заголовки Content-Encoding: gzip и Vary: Accept-Encoding, а Content-Length обновляется.
+
+Рекомендуется размещать GZipMiddleware как можно раньше в списке MIDDLEWARE, но после SecurityMiddleware.`,
+    syntax: `MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.middleware.gzip.GZipMiddleware',  # рано в списке
+    ...
+]`,
+    arguments: [],
+    example: `# settings.py
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.middleware.gzip.GZipMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    # ...
+]
+
+# GZipMiddleware работает автоматически:
+# Запрос с заголовком: Accept-Encoding: gzip, deflate, br
+# Ответ с заголовками:
+# Content-Encoding: gzip
+# Vary: Accept-Encoding
+# Content-Length: 1842  (было 8500 — сжатие ~78%)
+
+# Проверка сжатия в тестах
+from django.test import TestCase
+
+class GZipTest(TestCase):
+    def test_gzip_response(self):
+        response = self.client.get(
+            '/large-page/',
+            HTTP_ACCEPT_ENCODING='gzip'
+        )
+        self.assertEqual(response.get('Content-Encoding'), 'gzip')
+
+# Для production лучше использовать сжатие на уровне nginx/CDN:
+# gzip on;
+# gzip_types text/plain text/css application/json application/javascript;
+# gzip_min_length 256;`,
+  },
+  {
+    name: "GZipMiddleware.process_response()",
+    category: "Middleware",
+    description: `Метод, вызываемый после формирования ответа. Проверяет условия применимости сжатия и при соответствии сжимает тело ответа с помощью gzip.
+
+Сжатие не применяется если:
+- В запросе нет заголовка Accept-Encoding: gzip
+- Ответ уже содержит Content-Encoding (уже сжат)
+- Размер тела ответа меньше 200 байт
+- Тип содержимого не подходит для сжатия (например, уже сжатые форматы: jpeg, png, zip)
+
+После сжатия обновляет Content-Length и добавляет заголовки Content-Encoding: gzip и Vary: Accept-Encoding.`,
+    syntax: "GZipMiddleware.process_response(request, response)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект HttpRequest. Метод проверяет заголовок Accept-Encoding для определения поддержки gzip.",
+      },
+      {
+        name: "response",
+        description:
+          "Объект HttpResponse. При наличии условий метод сжимает response.content и обновляет заголовки.",
+      },
+    ],
+    example: `import gzip
+from django.http import HttpResponse
+
+# process_response() автоматически сжимает подходящие ответы
+
+# Условия, при которых сжатие НЕ применяется:
+# 1. Accept-Encoding не содержит 'gzip'
+# 2. response['Content-Encoding'] уже установлен
+# 3. len(response.content) < 200
+# 4. Content-Type: image/jpeg (уже сжатый формат)
+
+# Эквивалент ручного сжатия (для понимания внутренней логики):
+def manual_gzip_view(request):
+    content = 'x' * 10000  # большой контент
+    if 'gzip' in request.META.get('HTTP_ACCEPT_ENCODING', ''):
+        compressed = gzip.compress(content.encode())
+        response = HttpResponse(compressed)
+        response['Content-Encoding'] = 'gzip'
+        response['Content-Length'] = len(compressed)
+        response['Vary'] = 'Accept-Encoding'
+    else:
+        response = HttpResponse(content)
+    return response
+
+# На практике GZipMiddleware делает это автоматически`,
+  },
+  {
+    name: "ConditionalGetMiddleware",
+    category: "Middleware",
+    description: `Middleware условных GET-запросов. Обрабатывает заголовки кэширования HTTP и возвращает ответ 304 Not Modified, если ресурс не изменился — это экономит трафик и ускоряет загрузку.
+
+ConditionalGetMiddleware обрабатывает два механизма условной загрузки:
+1. ETag / If-None-Match — хэш содержимого ответа; если совпадает с заголовком If-None-Match → 304
+2. Last-Modified / If-Modified-Since — дата последнего изменения; если не изменилось с указанной даты → 304
+
+Также устанавливает заголовок Date в ответ, если он ещё не задан.
+
+Для работы с ETag view должны устанавливать заголовок ETag, или можно использовать декораторы @etag и @last_modified.`,
+    syntax: `MIDDLEWARE = [
+    ...
+    'django.middleware.http.ConditionalGetMiddleware',
+    ...
+]`,
+    arguments: [],
+    example: `# settings.py
+MIDDLEWARE = [
+    # ...
+    'django.middleware.http.ConditionalGetMiddleware',
+]
+
+# Использование декораторов кэширования
+from django.views.decorators.http import etag, last_modified
+from datetime import datetime
+
+def get_etag(request, pk):
+    article = Article.objects.get(pk=pk)
+    return str(article.updated_at.timestamp())
+
+def get_last_modified(request, pk):
+    article = Article.objects.get(pk=pk)
+    return article.updated_at
+
+@etag(get_etag)
+@last_modified(get_last_modified)
+def article_detail(request, pk):
+    article = Article.objects.get(pk=pk)
+    return render(request, 'article.html', {'article': article})
+
+# Сценарий: браузер кэшировал страницу
+# Запрос: GET /article/42/ If-None-Match: "1705312800.0"
+# ETag совпадает → ConditionalGetMiddleware вернёт 304 (без тела)`,
+  },
+  {
+    name: "ConditionalGetMiddleware.process_response()",
+    category: "Middleware",
+    description: `Метод, вызываемый после формирования ответа. Проверяет заголовки условной загрузки и при необходимости заменяет полный ответ на 304 Not Modified.
+
+Последовательность работы:
+1. Устанавливает заголовок Date, если отсутствует
+2. Вычисляет и устанавливает ETag на основе содержимого ответа (MD5-хэш)
+3. Сравнивает ETag с If-None-Match из запроса
+4. Сравнивает Last-Modified с If-Modified-Since из запроса
+5. Если ресурс не изменился — возвращает HttpResponseNotModified (304) без тела
+
+Метод работает только для GET и HEAD запросов с кодом ответа 200.`,
+    syntax: "ConditionalGetMiddleware.process_response(request, response)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект HttpRequest. Метод читает заголовки If-None-Match и If-Modified-Since.",
+      },
+      {
+        name: "response",
+        description:
+          "Объект HttpResponse с кодом 200. Может быть заменён на HttpResponseNotModified (304).",
+      },
+    ],
+    example: `from django.test import TestCase
+
+class ConditionalGetTest(TestCase):
+    def test_304_with_etag(self):
+        # Первый запрос — получаем ETag
+        response = self.client.get('/article/1/')
+        self.assertEqual(response.status_code, 200)
+        etag = response['ETag']
+
+        # Второй запрос с If-None-Match → должен вернуть 304
+        response = self.client.get(
+            '/article/1/',
+            HTTP_IF_NONE_MATCH=etag
+        )
+        self.assertEqual(response.status_code, 304)
+        self.assertEqual(len(response.content), 0)  # тело пустое
+
+    def test_304_with_last_modified(self):
+        response = self.client.get('/article/1/')
+        last_modified = response['Last-Modified']
+
+        response = self.client.get(
+            '/article/1/',
+            HTTP_IF_MODIFIED_SINCE=last_modified
+        )
+        self.assertEqual(response.status_code, 304)`,
+  },
+  {
+    name: "LocaleMiddleware",
+    category: "Middleware",
+    description: `Middleware интернационализации Django. Определяет язык текущего пользователя и активирует перевод для обработки запроса. Обеспечивает работу функций перевода ugettext / gettext_lazy и форматирования дат, чисел, валют с учётом локали.
+
+Язык определяется в следующем порядке приоритетов:
+1. Сессия (django_language) — если i18n_patterns в urls.py
+2. Куки (LANGUAGE_COOKIE_NAME, по умолчанию 'django_language')
+3. Заголовок Accept-Language из запроса браузера
+4. LANGUAGE_CODE из settings.py (язык по умолчанию)
+
+Язык активируется на время обработки запроса и деактивируется в process_response(). Требует USE_I18N = True в settings.py.`,
+    syntax: `MIDDLEWARE = [
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.locale.LocaleMiddleware',  # после Sessions, до Common
+    'django.middleware.common.CommonMiddleware',
+    ...
+]`,
+    arguments: [],
+    example: `# settings.py
+USE_I18N = True
+USE_L10N = True
+LANGUAGE_CODE = 'ru'   # язык по умолчанию
+LANGUAGES = [
+    ('ru', 'Русский'),
+    ('en', 'English'),
+    ('de', 'Deutsch'),
+]
+LOCALE_PATHS = [BASE_DIR / 'locale']
+LANGUAGE_COOKIE_NAME = 'django_language'
+
+# urls.py — использование i18n_patterns для URL-префиксов (/ru/, /en/)
+from django.conf.urls.i18n import i18n_patterns
+urlpatterns = i18n_patterns(
+    path('about/', views.about),
+    path('contact/', views.contact),
+)
+
+# Смена языка в view
+from django.utils import translation
+from django.conf import settings
+
+def set_language_view(request):
+    lang = request.POST.get('language', settings.LANGUAGE_CODE)
+    translation.activate(lang)
+    request.session[translation.LANGUAGE_SESSION_KEY] = lang
+    response = redirect('/')
+    response.set_cookie(settings.LANGUAGE_COOKIE_NAME, lang)
+    return response
+
+# В коде — перевод строк
+from django.utils.translation import gettext_lazy as _
+message = _('Добро пожаловать!')`,
+  },
 ];
