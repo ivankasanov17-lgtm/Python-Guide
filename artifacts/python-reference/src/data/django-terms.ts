@@ -24185,4 +24185,5112 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # Автоматический редирект через настройку:
 SECURE_SSL_REDIRECT = True`,
   },
+  // ─── Request and response objects ─────────────────────────────────────────
+
+  {
+    name: "HttpRequest.get_preferred_type(media_types)",
+    category: "Request and response objects",
+    description:
+      "Возвращает наиболее предпочтительный тип контента из переданного списка на основе заголовка Accept запроса. Если ни один из переданных типов не подходит — возвращает None.",
+    syntax: "HttpRequest.get_preferred_type(media_types)",
+    arguments: [
+      {
+        name: "media_types",
+        description:
+          'Список MIME-типов (строк), которые поддерживает ваше представление, например ["application/json", "text/html"].',
+      },
+    ],
+    example: `def my_view(request):
+    preferred = request.get_preferred_type(["application/json", "text/html"])
+    if preferred == "application/json":
+        return JsonResponse({"status": "ok"})
+    return HttpResponse("<p>OK</p>")`,
+  },
+
+  {
+    name: "HttpRequest.accepts(mime_type)",
+    category: "Request and response objects",
+    description:
+      "Возвращает True, если запрос принимает данный MIME-тип, исходя из заголовка Accept. Удобен для определения, ожидает ли клиент конкретный формат ответа.",
+    syntax: "HttpRequest.accepts(mime_type)",
+    arguments: [
+      {
+        name: "mime_type",
+        description:
+          'Строка MIME-типа, например "application/json" или "text/html".',
+      },
+    ],
+    example: `def my_view(request):
+    if request.accepts("application/json"):
+        return JsonResponse({"message": "Привет"})
+    return HttpResponse("Привет")`,
+  },
+
+  {
+    name: "HttpRequest.read(size=None)",
+    category: "Request and response objects",
+    description:
+      "Читает тело HTTP-запроса как файлоподобный объект. Позволяет считать все тело или ограниченное количество байт. Полезно при потоковой обработке больших тел запроса.",
+    syntax: "HttpRequest.read(size=None)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Необязательный. Количество байт для чтения. Если не указан или None — читается всё тело запроса целиком.",
+      },
+    ],
+    example: `def upload_view(request):
+    chunk = request.read(1024)  # читаем первые 1024 байта
+    # обрабатываем chunk
+    return HttpResponse("OK")`,
+  },
+
+  {
+    name: "HttpRequest.readline",
+    category: "Request and response objects",
+    description:
+      "Читает одну строку из тела HTTP-запроса. Аналогично методу readline() файлового объекта. Используется при построчной обработке тела запроса.",
+    syntax: "HttpRequest.readline()",
+    arguments: [],
+    example: `def stream_view(request):
+    line = request.readline()
+    while line:
+        # обрабатываем строку
+        line = request.readline()
+    return HttpResponse("Обработано")`,
+  },
+
+  {
+    name: "HttpRequest.readlines",
+    category: "Request and response objects",
+    description:
+      "Читает все строки из тела HTTP-запроса и возвращает их в виде списка. Аналогично методу readlines() файлового объекта.",
+    syntax: "HttpRequest.readlines()",
+    arguments: [],
+    example: `def lines_view(request):
+    lines = request.readlines()
+    for line in lines:
+        print(line)
+    return HttpResponse("Готово")`,
+  },
+
+  {
+    name: "HttpRequest.__iter__",
+    category: "Request and response objects",
+    description:
+      "Позволяет итерировать тело HTTP-запроса построчно, как файловый объект. Удобно для потоковой построчной обработки больших запросов в цикле for.",
+    syntax: "for line in request: ...",
+    arguments: [],
+    example: `def iter_view(request):
+    for line in request:
+        print(line)
+    return HttpResponse("Итерация завершена")`,
+  },
+
+  {
+    name: "QueryDict.__init__(query_string=None, mutable=False, encoding=None)",
+    category: "Request and response objects",
+    description:
+      'Конструктор QueryDict. Создаёт объект из строки запроса (query string). По умолчанию объект неизменяем (mutable=False). Используется для разбора строк вида "key=value&key2=value2".',
+    syntax: "QueryDict(query_string=None, mutable=False, encoding=None)",
+    arguments: [
+      {
+        name: "query_string",
+        description:
+          'Строка запроса в формате URL-encoded, например "name=Alice&age=30". Если None — создаётся пустой QueryDict.',
+      },
+      {
+        name: "mutable",
+        description:
+          "Если True — объект становится изменяемым. По умолчанию False.",
+      },
+      {
+        name: "encoding",
+        description:
+          "Кодировка для декодирования строки. По умолчанию используется кодировка из настроек Django.",
+      },
+    ],
+    example: `from django.http import QueryDict
+
+qd = QueryDict("name=Alice&age=30")
+print(qd["name"])  # Alice
+print(qd["age"])   # 30`,
+  },
+
+  {
+    name: "QueryDict.fromkeys(iterable, value='', mutable=False, encoding=None)",
+    category: "Request and response objects",
+    description:
+      "Создаёт новый QueryDict из итерируемого объекта ключей, присваивая каждому ключу одно и то же значение. Аналог метода dict.fromkeys().",
+    syntax:
+      "QueryDict.fromkeys(iterable, value='', mutable=False, encoding=None)",
+    arguments: [
+      {
+        name: "iterable",
+        description: "Итерируемый объект с именами ключей.",
+      },
+      {
+        name: "value",
+        description:
+          "Значение, которое будет присвоено каждому ключу. По умолчанию пустая строка.",
+      },
+      {
+        name: "mutable",
+        description: "Если True — возвращаемый объект будет изменяемым.",
+      },
+      {
+        name: "encoding",
+        description:
+          "Кодировка строк. По умолчанию — кодировка из настроек Django.",
+      },
+    ],
+    example: `from django.http import QueryDict
+
+qd = QueryDict.fromkeys(["a", "b", "c"], value="1", mutable=True)
+print(qd["a"])  # 1
+print(qd["b"])  # 1`,
+  },
+
+  {
+    name: "QueryDict.__getitem__(key)",
+    category: "Request and response objects",
+    description:
+      "Возвращает последнее значение для заданного ключа. Если ключ отсутствует — выбрасывает исключение django.utils.datastructures.MultiValueDictKeyError (подкласс KeyError).",
+    syntax: "querydict[key]",
+    arguments: [
+      {
+        name: "key",
+        description: "Строка — имя ключа, значение которого нужно получить.",
+      },
+    ],
+    example: `# request.GET — экземпляр QueryDict
+value = request.GET["username"]
+# Если "username" отсутствует — KeyError`,
+  },
+
+  {
+    name: "QueryDict.__setitem__(key, value)",
+    category: "Request and response objects",
+    description:
+      "Устанавливает ключ в список, содержащий одно значение. Доступно только для изменяемых (mutable=True) экземпляров QueryDict, иначе выбрасывает AttributeError.",
+    syntax: "querydict[key] = value",
+    arguments: [
+      {
+        name: "key",
+        description: "Строка — имя устанавливаемого ключа.",
+      },
+      {
+        name: "value",
+        description:
+          "Значение, которое будет сохранено для данного ключа (оборачивается в список внутри).",
+      },
+    ],
+    example: `from django.http import QueryDict
+
+qd = QueryDict(mutable=True)
+qd["city"] = "Москва"
+print(qd["city"])  # Москва`,
+  },
+
+  {
+    name: "QueryDict.__contains__(key)",
+    category: "Request and response objects",
+    description:
+      "Возвращает True, если заданный ключ присутствует в QueryDict. Позволяет использовать оператор in для проверки наличия ключа.",
+    syntax: "key in querydict",
+    arguments: [
+      {
+        name: "key",
+        description: "Строка — имя ключа, наличие которого нужно проверить.",
+      },
+    ],
+    example: `if "username" in request.GET:
+    username = request.GET["username"]
+else:
+    username = "Гость"`,
+  },
+
+  {
+    name: "QueryDict.get(key, default=None)",
+    category: "Request and response objects",
+    description:
+      "Возвращает последнее значение для заданного ключа. Если ключ отсутствует — возвращает значение default вместо выброса исключения.",
+    syntax: "QueryDict.get(key, default=None)",
+    arguments: [
+      {
+        name: "key",
+        description: "Строка — имя ключа.",
+      },
+      {
+        name: "default",
+        description:
+          "Значение, возвращаемое при отсутствии ключа. По умолчанию None.",
+      },
+    ],
+    example: `page = request.GET.get("page", 1)
+print(page)  # 1, если параметр "page" не передан`,
+  },
+
+  {
+    name: "QueryDict.setdefault(key, default=None)",
+    category: "Request and response objects",
+    description:
+      "Если ключ присутствует — возвращает его значение. Если отсутствует — устанавливает ключ со значением default и возвращает его. Работает только с изменяемыми экземплярами.",
+    syntax: "QueryDict.setdefault(key, default=None)",
+    arguments: [
+      {
+        name: "key",
+        description: "Строка — имя ключа.",
+      },
+      {
+        name: "default",
+        description:
+          "Значение, которое будет установлено и возвращено, если ключ отсутствует.",
+      },
+    ],
+    example: `from django.http import QueryDict
+
+qd = QueryDict("a=1", mutable=True)
+print(qd.setdefault("a", "default"))  # 1
+print(qd.setdefault("b", "default"))  # default`,
+  },
+
+  {
+    name: "QueryDict.update(other_dict)",
+    category: "Request and response objects",
+    description:
+      "Обновляет QueryDict данными из другого словаря или QueryDict. В отличие от обычного dict.update(), добавляет значения к существующим спискам, а не заменяет их. Требует mutable=True.",
+    syntax: "QueryDict.update(other_dict)",
+    arguments: [
+      {
+        name: "other_dict",
+        description:
+          "Словарь или QueryDict, данными из которого обновляется текущий объект.",
+      },
+    ],
+    example: `from django.http import QueryDict
+
+qd = QueryDict("a=1", mutable=True)
+qd.update({"a": "2", "b": "3"})
+print(qd.getlist("a"))  # ["1", "2"]
+print(qd["b"])          # 3`,
+  },
+
+  {
+    name: "QueryDict.items()",
+    category: "Request and response objects",
+    description:
+      "Возвращает представление пар (ключ, значение) аналогично dict.items(). Для каждого ключа возвращается только последнее значение из списка.",
+    syntax: "QueryDict.items()",
+    arguments: [],
+    example: `qd = request.GET
+for key, value in qd.items():
+    print(f"{key} = {value}")`,
+  },
+
+  {
+    name: "QueryDict.values()",
+    category: "Request and response objects",
+    description:
+      "Возвращает представление значений аналогично dict.values(). Для каждого ключа возвращается только последнее значение из списка.",
+    syntax: "QueryDict.values()",
+    arguments: [],
+    example: `qd = request.GET
+for value in qd.values():
+    print(value)`,
+  },
+
+  {
+    name: "QueryDict.copy()",
+    category: "Request and response objects",
+    description:
+      "Возвращает поверхностную копию объекта QueryDict. Копия всегда является изменяемой (mutable=True), независимо от оригинала.",
+    syntax: "QueryDict.copy()",
+    arguments: [],
+    example: `qd_copy = request.GET.copy()
+qd_copy["new_key"] = "value"
+print(qd_copy["new_key"])  # value`,
+  },
+
+  {
+    name: "QueryDict.getlist(key, default=None)",
+    category: "Request and response objects",
+    description:
+      "Возвращает список всех значений для заданного ключа. Если ключ отсутствует — возвращает default (по умолчанию пустой список). Используется, когда один ключ может иметь несколько значений.",
+    syntax: "QueryDict.getlist(key, default=None)",
+    arguments: [
+      {
+        name: "key",
+        description:
+          "Строка — имя ключа, все значения которого нужно получить.",
+      },
+      {
+        name: "default",
+        description:
+          "Значение, возвращаемое при отсутствии ключа. По умолчанию — пустой список [].",
+      },
+    ],
+    example: `# URL: /search/?tag=python&tag=django&tag=rest
+tags = request.GET.getlist("tag")
+print(tags)  # ["python", "django", "rest"]`,
+  },
+
+  {
+    name: "QueryDict.setlist(key, list_)",
+    category: "Request and response objects",
+    description:
+      "Устанавливает список значений для заданного ключа, полностью заменяя предыдущие значения. Требует изменяемого (mutable=True) экземпляра QueryDict.",
+    syntax: "QueryDict.setlist(key, list_)",
+    arguments: [
+      {
+        name: "key",
+        description: "Строка — имя ключа.",
+      },
+      {
+        name: "list_",
+        description:
+          "Список значений, которые будут установлены для данного ключа.",
+      },
+    ],
+    example: `from django.http import QueryDict
+
+qd = QueryDict("color=red", mutable=True)
+qd.setlist("color", ["red", "blue", "green"])
+print(qd.getlist("color"))  # ["red", "blue", "green"]`,
+  },
+
+  {
+    name: "QueryDict.appendlist(key, item)",
+    category: "Request and response objects",
+    description:
+      "Добавляет элемент к внутреннему списку значений для заданного ключа. В отличие от setlist, не заменяет существующие значения, а дополняет их. Требует mutable=True.",
+    syntax: "QueryDict.appendlist(key, item)",
+    arguments: [
+      {
+        name: "key",
+        description:
+          "Строка — имя ключа, к списку значений которого добавляется элемент.",
+      },
+      {
+        name: "item",
+        description:
+          "Значение, которое добавляется в конец списка значений ключа.",
+      },
+    ],
+    example: `from django.http import QueryDict
+
+qd = QueryDict("tag=python", mutable=True)
+qd.appendlist("tag", "django")
+qd.appendlist("tag", "rest")
+print(qd.getlist("tag"))  # ["python", "django", "rest"]`,
+  },
+
+  {
+    name: "QueryDict.setlistdefault(key, default_list=None)",
+    category: "Request and response objects",
+    description:
+      "Если ключ присутствует — возвращает его список значений. Если отсутствует — устанавливает ключ со списком default_list и возвращает его. Требует mutable=True.",
+    syntax: "QueryDict.setlistdefault(key, default_list=None)",
+    arguments: [
+      {
+        name: "key",
+        description: "Строка — имя ключа.",
+      },
+      {
+        name: "default_list",
+        description:
+          "Список значений, который будет установлен и возвращён, если ключ отсутствует. По умолчанию None (будет установлен как пустой список).",
+      },
+    ],
+    example: `from django.http import QueryDict
+
+qd = QueryDict("a=1", mutable=True)
+print(qd.setlistdefault("a", ["x"]))  # ["1"]
+print(qd.setlistdefault("b", ["x", "y"]))  # ["x", "y"]`,
+  },
+
+  {
+    name: "QueryDict.lists()",
+    category: "Request and response objects",
+    description:
+      "Аналог items(), но возвращает для каждого ключа полный список всех его значений, а не только последнее. Возвращает список кортежей вида (ключ, [значение1, значение2, ...]).",
+    syntax: "QueryDict.lists()",
+    arguments: [],
+    example: `# URL: /search/?tag=python&tag=django
+for key, values in request.GET.lists():
+    print(f"{key}: {values}")
+# tag: ["python", "django"]`,
+  },
+
+  {
+    name: "QueryDict.pop(key)",
+    category: "Request and response objects",
+    description:
+      "Удаляет ключ из QueryDict и возвращает список всех его значений. Если ключ отсутствует — выбрасывает KeyError. Требует изменяемого (mutable=True) экземпляра.",
+    syntax: "QueryDict.pop(key)",
+    arguments: [
+      {
+        name: "key",
+        description:
+          "Строка — имя ключа, который нужно удалить. Если ключ не существует — выбрасывается KeyError.",
+      },
+    ],
+    example: `from django.http import QueryDict
+
+qd = QueryDict("a=1&a=2&b=3", mutable=True)
+values = qd.pop("a")
+print(values)  # ["1", "2"]
+print("a" in qd)  # False`,
+  },
+
+  {
+    name: "QueryDict.popitem()",
+    category: "Request and response objects",
+    description:
+      "Удаляет произвольную пару (ключ, список_значений) из QueryDict и возвращает её в виде кортежа. Выбрасывает KeyError, если словарь пуст. Требует mutable=True. Поведение аналогично dict.popitem().",
+    syntax: "QueryDict.popitem()",
+    arguments: [],
+    example: `from django.http import QueryDict
+
+qd = QueryDict("a=1&b=2", mutable=True)
+key, values = qd.popitem()
+print(key, values)  # например: b ["2"]`,
+  },
+
+  {
+    name: "QueryDict.dict()",
+    category: "Request and response objects",
+    description:
+      "Возвращает обычный словарь dict, созданный из QueryDict. Для каждого ключа берётся только последнее значение из списка. Удобен для преобразования QueryDict в стандартный Python-словарь.",
+    syntax: "QueryDict.dict()",
+    arguments: [],
+    example: `# URL: /search/?a=1&a=2&b=3
+d = request.GET.dict()
+print(d)  # {"a": "2", "b": "3"}`,
+  },
+
+  {
+    name: "QueryDict.urlencode(safe=None)",
+    category: "Request and response objects",
+    description:
+      "Возвращает строку запроса в формате URL-encoded из данных QueryDict. Если один ключ имеет несколько значений, каждая пара кодируется отдельно. Параметр safe позволяет указать символы, которые не нужно кодировать.",
+    syntax: "QueryDict.urlencode(safe=None)",
+    arguments: [
+      {
+        name: "safe",
+        description:
+          'Строка символов, которые не следует процентно-кодировать, например safe="/". По умолчанию все специальные символы кодируются.',
+      },
+    ],
+    example: `from django.http import QueryDict
+
+qd = QueryDict(mutable=True)
+qd.setlist("tag", ["python", "django"])
+qd["page"] = "2"
+print(qd.urlencode())
+# tag=python&tag=django&page=2`,
+  },
+
+  // ─── HttpResponse ──────────────────────────────────────────────────────────
+
+  {
+    name: "HttpResponse.__init__(content=b'', content_type=None, status=200, reason=None, charset=None, headers=None)",
+    category: "HttpResponse",
+    description:
+      "Конструктор HttpResponse. Создаёт HTTP-ответ с заданным содержимым, типом контента, статус-кодом и заголовками. Является основным способом формирования ответов в Django-представлениях.",
+    syntax:
+      "HttpResponse(content=b'', content_type=None, status=200, reason=None, charset=None, headers=None)",
+    arguments: [
+      {
+        name: "content",
+        description:
+          "Тело ответа — строка или байты. По умолчанию пустое тело.",
+      },
+      {
+        name: "content_type",
+        description:
+          'MIME-тип ответа, например "text/html; charset=utf-8". По умолчанию берётся из настройки DEFAULT_CONTENT_TYPE.',
+      },
+      {
+        name: "status",
+        description: "HTTP-код статуса ответа. По умолчанию 200.",
+      },
+      {
+        name: "reason",
+        description:
+          'Текстовая фраза статуса, например "OK". Если не указана — определяется автоматически по коду status.',
+      },
+      {
+        name: "charset",
+        description:
+          "Кодировка ответа. По умолчанию извлекается из content_type или настроек Django.",
+      },
+      {
+        name: "headers",
+        description:
+          'Словарь HTTP-заголовков, которые будут добавлены к ответу, например {"X-Custom": "value"}.',
+      },
+    ],
+    example: `from django.http import HttpResponse
+
+def my_view(request):
+    return HttpResponse(
+        "<h1>Привет!</h1>",
+        content_type="text/html",
+        status=200,
+        headers={"X-App": "MyApp"}
+    )`,
+  },
+
+  {
+    name: "HttpResponse.__setitem__(header, value)",
+    category: "HttpResponse",
+    description:
+      "Устанавливает HTTP-заголовок ответа. Если заголовок уже существует — перезаписывает его значение. Позволяет использовать синтаксис присвоения по ключу, как в словаре.",
+    syntax: "response[header] = value",
+    arguments: [
+      {
+        name: "header",
+        description:
+          'Строка — имя HTTP-заголовка, например "Content-Type" или "X-Frame-Options".',
+      },
+      {
+        name: "value",
+        description: "Строка — значение заголовка.",
+      },
+    ],
+    example: `response = HttpResponse("OK")
+response["Cache-Control"] = "no-cache"
+response["X-Custom-Header"] = "MyValue"`,
+  },
+
+  {
+    name: "HttpResponse.__delitem__(header)",
+    category: "HttpResponse",
+    description:
+      "Удаляет HTTP-заголовок из ответа. Если заголовок не существует — не выбрасывает исключение (в отличие от del dict[key]). Используется для удаления ранее установленных заголовков.",
+    syntax: "del response[header]",
+    arguments: [
+      {
+        name: "header",
+        description: "Строка — имя удаляемого HTTP-заголовка.",
+      },
+    ],
+    example: `response = HttpResponse("OK")
+response["X-Powered-By"] = "Django"
+del response["X-Powered-By"]
+# заголовок удалён`,
+  },
+
+  {
+    name: "HttpResponse.__getitem__(header)",
+    category: "HttpResponse",
+    description:
+      "Возвращает значение HTTP-заголовка ответа по его имени. Если заголовок не установлен — выбрасывает KeyError. Позволяет обращаться к заголовкам через квадратные скобки, как к словарю.",
+    syntax: "response[header]",
+    arguments: [
+      {
+        name: "header",
+        description:
+          "Строка — имя HTTP-заголовка, значение которого нужно получить.",
+      },
+    ],
+    example: `response = HttpResponse("OK")
+response["Content-Type"] = "application/json"
+print(response["Content-Type"])  # application/json`,
+  },
+
+  {
+    name: "HttpResponse.get(header, alternate=None)",
+    category: "HttpResponse",
+    description:
+      "Возвращает значение HTTP-заголовка ответа. В отличие от __getitem__, не выбрасывает исключение при отсутствии заголовка, а возвращает значение alternate.",
+    syntax: "HttpResponse.get(header, alternate=None)",
+    arguments: [
+      {
+        name: "header",
+        description: "Строка — имя HTTP-заголовка.",
+      },
+      {
+        name: "alternate",
+        description:
+          "Значение, возвращаемое если заголовок не установлен. По умолчанию None.",
+      },
+    ],
+    example: `response = HttpResponse("OK")
+ct = response.get("Content-Type", "text/plain")
+print(ct)  # text/html; charset=utf-8 (или значение по умолчанию)`,
+  },
+
+  {
+    name: "HttpResponse.has_header(header)",
+    category: "HttpResponse",
+    description:
+      "Возвращает True, если в ответе установлен заголовок с данным именем (проверка регистронезависима). Позволяет проверить наличие заголовка без попытки его получить.",
+    syntax: "HttpResponse.has_header(header)",
+    arguments: [
+      {
+        name: "header",
+        description: "Строка — имя HTTP-заголовка для проверки.",
+      },
+    ],
+    example: `response = HttpResponse("OK")
+response["X-Frame-Options"] = "DENY"
+
+print(response.has_header("X-Frame-Options"))  # True
+print(response.has_header("Authorization"))    # False`,
+  },
+
+  {
+    name: "HttpResponse.items()",
+    category: "HttpResponse",
+    description:
+      "Возвращает список всех пар (имя_заголовка, значение) текущего ответа. Аналогично dict.items(). Удобен для итерации или проверки всех установленных заголовков.",
+    syntax: "HttpResponse.items()",
+    arguments: [],
+    example: `response = HttpResponse("OK")
+response["X-App"] = "Django"
+response["Cache-Control"] = "no-store"
+
+for header, value in response.items():
+    print(f"{header}: {value}")`,
+  },
+
+  {
+    name: "HttpResponse.setdefault(header, value)",
+    category: "HttpResponse",
+    description:
+      "Устанавливает заголовок только в том случае, если он ещё не задан. Если заголовок уже присутствует — значение не изменяется. Аналог dict.setdefault() для заголовков ответа.",
+    syntax: "HttpResponse.setdefault(header, value)",
+    arguments: [
+      {
+        name: "header",
+        description: "Строка — имя HTTP-заголовка.",
+      },
+      {
+        name: "value",
+        description:
+          "Значение, которое будет установлено, если заголовок ещё не существует.",
+      },
+    ],
+    example: `response = HttpResponse("OK")
+response.setdefault("X-Frame-Options", "DENY")
+response.setdefault("X-Frame-Options", "SAMEORIGIN")  # не перезапишет
+print(response["X-Frame-Options"])  # DENY`,
+  },
+
+  {
+    name: "HttpResponse.set_cookie(key, value='', max_age=None, expires=None, path='/', domain=None, secure=False, httponly=False, samesite=None)",
+    category: "HttpResponse",
+    description:
+      "Устанавливает cookie в HTTP-ответе. Позволяет задать все стандартные атрибуты cookie: время жизни, путь, домен, флаги безопасности.",
+    syntax:
+      "HttpResponse.set_cookie(key, value='', max_age=None, expires=None, path='/', domain=None, secure=False, httponly=False, samesite=None)",
+    arguments: [
+      {
+        name: "key",
+        description: "Имя cookie.",
+      },
+      {
+        name: "value",
+        description: "Значение cookie. По умолчанию пустая строка.",
+      },
+      {
+        name: "max_age",
+        description:
+          "Время жизни cookie в секундах. None означает, что cookie удаляется при закрытии браузера.",
+      },
+      {
+        name: "expires",
+        description:
+          'Дата истечения срока в формате "Wdy, DD Mon YYYY HH:MM:SS GMT" или объект datetime.',
+      },
+      {
+        name: "path",
+        description: 'Путь, для которого действует cookie. По умолчанию "/".',
+      },
+      {
+        name: "domain",
+        description:
+          "Домен, для которого действует cookie. По умолчанию — текущий домен.",
+      },
+      {
+        name: "secure",
+        description: "Если True — cookie передаётся только по HTTPS.",
+      },
+      {
+        name: "httponly",
+        description:
+          "Если True — cookie недоступна через JavaScript (document.cookie).",
+      },
+      {
+        name: "samesite",
+        description:
+          'Политика SameSite: "Strict", "Lax" или "None". Защищает от CSRF-атак.',
+      },
+    ],
+    example: `def login_view(request):
+    response = HttpResponse("Вы вошли")
+    response.set_cookie(
+        "session_id",
+        value="abc123",
+        max_age=3600,
+        httponly=True,
+        secure=True,
+        samesite="Lax"
+    )
+    return response`,
+  },
+
+  {
+    name: "HttpResponse.set_signed_cookie(key, value, salt='', max_age=None, expires=None, path='/', domain=None, secure=False, httponly=False, samesite=None)",
+    category: "HttpResponse",
+    description:
+      "Устанавливает подписанный cookie — значение криптографически подписывается с помощью SECRET_KEY Django. При чтении подпись проверяется через request.get_signed_cookie(). Защищает от подделки значений на стороне клиента.",
+    syntax: "HttpResponse.set_signed_cookie(key, value, salt='', ...)",
+    arguments: [
+      {
+        name: "key",
+        description: "Имя cookie.",
+      },
+      {
+        name: "value",
+        description: "Значение cookie, которое будет подписано.",
+      },
+      {
+        name: "salt",
+        description:
+          "Дополнительная строка для усиления подписи. Та же соль должна использоваться при проверке через get_signed_cookie().",
+      },
+      {
+        name: "max_age, expires, path, domain, secure, httponly, samesite",
+        description: "Те же параметры, что и в set_cookie().",
+      },
+    ],
+    example: `def set_user_cookie(request):
+    response = HttpResponse("OK")
+    response.set_signed_cookie(
+        "user_id",
+        value="42",
+        salt="user-cookie",
+        httponly=True,
+        max_age=86400
+    )
+    return response
+
+# Чтение в другом представлении:
+# user_id = request.get_signed_cookie("user_id", salt="user-cookie")`,
+  },
+
+  {
+    name: "HttpResponse.delete_cookie(key, path='/', domain=None, samesite=None)",
+    category: "HttpResponse",
+    description:
+      "Удаляет cookie на стороне клиента, устанавливая её срок действия в прошлое. Для корректного удаления path и domain должны совпадать с теми, что использовались при установке cookie.",
+    syntax:
+      "HttpResponse.delete_cookie(key, path='/', domain=None, samesite=None)",
+    arguments: [
+      {
+        name: "key",
+        description: "Имя cookie, которую нужно удалить.",
+      },
+      {
+        name: "path",
+        description:
+          'Путь cookie. Должен совпадать со значением, указанным при set_cookie(). По умолчанию "/".',
+      },
+      {
+        name: "domain",
+        description:
+          "Домен cookie. Должен совпадать со значением, указанным при set_cookie().",
+      },
+      {
+        name: "samesite",
+        description: "Политика SameSite для удаляемой cookie.",
+      },
+    ],
+    example: `def logout_view(request):
+    response = HttpResponse("Вы вышли")
+    response.delete_cookie("session_id")
+    return response`,
+  },
+
+  {
+    name: "HttpResponse.close",
+    category: "HttpResponse",
+    description:
+      "Метод, вызываемый сервером после отправки ответа клиенту. Освобождает ресурсы, связанные с ответом. Если тело ответа является файловым объектом — вызывает его метод close(). Не предназначен для ручного вызова в обычном коде.",
+    syntax: "HttpResponse.close()",
+    arguments: [],
+    example: `# Метод вызывается сервером автоматически, не вручную.
+# Пример кастомного ответа с файлом:
+import os
+from django.http import FileResponse
+
+def download_view(request):
+    f = open("report.pdf", "rb")
+    response = FileResponse(f)
+    # response.close() будет вызван сервером после отправки
+    return response`,
+  },
+
+  {
+    name: "HttpResponse.write(content)",
+    category: "HttpResponse",
+    description:
+      "Дописывает данные в конец тела ответа. Позволяет использовать HttpResponse как файлоподобный объект для потоковой записи содержимого. Принимает строку или байты.",
+    syntax: "HttpResponse.write(content)",
+    arguments: [
+      {
+        name: "content",
+        description:
+          "Строка или байты, которые добавляются в конец тела ответа.",
+      },
+    ],
+    example: `response = HttpResponse()
+response.write("<p>Первая строка</p>")
+response.write("<p>Вторая строка</p>")
+return response`,
+  },
+
+  {
+    name: "HttpResponse.flush",
+    category: "HttpResponse",
+    description:
+      "Метод файлоподобного интерфейса HttpResponse. Не выполняет реальной операции сброса буфера (no-op), но присутствует для совместимости с интерфейсом файловых объектов Python.",
+    syntax: "HttpResponse.flush()",
+    arguments: [],
+    example: `response = HttpResponse()
+response.write("Данные")
+response.flush()  # совместимость с файловым интерфейсом
+return response`,
+  },
+
+  {
+    name: "HttpResponse.tell",
+    category: "HttpResponse",
+    description:
+      "Возвращает текущую позицию «указателя» в теле ответа — количество байт, записанных на данный момент. Реализует файлоподобный интерфейс. Полезен для определения размера уже записанного содержимого.",
+    syntax: "HttpResponse.tell()",
+    arguments: [],
+    example: `response = HttpResponse()
+response.write("Hello")
+print(response.tell())  # 5
+response.write(", world!")
+print(response.tell())  # 13`,
+  },
+
+  {
+    name: "HttpResponse.getvalue",
+    category: "HttpResponse",
+    description:
+      "Возвращает всё содержимое тела ответа в виде байтовой строки. Реализует файлоподобный интерфейс (аналог BytesIO.getvalue()). Полезен для получения итогового содержимого ответа, например в тестах.",
+    syntax: "HttpResponse.getvalue()",
+    arguments: [],
+    example: `response = HttpResponse()
+response.write("Привет")
+response.write(", мир!")
+print(response.getvalue())  # b'\xd0\x9f\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82, \xd0\xbc\xd0\xb8\x321'
+
+# Часто используется в тестах:
+from django.test import RequestFactory
+factory = RequestFactory()
+request = factory.get("/")
+response = my_view(request)
+print(response.getvalue())`,
+  },
+
+  {
+    name: "HttpResponse.readable",
+    category: "HttpResponse",
+    description:
+      "Всегда возвращает False. Реализует файлоподобный интерфейс — HttpResponse является объектом только для записи, чтение из него не поддерживается напрямую.",
+    syntax: "HttpResponse.readable()",
+    arguments: [],
+    example: `response = HttpResponse("OK")
+print(response.readable())  # False`,
+  },
+
+  {
+    name: "HttpResponse.seekable",
+    category: "HttpResponse",
+    description:
+      "Всегда возвращает False. Реализует файлоподобный интерфейс — HttpResponse не поддерживает произвольное позиционирование (seek). Перемещение указателя в теле ответа недоступно.",
+    syntax: "HttpResponse.seekable()",
+    arguments: [],
+    example: `response = HttpResponse("OK")
+print(response.seekable())  # False`,
+  },
+
+  {
+    name: "HttpResponse.writable",
+    category: "HttpResponse",
+    description:
+      "Всегда возвращает True. Реализует файлоподобный интерфейс — HttpResponse поддерживает запись через методы write() и writelines(). Используется для проверки совместимости с файловым протоколом Python.",
+    syntax: "HttpResponse.writable()",
+    arguments: [],
+    example: `response = HttpResponse()
+print(response.writable())  # True
+if response.writable():
+    response.write("Данные записаны")`,
+  },
+
+  {
+    name: "HttpResponse.writelines(lines)",
+    category: "HttpResponse",
+    description:
+      "Записывает список строк (или итерируемый объект строк/байт) в тело ответа. Разделители строк не добавляются автоматически. Аналог метода writelines() файлового объекта.",
+    syntax: "HttpResponse.writelines(lines)",
+    arguments: [
+      {
+        name: "lines",
+        description:
+          "Итерируемый объект (список, генератор и т.д.) строк или байтов, которые будут последовательно записаны в тело ответа.",
+      },
+    ],
+    example: `response = HttpResponse()
+response.writelines([
+    "<p>Строка первая</p>",
+    "<p>Строка вторая</p>",
+    "<p>Строка третья</p>",
+])
+return response`,
+  },
+
+  {
+    name: "HttpResponse.content",
+    category: "HttpResponse",
+    description:
+      "Свойство для получения или установки тела ответа в виде байтовой строки. При установке значение автоматически кодируется в байты с использованием charset ответа, если передана обычная строка.",
+    syntax: "response.content\nresponse.content = value",
+    arguments: [],
+    example: `response = HttpResponse("Привет")
+print(response.content)  # b'\xd0\x9f\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82'
+
+# Перезапись тела ответа:
+response.content = "<h1>Новое содержимое</h1>"
+print(response.content)  # b'<h1>\xd0\x9d\xd0\xbe\xd0\xb2\xd0\xbe\xd0\xb5 ...'`,
+  },
+
+  {
+    name: "HttpResponse.text",
+    category: "HttpResponse",
+    description:
+      "Свойство, возвращающее тело ответа в виде декодированной строки (str). Является псевдонимом для декодирования response.content с использованием charset ответа. Удобно для читаемого отображения содержимого.",
+    syntax: "response.text",
+    arguments: [],
+    example: `response = HttpResponse("<p>Привет</p>")
+print(response.text)   # <p>Привет</p>
+print(type(response.text))  # <class 'str'>`,
+  },
+
+  {
+    name: "HttpResponse.cookies",
+    category: "HttpResponse",
+    description:
+      "Атрибут, содержащий объект http.cookies.SimpleCookie со всеми cookie, установленными в ответе. Позволяет напрямую просматривать или изменять cookie через стандартный интерфейс SimpleCookie.",
+    syntax: "response.cookies",
+    arguments: [],
+    example: `response = HttpResponse("OK")
+response.set_cookie("theme", "dark", max_age=3600)
+
+print(response.cookies)
+# Set-Cookie: theme=dark; Max-Age=3600; Path=/
+print(response.cookies["theme"]["max-age"])  # 3600`,
+  },
+
+  {
+    name: "HttpResponse.headers",
+    category: "HttpResponse",
+    description:
+      "Атрибут, предоставляющий доступ к HTTP-заголовкам ответа через словареподобный интерфейс. Поддерживает регистронезависимые имена заголовков. Является основным способом управления заголовками начиная с Django 3.2.",
+    syntax: "response.headers",
+    arguments: [],
+    example: `response = HttpResponse("OK")
+response.headers["X-App-Version"] = "1.0"
+response.headers["Cache-Control"] = "no-cache"
+
+print(response.headers["x-app-version"])  # 1.0 (регистр не важен)
+
+for name, value in response.headers.items():
+    print(f"{name}: {value}")`,
+  },
+
+  {
+    name: "HttpResponse.charset",
+    category: "HttpResponse",
+    description:
+      'Атрибут, определяющий кодировку тела ответа. Извлекается из заголовка Content-Type. Если кодировка не указана явно — используется значение из настройки DEFAULT_CHARSET (по умолчанию "utf-8").',
+    syntax: "response.charset",
+    arguments: [],
+    example: `response = HttpResponse("Привет", content_type="text/html; charset=utf-8")
+print(response.charset)  # utf-8
+
+response2 = HttpResponse("Hello", content_type="text/plain")
+print(response2.charset)  # utf-8 (DEFAULT_CHARSET)`,
+  },
+
+  {
+    name: "HttpResponse.status_code",
+    category: "HttpResponse",
+    description:
+      "Атрибут, содержащий числовой HTTP-код статуса ответа. По умолчанию 200. Может быть изменён напрямую после создания объекта. Используется для установки нестандартных статусов без создания специализированных подклассов.",
+    syntax: "response.status_code",
+    arguments: [],
+    example: `response = HttpResponse("Создано")
+response.status_code = 201
+print(response.status_code)  # 201
+
+# Или при создании:
+response2 = HttpResponse("Ошибка", status=400)
+print(response2.status_code)  # 400`,
+  },
+
+  {
+    name: "HttpResponse.reason_phrase",
+    category: "HttpResponse",
+    description:
+      'Атрибут, содержащий текстовую фразу HTTP-статуса, например "OK", "Not Found", "Created". Определяется автоматически по status_code согласно стандарту HTTP, но может быть переопределён вручную.',
+    syntax: "response.reason_phrase",
+    arguments: [],
+    example: `response = HttpResponse(status=200)
+print(response.reason_phrase)  # OK
+
+response2 = HttpResponse(status=404)
+print(response2.reason_phrase)  # Not Found
+
+# Переопределение вручную:
+response3 = HttpResponse(status=200, reason="Everything is fine")
+print(response3.reason_phrase)  # Everything is fine`,
+  },
+
+  {
+    name: "HttpResponse.streaming",
+    category: "HttpResponse",
+    description:
+      "Атрибут-флаг, показывающий, является ли ответ потоковым. Для HttpResponse всегда равен False. Для StreamingHttpResponse — True. Используется промежуточным ПО (middleware) для различения потоковых и обычных ответов.",
+    syntax: "response.streaming",
+    arguments: [],
+    example: `from django.http import HttpResponse, StreamingHttpResponse
+
+response = HttpResponse("Обычный ответ")
+print(response.streaming)  # False
+
+def gen():
+    yield "Часть 1"
+    yield "Часть 2"
+
+streaming = StreamingHttpResponse(gen())
+print(streaming.streaming)  # True`,
+  },
+
+  {
+    name: "HttpResponse.closed",
+    category: "HttpResponse",
+    description:
+      "Атрибут-флаг файлоподобного интерфейса. Возвращает True, если тело ответа было закрыто (вызван метод close()). В норме становится True после завершения отправки ответа сервером.",
+    syntax: "response.closed",
+    arguments: [],
+    example: `response = HttpResponse("OK")
+print(response.closed)  # False
+
+response.close()
+print(response.closed)  # True`,
+  },
+
+  // ─── Redirect responses ────────────────────────────────────────────────────
+
+  {
+    name: "HttpResponseRedirect",
+    category: "Redirect responses",
+    description:
+      "Класс HTTP-ответа с кодом 302 (временное перенаправление). Используется для перенаправления пользователя на другой URL. Принимает целевой URL в качестве аргумента. Является подклассом HttpResponse.",
+    syntax: "HttpResponseRedirect(redirect_to, *args, **kwargs)",
+    arguments: [
+      {
+        name: "redirect_to",
+        description:
+          "Строка URL, на который будет выполнено перенаправление. Может быть абсолютным или относительным.",
+      },
+      {
+        name: "*args, **kwargs",
+        description:
+          "Дополнительные аргументы, передаваемые в базовый класс HttpResponse, например headers.",
+      },
+    ],
+    example: `from django.http import HttpResponseRedirect
+from django.urls import reverse
+
+def submit_form(request):
+    if request.method == "POST":
+        # обработка формы...
+        return HttpResponseRedirect(reverse("success-page"))
+    return HttpResponse("Форма")`,
+  },
+
+  {
+    name: "HttpResponsePermanentRedirect",
+    category: "Redirect responses",
+    description:
+      "Класс HTTP-ответа с кодом 301 (постоянное перенаправление). Сообщает браузерам и поисковым системам, что ресурс перемещён навсегда на новый URL. В отличие от HttpResponseRedirect (302), браузер кэширует это перенаправление.",
+    syntax: "HttpResponsePermanentRedirect(redirect_to, *args, **kwargs)",
+    arguments: [
+      {
+        name: "redirect_to",
+        description:
+          "Строка URL, на который будет выполнено постоянное перенаправление.",
+      },
+      {
+        name: "*args, **kwargs",
+        description:
+          "Дополнительные аргументы, передаваемые в базовый класс HttpResponse.",
+      },
+    ],
+    example: `from django.http import HttpResponsePermanentRedirect
+
+def old_page(request):
+    # Страница перемещена навсегда на новый адрес
+    return HttpResponsePermanentRedirect("/new-location/")
+
+# Используйте 301 с осторожностью:
+# браузеры кэшируют его и могут не перепроверять даже после изменений`,
+  },
+
+  {
+    name: "HttpResponseNotModified",
+    category: "Redirect responses",
+    description:
+      "HTTP-ответ с кодом 304 (Not Modified). Сообщает клиенту, что ресурс не изменился с момента последнего запроса и может быть взят из кэша. Тело ответа должно быть пустым. Используется в связке с заголовками ETag или Last-Modified.",
+    syntax: "HttpResponseNotModified()",
+    arguments: [],
+    example: `from django.http import HttpResponseNotModified
+
+def cached_view(request):
+    etag = '"abc123"'
+    if request.headers.get("If-None-Match") == etag:
+        return HttpResponseNotModified()
+    response = HttpResponse("<h1>Содержимое страницы</h1>")
+    response["ETag"] = etag
+    return response`,
+  },
+
+  {
+    name: "HttpResponseBadRequest",
+    category: "Redirect responses",
+    description:
+      "HTTP-ответ с кодом 400 (Bad Request). Возвращается, когда запрос клиента содержит ошибку — некорректные параметры, невалидные данные или нарушение протокола. Является подклассом HttpResponse.",
+    syntax: "HttpResponseBadRequest(content=b'', **kwargs)",
+    arguments: [
+      {
+        name: "content",
+        description: "Тело ответа с описанием ошибки. По умолчанию пустое.",
+      },
+    ],
+    example: `from django.http import HttpResponseBadRequest
+
+def create_item(request):
+    name = request.POST.get("name")
+    if not name:
+        return HttpResponseBadRequest("Поле 'name' обязательно")
+    # создаём объект...
+    return HttpResponse("Создано", status=201)`,
+  },
+
+  {
+    name: "HttpResponseNotFound",
+    category: "Redirect responses",
+    description:
+      "HTTP-ответ с кодом 404 (Not Found). Возвращается, когда запрошенный ресурс не найден на сервере. Аналогичен вызову raise Http404, но без автоматической обработки через handler404.",
+    syntax: "HttpResponseNotFound(content=b'', **kwargs)",
+    arguments: [
+      {
+        name: "content",
+        description: "Тело ответа с сообщением об ошибке. По умолчанию пустое.",
+      },
+    ],
+    example: `from django.http import HttpResponseNotFound
+
+def get_article(request, slug):
+    try:
+        article = Article.objects.get(slug=slug)
+    except Article.DoesNotExist:
+        return HttpResponseNotFound("<p>Статья не найдена</p>")
+    return HttpResponse(article.content)`,
+  },
+
+  {
+    name: "HttpResponseForbidden",
+    category: "Redirect responses",
+    description:
+      "HTTP-ответ с кодом 403 (Forbidden). Возвращается, когда у пользователя нет прав на выполнение запрошенного действия. В отличие от 401, аутентификация не поможет — доступ запрещён.",
+    syntax: "HttpResponseForbidden(content=b'', **kwargs)",
+    arguments: [
+      {
+        name: "content",
+        description: "Тело ответа с описанием ошибки. По умолчанию пустое.",
+      },
+    ],
+    example: `from django.http import HttpResponseForbidden
+
+def admin_panel(request):
+    if not request.user.is_staff:
+        return HttpResponseForbidden("Доступ запрещён")
+    return HttpResponse("Добро пожаловать в панель администратора")`,
+  },
+
+  {
+    name: "HttpResponseNotAllowed",
+    category: "Redirect responses",
+    description:
+      "HTTP-ответ с кодом 405 (Method Not Allowed). Возвращается, когда HTTP-метод запроса не поддерживается для данного ресурса. Автоматически устанавливает заголовок Allow со списком разрешённых методов.",
+    syntax: "HttpResponseNotAllowed(permitted_methods, content=b'', **kwargs)",
+    arguments: [
+      {
+        name: "permitted_methods",
+        description:
+          'Список строк с допустимыми HTTP-методами, например ["GET", "POST"]. Значения попадают в заголовок Allow ответа.',
+      },
+      {
+        name: "content",
+        description: "Тело ответа. По умолчанию пустое.",
+      },
+    ],
+    example: `from django.http import HttpResponseNotAllowed, HttpResponse
+
+def my_view(request):
+    if request.method == "GET":
+        return HttpResponse("Данные")
+    return HttpResponseNotAllowed(["GET"])`,
+  },
+
+  {
+    name: "HttpResponseGone",
+    category: "Redirect responses",
+    description:
+      "HTTP-ответ с кодом 410 (Gone). Сообщает клиенту, что ресурс был намеренно и безвозвратно удалён с сервера. В отличие от 404, указывает на то, что ресурс существовал ранее, но больше не доступен и не будет.",
+    syntax: "HttpResponseGone(content=b'', **kwargs)",
+    arguments: [
+      {
+        name: "content",
+        description: "Тело ответа. По умолчанию пустое.",
+      },
+    ],
+    example: `from django.http import HttpResponseGone
+
+def deleted_resource(request):
+    # Ресурс был удалён и больше не будет восстановлен
+    return HttpResponseGone("<p>Этот ресурс был удалён навсегда</p>")`,
+  },
+
+  {
+    name: "HttpResponseServerError",
+    category: "Redirect responses",
+    description:
+      "HTTP-ответ с кодом 500 (Internal Server Error). Возвращается при возникновении внутренней ошибки сервера. Обычно Django сам генерирует такой ответ при необработанных исключениях, но класс может использоваться явно.",
+    syntax: "HttpResponseServerError(content=b'', **kwargs)",
+    arguments: [
+      {
+        name: "content",
+        description: "Тело ответа с описанием ошибки. По умолчанию пустое.",
+      },
+    ],
+    example: `from django.http import HttpResponseServerError
+
+def risky_view(request):
+    try:
+        result = some_external_service()
+        return HttpResponse(result)
+    except Exception as e:
+        return HttpResponseServerError(f"Внутренняя ошибка: {e}")`,
+  },
+
+  // ─── JsonResponse ──────────────────────────────────────────────────────────
+
+  {
+    name: "JsonResponse(data, encoder=DjangoJSONEncoder, safe=True, json_dumps_params=None, **kwargs)",
+    category: "JsonResponse",
+    description:
+      "Подкласс HttpResponse, который автоматически сериализует данные в JSON и устанавливает Content-Type: application/json. Является стандартным способом возврата JSON-ответов в Django REST API.",
+    syntax:
+      "JsonResponse(data, encoder=DjangoJSONEncoder, safe=True, json_dumps_params=None, **kwargs)",
+    arguments: [
+      {
+        name: "data",
+        description:
+          "Данные для сериализации. По умолчанию должен быть словарём (dict). Если safe=False — может быть любым JSON-сериализуемым объектом (список, число, строка и т.д.).",
+      },
+      {
+        name: "encoder",
+        description:
+          "Класс JSON-энкодера. По умолчанию DjangoJSONEncoder, который умеет сериализовать datetime, Decimal, UUID и другие Django-типы.",
+      },
+      {
+        name: "safe",
+        description:
+          "Если True (по умолчанию) — data должна быть словарём, иначе выбрасывается TypeError. Установите False, чтобы передавать списки и другие типы.",
+      },
+      {
+        name: "json_dumps_params",
+        description:
+          'Словарь дополнительных параметров для json.dumps(), например {"indent": 2, "ensure_ascii": False}.',
+      },
+    ],
+    example: `from django.http import JsonResponse
+
+def api_users(request):
+    users = [
+        {"id": 1, "name": "Алиса"},
+        {"id": 2, "name": "Борис"},
+    ]
+    return JsonResponse(users, safe=False)
+
+def api_status(request):
+    return JsonResponse(
+        {"status": "ok", "version": "1.0"},
+        json_dumps_params={"ensure_ascii": False, "indent": 2}
+    )`,
+  },
+
+  // ─── StreamingHttpResponse ─────────────────────────────────────────────────
+
+  {
+    name: "StreamingHttpResponse",
+    category: "StreamingHttpResponse",
+    description:
+      "Класс ответа, позволяющий передавать данные клиенту потоком — по частям, по мере их генерации. Используется для больших файлов, CSV-экспорта, SSE и других случаев, когда всё тело не должно накапливаться в памяти.",
+    syntax:
+      "StreamingHttpResponse(streaming_content=(), content_type=None, status=200, reason=None, headers=None)",
+    arguments: [
+      {
+        name: "streaming_content",
+        description:
+          "Итерируемый объект (генератор, список и т.д.) строк или байтов, которые будут отправлены клиенту по частям.",
+      },
+      {
+        name: "content_type",
+        description:
+          'MIME-тип ответа. По умолчанию "text/html; charset=utf-8".',
+      },
+      {
+        name: "status",
+        description: "HTTP-код статуса. По умолчанию 200.",
+      },
+      {
+        name: "reason",
+        description:
+          "Текстовая фраза статуса. Определяется автоматически, если не задана.",
+      },
+      {
+        name: "headers",
+        description: "Словарь дополнительных HTTP-заголовков.",
+      },
+    ],
+    example: `from django.http import StreamingHttpResponse
+import csv
+import io
+
+def export_csv(request):
+    def generate():
+        yield "имя,возраст\\n"
+        for user in User.objects.all().iterator():
+            yield f"{user.name},{user.age}\\n"
+
+    response = StreamingHttpResponse(generate(), content_type="text/csv")
+    response["Content-Disposition"] = 'attachment; filename="users.csv"'
+    return response`,
+  },
+
+  {
+    name: "StreamingHttpResponse.streaming_content",
+    category: "StreamingHttpResponse",
+    description:
+      "Атрибут, содержащий итерируемый объект с частями тела ответа. Может быть генератором, списком строк или байтов. При установке нового значения автоматически преобразуется в итератор байтов с учётом charset.",
+    syntax: "response.streaming_content",
+    arguments: [],
+    example: `from django.http import StreamingHttpResponse
+
+def numbers_stream(request):
+    def gen():
+        for i in range(1, 6):
+            yield f"Число: {i}\\n"
+
+    response = StreamingHttpResponse(gen())
+    # Переопределение содержимого:
+    response.streaming_content = (f"Строка {i}\\n" for i in range(10))
+    return response`,
+  },
+
+  {
+    name: "StreamingHttpResponse.status_code",
+    category: "StreamingHttpResponse",
+    description:
+      "Атрибут, содержащий HTTP-код статуса потокового ответа. Работает идентично HttpResponse.status_code. По умолчанию 200. Может быть изменён после создания объекта.",
+    syntax: "response.status_code",
+    arguments: [],
+    example: `from django.http import StreamingHttpResponse
+
+def gen():
+    yield "Данные"
+
+response = StreamingHttpResponse(gen())
+print(response.status_code)  # 200
+
+response.status_code = 206  # Partial Content
+print(response.status_code)  # 206`,
+  },
+
+  {
+    name: "StreamingHttpResponse.reason_phrase",
+    category: "StreamingHttpResponse",
+    description:
+      "Атрибут с текстовой фразой HTTP-статуса потокового ответа. Определяется автоматически по status_code согласно стандарту HTTP. Может быть переопределён вручную.",
+    syntax: "response.reason_phrase",
+    arguments: [],
+    example: `from django.http import StreamingHttpResponse
+
+def gen():
+    yield b"chunk"
+
+response = StreamingHttpResponse(gen(), status=206)
+print(response.reason_phrase)  # Partial Content`,
+  },
+
+  {
+    name: "StreamingHttpResponse.streaming",
+    category: "StreamingHttpResponse",
+    description:
+      "Атрибут-флаг, всегда равный True для StreamingHttpResponse. Позволяет промежуточному ПО (middleware) и другому коду различать потоковые и обычные ответы без проверки типа объекта.",
+    syntax: "response.streaming",
+    arguments: [],
+    example: `from django.http import StreamingHttpResponse
+
+def gen():
+    yield "часть 1"
+    yield "часть 2"
+
+response = StreamingHttpResponse(gen())
+print(response.streaming)  # True
+
+# В middleware:
+def process_response(self, request, response):
+    if response.streaming:
+        # обработка потокового ответа
+        pass
+    return response`,
+  },
+
+  {
+    name: "StreamingHttpResponse.is_async",
+    category: "StreamingHttpResponse",
+    description:
+      "Атрибут-флаг, указывающий, является ли streaming_content асинхронным итератором (async generator). Если True — Django ASGI-сервер будет итерировать содержимое асинхронно. Для обычных синхронных генераторов равен False.",
+    syntax: "response.is_async",
+    arguments: [],
+    example: `from django.http import StreamingHttpResponse
+
+async def async_gen():
+    yield b"async chunk 1"
+    yield b"async chunk 2"
+
+response = StreamingHttpResponse(async_gen())
+print(response.is_async)  # True
+
+def sync_gen():
+    yield b"sync chunk"
+
+response2 = StreamingHttpResponse(sync_gen())
+print(response2.is_async)  # False`,
+  },
+
+  // ─── FileResponse ──────────────────────────────────────────────────────────
+
+  {
+    name: "FileResponse(open_file, as_attachment=False, filename='', **kwargs)",
+    category: "FileResponse",
+    description:
+      "Специализированный подкласс StreamingHttpResponse, оптимизированный для отправки файлов. Автоматически устанавливает Content-Type, Content-Length и Content-Disposition. Поддерживает системный вызов sendfile для эффективной передачи.",
+    syntax:
+      "FileResponse(open_file, as_attachment=False, filename='', **kwargs)",
+    arguments: [
+      {
+        name: "open_file",
+        description:
+          "Открытый файловый объект (в бинарном режиме) или любой итерируемый источник байтов. Файл закрывается автоматически после отправки.",
+      },
+      {
+        name: "as_attachment",
+        description:
+          "Если True — устанавливает Content-Disposition: attachment, что заставляет браузер скачать файл вместо отображения. По умолчанию False (inline — отображение в браузере).",
+      },
+      {
+        name: "filename",
+        description:
+          "Имя файла для заголовка Content-Disposition. Если не задано — извлекается из атрибута name файлового объекта.",
+      },
+    ],
+    example: `from django.http import FileResponse
+import os
+
+def download_report(request):
+    file_path = "/reports/annual_report.pdf"
+    f = open(file_path, "rb")
+    response = FileResponse(
+        f,
+        as_attachment=True,
+        filename="годовой_отчёт.pdf"
+    )
+    return response`,
+  },
+
+  {
+    name: "FileResponse.set_headers(open_file)",
+    category: "FileResponse",
+    description:
+      "Метод, вызываемый автоматически при создании FileResponse. Устанавливает заголовки Content-Type, Content-Length и Content-Disposition на основе переданного файлового объекта. Может быть переопределён в подклассе для кастомной логики.",
+    syntax: "FileResponse.set_headers(open_file)",
+    arguments: [
+      {
+        name: "open_file",
+        description:
+          "Открытый файловый объект, из которого извлекаются метаданные (имя, размер) для формирования заголовков ответа.",
+      },
+    ],
+    example: `from django.http import FileResponse
+
+class MyFileResponse(FileResponse):
+    def set_headers(self, open_file):
+        super().set_headers(open_file)
+        # Добавляем собственный заголовок
+        self["X-File-Source"] = "internal"
+
+def download(request):
+    f = open("data.csv", "rb")
+    return MyFileResponse(f, as_attachment=True)`,
+  },
+
+  // ─── HttpResponseBase ──────────────────────────────────────────────────────
+
+  {
+    name: "HttpResponseBase",
+    category: "HttpResponseBase",
+    description:
+      "Абстрактный базовый класс для всех HTTP-ответов Django. Содержит общую логику управления заголовками, cookie, статусом и кодировкой. Не используется напрямую — служит основой для HttpResponse и StreamingHttpResponse.",
+    syntax:
+      "HttpResponseBase(content_type=None, status=200, reason=None, charset=None, headers=None)",
+    arguments: [
+      {
+        name: "content_type",
+        description:
+          "MIME-тип ответа. По умолчанию берётся из настройки DEFAULT_CONTENT_TYPE.",
+      },
+      {
+        name: "status",
+        description: "HTTP-код статуса. По умолчанию 200.",
+      },
+      {
+        name: "reason",
+        description:
+          "Текстовая фраза статуса. Определяется автоматически по status, если не задана.",
+      },
+      {
+        name: "charset",
+        description:
+          "Кодировка ответа. Извлекается из content_type или DEFAULT_CHARSET.",
+      },
+      {
+        name: "headers",
+        description: "Словарь начальных HTTP-заголовков.",
+      },
+    ],
+    example: `# HttpResponseBase не используется напрямую.
+# Все публичные ответы Django наследуют от него:
+from django.http import HttpResponse, StreamingHttpResponse
+from django.http.response import HttpResponseBase
+
+print(issubclass(HttpResponse, HttpResponseBase))          # True
+print(issubclass(StreamingHttpResponse, HttpResponseBase)) # True
+
+# Полезно для isinstance-проверок в middleware:
+def process_response(self, request, response):
+    if isinstance(response, HttpResponseBase):
+        response["X-Processed"] = "true"
+    return response`,
+  },
+
+  // ─── SchemaEditor ──────────────────────────────────────────────────────────
+
+  {
+    name: "BaseDatabaseSchemaEditor.execute(sql, params=())",
+    category: "SchemaEditor",
+    description:
+      "Выполняет SQL-запрос на уровне схемы базы данных. Является низкоуровневым методом, на котором строятся все остальные методы SchemaEditor. Автоматически обрабатывает параметры и логирование. Используется при написании кастомных миграций.",
+    syntax: "BaseDatabaseSchemaEditor.execute(sql, params=())",
+    arguments: [
+      {
+        name: "sql",
+        description:
+          "Строка SQL-запроса или объект Statement для выполнения в базе данных.",
+      },
+      {
+        name: "params",
+        description:
+          "Кортеж параметров для подстановки в SQL-запрос. По умолчанию пустой кортеж.",
+      },
+    ],
+    example: `from django.db import connection
+
+with connection.schema_editor() as editor:
+    editor.execute(
+        "ALTER TABLE myapp_article ADD COLUMN views integer DEFAULT 0",
+    )`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.create_model(model)",
+    category: "SchemaEditor",
+    description:
+      "Создаёт таблицу в базе данных для указанной модели Django. Генерирует и выполняет SQL CREATE TABLE, включая все поля, ограничения и индексы модели. Вызывается Django при применении миграций типа CreateModel.",
+    syntax: "BaseDatabaseSchemaEditor.create_model(model)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, для которой нужно создать таблицу в базе данных.",
+      },
+    ],
+    example: `from django.db import connection
+from myapp.models import Article
+
+# Используется внутри миграций:
+with connection.schema_editor() as editor:
+    editor.create_model(Article)
+# Эквивалентно: CREATE TABLE myapp_article (...)`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.delete_model(model)",
+    category: "SchemaEditor",
+    description:
+      "Удаляет таблицу базы данных, соответствующую указанной модели. Генерирует и выполняет SQL DROP TABLE. Вызывается при применении миграций типа DeleteModel.",
+    syntax: "BaseDatabaseSchemaEditor.delete_model(model)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, таблицу которой нужно удалить из базы данных.",
+      },
+    ],
+    example: `from django.db import connection
+from myapp.models import OldModel
+
+with connection.schema_editor() as editor:
+    editor.delete_model(OldModel)
+# Эквивалентно: DROP TABLE myapp_oldmodel`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.add_index(model, index)",
+    category: "SchemaEditor",
+    description:
+      "Добавляет индекс к таблице базы данных для указанной модели. Генерирует и выполняет SQL CREATE INDEX. Вызывается при применении миграций типа AddIndex.",
+    syntax: "BaseDatabaseSchemaEditor.add_index(model, index)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, к таблице которой добавляется индекс.",
+      },
+      {
+        name: "index",
+        description:
+          "Объект django.db.models.Index с настройками создаваемого индекса (поля, имя, условие и т.д.).",
+      },
+    ],
+    example: `from django.db import connection, models
+from myapp.models import Article
+
+index = models.Index(fields=["title", "created_at"], name="article_title_date_idx")
+
+with connection.schema_editor() as editor:
+    editor.add_index(Article, index)`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.remove_index(model, index)",
+    category: "SchemaEditor",
+    description:
+      "Удаляет индекс из таблицы базы данных для указанной модели. Генерирует и выполняет SQL DROP INDEX. Вызывается при применении миграций типа RemoveIndex.",
+    syntax: "BaseDatabaseSchemaEditor.remove_index(model, index)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, из таблицы которой удаляется индекс.",
+      },
+      {
+        name: "index",
+        description:
+          "Объект django.db.models.Index, описывающий удаляемый индекс (должно совпадать имя).",
+      },
+    ],
+    example: `from django.db import connection, models
+from myapp.models import Article
+
+index = models.Index(fields=["title"], name="article_title_idx")
+
+with connection.schema_editor() as editor:
+    editor.remove_index(Article, index)`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.rename_index(model, old_index, new_index)",
+    category: "SchemaEditor",
+    description:
+      "Переименовывает существующий индекс в таблице базы данных. Вызывается при применении миграций типа RenameIndex. В зависимости от СУБД может выполняться как атомарная операция или как удаление и пересоздание индекса.",
+    syntax:
+      "BaseDatabaseSchemaEditor.rename_index(model, old_index, new_index)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, в таблице которой переименовывается индекс.",
+      },
+      {
+        name: "old_index",
+        description:
+          "Объект Index с текущим именем переименовываемого индекса.",
+      },
+      {
+        name: "new_index",
+        description: "Объект Index с новым именем для индекса.",
+      },
+    ],
+    example: `from django.db import connection, models
+from myapp.models import Article
+
+old_index = models.Index(fields=["title"], name="old_title_idx")
+new_index = models.Index(fields=["title"], name="article_title_idx")
+
+with connection.schema_editor() as editor:
+    editor.rename_index(Article, old_index, new_index)`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.add_constraint(model, constraint)",
+    category: "SchemaEditor",
+    description:
+      "Добавляет ограничение (constraint) к таблице базы данных для указанной модели. Поддерживает UniqueConstraint, CheckConstraint и другие подклассы BaseConstraint. Вызывается при миграциях типа AddConstraint.",
+    syntax: "BaseDatabaseSchemaEditor.add_constraint(model, constraint)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, к таблице которой добавляется ограничение.",
+      },
+      {
+        name: "constraint",
+        description:
+          "Объект ограничения — подкласс BaseConstraint, например UniqueConstraint или CheckConstraint.",
+      },
+    ],
+    example: `from django.db import connection, models
+from myapp.models import Article
+
+constraint = models.UniqueConstraint(
+    fields=["author", "slug"],
+    name="unique_author_slug"
+)
+
+with connection.schema_editor() as editor:
+    editor.add_constraint(Article, constraint)`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.remove_constraint(model, constraint)",
+    category: "SchemaEditor",
+    description:
+      "Удаляет ограничение из таблицы базы данных для указанной модели. Вызывается при применении миграций типа RemoveConstraint.",
+    syntax: "BaseDatabaseSchemaEditor.remove_constraint(model, constraint)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, из таблицы которой удаляется ограничение.",
+      },
+      {
+        name: "constraint",
+        description:
+          "Объект ограничения (должно совпадать имя), который нужно удалить.",
+      },
+    ],
+    example: `from django.db import connection, models
+from myapp.models import Article
+
+constraint = models.UniqueConstraint(
+    fields=["author", "slug"],
+    name="unique_author_slug"
+)
+
+with connection.schema_editor() as editor:
+    editor.remove_constraint(Article, constraint)`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.alter_unique_together(model, old_unique_together, new_unique_together)",
+    category: "SchemaEditor",
+    description:
+      "Изменяет параметр unique_together модели, добавляя или удаляя составные уникальные ограничения в таблице. Вызывается при миграциях типа AlterUniqueTogether. Вычисляет разницу между старым и новым значениями.",
+    syntax:
+      "BaseDatabaseSchemaEditor.alter_unique_together(model, old_unique_together, new_unique_together)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, у которой изменяется unique_together.",
+      },
+      {
+        name: "old_unique_together",
+        description:
+          "Прежнее значение unique_together — список/кортеж кортежей полей.",
+      },
+      {
+        name: "new_unique_together",
+        description:
+          "Новое значение unique_together — список/кортеж кортежей полей.",
+      },
+    ],
+    example: `from django.db import connection
+from myapp.models import Article
+
+with connection.schema_editor() as editor:
+    editor.alter_unique_together(
+        Article,
+        old_unique_together=[("author", "title")],
+        new_unique_together=[("author", "slug")],
+    )`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.alter_index_together(model, old_index_together, new_index_together)",
+    category: "SchemaEditor",
+    description:
+      "Изменяет параметр index_together модели, добавляя или удаляя составные индексы в таблице. Вызывается при миграциях типа AlterIndexTogether. Устарел начиная с Django 4.2 — рекомендуется использовать Meta.indexes.",
+    syntax:
+      "BaseDatabaseSchemaEditor.alter_index_together(model, old_index_together, new_index_together)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, у которой изменяется index_together.",
+      },
+      {
+        name: "old_index_together",
+        description: "Прежнее значение index_together.",
+      },
+      {
+        name: "new_index_together",
+        description: "Новое значение index_together.",
+      },
+    ],
+    example: `from django.db import connection
+from myapp.models import Article
+
+with connection.schema_editor() as editor:
+    editor.alter_index_together(
+        Article,
+        old_index_together=[("author", "created_at")],
+        new_index_together=[("author", "published_at")],
+    )`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.alter_db_table(model, old_db_table, new_db_table)",
+    category: "SchemaEditor",
+    description:
+      "Переименовывает таблицу базы данных для указанной модели. Генерирует и выполняет SQL ALTER TABLE ... RENAME TO. Вызывается при миграциях типа AlterModelTable.",
+    syntax:
+      "BaseDatabaseSchemaEditor.alter_db_table(model, old_db_table, new_db_table)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, таблицу которой нужно переименовать.",
+      },
+      {
+        name: "old_db_table",
+        description: "Текущее имя таблицы в базе данных.",
+      },
+      {
+        name: "new_db_table",
+        description: "Новое имя таблицы в базе данных.",
+      },
+    ],
+    example: `from django.db import connection
+from myapp.models import Article
+
+with connection.schema_editor() as editor:
+    editor.alter_db_table(
+        Article,
+        old_db_table="myapp_article",
+        new_db_table="blog_article"
+    )`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.alter_db_table_comment(model, old_db_table_comment, new_db_table_comment)",
+    category: "SchemaEditor",
+    description:
+      "Изменяет комментарий таблицы базы данных для указанной модели. Поддерживается не всеми СУБД. Вызывается при миграциях типа AlterModelTableComment, когда изменяется Meta.db_table_comment.",
+    syntax:
+      "BaseDatabaseSchemaEditor.alter_db_table_comment(model, old_db_table_comment, new_db_table_comment)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, комментарий таблицы которой изменяется.",
+      },
+      {
+        name: "old_db_table_comment",
+        description: "Прежний комментарий таблицы (строка или None).",
+      },
+      {
+        name: "new_db_table_comment",
+        description: "Новый комментарий таблицы (строка или None).",
+      },
+    ],
+    example: `from django.db import connection
+from myapp.models import Article
+
+with connection.schema_editor() as editor:
+    editor.alter_db_table_comment(
+        Article,
+        old_db_table_comment=None,
+        new_db_table_comment="Таблица статей блога"
+    )`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.alter_db_tablespace(model, old_db_tablespace, new_db_tablespace)",
+    category: "SchemaEditor",
+    description:
+      "Перемещает таблицу из одного табличного пространства (tablespace) в другое. Поддерживается PostgreSQL и Oracle. Вызывается при миграциях типа AlterModelOptions, когда изменяется Meta.db_tablespace.",
+    syntax:
+      "BaseDatabaseSchemaEditor.alter_db_tablespace(model, old_db_tablespace, new_db_tablespace)",
+    arguments: [
+      {
+        name: "model",
+        description:
+          "Класс модели Django, таблицу которой нужно переместить в другое tablespace.",
+      },
+      {
+        name: "old_db_tablespace",
+        description: "Имя текущего табличного пространства.",
+      },
+      {
+        name: "new_db_tablespace",
+        description:
+          "Имя нового табличного пространства, в которое перемещается таблица.",
+      },
+    ],
+    example: `from django.db import connection
+from myapp.models import Article
+
+with connection.schema_editor() as editor:
+    editor.alter_db_tablespace(
+        Article,
+        old_db_tablespace="pg_default",
+        new_db_tablespace="fast_ssd"
+    )`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.add_field(model, field)",
+    category: "SchemaEditor",
+    description:
+      "Добавляет новый столбец в таблицу базы данных для указанной модели. Генерирует SQL ALTER TABLE ... ADD COLUMN. При наличии значения по умолчанию сразу заполняет данные. Вызывается при миграциях типа AddField.",
+    syntax: "BaseDatabaseSchemaEditor.add_field(model, field)",
+    arguments: [
+      {
+        name: "model",
+        description: "Класс модели Django, в таблицу которой добавляется поле.",
+      },
+      {
+        name: "field",
+        description:
+          "Экземпляр поля Django (например, CharField, IntegerField), которое нужно добавить как столбец.",
+      },
+    ],
+    example: `from django.db import connection, models
+from myapp.models import Article
+
+new_field = models.IntegerField(default=0, null=False)
+new_field.set_attributes_from_name("views")
+
+with connection.schema_editor() as editor:
+    editor.add_field(Article, new_field)`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.remove_field(model, field)",
+    category: "SchemaEditor",
+    description:
+      "Удаляет столбец из таблицы базы данных для указанной модели. Генерирует SQL ALTER TABLE ... DROP COLUMN. Вызывается при применении миграций типа RemoveField.",
+    syntax: "BaseDatabaseSchemaEditor.remove_field(model, field)",
+    arguments: [
+      {
+        name: "model",
+        description: "Класс модели Django, из таблицы которой удаляется поле.",
+      },
+      {
+        name: "field",
+        description:
+          "Экземпляр поля Django, соответствующий удаляемому столбцу.",
+      },
+    ],
+    example: `from django.db import connection
+from myapp.models import Article
+
+# field должен соответствовать реальному полю модели
+old_field = Article._meta.get_field("legacy_column")
+
+with connection.schema_editor() as editor:
+    editor.remove_field(Article, old_field)`,
+  },
+
+  {
+    name: "BaseDatabaseSchemaEditor.alter_field(model, old_field, new_field, strict=False)",
+    category: "SchemaEditor",
+    description:
+      "Изменяет существующий столбец таблицы — тип данных, ограничения, значение по умолчанию, null-допустимость и другие параметры. Вычисляет минимально необходимый набор SQL-операций для перехода от старого поля к новому. Вызывается при миграциях типа AlterField.",
+    syntax:
+      "BaseDatabaseSchemaEditor.alter_field(model, old_field, new_field, strict=False)",
+    arguments: [
+      {
+        name: "model",
+        description: "Класс модели Django, поле которой изменяется.",
+      },
+      {
+        name: "old_field",
+        description: "Экземпляр поля Django с текущими параметрами столбца.",
+      },
+      {
+        name: "new_field",
+        description: "Экземпляр поля Django с новыми параметрами столбца.",
+      },
+      {
+        name: "strict",
+        description:
+          "Если True — выбрасывает исключение при несовместимых изменениях типа. По умолчанию False.",
+      },
+    ],
+    example: `from django.db import connection, models
+from myapp.models import Article
+
+old_field = Article._meta.get_field("title")
+
+new_field = models.CharField(max_length=500, blank=True)
+new_field.set_attributes_from_name("title")
+
+with connection.schema_editor() as editor:
+    editor.alter_field(Article, old_field, new_field)`,
+  },
+
+  {
+    name: "SchemaEditor.connection",
+    category: "SchemaEditor",
+    description:
+      "Атрибут, содержащий объект соединения с базой данных, для которого работает данный SchemaEditor. Предоставляет доступ к курсору, параметрам базы данных и возможностям СУБД. Устанавливается при создании SchemaEditor через connection.schema_editor().",
+    syntax: "editor.connection",
+    arguments: [],
+    example: `from django.db import connection
+
+with connection.schema_editor() as editor:
+    # Доступ к объекту соединения
+    print(editor.connection.vendor)   # postgresql / sqlite / mysql
+    print(editor.connection.alias)    # default
+
+    # Проверка возможностей СУБД:
+    features = editor.connection.features
+    print(features.supports_table_check_constraints)  # True/False`,
+  },
+
+  // ─── Settings ──────────────────────────────────────────────────────────────
+
+  {
+    name: "ABSOLUTE_URL_OVERRIDES",
+    category: "Settings",
+    description:
+      'Словарь, позволяющий переопределить метод get_absolute_url() для любой модели без изменения её кода. Ключ — строка "app_label.ModelName", значение — функция, принимающая объект модели и возвращающая URL. Полезен для переопределения поведения сторонних приложений.',
+    syntax:
+      'ABSOLUTE_URL_OVERRIDES = {\n    "app_label.ModelName": callable\n}',
+    arguments: [],
+    example: `# settings.py
+ABSOLUTE_URL_OVERRIDES = {
+    "auth.user": lambda u: f"/profiles/{u.username}/",
+    "blog.article": lambda a: f"/posts/{a.slug}/",
+}
+
+# Теперь user.get_absolute_url() вернёт /profiles/alice/`,
+  },
+
+  {
+    name: "ADMINS",
+    category: "Settings",
+    description:
+      "Список кортежей (имя, email) администраторов проекта. Django отправляет им письма об ошибках 500, если DEBUG=False и настроен EMAIL_BACKEND. Используется совместно с AdminEmailHandler в LOGGING.",
+    syntax: 'ADMINS = [\n    ("Имя", "email@example.com"),\n]',
+    arguments: [],
+    example: `# settings.py
+ADMINS = [
+    ("Иван Иванов", "ivan@example.com"),
+    ("Мария Петрова", "maria@example.com"),
+]
+
+# При DEBUG=False Django пришлёт письмо при 500-ошибке`,
+  },
+
+  {
+    name: "ALLOWED_HOSTS",
+    category: "Settings",
+    description:
+      'Список строк с доменными именами и IP-адресами, которым разрешено обращаться к Django-приложению. Защищает от атак через подмену заголовка Host. При DEBUG=False обязателен к заполнению. Поддерживает wildcard "*" и домены с точкой в начале для поддоменов.',
+    syntax: 'ALLOWED_HOSTS = ["example.com", ".example.com", "localhost"]',
+    arguments: [],
+    example: `# settings.py
+
+# Разработка:
+ALLOWED_HOSTS = ["*"]
+
+# Продакшн:
+ALLOWED_HOSTS = [
+    "mysite.com",
+    ".mysite.com",   # все поддомены
+    "www.mysite.com",
+    "1.2.3.4",       # IP сервера
+]`,
+  },
+
+  {
+    name: "APPEND_SLASH",
+    category: "Settings",
+    description:
+      'Булево значение. Если True (по умолчанию) и запрошенный URL не заканчивается на "/" и не найден в URLconf — Django выполнит редирект 301 на тот же URL с добавленным слешем. Работает только при подключённом CommonMiddleware.',
+    syntax: "APPEND_SLASH = True",
+    arguments: [],
+    example: `# settings.py
+APPEND_SLASH = True  # по умолчанию
+
+# Запрос GET /about → редирект на /about/ (301)
+# Если /about/ есть в urls.py
+
+# Отключить автоматический слеш:
+APPEND_SLASH = False`,
+  },
+
+  {
+    name: "CACHES",
+    category: "Settings",
+    description:
+      'Словарь с настройками бэкендов кэширования. Ключ — псевдоним кэша (обычно "default"), значение — словарь с параметрами бэкенда. Поддерживает Memcached, Redis, файловый, БД-кэш и встроенный кэш в памяти.',
+    syntax:
+      'CACHES = {\n    "default": {\n        "BACKEND": "...",\n        "LOCATION": "...",\n    }\n}',
+    arguments: [],
+    example: `# settings.py
+
+# Встроенный кэш в памяти (разработка):
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    }
+}
+
+# Redis (продакшн):
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",
+        "TIMEOUT": 300,
+    }
+}`,
+  },
+
+  {
+    name: "CACHE_MIDDLEWARE_ALIAS",
+    category: "Settings",
+    description:
+      'Псевдоним кэша из CACHES, который используется middleware кэширования (UpdateCacheMiddleware и FetchFromCacheMiddleware). По умолчанию "default".',
+    syntax: 'CACHE_MIDDLEWARE_ALIAS = "default"',
+    arguments: [],
+    example: `# settings.py
+CACHES = {
+    "default": {...},
+    "page_cache": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/2",
+    }
+}
+
+# Использовать отдельный кэш для middleware:
+CACHE_MIDDLEWARE_ALIAS = "page_cache"`,
+  },
+
+  {
+    name: "CACHE_MIDDLEWARE_KEY_PREFIX",
+    category: "Settings",
+    description:
+      "Строка-префикс, добавляемая ко всем ключам кэша, создаваемым middleware кэширования. Позволяет разделять кэш между несколькими сайтами, использующими одно хранилище. По умолчанию пустая строка.",
+    syntax: 'CACHE_MIDDLEWARE_KEY_PREFIX = ""',
+    arguments: [],
+    example: `# settings.py
+
+# Для мультисайтовой конфигурации:
+CACHE_MIDDLEWARE_KEY_PREFIX = "mysite_ru"
+
+# Ключи в кэше будут вида:
+# mysite_ru.views.decorators.cache.cache_page.GET.abc123`,
+  },
+
+  {
+    name: "CACHE_MIDDLEWARE_SECONDS",
+    category: "Settings",
+    description:
+      "Время жизни кэшированных страниц в секундах для middleware кэширования. Применяется к UpdateCacheMiddleware и FetchFromCacheMiddleware, а также к декоратору @cache_page, если не задан явно. По умолчанию 600 секунд (10 минут).",
+    syntax: "CACHE_MIDDLEWARE_SECONDS = 600",
+    arguments: [],
+    example: `# settings.py
+
+# Кэшировать страницы на 1 час:
+CACHE_MIDDLEWARE_SECONDS = 3600
+
+# Отключить кэш middleware (кэш не применяется):
+CACHE_MIDDLEWARE_SECONDS = 0`,
+  },
+
+  {
+    name: "CSRF_COOKIE_AGE",
+    category: "Settings",
+    description:
+      "Время жизни CSRF-cookie в секундах. По умолчанию 31449600 (1 год). Используется для защиты от межсайтовой подделки запросов. Установка None делает cookie сессионной (удаляется при закрытии браузера).",
+    syntax: "CSRF_COOKIE_AGE = 31449600",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — 1 год:
+CSRF_COOKIE_AGE = 31449600
+
+# Сессионная cookie (удаляется при закрытии браузера):
+CSRF_COOKIE_AGE = None
+
+# 7 дней:
+CSRF_COOKIE_AGE = 60 * 60 * 24 * 7`,
+  },
+
+  {
+    name: "CSRF_COOKIE_DOMAIN",
+    category: "Settings",
+    description:
+      "Домен, для которого устанавливается CSRF-cookie. Позволяет использовать одну CSRF-cookie на нескольких поддоменах. По умолчанию None — cookie устанавливается для текущего домена без поддоменов.",
+    syntax: "CSRF_COOKIE_DOMAIN = None",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — только текущий домен:
+CSRF_COOKIE_DOMAIN = None
+
+# Общая для всех поддоменов:
+CSRF_COOKIE_DOMAIN = ".example.com"
+# Охватывает: example.com, api.example.com, www.example.com`,
+  },
+
+  {
+    name: "CSRF_COOKIE_HTTPONLY",
+    category: "Settings",
+    description:
+      "Булево значение. Если True — CSRF-cookie будет недоступна через JavaScript (document.cookie). По умолчанию False, так как фронтенд-фреймворки (React, Vue) читают токен через JS для отправки в заголовке X-CSRFToken.",
+    syntax: "CSRF_COOKIE_HTTPONLY = False",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — доступна JS (нужна для SPA):
+CSRF_COOKIE_HTTPONLY = False
+
+# Только серверный доступ (если токен берётся из формы):
+CSRF_COOKIE_HTTPONLY = True`,
+  },
+
+  {
+    name: "CSRF_COOKIE_NAME",
+    category: "Settings",
+    description:
+      'Имя CSRF-cookie, устанавливаемой Django. По умолчанию "csrftoken". Можно изменить при конфликте с другими cookie или для соответствия соглашениям фронтенда.',
+    syntax: 'CSRF_COOKIE_NAME = "csrftoken"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+CSRF_COOKIE_NAME = "csrftoken"
+
+# Кастомное имя:
+CSRF_COOKIE_NAME = "XSRF-TOKEN"
+# Теперь фронтенд читает cookie с именем XSRF-TOKEN`,
+  },
+
+  {
+    name: "CSRF_COOKIE_PATH",
+    category: "Settings",
+    description:
+      'Путь, для которого устанавливается CSRF-cookie. По умолчанию "/" — cookie действует для всего сайта. Можно ограничить конкретным разделом, если приложение смонтировано по подпути.',
+    syntax: 'CSRF_COOKIE_PATH = "/"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — весь сайт:
+CSRF_COOKIE_PATH = "/"
+
+# Только для раздела /api/:
+CSRF_COOKIE_PATH = "/api/"
+# Cookie не будет отправляться для запросов вне /api/`,
+  },
+
+  {
+    name: "CSRF_COOKIE_SAMESITE",
+    category: "Settings",
+    description:
+      'Атрибут SameSite для CSRF-cookie. Управляет отправкой cookie при кросс-сайтовых запросах. По умолчанию "Lax". Возможные значения: "Strict", "Lax", "None" (требует Secure=True) или False для отключения атрибута.',
+    syntax: 'CSRF_COOKIE_SAMESITE = "Lax"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+CSRF_COOKIE_SAMESITE = "Lax"
+
+# Максимальная защита (cookie не отправляется с других сайтов вообще):
+CSRF_COOKIE_SAMESITE = "Strict"
+
+# Для кросс-сайтовых запросов (требует CSRF_COOKIE_SECURE = True):
+CSRF_COOKIE_SAMESITE = "None"`,
+  },
+
+  {
+    name: "CSRF_COOKIE_SECURE",
+    category: "Settings",
+    description:
+      "Булево значение. Если True — CSRF-cookie передаётся только по HTTPS-соединению. По умолчанию False. Рекомендуется устанавливать True в продакшн-окружении для защиты от перехвата cookie.",
+    syntax: "CSRF_COOKIE_SECURE = False",
+    arguments: [],
+    example: `# settings.py
+
+# Разработка (HTTP допустим):
+CSRF_COOKIE_SECURE = False
+
+# Продакшн (только HTTPS):
+CSRF_COOKIE_SECURE = True`,
+  },
+
+  {
+    name: "CSRF_USE_SESSIONS",
+    category: "Settings",
+    description:
+      "Если True — CSRF-токен сохраняется в сессии пользователя вместо cookie. Требует подключённого SessionMiddleware до CsrfViewMiddleware. По умолчанию False. При включении CSRF_COOKIE_* настройки игнорируются.",
+    syntax: "CSRF_USE_SESSIONS = False",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — через cookie:
+CSRF_USE_SESSIONS = False
+
+# Через сессию (токен в request.session):
+CSRF_USE_SESSIONS = True
+# SessionMiddleware должен быть перед CsrfViewMiddleware в MIDDLEWARE`,
+  },
+
+  {
+    name: "CSRF_FAILURE_VIEW",
+    category: "Settings",
+    description:
+      'Путь к функции-представлению, вызываемой при ошибке CSRF-проверки (код 403). По умолчанию "django.views.csrf.csrf_failure". Позволяет показывать кастомную страницу ошибки при CSRF-атаке или устаревшем токене.',
+    syntax: 'CSRF_FAILURE_VIEW = "django.views.csrf.csrf_failure"',
+    arguments: [],
+    example: `# settings.py
+CSRF_FAILURE_VIEW = "myapp.views.custom_csrf_failure"
+
+# myapp/views.py
+from django.http import HttpResponseForbidden
+
+def custom_csrf_failure(request, reason=""):
+    return HttpResponseForbidden(
+        f"<h1>Ошибка безопасности</h1><p>{reason}</p>"
+    )`,
+  },
+
+  {
+    name: "CSRF_HEADER_NAME",
+    category: "Settings",
+    description:
+      'Имя HTTP-заголовка, из которого Django читает CSRF-токен при AJAX-запросах. По умолчанию "HTTP_X_CSRFTOKEN", что соответствует заголовку X-CSRFToken. Может быть изменено для совместимости с другими фреймворками.',
+    syntax: 'CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — читает заголовок X-CSRFToken:
+CSRF_HEADER_NAME = "HTTP_X_CSRFTOKEN"
+
+# Для совместимости с Angular (заголовок X-XSRF-Token):
+CSRF_HEADER_NAME = "HTTP_X_XSRF_TOKEN"
+
+# Фронтенд (axios):
+# axios.defaults.headers["X-CSRFToken"] = getCookie("csrftoken")`,
+  },
+
+  {
+    name: "CSRF_TRUSTED_ORIGINS",
+    category: "Settings",
+    description:
+      'Список доверенных источников (origins) для небезопасных кросс-сайтовых запросов (POST, PUT, DELETE и др.). Каждый элемент должен содержать схему и хост, например "https://example.com". Поддерживает wildcard поддоменов: "https://*.example.com". Обязателен для API с фронтендом на другом домене.',
+    syntax: 'CSRF_TRUSTED_ORIGINS = ["https://example.com"]',
+    arguments: [],
+    example: `# settings.py
+CSRF_TRUSTED_ORIGINS = [
+    "https://mysite.com",
+    "https://www.mysite.com",
+    "https://*.mysite.com",       # все поддомены
+    "http://localhost:3000",       # локальный фронтенд
+    "http://127.0.0.1:8080",
+]`,
+  },
+
+  {
+    name: "DATABASES",
+    category: "Settings",
+    description:
+      'Словарь с настройками подключений к базам данных. Ключ — псевдоним БД (обычно "default"), значение — словарь с ENGINE, NAME, USER, PASSWORD, HOST, PORT и дополнительными параметрами. Поддерживает несколько БД одновременно.',
+    syntax:
+      'DATABASES = {\n    "default": {\n        "ENGINE": "...",\n        "NAME": "...",\n    }\n}',
+    arguments: [],
+    example: `# settings.py
+
+# PostgreSQL:
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "mydb",
+        "USER": "myuser",
+        "PASSWORD": "secret",
+        "HOST": "localhost",
+        "PORT": "5432",
+    }
+}
+
+# SQLite (разработка):
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
+    }
+}`,
+  },
+
+  {
+    name: "DATA_UPLOAD_MAX_MEMORY_SIZE",
+    category: "Settings",
+    description:
+      "Максимальный размер тела HTTP-запроса (в байтах), не считая загружаемых файлов. Защищает от атак переполнения памяти. По умолчанию 2621440 (2,5 МБ). При превышении выбрасывается RequestDataTooBig.",
+    syntax: "DATA_UPLOAD_MAX_MEMORY_SIZE = 2621440",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — 2,5 МБ:
+DATA_UPLOAD_MAX_MEMORY_SIZE = 2621440
+
+# 10 МБ:
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+
+# Без ограничений:
+DATA_UPLOAD_MAX_MEMORY_SIZE = None`,
+  },
+
+  {
+    name: "DATA_UPLOAD_MAX_NUMBER_FIELDS",
+    category: "Settings",
+    description:
+      "Максимальное количество полей в теле POST-запроса. Защищает от атак через отправку огромного числа параметров. По умолчанию 1000. При превышении выбрасывается TooManyFieldsSent.",
+    syntax: "DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000
+
+# Для форм с большим числом полей:
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
+
+# Без ограничений:
+DATA_UPLOAD_MAX_NUMBER_FIELDS = None`,
+  },
+
+  {
+    name: "DATA_UPLOAD_MAX_NUMBER_FILES",
+    category: "Settings",
+    description:
+      "Максимальное количество файлов в одном multipart-запросе. Защищает от атак через загрузку множества файлов. По умолчанию 100. При превышении выбрасывается TooManyFilesSent.",
+    syntax: "DATA_UPLOAD_MAX_NUMBER_FILES = 100",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — 100 файлов:
+DATA_UPLOAD_MAX_NUMBER_FILES = 100
+
+# Для галереи с массовой загрузкой:
+DATA_UPLOAD_MAX_NUMBER_FILES = 500
+
+# Без ограничений:
+DATA_UPLOAD_MAX_NUMBER_FILES = None`,
+  },
+
+  {
+    name: "DATABASE_ROUTERS",
+    category: "Settings",
+    description:
+      "Список путей к классам-роутерам для распределения операций чтения/записи между несколькими базами данных. Роутеры определяют, какую БД использовать для каждой модели и операции. Используется в шардинге и репликах.",
+    syntax: 'DATABASE_ROUTERS = ["path.to.Router"]',
+    arguments: [],
+    example: `# settings.py
+DATABASE_ROUTERS = [
+    "myapp.routers.PrimaryReplicaRouter",
+    "myapp.routers.AnalyticsRouter",
+]
+
+# myapp/routers.py
+class PrimaryReplicaRouter:
+    def db_for_read(self, model, **hints):
+        return "replica"   # читаем из реплики
+
+    def db_for_write(self, model, **hints):
+        return "default"   # пишем в основную БД`,
+  },
+
+  {
+    name: "DATE_FORMAT",
+    category: "Settings",
+    description:
+      'Формат отображения дат в Django-шаблонах и формах при USE_L10N=False. Использует синтаксис форматирования Django (не Python strftime). По умолчанию "N j, Y" (например, "Jan. 1, 2024").',
+    syntax: 'DATE_FORMAT = "N j, Y"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию: Jan. 1, 2024
+DATE_FORMAT = "N j, Y"
+
+# Российский формат: 01.01.2024
+DATE_FORMAT = "d.m.Y"
+
+# ISO формат: 2024-01-01
+DATE_FORMAT = "Y-m-d"`,
+  },
+
+  {
+    name: "DATE_INPUT_FORMATS",
+    category: "Settings",
+    description:
+      "Список форматов, в которых Django принимает даты из форм. Используется полями DateField при разборе пользовательского ввода. Форматы проверяются по порядку до первого совпадения.",
+    syntax: 'DATE_INPUT_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", ...]',
+    arguments: [],
+    example: `# settings.py
+DATE_INPUT_FORMATS = [
+    "%Y-%m-%d",    # 2024-01-15
+    "%d.%m.%Y",    # 15.01.2024
+    "%d/%m/%Y",    # 15/01/2024
+    "%d %B %Y",    # 15 January 2024
+]`,
+  },
+
+  {
+    name: "DATETIME_FORMAT",
+    category: "Settings",
+    description:
+      'Формат отображения даты и времени в шаблонах и формах при USE_L10N=False. По умолчанию "N j, Y, P" (например, "Jan. 1, 2024, midnight"). Использует синтаксис форматирования Django.',
+    syntax: 'DATETIME_FORMAT = "N j, Y, P"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию: Jan. 1, 2024, midnight
+DATETIME_FORMAT = "N j, Y, P"
+
+# Российский формат: 01.01.2024 14:30
+DATETIME_FORMAT = "d.m.Y H:i"
+
+# ISO 8601: 2024-01-01 14:30:00
+DATETIME_FORMAT = "Y-m-d H:i:s"`,
+  },
+
+  {
+    name: "DATETIME_INPUT_FORMATS",
+    category: "Settings",
+    description:
+      "Список форматов, в которых Django принимает дату со временем из форм. Используется полями DateTimeField. Проверяются по порядку до первого совпадения.",
+    syntax: 'DATETIME_INPUT_FORMATS = ["%Y-%m-%d %H:%M:%S", ...]',
+    arguments: [],
+    example: `# settings.py
+DATETIME_INPUT_FORMATS = [
+    "%Y-%m-%d %H:%M:%S",   # 2024-01-15 14:30:00
+    "%Y-%m-%d %H:%M",      # 2024-01-15 14:30
+    "%d.%m.%Y %H:%M",      # 15.01.2024 14:30
+    "%Y-%m-%dT%H:%M",      # 2024-01-15T14:30 (HTML5)
+]`,
+  },
+
+  {
+    name: "DEBUG",
+    category: "Settings",
+    description:
+      'Главный переключатель режима отладки. Если True — Django показывает подробные страницы ошибок с traceback, хранит все SQL-запросы в памяти и автоматически добавляет "localhost" в ALLOWED_HOSTS. В продакшне всегда должен быть False.',
+    syntax: "DEBUG = True",
+    arguments: [],
+    example: `# settings.py
+
+# Разработка:
+DEBUG = True
+
+# Продакшн — обязательно False!
+DEBUG = False
+
+# Безопасный шаблон через переменную окружения:
+import os
+DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"`,
+  },
+
+  {
+    name: "DEBUG_PROPAGATE_EXCEPTIONS",
+    category: "Settings",
+    description:
+      "Если True — Django не перехватывает исключения в представлениях и позволяет им распространяться (propagate) выше. Полезно при тестировании, чтобы видеть оригинальный traceback вместо страницы 500. По умолчанию False.",
+    syntax: "DEBUG_PROPAGATE_EXCEPTIONS = False",
+    arguments: [],
+    example: `# settings.py
+
+# Включить при отладке тестов:
+DEBUG_PROPAGATE_EXCEPTIONS = True
+
+# Также устанавливается автоматически в TestCase:
+# self.settings(DEBUG_PROPAGATE_EXCEPTIONS=True)`,
+  },
+
+  {
+    name: "DECIMAL_SEPARATOR",
+    category: "Settings",
+    description:
+      'Символ-разделитель целой и дробной части при отображении десятичных чисел в шаблонах (при USE_L10N=False). По умолчанию "." (точка). Для русской локали обычно "," (запятая).',
+    syntax: 'DECIMAL_SEPARATOR = "."',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию (английский стиль): 1234.56
+DECIMAL_SEPARATOR = "."
+
+# Русский/европейский стиль: 1234,56
+DECIMAL_SEPARATOR = ","
+
+# Используется тегом {{ value|floatformat }} в шаблонах`,
+  },
+
+  {
+    name: "DEFAULT_AUTO_FIELD",
+    category: "Settings",
+    description:
+      'Тип первичного ключа, автоматически добавляемого к моделям, у которых не задан явный primary key. По умолчанию "django.db.models.BigAutoField" (начиная с Django 3.2). Ранее использовался AutoField (32-битный).',
+    syntax: 'DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию с Django 3.2 — 64-битный BigAutoField:
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# 32-битный AutoField (устаревший вариант):
+DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
+
+# UUID первичный ключ для всех моделей:
+DEFAULT_AUTO_FIELD = "django.db.models.UUIDField"`,
+  },
+
+  {
+    name: "DEFAULT_CHARSET",
+    category: "Settings",
+    description:
+      'Кодировка, используемая по умолчанию для HttpResponse, если явно не задана в content_type. По умолчанию "utf-8". Используется при формировании заголовка Content-Type ответов.',
+    syntax: 'DEFAULT_CHARSET = "utf-8"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+DEFAULT_CHARSET = "utf-8"
+
+# Content-Type ответа будет: text/html; charset=utf-8`,
+  },
+
+  {
+    name: "DEFAULT_EXCEPTION_REPORTER",
+    category: "Settings",
+    description:
+      'Путь к классу, формирующему HTML-отчёт об исключении для страниц ошибок (при DEBUG=True) и email-уведомлений. По умолчанию "django.views.debug.ExceptionReporter". Может быть заменён на кастомный класс.',
+    syntax:
+      'DEFAULT_EXCEPTION_REPORTER = "django.views.debug.ExceptionReporter"',
+    arguments: [],
+    example: `# settings.py
+DEFAULT_EXCEPTION_REPORTER = "myapp.debug.CustomExceptionReporter"
+
+# myapp/debug.py
+from django.views.debug import ExceptionReporter
+
+class CustomExceptionReporter(ExceptionReporter):
+    def get_traceback_html(self):
+        # Добавляем дополнительный контекст в отчёт
+        html = super().get_traceback_html()
+        return html`,
+  },
+
+  {
+    name: "DEFAULT_EXCEPTION_REPORTER_FILTER",
+    category: "Settings",
+    description:
+      'Путь к классу-фильтру, скрывающему чувствительные данные (пароли, токены) в отчётах об ошибках. По умолчанию "django.views.debug.SafeExceptionReporterFilter". Фильтрует переменные, содержащие слова "password", "secret" и т.д.',
+    syntax:
+      'DEFAULT_EXCEPTION_REPORTER_FILTER = "django.views.debug.SafeExceptionReporterFilter"',
+    arguments: [],
+    example: `# settings.py
+DEFAULT_EXCEPTION_REPORTER_FILTER = (
+    "myapp.debug.CustomReporterFilter"
+)
+
+# myapp/debug.py
+from django.views.debug import SafeExceptionReporterFilter
+
+class CustomReporterFilter(SafeExceptionReporterFilter):
+    hidden_settings = re.compile(
+        r"API|TOKEN|KEY|SECRET|PASS|SIGNATURE",
+        re.IGNORECASE
+    )`,
+  },
+
+  {
+    name: "DEFAULT_FROM_EMAIL",
+    category: "Settings",
+    description:
+      'Адрес отправителя по умолчанию для исходящих писем из Django (через send_mail, EmailMessage и т.д.). По умолчанию "webmaster@localhost". В продакшне следует указать реальный адрес.',
+    syntax: 'DEFAULT_FROM_EMAIL = "webmaster@localhost"',
+    arguments: [],
+    example: `# settings.py
+DEFAULT_FROM_EMAIL = "noreply@mysite.com"
+
+# Используется автоматически:
+from django.core.mail import send_mail
+send_mail(
+    "Тема",
+    "Текст письма",
+    None,           # None → берётся DEFAULT_FROM_EMAIL
+    ["user@example.com"]
+)`,
+  },
+
+  {
+    name: "DEFAULT_INDEX_TABLESPACE",
+    category: "Settings",
+    description:
+      "Tablespace (табличное пространство) по умолчанию для индексов полей, у которых не задан явный db_tablespace. Поддерживается PostgreSQL и Oracle. По умолчанию пустая строка (используется tablespace СУБД по умолчанию).",
+    syntax: 'DEFAULT_INDEX_TABLESPACE = ""',
+    arguments: [],
+    example: `# settings.py
+
+# PostgreSQL: индексы на быстром SSD-томе:
+DEFAULT_INDEX_TABLESPACE = "fast_ssd"
+
+# Теперь все индексы без явного db_tablespace
+# будут создаваться в tablespace "fast_ssd"`,
+  },
+
+  {
+    name: "DEFAULT_TABLESPACE",
+    category: "Settings",
+    description:
+      "Tablespace по умолчанию для таблиц моделей, у которых не задан явный Meta.db_tablespace. Поддерживается PostgreSQL и Oracle. По умолчанию пустая строка.",
+    syntax: 'DEFAULT_TABLESPACE = ""',
+    arguments: [],
+    example: `# settings.py
+
+# PostgreSQL: таблицы на отдельном томе:
+DEFAULT_TABLESPACE = "main_storage"
+
+# Переопределение для конкретной модели:
+class Article(models.Model):
+    class Meta:
+        db_tablespace = "archive_storage"  # свой tablespace`,
+  },
+
+  {
+    name: "DISALLOWED_USER_AGENTS",
+    category: "Settings",
+    description:
+      "Список скомпилированных регулярных выражений (re.compile) для блокировки запросов по заголовку User-Agent. Запросы от совпавших агентов получают ответ 403 Forbidden. Обрабатывается CommonMiddleware.",
+    syntax: 'DISALLOWED_USER_AGENTS = [re.compile(r"...")]',
+    arguments: [],
+    example: `# settings.py
+import re
+
+DISALLOWED_USER_AGENTS = [
+    re.compile(r"Googlebot"),        # блокировать Googlebot
+    re.compile(r"BadBot|EvilBot"),   # заблокировать вредоносных ботов
+    re.compile(r"^$"),               # пустой User-Agent
+]
+
+# Требует наличия в MIDDLEWARE:
+# "django.middleware.common.CommonMiddleware"`,
+  },
+
+  {
+    name: "EMAIL_BACKEND",
+    category: "Settings",
+    description:
+      'Путь к классу бэкенда для отправки email. Определяет, как Django отправляет письма: через SMTP-сервер, в файл, в консоль или другим способом. По умолчанию "django.core.mail.backends.smtp.EmailBackend".',
+    syntax: 'EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"',
+    arguments: [],
+    example: `# settings.py
+
+# Продакшн — отправка через SMTP:
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+
+# Разработка — вывод в консоль:
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# Сохранение в файл:
+EMAIL_BACKEND = "django.core.mail.backends.filebased.EmailBackend"
+
+# Не отправлять ничего (заглушка):
+EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"`,
+  },
+
+  {
+    name: "EMAIL_FILE_PATH",
+    category: "Settings",
+    description:
+      'Путь к директории, в которую сохраняются письма при использовании бэкенда filebased.EmailBackend. Каждое письмо сохраняется как отдельный файл. Используется только с EMAIL_BACKEND = "...filebased.EmailBackend".',
+    syntax: 'EMAIL_FILE_PATH = "/tmp/app-messages"',
+    arguments: [],
+    example: `# settings.py
+EMAIL_BACKEND = "django.core.mail.backends.filebased.EmailBackend"
+EMAIL_FILE_PATH = BASE_DIR / "sent_emails"
+
+# Письма будут сохраняться как файлы в папке sent_emails/
+# Имена файлов: 20240115-143022-123456.log`,
+  },
+
+  {
+    name: "EMAIL_HOST",
+    category: "Settings",
+    description:
+      'Хост SMTP-сервера для отправки email. По умолчанию "localhost". В продакшне обычно указывается хост внешнего SMTP-провайдера (SendGrid, Mailgun, Gmail и др.).',
+    syntax: 'EMAIL_HOST = "localhost"',
+    arguments: [],
+    example: `# settings.py
+
+# Gmail:
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = "myapp@gmail.com"
+EMAIL_HOST_PASSWORD = "app-password"
+
+# SendGrid:
+EMAIL_HOST = "smtp.sendgrid.net"
+EMAIL_PORT = 587
+EMAIL_HOST_USER = "apikey"
+EMAIL_HOST_PASSWORD = "SG.xxx..."`,
+  },
+
+  {
+    name: "EMAIL_HOST_PASSWORD",
+    category: "Settings",
+    description:
+      "Пароль для аутентификации на SMTP-сервере, заданном в EMAIL_HOST. По умолчанию пустая строка. Рекомендуется хранить в переменной окружения, а не в коде. Используется совместно с EMAIL_HOST_USER.",
+    syntax: 'EMAIL_HOST_PASSWORD = ""',
+    arguments: [],
+    example: `# settings.py
+import os
+
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.environ["EMAIL_USER"]
+EMAIL_HOST_PASSWORD = os.environ["EMAIL_PASSWORD"]
+# Никогда не храните пароль прямо в settings.py!`,
+  },
+
+  {
+    name: "EMAIL_HOST_USER",
+    category: "Settings",
+    description:
+      "Имя пользователя (логин) для аутентификации на SMTP-сервере. По умолчанию пустая строка. Обычно совпадает с адресом электронной почты отправителя.",
+    syntax: 'EMAIL_HOST_USER = ""',
+    arguments: [],
+    example: `# settings.py
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_HOST_USER = "myapp@gmail.com"
+EMAIL_HOST_PASSWORD = os.environ["EMAIL_PASSWORD"]
+
+# Для SendGrid:
+EMAIL_HOST_USER = "apikey"  # фиксированная строка
+EMAIL_HOST_PASSWORD = os.environ["SENDGRID_API_KEY"]`,
+  },
+
+  {
+    name: "EMAIL_PORT",
+    category: "Settings",
+    description:
+      "Порт SMTP-сервера для отправки email. По умолчанию 25. Наиболее распространённые значения: 25 (без шифрования), 465 (SSL), 587 (STARTTLS). Должен соответствовать EMAIL_USE_TLS или EMAIL_USE_SSL.",
+    syntax: "EMAIL_PORT = 25",
+    arguments: [],
+    example: `# settings.py
+
+# STARTTLS (рекомендуется):
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+# SSL:
+EMAIL_PORT = 465
+EMAIL_USE_SSL = True
+
+# Без шифрования (только для локальной разработки):
+EMAIL_PORT = 25`,
+  },
+
+  {
+    name: "EMAIL_SUBJECT_PREFIX",
+    category: "Settings",
+    description:
+      'Строка-префикс, добавляемая к теме всех писем, отправляемых через mail_admins() и mail_managers(). По умолчанию "[Django] ". Позволяет легко идентифицировать системные письма от Django.',
+    syntax: 'EMAIL_SUBJECT_PREFIX = "[Django] "',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+EMAIL_SUBJECT_PREFIX = "[Django] "
+# Письмо: "[Django] Error 500 at /api/users/"
+
+# Кастомный префикс:
+EMAIL_SUBJECT_PREFIX = "[MyApp PROD] "
+# Письмо: "[MyApp PROD] Error 500 at /api/users/"`,
+  },
+
+  {
+    name: "EMAIL_USE_LOCALTIME",
+    category: "Settings",
+    description:
+      "Если True — дата в заголовке Date отправляемых писем указывается в локальном времени. Если False (по умолчанию) — используется UTC. Влияет только на заголовок Date, не на содержимое письма.",
+    syntax: "EMAIL_USE_LOCALTIME = False",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — UTC в заголовке Date:
+EMAIL_USE_LOCALTIME = False
+
+# Локальное время (по TIME_ZONE):
+EMAIL_USE_LOCALTIME = True`,
+  },
+
+  {
+    name: "EMAIL_USE_TLS",
+    category: "Settings",
+    description:
+      "Если True — Django использует STARTTLS для шифрования SMTP-соединения. Применяется с портом 587. По умолчанию False. Нельзя использовать одновременно с EMAIL_USE_SSL.",
+    syntax: "EMAIL_USE_TLS = False",
+    arguments: [],
+    example: `# settings.py
+
+# Рекомендуемая настройка для большинства провайдеров:
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+# EMAIL_USE_SSL должен оставаться False`,
+  },
+
+  {
+    name: "EMAIL_USE_SSL",
+    category: "Settings",
+    description:
+      "Если True — Django использует SSL/TLS-оболочку для SMTP-соединения (implicit TLS). Применяется с портом 465. По умолчанию False. Нельзя использовать одновременно с EMAIL_USE_TLS.",
+    syntax: "EMAIL_USE_SSL = False",
+    arguments: [],
+    example: `# settings.py
+
+# SSL на порту 465:
+EMAIL_HOST = "smtp.example.com"
+EMAIL_PORT = 465
+EMAIL_USE_SSL = True
+# EMAIL_USE_TLS должен оставаться False`,
+  },
+
+  {
+    name: "EMAIL_SSL_CERTFILE",
+    category: "Settings",
+    description:
+      "Путь к PEM-файлу клиентского SSL-сертификата, используемого при подключении к SMTP-серверу. Применяется совместно с EMAIL_USE_SSL или EMAIL_USE_TLS. По умолчанию None (сертификат не используется).",
+    syntax: "EMAIL_SSL_CERTFILE = None",
+    arguments: [],
+    example: `# settings.py
+
+# Клиентская аутентификация по сертификату:
+EMAIL_USE_SSL = True
+EMAIL_SSL_CERTFILE = "/etc/ssl/certs/client.pem"
+EMAIL_SSL_KEYFILE = "/etc/ssl/private/client.key"`,
+  },
+
+  {
+    name: "EMAIL_SSL_KEYFILE",
+    category: "Settings",
+    description:
+      "Путь к PEM-файлу приватного ключа клиентского SSL-сертификата для SMTP-подключения. Используется совместно с EMAIL_SSL_CERTFILE. По умолчанию None.",
+    syntax: "EMAIL_SSL_KEYFILE = None",
+    arguments: [],
+    example: `# settings.py
+
+EMAIL_USE_TLS = True
+EMAIL_SSL_CERTFILE = "/etc/ssl/certs/client.pem"
+EMAIL_SSL_KEYFILE  = "/etc/ssl/private/client.key"
+# Ключ не должен быть защищён паролем`,
+  },
+
+  {
+    name: "EMAIL_TIMEOUT",
+    category: "Settings",
+    description:
+      "Тайм-аут в секундах для блокирующих операций SMTP-соединения (установка соединения, отправка команд). По умолчанию None — тайм-аут не установлен (соединение может зависнуть навсегда). Рекомендуется устанавливать в продакшне.",
+    syntax: "EMAIL_TIMEOUT = None",
+    arguments: [],
+    example: `# settings.py
+
+# Без тайм-аута (по умолчанию):
+EMAIL_TIMEOUT = None
+
+# Тайм-аут 10 секунд (рекомендуется для продакшна):
+EMAIL_TIMEOUT = 10`,
+  },
+
+  {
+    name: "FILE_UPLOAD_HANDLERS",
+    category: "Settings",
+    description:
+      "Список путей к классам-обработчикам загружаемых файлов. Определяют, как Django обрабатывает входящие файлы: хранит в памяти (MemoryFileUploadHandler) или сразу записывает на диск (TemporaryFileUploadHandler). Проверяются по порядку.",
+    syntax:
+      'FILE_UPLOAD_HANDLERS = [\n    "django.core.files.uploadhandler.MemoryFileUploadHandler",\n    "django.core.files.uploadhandler.TemporaryFileUploadHandler",\n]',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — сначала в память, при превышении на диск:
+FILE_UPLOAD_HANDLERS = [
+    "django.core.files.uploadhandler.MemoryFileUploadHandler",
+    "django.core.files.uploadhandler.TemporaryFileUploadHandler",
+]
+
+# Только на диск (для очень больших файлов):
+FILE_UPLOAD_HANDLERS = [
+    "django.core.files.uploadhandler.TemporaryFileUploadHandler",
+]`,
+  },
+
+  {
+    name: "FILE_UPLOAD_MAX_MEMORY_SIZE",
+    category: "Settings",
+    description:
+      "Максимальный размер загружаемого файла (в байтах), при котором он хранится в памяти. Если файл превышает это значение — он записывается во временный файл на диск. По умолчанию 2621440 (2,5 МБ).",
+    syntax: "FILE_UPLOAD_MAX_MEMORY_SIZE = 2621440",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — 2,5 МБ в памяти:
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2621440
+
+# Файлы до 5 МБ — в памяти, больше — на диск:
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+
+# Всегда писать на диск:
+FILE_UPLOAD_MAX_MEMORY_SIZE = 0`,
+  },
+
+  {
+    name: "FILE_UPLOAD_DIRECTORY_PERMISSIONS",
+    category: "Settings",
+    description:
+      "Числовые права доступа (chmod), устанавливаемые на директории, создаваемые при загрузке файлов. По умолчанию None — используются права по umask системы. Задаётся в восьмеричном формате.",
+    syntax: "FILE_UPLOAD_DIRECTORY_PERMISSIONS = None",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — права по umask:
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = None
+
+# Директории доступны только владельцу:
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o700
+
+# Владелец + группа (rw-r--r--):
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o755`,
+  },
+
+  {
+    name: "FILE_UPLOAD_TEMP_DIR",
+    category: "Settings",
+    description:
+      "Директория для хранения временных файлов при загрузке, когда размер превышает FILE_UPLOAD_MAX_MEMORY_SIZE. По умолчанию None — используется системная временная директория (из tempfile.gettempdir()).",
+    syntax: "FILE_UPLOAD_TEMP_DIR = None",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — системная /tmp:
+FILE_UPLOAD_TEMP_DIR = None
+
+# Кастомная директория:
+FILE_UPLOAD_TEMP_DIR = "/var/tmp/django_uploads"
+
+# Важно: директория должна существовать и быть доступна для записи`,
+  },
+
+  {
+    name: "FIRST_DAY_OF_WEEK",
+    category: "Settings",
+    description:
+      "Первый день недели для отображения в календарях и виджетах дат. Целое число от 0 (понедельник) до 6 (воскресенье). По умолчанию 0 (понедельник). В США принято 6 (воскресенье).",
+    syntax: "FIRST_DAY_OF_WEEK = 0",
+    arguments: [],
+    example: `# settings.py
+
+# Понедельник (по умолчанию, международный стандарт):
+FIRST_DAY_OF_WEEK = 0
+
+# Воскресенье (американский стандарт):
+FIRST_DAY_OF_WEEK = 6
+
+# Суббота (некоторые ближневосточные страны):
+FIRST_DAY_OF_WEEK = 5`,
+  },
+
+  {
+    name: "FIXTURE_DIRS",
+    category: "Settings",
+    description:
+      "Список дополнительных директорий для поиска файлов фикстур (fixtures) при выполнении команды loaddata. Django ищет фикстуры сначала в директориях каждого приложения, затем в FIXTURE_DIRS.",
+    syntax: 'FIXTURE_DIRS = ["/path/to/fixtures"]',
+    arguments: [],
+    example: `# settings.py
+FIXTURE_DIRS = [
+    BASE_DIR / "fixtures",
+    BASE_DIR / "tests" / "fixtures",
+]
+
+# Теперь можно использовать:
+# python manage.py loaddata initial_data.json
+# Django найдёт файл в любой из указанных директорий`,
+  },
+
+  {
+    name: "FORCE_SCRIPT_NAME",
+    category: "Settings",
+    description:
+      "Принудительно устанавливает значение переменной SCRIPT_NAME окружения WSGI. Используется, когда Django-приложение смонтировано по подпути (например, /app/), а веб-сервер не передаёт SCRIPT_NAME корректно. По умолчанию None.",
+    syntax: "FORCE_SCRIPT_NAME = None",
+    arguments: [],
+    example: `# settings.py
+
+# Если приложение доступно по адресу https://example.com/myapp/:
+FORCE_SCRIPT_NAME = "/myapp"
+
+# Django будет использовать /myapp как базовый путь
+# для генерации URL через reverse() и {% url %}`,
+  },
+
+  {
+    name: "FORM_RENDERER",
+    category: "Settings",
+    description:
+      'Путь к классу рендерера Django-форм. Определяет, как виджеты форм преобразуются в HTML. По умолчанию "django.forms.renderers.DjangoTemplates" — рендерит из встроенных шаблонов. Можно переключить на Jinja2 или собственный рендерер.',
+    syntax: 'FORM_RENDERER = "django.forms.renderers.DjangoTemplates"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — встроенные шаблоны Django:
+FORM_RENDERER = "django.forms.renderers.DjangoTemplates"
+
+# Использовать шаблоны из TEMPLATES (включая кастомные):
+FORM_RENDERER = "django.forms.renderers.TemplatesSetting"
+
+# Рендерер на основе Jinja2:
+FORM_RENDERER = "django.forms.renderers.Jinja2"`,
+  },
+
+  {
+    name: "FORMAT_MODULE_PATH",
+    category: "Settings",
+    description:
+      'Путь к Python-пакету (или список путей) с файлами форматов локализации. Позволяет переопределить стандартные форматы Django для конкретных локалей. Файлы в пакете должны называться по коду локали, например "ru/formats.py".',
+    syntax: 'FORMAT_MODULE_PATH = "myapp.formats"',
+    arguments: [],
+    example: `# settings.py
+FORMAT_MODULE_PATH = [
+    "myapp.formats",
+    "myproject.formats",
+]
+
+# myapp/formats/ru/formats.py:
+DATE_FORMAT = "d.m.Y"
+DATETIME_FORMAT = "d.m.Y H:i"
+DECIMAL_SEPARATOR = ","
+THOUSAND_SEPARATOR = " "`,
+  },
+
+  {
+    name: "IGNORABLE_404_URLS",
+    category: "Settings",
+    description:
+      "Список скомпилированных регулярных выражений URL, для которых Django не отправляет email-уведомление администраторам при ошибке 404. Используется для фильтрации «шумных» 404-ошибок от ботов (robots.txt, favicon.ico и т.д.).",
+    syntax: 'IGNORABLE_404_URLS = [re.compile(r"...")]',
+    arguments: [],
+    example: `# settings.py
+import re
+
+IGNORABLE_404_URLS = [
+    re.compile(r"^/favicon\\.ico$"),
+    re.compile(r"^/robots\\.txt$"),
+    re.compile(r"\\.php$"),      # попытки взлома через PHP
+    re.compile(r"^/wp-admin/"),  # WordPress-сканеры
+]`,
+  },
+
+  {
+    name: "INSTALLED_APPS",
+    category: "Settings",
+    description:
+      "Список строк с именами всех Django-приложений, активных в проекте. Определяет, какие приложения загружаются: их модели создают таблицы в БД, их шаблоны находимы, их management-команды доступны. Порядок имеет значение для переопределения шаблонов.",
+    syntax: 'INSTALLED_APPS = [\n    "django.contrib.admin",\n    "myapp",\n]',
+    arguments: [],
+    example: `# settings.py
+INSTALLED_APPS = [
+    # Встроенные приложения Django:
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+
+    # Сторонние:
+    "rest_framework",
+    "corsheaders",
+
+    # Собственные:
+    "myapp.apps.MyAppConfig",  # полный путь к AppConfig
+    "blog",
+]`,
+  },
+
+  {
+    name: "INTERNAL_IPS",
+    category: "Settings",
+    description:
+      'Список IP-адресов, для которых доступны инструменты отладки: Django Debug Toolbar, аннотации шаблонов и панель отладки в ответах. Запросы с этих адресов считаются "внутренними". По умолчанию пустой список.',
+    syntax: 'INTERNAL_IPS = ["127.0.0.1"]',
+    arguments: [],
+    example: `# settings.py
+INTERNAL_IPS = [
+    "127.0.0.1",
+    "::1",          # IPv6 localhost
+]
+
+# При использовании Docker контейнера нужно добавлять
+# IP шлюза динамически:
+import socket
+hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
+INTERNAL_IPS += [ip[: ip.rfind(".")] + ".1" for ip in ips]`,
+  },
+
+  {
+    name: "LANGUAGE_CODE",
+    category: "Settings",
+    description:
+      'Код языка по умолчанию для всего Django-проекта. Используется при переводе интерфейса (i18n) и форматировании чисел/дат (l10n), если активен USE_I18N. Формат: ISO 639-1 ("ru", "en", "de") или с регионом ("ru-RU", "en-US").',
+    syntax: 'LANGUAGE_CODE = "en-us"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — американский английский:
+LANGUAGE_CODE = "en-us"
+
+# Русский:
+LANGUAGE_CODE = "ru"
+
+# Немецкий (Германия):
+LANGUAGE_CODE = "de-de"`,
+  },
+
+  {
+    name: "LANGUAGE_COOKIE_AGE",
+    category: "Settings",
+    description:
+      "Время жизни cookie языка (в секундах), устанавливаемого при смене языка через LocaleMiddleware. По умолчанию None — cookie сессионное (удаляется при закрытии браузера).",
+    syntax: "LANGUAGE_COOKIE_AGE = None",
+    arguments: [],
+    example: `# settings.py
+
+# Сессионное cookie (по умолчанию):
+LANGUAGE_COOKIE_AGE = None
+
+# Хранить выбор языка 1 год:
+LANGUAGE_COOKIE_AGE = 365 * 24 * 60 * 60
+
+# 30 дней:
+LANGUAGE_COOKIE_AGE = 30 * 24 * 60 * 60`,
+  },
+
+  {
+    name: "LANGUAGE_COOKIE_DOMAIN",
+    category: "Settings",
+    description:
+      'Домен для cookie языка. По умолчанию None — cookie устанавливается для текущего домена. Установка домена вида ".example.com" делает cookie доступным для всех поддоменов.',
+    syntax: "LANGUAGE_COOKIE_DOMAIN = None",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — только текущий домен:
+LANGUAGE_COOKIE_DOMAIN = None
+
+# Для всех поддоменов example.com:
+LANGUAGE_COOKIE_DOMAIN = ".example.com"`,
+  },
+
+  {
+    name: "LANGUAGE_COOKIE_HTTPONLY",
+    category: "Settings",
+    description:
+      "Если True — cookie языка недоступен через JavaScript (атрибут HttpOnly). По умолчанию False, поскольку языковые предпочтения обычно должны быть доступны JS-коду для смены языка на лету.",
+    syntax: "LANGUAGE_COOKIE_HTTPONLY = False",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — JS может читать cookie:
+LANGUAGE_COOKIE_HTTPONLY = False
+
+# Запретить доступ JS к cookie языка:
+LANGUAGE_COOKIE_HTTPONLY = True`,
+  },
+
+  {
+    name: "LANGUAGE_COOKIE_NAME",
+    category: "Settings",
+    description:
+      'Имя cookie, в котором хранится выбранный пользователем язык. По умолчанию "django_language". Используется LocaleMiddleware для определения языка из cookie.',
+    syntax: 'LANGUAGE_COOKIE_NAME = "django_language"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+LANGUAGE_COOKIE_NAME = "django_language"
+
+# Кастомное имя:
+LANGUAGE_COOKIE_NAME = "user_lang"
+LANGUAGE_COOKIE_NAME = "locale"`,
+  },
+
+  {
+    name: "LANGUAGE_COOKIE_PATH",
+    category: "Settings",
+    description:
+      'Путь для cookie языка. По умолчанию "/" — cookie доступен для всего сайта. При использовании FORCE_SCRIPT_NAME следует установить такой же путь, чтобы cookie работал корректно.',
+    syntax: 'LANGUAGE_COOKIE_PATH = "/"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — весь сайт:
+LANGUAGE_COOKIE_PATH = "/"
+
+# Только для подраздела сайта:
+LANGUAGE_COOKIE_PATH = "/app/"
+
+# При монтировании приложения по подпути:
+FORCE_SCRIPT_NAME = "/myapp"
+LANGUAGE_COOKIE_PATH = "/myapp/"`,
+  },
+
+  {
+    name: "LANGUAGE_COOKIE_SAMESITE",
+    category: "Settings",
+    description:
+      'Атрибут SameSite для cookie языка. Контролирует отправку cookie в кросс-сайтовых запросах. Возможные значения: "Strict", "Lax", "None" или False. По умолчанию "Lax".',
+    syntax: 'LANGUAGE_COOKIE_SAMESITE = "Lax"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+LANGUAGE_COOKIE_SAMESITE = "Lax"
+
+# Строгий режим — cookie не отправляется с других сайтов:
+LANGUAGE_COOKIE_SAMESITE = "Strict"
+
+# Для кросс-сайтовых запросов (требует Secure):
+LANGUAGE_COOKIE_SAMESITE = "None"`,
+  },
+
+  {
+    name: "LANGUAGE_COOKIE_SECURE",
+    category: "Settings",
+    description:
+      "Если True — cookie языка передаётся только по HTTPS (атрибут Secure). По умолчанию False. В продакшне рекомендуется установить True, если сайт работает по HTTPS.",
+    syntax: "LANGUAGE_COOKIE_SECURE = False",
+    arguments: [],
+    example: `# settings.py
+
+# Разработка (HTTP):
+LANGUAGE_COOKIE_SECURE = False
+
+# Продакшн (HTTPS):
+LANGUAGE_COOKIE_SECURE = True`,
+  },
+
+  {
+    name: "LANGUAGES",
+    category: "Settings",
+    description:
+      "Список кортежей (код_языка, название) со всеми языками, доступными в Django-проекте. Используется LocaleMiddleware и переключателем языка. По умолчанию содержит все языки, поддерживаемые Django.",
+    syntax: 'LANGUAGES = [\n    ("ru", "Русский"),\n    ("en", "English"),\n]',
+    arguments: [],
+    example: `# settings.py
+from django.utils.translation import gettext_lazy as _
+
+LANGUAGES = [
+    ("ru", _("Русский")),
+    ("en", _("English")),
+    ("de", _("Deutsch")),
+    ("zh-hans", _("简体中文")),
+]
+
+# Убедитесь, что LANGUAGE_CODE входит в этот список`,
+  },
+
+  {
+    name: "LANGUAGES_BIDI",
+    category: "Settings",
+    description:
+      "Список кодов языков с направлением письма справа налево (RTL — right-to-left). Используется тегом шаблона get_current_language_bidi для определения направления текста. По умолчанию включает арабский, иврит, персидский и другие RTL-языки.",
+    syntax: 'LANGUAGES_BIDI = ["he", "ar", "fa", "ur"]',
+    arguments: [],
+    example: `# settings.py
+# По умолчанию Django знает об RTL-языках:
+# LANGUAGES_BIDI = ["he", "ar", "fa", "ur", "yi", ...]
+
+# В шаблоне:
+# {% load i18n %}
+# {% get_current_language_bidi as bidi %}
+# <html dir="{{ bidi|yesno:"rtl,ltr" }}">`,
+  },
+
+  {
+    name: "LOCALE_PATHS",
+    category: "Settings",
+    description:
+      "Список директорий, в которых Django ищет файлы переводов (.po / .mo). Django проверяет эти пути в порядке списка до директорий приложений. Позволяет централизованно хранить переводы вне отдельных приложений.",
+    syntax: 'LOCALE_PATHS = [BASE_DIR / "locale"]',
+    arguments: [],
+    example: `# settings.py
+LOCALE_PATHS = [
+    BASE_DIR / "locale",          # основные переводы проекта
+    BASE_DIR / "shared" / "locale",  # переводы общих компонентов
+]
+
+# Структура директории:
+# locale/
+#   ru/
+#     LC_MESSAGES/
+#       django.po
+#       django.mo`,
+  },
+
+  {
+    name: "LOGGING",
+    category: "Settings",
+    description:
+      "Словарь конфигурации логирования в формате Python dictConfig. Позволяет настроить обработчики (handlers), форматтеры (formatters) и логгеры (loggers) для разных частей приложения. По умолчанию Django уже настраивает базовое логирование.",
+    syntax:
+      'LOGGING = {\n    "version": 1,\n    "handlers": {...},\n    "loggers": {...},\n}',
+    arguments: [],
+    example: `# settings.py
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "file": {
+            "class": "logging.FileHandler",
+            "filename": BASE_DIR / "django.log",
+            "formatter": "verbose",
+        },
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["file", "console"],
+            "level": "WARNING",
+            "propagate": True,
+        },
+        "myapp": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+        },
+    },
+}`,
+  },
+
+  {
+    name: "LOGGING_CONFIG",
+    category: "Settings",
+    description:
+      'Путь к callable, который Django вызывает для применения конфигурации из LOGGING. По умолчанию "logging.config.dictConfig". Установите None, чтобы отключить автоматическую настройку логирования Django и управлять им вручную.',
+    syntax: 'LOGGING_CONFIG = "logging.config.dictConfig"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — стандартный dictConfig Python:
+LOGGING_CONFIG = "logging.config.dictConfig"
+
+# Отключить автоматическую настройку (управлять вручную):
+LOGGING_CONFIG = None
+
+# Затем в коде настройте логирование вручную:
+import logging.config
+logging.config.dictConfig(MY_LOGGING_CONFIG)`,
+  },
+
+  {
+    name: "MANAGERS",
+    category: "Settings",
+    description:
+      "Список кортежей (имя, email) менеджеров, которые получают уведомления о битых ссылках (404) через mail_managers(). Формат аналогичен ADMINS. Используется совместно с BrokenLinkEmailsMiddleware.",
+    syntax: 'MANAGERS = [("Имя", "email@example.com")]',
+    arguments: [],
+    example: `# settings.py
+MANAGERS = [
+    ("Менеджер сайта", "manager@example.com"),
+    ("SEO-специалист", "seo@example.com"),
+]
+
+# Уведомления о 404 отправляются при наличии:
+MIDDLEWARE = [
+    ...
+    "django.middleware.common.BrokenLinkEmailsMiddleware",
+    ...
+]`,
+  },
+
+  {
+    name: "MEDIA_ROOT",
+    category: "Settings",
+    description:
+      "Абсолютный путь к директории файловой системы, где Django хранит загружаемые пользователями файлы (media files). Это поля типа FileField и ImageField. По умолчанию пустая строка. Не путать со STATIC_ROOT.",
+    syntax: 'MEDIA_ROOT = BASE_DIR / "media"',
+    arguments: [],
+    example: `# settings.py
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = "/media/"
+
+# urls.py (только в режиме разработки):
+from django.conf import settings
+from django.conf.urls.static import static
+
+urlpatterns = [
+    ...
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)`,
+  },
+
+  {
+    name: "MEDIA_URL",
+    category: "Settings",
+    description:
+      'URL-префикс для доступа к файлам, хранящимся в MEDIA_ROOT. Используется для генерации URL медиафайлов через атрибут .url полей FileField/ImageField. Должен заканчиваться на "/". По умолчанию пустая строка.',
+    syntax: 'MEDIA_URL = "/media/"',
+    arguments: [],
+    example: `# settings.py
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = "/media/"
+
+# В шаблоне:
+# <img src="{{ user.avatar.url }}">
+# → <img src="/media/avatars/photo.jpg">
+
+# Для CDN:
+MEDIA_URL = "https://cdn.example.com/media/"`,
+  },
+
+  {
+    name: "MIDDLEWARE",
+    category: "Settings",
+    description:
+      "Список путей к классам middleware в порядке выполнения. Middleware обрабатывают запрос перед представлением и ответ после него. Порядок критически важен: middleware применяются в прямом порядке к запросу и в обратном — к ответу.",
+    syntax:
+      'MIDDLEWARE = [\n    "django.middleware.security.SecurityMiddleware",\n    ...\n]',
+    arguments: [],
+    example: `# settings.py
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+# Запрос: первый → последний
+# Ответ: последний → первый`,
+  },
+
+  {
+    name: "MIGRATION_MODULES",
+    category: "Settings",
+    description:
+      "Словарь, переопределяющий пакет, в котором хранятся миграции для конкретных приложений. Ключ — имя приложения, значение — путь к пакету миграций. Установка None отключает миграции для приложения (полезно в тестах).",
+    syntax: 'MIGRATION_MODULES = {"myapp": "myapp.db.migrations"}',
+    arguments: [],
+    example: `# settings.py
+
+# Пользовательский путь к миграциям:
+MIGRATION_MODULES = {
+    "myapp": "myapp.database.migrations",
+}
+
+# Отключить миграции для приложения (например, в тестах):
+MIGRATION_MODULES = {
+    "myapp": None,
+}
+
+# Часто используется в тестах через pytest-django:
+# @pytest.fixture
+# def django_db_setup(): pass`,
+  },
+
+  {
+    name: "MONTH_DAY_FORMAT",
+    category: "Settings",
+    description:
+      'Формат отображения даты (только месяц и день, без года) в Django-шаблонах — например, в архивных представлениях. По умолчанию "F j" (например, "January 1"). Использует синтаксис форматирования Django.',
+    syntax: 'MONTH_DAY_FORMAT = "F j"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию: January 1
+MONTH_DAY_FORMAT = "F j"
+
+# Российский формат: 1 января
+MONTH_DAY_FORMAT = "j F"
+
+# Короткий: Jan 1
+MONTH_DAY_FORMAT = "M j"`,
+  },
+
+  {
+    name: "NUMBER_GROUPING",
+    category: "Settings",
+    description:
+      "Количество цифр, группируемых разделителем тысяч при отображении чисел (при USE_L10N=False). По умолчанию 0 — группировка отключена. Значение 3 соответствует стандартному разделению на тысячи.",
+    syntax: "NUMBER_GROUPING = 0",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — без группировки:
+NUMBER_GROUPING = 0
+
+# Группировать по три цифры:
+NUMBER_GROUPING = 3
+THOUSAND_SEPARATOR = " "
+# 1 000 000
+
+THOUSAND_SEPARATOR = ","
+# 1,000,000`,
+  },
+
+  {
+    name: "PREPEND_WWW",
+    category: "Settings",
+    description:
+      'Если True — Django автоматически перенаправляет запросы без "www." на URL с "www." (301 Redirect). Обрабатывается CommonMiddleware. По умолчанию False. Используется для канонизации URL сайта.',
+    syntax: "PREPEND_WWW = False",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — без редиректа:
+PREPEND_WWW = False
+
+# Все запросы на example.com → www.example.com:
+PREPEND_WWW = True
+
+# Требует наличия в MIDDLEWARE:
+# "django.middleware.common.CommonMiddleware"`,
+  },
+
+  {
+    name: "ROOT_URLCONF",
+    category: "Settings",
+    description:
+      "Строка с Python-путём к корневому модулю URL-конфигурации проекта (urlconf). Django использует этот модуль как точку входа для маршрутизации всех входящих запросов. Обязательная настройка для каждого проекта.",
+    syntax: 'ROOT_URLCONF = "myproject.urls"',
+    arguments: [],
+    example: `# settings.py
+ROOT_URLCONF = "myproject.urls"
+
+# myproject/urls.py:
+from django.contrib import admin
+from django.urls import path, include
+
+urlpatterns = [
+    path("admin/", admin.site.urls),
+    path("api/", include("myapp.api.urls")),
+    path("", include("myapp.urls")),
+]`,
+  },
+
+  {
+    name: "SECRET_KEY",
+    category: "Settings",
+    description:
+      "Секретный ключ Django — криптографическая соль для подписи сессий, cookies, токенов CSRF, сброса пароля и других механизмов безопасности. Должен быть уникальным, длинным и случайным. Никогда не публикуйте его в репозитории.",
+    syntax: 'SECRET_KEY = "django-insecure-..."',
+    arguments: [],
+    example: `# settings.py — безопасный вариант через переменную окружения:
+import os
+SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
+
+# Генерация нового ключа:
+# python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+
+# НИКОГДА не делайте так в продакшне:
+# SECRET_KEY = "my-secret-key"  # небезопасно!`,
+  },
+
+  {
+    name: "SECRET_KEY_FALLBACKS",
+    category: "Settings",
+    description:
+      "Список старых секретных ключей, которые Django использует для проверки подписей при ротации SECRET_KEY. Позволяет сменить основной ключ без инвалидации уже выданных сессий и токенов. По умолчанию пустой список.",
+    syntax: 'SECRET_KEY_FALLBACKS = ["old-secret-key-1", ...]',
+    arguments: [],
+    example: `# settings.py
+
+# При ротации ключей:
+SECRET_KEY = os.environ["NEW_SECRET_KEY"]      # новый ключ
+
+SECRET_KEY_FALLBACKS = [
+    os.environ["OLD_SECRET_KEY_1"],  # предыдущий ключ
+    os.environ["OLD_SECRET_KEY_2"],  # позапрошлый ключ
+]
+
+# После того как все сессии обновятся — удалите старые ключи из списка`,
+  },
+
+  {
+    name: "SECURE_CONTENT_TYPE_NOSNIFF",
+    category: "Settings",
+    description:
+      'Если True — Django добавляет заголовок X-Content-Type-Options: nosniff ко всем ответам. Запрещает браузерам "угадывать" MIME-тип ответа, что защищает от атак через подмену типа контента. По умолчанию True.',
+    syntax: "SECURE_CONTENT_TYPE_NOSNIFF = True",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию включено (рекомендуется):
+SECURE_CONTENT_TYPE_NOSNIFF = True
+# Ответ будет содержать:
+# X-Content-Type-Options: nosniff`,
+  },
+
+  {
+    name: "SECURE_CROSS_ORIGIN_OPENER_POLICY",
+    category: "Settings",
+    description:
+      'Значение заголовка Cross-Origin-Opener-Policy (COOP), изолирующего вкладку браузера от кросс-доменных окон. Защищает от атак типа Spectre. По умолчанию "same-origin". Обрабатывается SecurityMiddleware.',
+    syntax: 'SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — строгая изоляция:
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
+
+# Разрешить открытие из кросс-доменных окон:
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin-allow-popups"
+
+# Отключить заголовок:
+SECURE_CROSS_ORIGIN_OPENER_POLICY = None`,
+  },
+
+  {
+    name: "SECURE_CSP",
+    category: "Settings",
+    description:
+      "Словарь директив Content Security Policy (CSP) — политики безопасности контента. Django формирует заголовок Content-Security-Policy из этого словаря через SecurityMiddleware. Позволяет ограничить источники скриптов, стилей, изображений и других ресурсов.",
+    syntax:
+      'SECURE_CSP = {"default-src": ["\'self\'"], "script-src": ["\'self\'"]}',
+    arguments: [],
+    example: `# settings.py
+SECURE_CSP = {
+    "default-src": ["'self'"],
+    "script-src": ["'self'", "https://cdn.example.com"],
+    "style-src":  ["'self'", "'unsafe-inline'"],
+    "img-src":    ["'self'", "data:", "https:"],
+    "font-src":   ["'self'", "https://fonts.gstatic.com"],
+    "frame-ancestors": ["'none'"],
+}
+# Результат: Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.example.com; ...`,
+  },
+
+  {
+    name: "SECURE_CSP_REPORT_ONLY",
+    category: "Settings",
+    description:
+      'Словарь директив CSP в режиме "только отчёт". Браузер не блокирует нарушения политики, а только отправляет отчёты на указанный адрес. Используется для тестирования новой политики без влияния на работу сайта.',
+    syntax:
+      'SECURE_CSP_REPORT_ONLY = {"default-src": ["\'self\'"], "report-uri": ["/csp-report/"]}',
+    arguments: [],
+    example: `# settings.py
+
+# Тестируем политику без блокировки:
+SECURE_CSP_REPORT_ONLY = {
+    "default-src": ["'self'"],
+    "script-src": ["'self'"],
+    "report-uri": ["/csp-violation-report/"],
+}
+# Заголовок: Content-Security-Policy-Report-Only: ...
+# Нарушения видны в консоли браузера и приходят на /csp-violation-report/`,
+  },
+
+  {
+    name: "SECURE_HSTS_INCLUDE_SUBDOMAINS",
+    category: "Settings",
+    description:
+      "Если True — заголовок HSTS (Strict-Transport-Security) содержит директиву includeSubDomains, распространяя политику HTTPS на все поддомены. По умолчанию False. Включайте только если все поддомены поддерживают HTTPS.",
+    syntax: "SECURE_HSTS_INCLUDE_SUBDOMAINS = False",
+    arguments: [],
+    example: `# settings.py
+
+# Распространить HSTS на все поддомены:
+SECURE_HSTS_SECONDS = 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+# Заголовок: Strict-Transport-Security: max-age=31536000; includeSubDomains`,
+  },
+
+  {
+    name: "SECURE_HSTS_PRELOAD",
+    category: "Settings",
+    description:
+      "Если True — к заголовку HSTS добавляется директива preload, означающая согласие на внесение домена в браузерные списки предзагрузки HSTS. Требует SECURE_HSTS_SECONDS ≥ 31536000 и SECURE_HSTS_INCLUDE_SUBDOMAINS=True.",
+    syntax: "SECURE_HSTS_PRELOAD = False",
+    arguments: [],
+    example: `# settings.py
+
+# Полная конфигурация HSTS с preload:
+SECURE_HSTS_SECONDS = 31536000          # 1 год — минимум для preload
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True   # обязательно для preload
+SECURE_HSTS_PRELOAD = True
+
+# Заголовок: Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+# После настройки можно подать заявку на https://hstspreload.org/`,
+  },
+
+  {
+    name: "SECURE_HSTS_SECONDS",
+    category: "Settings",
+    description:
+      "Длительность (в секундах) действия заголовка HSTS (Strict-Transport-Security). Если не 0 — SecurityMiddleware добавляет этот заголовок, принуждая браузер использовать только HTTPS на протяжении указанного времени. По умолчанию 0 (выключено).",
+    syntax: "SECURE_HSTS_SECONDS = 0",
+    arguments: [],
+    example: `# settings.py
+
+# Отключено (по умолчанию):
+SECURE_HSTS_SECONDS = 0
+
+# Тестовое значение — 1 час:
+SECURE_HSTS_SECONDS = 3600
+
+# Продакшн — 1 год (рекомендуется):
+SECURE_HSTS_SECONDS = 31536000
+# Заголовок: Strict-Transport-Security: max-age=31536000`,
+  },
+
+  {
+    name: "SECURE_PROXY_SSL_HEADER",
+    category: "Settings",
+    description:
+      "Кортеж (заголовок, значение), по которому Django определяет, что запрос пришёл по HTTPS, даже если соединение с Django-сервером идёт по HTTP (через прокси/балансировщик). По умолчанию None. Используйте только с доверенными прокси.",
+    syntax: 'SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")',
+    arguments: [],
+    example: `# settings.py
+
+# Для Nginx/Apache-прокси, передающего X-Forwarded-Proto:
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Теперь request.is_secure() вернёт True,
+# если прокси передал заголовок X-Forwarded-Proto: https
+
+# ВАЖНО: убедитесь, что прокси очищает этот заголовок
+# от ненадёжных клиентов!`,
+  },
+
+  {
+    name: "SECURE_REDIRECT_EXEMPT",
+    category: "Settings",
+    description:
+      "Список регулярных выражений URL-путей, которые не подлежат редиректу с HTTP на HTTPS при SECURE_SSL_REDIRECT=True. Полезно для URL healthcheck-эндпоинтов или специальных маршрутов, работающих только по HTTP.",
+    syntax: 'SECURE_REDIRECT_EXEMPT = [r"^health/$"]',
+    arguments: [],
+    example: `# settings.py
+import re
+
+SECURE_SSL_REDIRECT = True
+SECURE_REDIRECT_EXEMPT = [
+    r"^health/$",          # healthcheck от балансировщика
+    r"^internal/ping/",    # внутренний мониторинг
+]`,
+  },
+
+  {
+    name: "SECURE_REFERRER_POLICY",
+    category: "Settings",
+    description:
+      'Значение заголовка Referrer-Policy, управляющего тем, какую информацию о источнике запроса браузер передаёт при переходах. По умолчанию "same-origin". Обрабатывается SecurityMiddleware.',
+    syntax: 'SECURE_REFERRER_POLICY = "same-origin"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+SECURE_REFERRER_POLICY = "same-origin"
+
+# Не передавать Referer вообще:
+SECURE_REFERRER_POLICY = "no-referrer"
+
+# Передавать только origin (без пути):
+SECURE_REFERRER_POLICY = "strict-origin"
+
+# Только origin при переходе на HTTPS:
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"`,
+  },
+
+  {
+    name: "SECURE_SSL_HOST",
+    category: "Settings",
+    description:
+      "Хост, на который выполняется редирект с HTTP при SECURE_SSL_REDIRECT=True. По умолчанию None — используется текущий хост запроса. Полезно, если HTTPS-сайт находится на другом домене, чем HTTP.",
+    syntax: "SECURE_SSL_HOST = None",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — тот же хост, что в запросе:
+SECURE_SSL_HOST = None
+
+# Редиректить HTTP на другой домен:
+SECURE_SSL_REDIRECT = True
+SECURE_SSL_HOST = "secure.example.com"
+# http://example.com/page/ → https://secure.example.com/page/`,
+  },
+
+  {
+    name: "SECURE_SSL_REDIRECT",
+    category: "Settings",
+    description:
+      "Если True — SecurityMiddleware перенаправляет все HTTP-запросы на HTTPS (301 Redirect). По умолчанию False. В продакшне рекомендуется включать. Исключения задаются через SECURE_REDIRECT_EXEMPT.",
+    syntax: "SECURE_SSL_REDIRECT = False",
+    arguments: [],
+    example: `# settings.py
+
+# Разработка:
+SECURE_SSL_REDIRECT = False
+
+# Продакшн — принудительный HTTPS:
+SECURE_SSL_REDIRECT = True
+
+# С исключением для healthcheck:
+SECURE_REDIRECT_EXEMPT = [r"^health/"]
+
+# Если редиректом занимается Nginx — оставьте False
+# во избежание двойного редиректа`,
+  },
+
+  {
+    name: "SERIALIZATION_MODULES",
+    category: "Settings",
+    description:
+      "Словарь, связывающий имена форматов сериализации с путями к модулям-сериализаторам. Позволяет добавлять кастомные форматы или переопределять встроенные (json, xml, yaml). По умолчанию пустой словарь.",
+    syntax: 'SERIALIZATION_MODULES = {"myfmt": "myapp.serializers.myfmt"}',
+    arguments: [],
+    example: `# settings.py
+SERIALIZATION_MODULES = {
+    "csv": "myapp.serializers.csv_serializer",
+    "msgpack": "myapp.serializers.msgpack_serializer",
+}
+
+# Использование:
+from django.core import serializers
+data = serializers.serialize("csv", MyModel.objects.all())`,
+  },
+
+  {
+    name: "SERVER_EMAIL",
+    category: "Settings",
+    description:
+      'Адрес отправителя для системных писем Django — уведомлений об ошибках 500, отправляемых через mail_admins(). По умолчанию "root@localhost". Отличается от DEFAULT_FROM_EMAIL, который используется в пользовательских письмах.',
+    syntax: 'SERVER_EMAIL = "root@localhost"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+SERVER_EMAIL = "root@localhost"
+
+# Реальный адрес для продакшна:
+SERVER_EMAIL = "errors@mysite.com"
+
+# Отличие от DEFAULT_FROM_EMAIL:
+# SERVER_EMAIL → письма об ошибках → ADMINS
+# DEFAULT_FROM_EMAIL → письма пользователям (регистрация, сброс пароля)`,
+  },
+
+  {
+    name: "SHORT_DATE_FORMAT",
+    category: "Settings",
+    description:
+      'Краткий формат отображения даты, используемый в шаблонах при USE_L10N=False. По умолчанию "m/d/Y" (американский стиль, например "01/15/2024"). Используется там, где нужен компактный вариант даты.',
+    syntax: 'SHORT_DATE_FORMAT = "m/d/Y"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию (американский): 01/15/2024
+SHORT_DATE_FORMAT = "m/d/Y"
+
+# Российский формат: 15.01.2024
+SHORT_DATE_FORMAT = "d.m.Y"
+
+# ISO формат: 2024-01-15
+SHORT_DATE_FORMAT = "Y-m-d"`,
+  },
+
+  {
+    name: "SHORT_DATETIME_FORMAT",
+    category: "Settings",
+    description:
+      'Краткий формат отображения даты и времени в шаблонах при USE_L10N=False. По умолчанию "m/d/Y P" (например, "01/15/2024 2:30 p.m."). Используется там, где нужен компактный вариант даты со временем.',
+    syntax: 'SHORT_DATETIME_FORMAT = "m/d/Y P"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию: 01/15/2024 2:30 p.m.
+SHORT_DATETIME_FORMAT = "m/d/Y P"
+
+# Российский формат: 15.01.2024 14:30
+SHORT_DATETIME_FORMAT = "d.m.Y H:i"
+
+# С секундами: 15.01.2024 14:30:00
+SHORT_DATETIME_FORMAT = "d.m.Y H:i:s"`,
+  },
+
+  {
+    name: "SIGNING_BACKEND",
+    category: "Settings",
+    description:
+      'Путь к классу, используемому для подписи и проверки подписи данных (django.core.signing). Применяется для защищённых cookie, токенов и других подписанных значений. По умолчанию "django.core.signing.TimestampSigner".',
+    syntax: 'SIGNING_BACKEND = "django.core.signing.TimestampSigner"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+SIGNING_BACKEND = "django.core.signing.TimestampSigner"
+
+# Использование в коде:
+from django.core import signing
+
+# Подписать значение:
+signed = signing.dumps({"user_id": 42})
+
+# Проверить (выбросит BadSignature при подделке):
+data = signing.loads(signed, max_age=3600)`,
+  },
+
+  {
+    name: "SILENCED_SYSTEM_CHECKS",
+    category: "Settings",
+    description:
+      "Список идентификаторов системных проверок (checks), которые Django не будет выводить при запуске. Полезно при намеренном отклонении от рекомендаций (например, нестандартная конфигурация безопасности). По умолчанию пустой список.",
+    syntax: 'SILENCED_SYSTEM_CHECKS = ["security.W004", "models.W042"]',
+    arguments: [],
+    example: `# settings.py
+SILENCED_SYSTEM_CHECKS = [
+    "security.W004",   # HSTS не настроен (намеренно — за Nginx)
+    "security.W008",   # SECRET_KEY слишком короткий (тесты)
+    "models.W042",     # авто-PK для конкретной модели
+]
+
+# Список всех кодов проверок:
+# python manage.py check --list-tags`,
+  },
+
+  {
+    name: "STORAGES",
+    category: "Settings",
+    description:
+      'Словарь с конфигурацией хранилищ файлов. Заменяет устаревшие DEFAULT_FILE_STORAGE и STATICFILES_STORAGE (с Django 4.2). Ключи "default" (медиафайлы) и "staticfiles" (статика) задают BACKEND и OPTIONS для каждого хранилища.',
+    syntax:
+      'STORAGES = {\n    "default": {"BACKEND": "..."},\n    "staticfiles": {"BACKEND": "..."},\n}',
+    arguments: [],
+    example: `# settings.py
+STORAGES = {
+    # Медиафайлы (загружаемые пользователями):
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    # Статические файлы:
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
+# Облачное хранилище (например, S3 через django-storages):
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "OPTIONS": {"bucket_name": "my-media-bucket"},
+    },
+    "staticfiles": {
+        "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+    },
+}`,
+  },
+
+  {
+    name: "TASKS",
+    category: "Settings",
+    description:
+      "Словарь конфигурации фоновых задач Django (Background Tasks, добавлены в Django 5.1). Позволяет настроить очередь задач без сторонних брокеров (Celery, Redis). Ключ IMMEDIATE=True запускает задачи синхронно (удобно для тестов).",
+    syntax:
+      'TASKS = {"default": {"BACKEND": "django.core.tasks.backends.immediate.ImmediateBackend"}}',
+    arguments: [],
+    example: `# settings.py (Django 5.1+)
+TASKS = {
+    "default": {
+        "BACKEND": "django.core.tasks.backends.database.DatabaseBackend",
+    }
+}
+
+# Синхронное выполнение в тестах:
+TASKS = {
+    "default": {
+        "BACKEND": "django.core.tasks.backends.immediate.ImmediateBackend",
+    }
+}
+
+# Использование:
+from django.tasks import task
+
+@task()
+def send_welcome_email(user_id):
+    ...
+
+send_welcome_email.enqueue(user_id=42)`,
+  },
+
+  {
+    name: "TEMPLATES",
+    category: "Settings",
+    description:
+      "Список словарей с конфигурацией движков шаблонов. Каждый словарь содержит BACKEND (движок), DIRS (директории поиска), APP_DIRS (искать в приложениях) и OPTIONS (дополнительные настройки — контекст-процессоры, загрузчики и т.д.).",
+    syntax:
+      'TEMPLATES = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIRS": [], ...}]',
+    arguments: [],
+    example: `# settings.py
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]`,
+  },
+
+  {
+    name: "TEST_RUNNER",
+    category: "Settings",
+    description:
+      'Путь к классу, управляющему запуском тестов при выполнении команды manage.py test. По умолчанию "django.test.runner.DiscoverRunner", обнаруживающий тесты автоматически. Может быть заменён на pytest, nose и другие фреймворки.',
+    syntax: 'TEST_RUNNER = "django.test.runner.DiscoverRunner"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+TEST_RUNNER = "django.test.runner.DiscoverRunner"
+
+# Кастомный раннер (например, с поддержкой параллельного запуска):
+TEST_RUNNER = "myapp.test_runner.CustomRunner"
+
+# При использовании pytest-django TEST_RUNNER не нужен —
+# pytest управляет запуском напрямую`,
+  },
+
+  {
+    name: "TEST_NON_SERIALIZED_APPS",
+    category: "Settings",
+    description:
+      "Список приложений, чьё состояние базы данных Django не будет сериализовать между тестами при использовании TransactionTestCase. Уменьшает время прогона тестов для крупных приложений, данные которых не нужно восстанавливать между тестами.",
+    syntax: 'TEST_NON_SERIALIZED_APPS = ["myapp.analytics"]',
+    arguments: [],
+    example: `# settings.py
+
+# Исключить большие приложения из сериализации БД в тестах:
+TEST_NON_SERIALIZED_APPS = [
+    "myapp.analytics",  # большая таблица, не нужна в тестах
+    "myapp.logs",       # логи не нужны между тестами
+]
+
+# Ускоряет TransactionTestCase — данные этих приложений
+# не восстанавливаются при tearDown`,
+  },
+
+  {
+    name: "THOUSAND_SEPARATOR",
+    category: "Settings",
+    description:
+      'Символ-разделитель групп цифр (тысяч) при отображении чисел (при USE_L10N=False и USE_THOUSAND_SEPARATOR=True). По умолчанию "," (запятая). В России традиционно используется пробел или неразрывный пробел.',
+    syntax: 'THOUSAND_SEPARATOR = ","',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию (английский стиль):
+THOUSAND_SEPARATOR = ","
+# 1,000,000
+
+# Российский стиль (пробел):
+THOUSAND_SEPARATOR = "\u00a0"  # неразрывный пробел
+# 1 000 000
+
+# Европейский стиль (точка):
+THOUSAND_SEPARATOR = "."
+# 1.000.000`,
+  },
+
+  {
+    name: "TIME_FORMAT",
+    category: "Settings",
+    description:
+      'Формат отображения времени в Django-шаблонах и формах при USE_L10N=False. По умолчанию "P" (например, "2:30 p.m."). Использует синтаксис форматирования Django, а не Python strftime.',
+    syntax: 'TIME_FORMAT = "P"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию: 2:30 p.m.
+TIME_FORMAT = "P"
+
+# 24-часовой формат: 14:30
+TIME_FORMAT = "H:i"
+
+# С секундами: 14:30:00
+TIME_FORMAT = "H:i:s"
+
+# 12-часовой с AM/PM: 02:30 PM
+TIME_FORMAT = "h:i A"`,
+  },
+
+  {
+    name: "TIME_INPUT_FORMATS",
+    category: "Settings",
+    description:
+      "Список форматов, в которых Django принимает время из форм. Используется полями TimeField при разборе пользовательского ввода. Форматы проверяются по порядку до первого совпадения.",
+    syntax: 'TIME_INPUT_FORMATS = ["%H:%M:%S", "%H:%M", ...]',
+    arguments: [],
+    example: `# settings.py
+TIME_INPUT_FORMATS = [
+    "%H:%M:%S",     # 14:30:00
+    "%H:%M",        # 14:30
+    "%H:%M:%S.%f",  # 14:30:00.123456
+    "%I:%M %p",     # 02:30 PM (12-часовой)
+]`,
+  },
+
+  {
+    name: "TIME_ZONE",
+    category: "Settings",
+    description:
+      'Часовой пояс по умолчанию для Django-проекта. Используется при отображении дат и сохранении в БД (при USE_TZ=False). По умолчанию "America/Chicago". Для России: "Europe/Moscow", "Asia/Yekaterinburg" и т.д. Значение из базы zoneinfo.',
+    syntax: 'TIME_ZONE = "America/Chicago"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+TIME_ZONE = "America/Chicago"
+
+# Москва:
+TIME_ZONE = "Europe/Moscow"
+
+# UTC (рекомендуется при USE_TZ=True):
+TIME_ZONE = "UTC"
+
+# Другие российские зоны:
+# "Asia/Yekaterinburg", "Asia/Novosibirsk", "Asia/Vladivostok"`,
+  },
+
+  {
+    name: "USE_TZ",
+    category: "Settings",
+    description:
+      'Если True — Django использует "осведомлённые" (aware) datetime-объекты с информацией о часовом поясе. Все даты хранятся в UTC, а отображаются в TIME_ZONE пользователя. По умолчанию True (с Django 4.0). Настоятельно рекомендуется в продакшне.',
+    syntax: "USE_TZ = True",
+    arguments: [],
+    example: `# settings.py
+
+# Рекомендуемая настройка для продакшна:
+USE_TZ = True
+TIME_ZONE = "Europe/Moscow"
+
+# В коде — всегда используйте timezone.now() вместо datetime.now():
+from django.utils import timezone
+now = timezone.now()   # aware datetime в UTC
+
+# Для отображения в нужном часовом поясе:
+from django.utils.timezone import localtime
+local_now = localtime(now)  # переводит в TIME_ZONE`,
+  },
+
+  {
+    name: "USE_I18N",
+    category: "Settings",
+    description:
+      "Включает систему интернационализации Django (i18n) — перевод строк через gettext. Если False — перевод отключён и Django работает быстрее. По умолчанию True. Влияет на работу тегов {% trans %}, {% blocktrans %} и функций gettext.",
+    syntax: "USE_I18N = True",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию включено:
+USE_I18N = True
+LANGUAGE_CODE = "ru"
+
+# Отключить перевод (одноязычный сайт — чуть быстрее):
+USE_I18N = False
+
+# В шаблонах при USE_I18N=True:
+# {% load i18n %}
+# {% trans "Привет" %}
+# {% blocktrans %}Привет, {{ name }}{% endblocktrans %}`,
+  },
+
+  {
+    name: "USE_THOUSAND_SEPARATOR",
+    category: "Settings",
+    description:
+      "Если True — числа отображаются с разделителем тысяч (THOUSAND_SEPARATOR) в шаблонах при USE_L10N=False. По умолчанию False. Влияет на фильтр {{ value|intcomma }} и отображение числовых полей форм.",
+    syntax: "USE_THOUSAND_SEPARATOR = False",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — без разделителя:
+USE_THOUSAND_SEPARATOR = False
+# 1000000
+
+# Включить разделитель тысяч:
+USE_THOUSAND_SEPARATOR = True
+THOUSAND_SEPARATOR = "\u00a0"  # неразрывный пробел
+# 1 000 000
+
+# В шаблоне: {{ value|floatformat:2 }} — учитывает эту настройку`,
+  },
+
+  {
+    name: "USE_X_FORWARDED_HOST",
+    category: "Settings",
+    description:
+      "Если True — Django использует заголовок X-Forwarded-Host вместо Host для определения хоста запроса. Необходимо при работе за прокси/балансировщиком, который передаёт оригинальный хост через X-Forwarded-Host. По умолчанию False.",
+    syntax: "USE_X_FORWARDED_HOST = False",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — использовать заголовок Host:
+USE_X_FORWARDED_HOST = False
+
+# За обратным прокси (Nginx/HAProxy):
+USE_X_FORWARDED_HOST = True
+
+# Теперь request.get_host() вернёт значение из X-Forwarded-Host
+# ВАЖНО: убедитесь, что прокси очищает этот заголовок от клиентов`,
+  },
+
+  {
+    name: "USE_X_FORWARDED_PORT",
+    category: "Settings",
+    description:
+      "Если True — Django использует заголовок X-Forwarded-Port для определения порта запроса. Необходимо за прокси, который передаёт оригинальный порт. По умолчанию False. Используется вместе с USE_X_FORWARDED_HOST.",
+    syntax: "USE_X_FORWARDED_PORT = False",
+    arguments: [],
+    example: `# settings.py
+
+# За обратным прокси, передающим порт:
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
+# Nginx пример конфигурации:
+# proxy_set_header X-Forwarded-Host $host;
+# proxy_set_header X-Forwarded-Port $server_port;`,
+  },
+
+  {
+    name: "URLIZE_ASSUME_HTTPS",
+    category: "Settings",
+    description:
+      'Если True — фильтр шаблона urlize преобразует URL без указания схемы (например, "example.com") в ссылки с "https://" вместо "http://". По умолчанию False (используется http://).',
+    syntax: "URLIZE_ASSUME_HTTPS = False",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — http://:
+URLIZE_ASSUME_HTTPS = False
+# "example.com" → <a href="http://example.com">example.com</a>
+
+# Использовать https:// по умолчанию:
+URLIZE_ASSUME_HTTPS = True
+# "example.com" → <a href="https://example.com">example.com</a>`,
+  },
+
+  {
+    name: "WSGI_APPLICATION",
+    category: "Settings",
+    description:
+      'Python-путь к WSGI-приложению, которое использует встроенный сервер разработки Django (runserver) и WSGI-серверы в продакшне (Gunicorn, uWSGI). По умолчанию "myproject.wsgi.application". Генерируется автоматически при startproject.',
+    syntax: 'WSGI_APPLICATION = "myproject.wsgi.application"',
+    arguments: [],
+    example: `# settings.py
+WSGI_APPLICATION = "myproject.wsgi.application"
+
+# myproject/wsgi.py (генерируется автоматически):
+import os
+from django.core.wsgi import get_wsgi_application
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "myproject.settings")
+application = get_wsgi_application()
+
+# Запуск через Gunicorn:
+# gunicorn myproject.wsgi:application --bind 0.0.0.0:8000`,
+  },
+
+  {
+    name: "YEAR_MONTH_FORMAT",
+    category: "Settings",
+    description:
+      'Формат отображения года и месяца (без числа) в Django-шаблонах — например, в архивных представлениях по месяцу. По умолчанию "F Y" (например, "January 2024"). Использует синтаксис форматирования Django.',
+    syntax: 'YEAR_MONTH_FORMAT = "F Y"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию: January 2024
+YEAR_MONTH_FORMAT = "F Y"
+
+# Российский формат: январь 2024
+YEAR_MONTH_FORMAT = "N Y"
+
+# Короткий: Jan 2024
+YEAR_MONTH_FORMAT = "M Y"
+
+# ISO: 2024-01
+YEAR_MONTH_FORMAT = "Y-m"`,
+  },
+
+  {
+    name: "X_FRAME_OPTIONS",
+    category: "Settings",
+    description:
+      'Значение заголовка X-Frame-Options, защищающего от атак clickjacking (вставка сайта в iframe злоумышленника). По умолчанию "DENY" — запрещает отображение в любых фреймах. Обрабатывается XFrameOptionsMiddleware.',
+    syntax: 'X_FRAME_OPTIONS = "DENY"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — запрет iframe (рекомендуется):
+X_FRAME_OPTIONS = "DENY"
+
+# Разрешить iframe только с того же домена:
+X_FRAME_OPTIONS = "SAMEORIGIN"
+
+# Отключить защиту (не рекомендуется):
+X_FRAME_OPTIONS = "ALLOWALL"
+
+# Для конкретного представления можно переопределить:
+from django.views.decorators.clickjacking import xframe_options_sameorigin
+
+@xframe_options_sameorigin
+def my_view(request): ...`,
+  },
+
+  {
+    name: "AUTHENTICATION_BACKENDS",
+    category: "Settings",
+    description:
+      "Список путей к классам-бэкендам аутентификации. Django перебирает их по порядку при вызове authenticate(). Позволяет добавить вход через email, OAuth, LDAP и т.д. в дополнение к стандартному входу по имени пользователя и паролю.",
+    syntax:
+      'AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.ModelBackend"]',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — только стандартная аутентификация:
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+]
+
+# Добавить вход по email:
+AUTHENTICATION_BACKENDS = [
+    "myapp.auth.EmailBackend",         # сначала пробуем email
+    "django.contrib.auth.backends.ModelBackend",  # затем username
+]
+
+# myapp/auth.py:
+class EmailBackend:
+    def authenticate(self, request, username=None, password=None):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        try:
+            user = User.objects.get(email=username)
+            if user.check_password(password):
+                return user
+        except User.DoesNotExist:
+            return None`,
+  },
+
+  {
+    name: "AUTH_USER_MODEL",
+    category: "Settings",
+    description:
+      'Путь к модели пользователя, используемой для аутентификации. По умолчанию "auth.User" (встроенная модель Django). Позволяет заменить стандартную модель на кастомную с дополнительными полями. Должна быть задана до первой миграции.',
+    syntax: 'AUTH_USER_MODEL = "auth.User"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — встроенная модель:
+AUTH_USER_MODEL = "auth.User"
+
+# Кастомная модель (задаётся до первой миграции!):
+AUTH_USER_MODEL = "accounts.CustomUser"
+
+# accounts/models.py:
+from django.contrib.auth.models import AbstractUser
+
+class CustomUser(AbstractUser):
+    phone = models.CharField(max_length=20, blank=True)
+    avatar = models.ImageField(upload_to="avatars/", blank=True)`,
+  },
+
+  {
+    name: "LOGOUT_REDIRECT_URL",
+    category: "Settings",
+    description:
+      "URL или именованный маршрут, на который Django перенаправляет пользователя после выхода из системы (logout). По умолчанию None — редирект не выполняется (отображается страница выхода). Используется встроенным представлением LogoutView.",
+    syntax: "LOGOUT_REDIRECT_URL = None",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — без редиректа:
+LOGOUT_REDIRECT_URL = None
+
+# Редирект на главную страницу:
+LOGOUT_REDIRECT_URL = "/"
+
+# Редирект по именованному маршруту:
+LOGOUT_REDIRECT_URL = "home"
+
+# Редирект на страницу входа:
+LOGOUT_REDIRECT_URL = "/accounts/login/"`,
+  },
+
+  {
+    name: "PASSWORD_RESET_TIMEOUT",
+    category: "Settings",
+    description:
+      "Время жизни (в секундах) ссылки для сброса пароля, отправляемой по email. По умолчанию 259200 (3 дня). После истечения срока ссылка становится недействительной.",
+    syntax: "PASSWORD_RESET_TIMEOUT = 259200",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — 3 дня:
+PASSWORD_RESET_TIMEOUT = 259200
+
+# 1 час (более безопасно):
+PASSWORD_RESET_TIMEOUT = 3600
+
+# 24 часа:
+PASSWORD_RESET_TIMEOUT = 86400`,
+  },
+
+  {
+    name: "PASSWORD_HASHERS",
+    category: "Settings",
+    description:
+      "Список путей к классам хэширования паролей в порядке приоритета. Первый алгоритм используется для хэширования новых паролей; остальные — для проверки старых хэшей (миграция при входе). По умолчанию PBKDF2 с SHA256.",
+    syntax:
+      'PASSWORD_HASHERS = ["django.contrib.auth.hashers.PBKDF2PasswordHasher", ...]',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher",
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.BCryptSHA256PasswordHasher",
+    "django.contrib.auth.hashers.ScryptPasswordHasher",
+]
+
+# Argon2 как основной (требует pip install argon2-cffi):
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+]`,
+  },
+
+  {
+    name: "AUTH_PASSWORD_VALIDATORS",
+    category: "Settings",
+    description:
+      "Список валидаторов паролей, проверяющих сложность пароля при регистрации и смене пароля. Каждый элемент — словарь с NAME (путь к классу) и опциональным OPTIONS. По умолчанию содержит 4 встроенных валидатора.",
+    syntax:
+      'AUTH_PASSWORD_VALIDATORS = [{"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"}]',
+    arguments: [],
+    example: `# settings.py
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 10},
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
+    },
+]`,
+  },
+
+  {
+    name: "MESSAGE_LEVEL",
+    category: "Settings",
+    description:
+      "Минимальный уровень сообщений (messages framework), которые Django записывает и отображает. По умолчанию messages.DEBUG (10) — все сообщения. Повышение порога отфильтровывает менее важные уведомления.",
+    syntax: "MESSAGE_LEVEL = messages.DEBUG",
+    arguments: [],
+    example: `# settings.py
+from django.contrib.messages import constants as messages
+
+# Показывать все сообщения (по умолчанию):
+MESSAGE_LEVEL = messages.DEBUG    # 10
+
+# Только INFO и выше:
+MESSAGE_LEVEL = messages.INFO     # 20
+
+# Только WARNING, ERROR, SUCCESS:
+MESSAGE_LEVEL = messages.WARNING  # 30`,
+  },
+
+  {
+    name: "MESSAGE_STORAGE",
+    category: "Settings",
+    description:
+      'Путь к классу хранилища для фреймворка сообщений (messages). Определяет, где хранятся flash-сообщения между запросами. По умолчанию "django.contrib.messages.storage.fallback.FallbackStorage" — cookie, при переполнении — сессия.',
+    syntax:
+      'MESSAGE_STORAGE = "django.contrib.messages.storage.fallback.FallbackStorage"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — сначала cookie, затем сессия:
+MESSAGE_STORAGE = "django.contrib.messages.storage.fallback.FallbackStorage"
+
+# Только cookie (быстро, ограниченный размер):
+MESSAGE_STORAGE = "django.contrib.messages.storage.cookie.CookieStorage"
+
+# Только сессия (нет ограничений по размеру):
+MESSAGE_STORAGE = "django.contrib.messages.storage.session.SessionStorage"`,
+  },
+
+  {
+    name: "MESSAGE_TAGS",
+    category: "Settings",
+    description:
+      'Словарь, сопоставляющий уровни сообщений со строками CSS-классов для использования в шаблонах. По умолчанию: DEBUG→"debug", INFO→"info", SUCCESS→"success", WARNING→"warning", ERROR→"error".',
+    syntax:
+      'MESSAGE_TAGS = {messages.DEBUG: "debug", messages.ERROR: "danger"}',
+    arguments: [],
+    example: `# settings.py
+from django.contrib.messages import constants as messages
+
+# Переопределить "error" → "danger" (для Bootstrap):
+MESSAGE_TAGS = {
+    messages.DEBUG:   "debug",
+    messages.INFO:    "info",
+    messages.SUCCESS: "success",
+    messages.WARNING: "warning",
+    messages.ERROR:   "danger",   # Bootstrap использует "danger"
+}
+
+# В шаблоне:
+# {% for message in messages %}
+#   <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+# {% endfor %}`,
+  },
+
+  {
+    name: "SESSION_CACHE_ALIAS",
+    category: "Settings",
+    description:
+      'Псевдоним кэша (из CACHES), используемого для хранения сессий при SESSION_ENGINE = "django.contrib.sessions.backends.cache" или "cached_db". По умолчанию "default".',
+    syntax: 'SESSION_CACHE_ALIAS = "default"',
+    arguments: [],
+    example: `# settings.py
+CACHES = {
+    "default": {"BACKEND": "django.core.cache.backends.memcache.PyMemcacheCache", ...},
+    "sessions": {"BACKEND": "django.core.cache.backends.redis.RedisCache", ...},
+}
+
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "sessions"  # сессии хранятся в Redis`,
+  },
+
+  {
+    name: "SESSION_COOKIE_AGE",
+    category: "Settings",
+    description:
+      "Время жизни сессионного cookie в секундах. По умолчанию 1209600 (2 недели). Определяет, как долго пользователь остаётся в системе без активности (если SESSION_EXPIRE_AT_BROWSER_CLOSE=False).",
+    syntax: "SESSION_COOKIE_AGE = 1209600",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — 2 недели:
+SESSION_COOKIE_AGE = 1209600
+
+# 1 час:
+SESSION_COOKIE_AGE = 3600
+
+# 30 дней:
+SESSION_COOKIE_AGE = 30 * 24 * 60 * 60`,
+  },
+
+  {
+    name: "SESSION_COOKIE_DOMAIN",
+    category: "Settings",
+    description:
+      'Домен для сессионного cookie. По умолчанию None — cookie устанавливается для текущего домена. Значение вида ".example.com" делает сессию общей для всех поддоменов (SSO в рамках одного домена).',
+    syntax: "SESSION_COOKIE_DOMAIN = None",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — только текущий домен:
+SESSION_COOKIE_DOMAIN = None
+
+# Общая сессия для всех поддоменов:
+SESSION_COOKIE_DOMAIN = ".example.com"
+# Работает для: example.com, app.example.com, api.example.com`,
+  },
+
+  {
+    name: "SESSION_COOKIE_HTTPONLY",
+    category: "Settings",
+    description:
+      "Если True — сессионный cookie недоступен через JavaScript (атрибут HttpOnly). Защищает от кражи сессии через XSS-атаку. По умолчанию True. Настоятельно рекомендуется не изменять на False.",
+    syntax: "SESSION_COOKIE_HTTPONLY = True",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию включено — рекомендуется оставить True:
+SESSION_COOKIE_HTTPONLY = True
+
+# Cookie с HttpOnly не читается из JavaScript:
+# document.cookie  → sessionid не будет видна
+# Защита от XSS-кражи сессии`,
+  },
+
+  {
+    name: "SESSION_COOKIE_NAME",
+    category: "Settings",
+    description:
+      'Имя сессионного cookie. По умолчанию "sessionid". Изменение имени помогает избежать конфликтов при запуске нескольких Django-проектов на одном домене.',
+    syntax: 'SESSION_COOKIE_NAME = "sessionid"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+SESSION_COOKIE_NAME = "sessionid"
+
+# Для нескольких проектов на одном домене:
+SESSION_COOKIE_NAME = "myproject_session"
+SESSION_COOKIE_NAME = "admin_session"`,
+  },
+
+  {
+    name: "SESSION_COOKIE_PATH",
+    category: "Settings",
+    description:
+      'Путь, для которого устанавливается сессионный cookie. По умолчанию "/" — cookie действует для всего сайта. При монтировании приложения по подпути следует указать соответствующий путь.',
+    syntax: 'SESSION_COOKIE_PATH = "/"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — весь сайт:
+SESSION_COOKIE_PATH = "/"
+
+# Только для подраздела /app/:
+SESSION_COOKIE_PATH = "/app/"
+FORCE_SCRIPT_NAME = "/app"`,
+  },
+
+  {
+    name: "SESSION_COOKIE_SAMESITE",
+    category: "Settings",
+    description:
+      'Атрибут SameSite сессионного cookie. Контролирует отправку cookie в кросс-сайтовых запросах. По умолчанию "Lax" — cookie не отправляется в кросс-сайтовых POST-запросах, но отправляется при навигации.',
+    syntax: 'SESSION_COOKIE_SAMESITE = "Lax"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию (рекомендуется):
+SESSION_COOKIE_SAMESITE = "Lax"
+
+# Строгий режим — cookie только для первостороннего контекста:
+SESSION_COOKIE_SAMESITE = "Strict"
+
+# Для кросс-сайтовых запросов (требует Secure=True):
+SESSION_COOKIE_SAMESITE = "None"`,
+  },
+
+  {
+    name: "SESSION_COOKIE_SECURE",
+    category: "Settings",
+    description:
+      "Если True — сессионный cookie передаётся только по HTTPS (атрибут Secure). По умолчанию False. В продакшне с HTTPS обязательно устанавливайте True — это предотвращает перехват сессии по незащищённому соединению.",
+    syntax: "SESSION_COOKIE_SECURE = False",
+    arguments: [],
+    example: `# settings.py
+
+# Разработка (HTTP):
+SESSION_COOKIE_SECURE = False
+
+# Продакшн (HTTPS) — обязательно True:
+SESSION_COOKIE_SECURE = True`,
+  },
+
+  {
+    name: "SESSION_ENGINE",
+    category: "Settings",
+    description:
+      'Путь к модулю, определяющему, где хранятся сессии. По умолчанию "django.contrib.sessions.backends.db" — в базе данных. Альтернативы: cache (Redis/Memcached), cached_db (кэш + БД), file, cookie.',
+    syntax: 'SESSION_ENGINE = "django.contrib.sessions.backends.db"',
+    arguments: [],
+    example: `# settings.py
+
+# В базе данных (по умолчанию):
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+
+# В кэше (Redis — быстро, но данные могут быть удалены):
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+
+# Кэш + БД (надёжно и быстро):
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+
+# В файле:
+SESSION_ENGINE = "django.contrib.sessions.backends.file"
+
+# В подписанном cookie (без серверного хранилища, макс ~4 КБ):
+SESSION_ENGINE = "django.contrib.sessions.backends.signed_cookies"`,
+  },
+
+  {
+    name: "SESSION_EXPIRE_AT_BROWSER_CLOSE",
+    category: "Settings",
+    description:
+      "Если True — сессионный cookie становится сессионным (удаляется при закрытии браузера), игнорируя SESSION_COOKIE_AGE. По умолчанию False — сессия сохраняется на SESSION_COOKIE_AGE секунд.",
+    syntax: "SESSION_EXPIRE_AT_BROWSER_CLOSE = False",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — сессия живёт 2 недели:
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_COOKIE_AGE = 1209600
+
+# Сессия только на время работы браузера:
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+# После закрытия браузера — выход из системы`,
+  },
+
+  {
+    name: "SESSION_FILE_PATH",
+    category: "Settings",
+    description:
+      'Директория для хранения файлов сессий при SESSION_ENGINE = "...backends.file". По умолчанию None — используется системная временная директория (tempfile.gettempdir()). Директория должна существовать и быть доступна для записи.',
+    syntax: "SESSION_FILE_PATH = None",
+    arguments: [],
+    example: `# settings.py
+SESSION_ENGINE = "django.contrib.sessions.backends.file"
+
+# По умолчанию — системная /tmp:
+SESSION_FILE_PATH = None
+
+# Кастомная директория:
+SESSION_FILE_PATH = BASE_DIR / "sessions"
+# Файлы: sessions/django_session_abc123...`,
+  },
+
+  {
+    name: "SESSION_SAVE_EVERY_REQUEST",
+    category: "Settings",
+    description:
+      "Если True — Django сохраняет сессию в хранилище при каждом запросе, обновляя время её жизни. По умолчанию False — сессия сохраняется только при изменении данных. True гарантирует скользящее время жизни сессии.",
+    syntax: "SESSION_SAVE_EVERY_REQUEST = False",
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию — сохранять только при изменении:
+SESSION_SAVE_EVERY_REQUEST = False
+
+# Скользящая сессия — время сбрасывается при каждом запросе:
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_AGE = 1800  # 30 минут без активности → выход`,
+  },
+
+  {
+    name: "SESSION_SERIALIZER",
+    category: "Settings",
+    description:
+      'Путь к классу сериализатора данных сессии. По умолчанию "django.contrib.sessions.serializers.JSONSerializer". Ранее использовался PickleSerializer, но он небезопасен — JSON рекомендуется для продакшна.',
+    syntax:
+      'SESSION_SERIALIZER = "django.contrib.sessions.serializers.JSONSerializer"',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию и рекомендуется:
+SESSION_SERIALIZER = "django.contrib.sessions.serializers.JSONSerializer"
+
+# Небезопасно — только для совместимости с устаревшим кодом:
+# SESSION_SERIALIZER = "django.contrib.sessions.serializers.PickleSerializer"
+# ВНИМАНИЕ: PickleSerializer уязвим к атакам через подделку данных!`,
+  },
+
+  {
+    name: "SITE_ID",
+    category: "Settings",
+    description:
+      "Числовой идентификатор текущего сайта в таблице django_site (приложение django.contrib.sites). Позволяет одному Django-проекту обслуживать несколько сайтов с разными доменами. Обязателен при использовании django.contrib.sites.",
+    syntax: "SITE_ID = 1",
+    arguments: [],
+    example: `# settings.py
+INSTALLED_APPS = [
+    ...
+    "django.contrib.sites",
+]
+SITE_ID = 1
+
+# После миграции в таблице django_site появится запись:
+# id=1, domain="example.com", name="Example"
+
+# Получить текущий сайт в коде:
+from django.contrib.sites.models import Site
+site = Site.objects.get_current()
+print(site.domain)  # "example.com"`,
+  },
+
+  {
+    name: "STATIC_ROOT",
+    category: "Settings",
+    description:
+      "Абсолютный путь к директории, куда Django собирает все статические файлы командой collectstatic для последующей раздачи веб-сервером (Nginx, Apache). По умолчанию None. Не используется в разработке.",
+    syntax: 'STATIC_ROOT = BASE_DIR / "staticfiles"',
+    arguments: [],
+    example: `# settings.py
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_URL = "/static/"
+
+# Сбор статики для продакшна:
+# python manage.py collectstatic
+# → копирует файлы из всех приложений в STATIC_ROOT
+
+# Nginx конфигурация:
+# location /static/ {
+#     alias /path/to/staticfiles/;
+# }`,
+  },
+
+  {
+    name: "STATIC_URL",
+    category: "Settings",
+    description:
+      'URL-префикс для доступа к статическим файлам. Используется тегом {% static %} в шаблонах и функцией staticfiles_storage.url(). По умолчанию None (до Django 3.1 — "/static/"). Должен заканчиваться на "/".',
+    syntax: 'STATIC_URL = "/static/"',
+    arguments: [],
+    example: `# settings.py
+STATIC_URL = "/static/"
+
+# В шаблоне:
+# {% load static %}
+# <link rel="stylesheet" href="{% static 'css/style.css' %}">
+# → <link rel="stylesheet" href="/static/css/style.css">
+
+# Для CDN:
+STATIC_URL = "https://cdn.example.com/static/"`,
+  },
+
+  {
+    name: "STATICFILES_DIRS",
+    category: "Settings",
+    description:
+      "Список дополнительных директорий для поиска статических файлов командой collectstatic и в режиме разработки. Дополняет директории приложений. Обычно содержит общую папку static/ проекта.",
+    syntax: 'STATICFILES_DIRS = [BASE_DIR / "static"]',
+    arguments: [],
+    example: `# settings.py
+STATICFILES_DIRS = [
+    BASE_DIR / "static",           # общая статика проекта
+    BASE_DIR / "frontend" / "dist", # собранный фронтенд (React/Vue)
+]
+
+# Структура:
+# static/
+#   css/
+#     main.css
+#   js/
+#     app.js
+#   img/
+#     logo.png`,
+  },
+
+  {
+    name: "STATICFILES_FINDERS",
+    category: "Settings",
+    description:
+      "Список классов-искателей (finders), определяющих, где Django ищет статические файлы. По умолчанию включает FileSystemFinder (ищет в STATICFILES_DIRS) и AppDirectoriesFinder (ищет в папке static/ каждого приложения).",
+    syntax:
+      'STATICFILES_FINDERS = ["django.contrib.staticfiles.finders.FileSystemFinder", ...]',
+    arguments: [],
+    example: `# settings.py
+
+# По умолчанию:
+STATICFILES_FINDERS = [
+    "django.contrib.staticfiles.finders.FileSystemFinder",
+    "django.contrib.staticfiles.finders.AppDirectoriesFinder",
+]
+
+# Добавить кастомный finder (например, для node_modules):
+STATICFILES_FINDERS = [
+    "django.contrib.staticfiles.finders.FileSystemFinder",
+    "django.contrib.staticfiles.finders.AppDirectoriesFinder",
+    "npm.finders.NpmFinder",  # сторонний пакет django-npm
+]`,
+  },
 ];
