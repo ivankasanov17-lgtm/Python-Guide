@@ -27339,4 +27339,1573 @@ def detect_newlines(text: str) -> str | tuple | None:
     d.decode(text, final=True)
     return d.newlines`,
   },
+   {
+    name: 'ClientSession.request',
+    description:
+      'Универсальный метод класса ClientSession библиотеки aiohttp для выполнения HTTP-запроса с произвольным методом. Является основой для методов get(), post(), put() и других. Возвращает объект ClientResponse в виде асинхронного контекстного менеджера. Используется когда нужен метод, не имеющий собственного shortcut-метода.',
+    syntax: 'await session.request(method, url, **kwargs)',
+    arguments: [
+      { name: 'method', description: 'Строка HTTP-метода в верхнем регистре: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" и др.' },
+      { name: 'url', description: 'URL запроса — строка или yarl.URL объект.' },
+      { name: 'params', description: 'Параметры строки запроса (query string). dict, list кортежей или строка.' },
+      { name: 'data', description: 'Тело запроса: bytes, str, dict (form-data), AsyncIterable или FormData.' },
+      { name: 'json', description: 'Объект Python, который будет сериализован в JSON и отправлен как тело с Content-Type: application/json.' },
+      { name: 'headers', description: 'Дополнительные HTTP-заголовки запроса в виде dict или CIMultiDict.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout с ограничениями времени ожидания.' },
+      { name: 'ssl', description: 'SSL-контекст, False (отключить проверку) или None (по умолчанию).' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Универсальный запрос:
+        async with session.request('GET', 'https://httpbin.org/get',
+                                   params={'key': 'value'}) as resp:
+            print(resp.status)          # 200
+            data = await resp.json()
+            print(data['url'])
+
+        # PATCH через request():
+        async with session.request(
+            'PATCH',
+            'https://api.example.com/items/1',
+            json={'name': 'updated'},
+            headers={'Authorization': 'Bearer token'},
+        ) as resp:
+            print(await resp.json())
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientSession.get',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP GET-запрос. Shortcut для session.request("GET", url, **kwargs). Возвращает объект ClientResponse в виде асинхронного контекстного менеджера. Используется для получения данных от API, загрузки страниц и файлов.',
+    syntax: 'await session.get(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL запроса — строка или yarl.URL.' },
+      { name: 'params', description: 'Параметры query string: dict, list пар или строка.' },
+      { name: 'headers', description: 'Дополнительные заголовки запроса.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+      { name: 'allow_redirects', description: 'Следовать ли редиректам. По умолчанию True.' },
+      { name: 'ssl', description: 'SSL-контекст или False для отключения проверки сертификата.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def fetch_data():
+    async with aiohttp.ClientSession() as session:
+        # Простой GET:
+        async with session.get('https://api.github.com/users/python') as resp:
+            print(resp.status)       # 200
+            user = await resp.json()
+            print(user['login'])     # 'python'
+
+        # С параметрами:
+        params = {'q': 'aiohttp', 'sort': 'stars'}
+        async with session.get(
+            'https://api.github.com/search/repositories',
+            params=params,
+            headers={'Accept': 'application/vnd.github.v3+json'},
+        ) as resp:
+            data = await resp.json()
+            print(data['total_count'])
+
+asyncio.run(fetch_data())`,
+  },
+  {
+    name: 'ClientSession.post',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP POST-запрос. Shortcut для session.request("POST", url, **kwargs). Поддерживает отправку JSON, form-data, файлов и произвольных байт. Возвращает объект ClientResponse через асинхронный контекстный менеджер.',
+    syntax: 'await session.post(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL запроса.' },
+      { name: 'data', description: 'Тело запроса: bytes, str, dict (form-data), FormData или AsyncIterable.' },
+      { name: 'json', description: 'Python-объект для отправки как JSON (устанавливает Content-Type: application/json).' },
+      { name: 'headers', description: 'Дополнительные заголовки запроса.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def send_data():
+    async with aiohttp.ClientSession() as session:
+        # Отправка JSON:
+        async with session.post(
+            'https://api.example.com/users',
+            json={'name': 'Ivan', 'email': 'ivan@example.com'},
+        ) as resp:
+            result = await resp.json()
+            print(result['id'])
+
+        # Отправка form-data:
+        async with session.post(
+            'https://httpbin.org/post',
+            data={'field1': 'value1', 'field2': 'value2'},
+        ) as resp:
+            print(resp.status)
+
+        # Загрузка файла:
+        with open('photo.jpg', 'rb') as f:
+            async with session.post(
+                'https://api.example.com/upload',
+                data={'file': f},
+            ) as resp:
+                print(await resp.text())
+
+asyncio.run(send_data())`,
+  },
+  {
+    name: 'ClientSession.put',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP PUT-запрос. Shortcut для session.request("PUT", url, **kwargs). Обычно используется для полной замены существующего ресурса. Поддерживает те же параметры тела запроса, что и post().',
+    syntax: 'await session.put(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL запроса.' },
+      { name: 'data', description: 'Тело запроса: bytes, str, dict или AsyncIterable.' },
+      { name: 'json', description: 'Python-объект для сериализации в JSON.' },
+      { name: 'headers', description: 'Дополнительные заголовки.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def update_resource():
+    async with aiohttp.ClientSession(
+        headers={'Authorization': 'Bearer mytoken'}
+    ) as session:
+        payload = {
+            'id': 42,
+            'name': 'Updated Name',
+            'email': 'new@example.com',
+            'active': True,
+        }
+        async with session.put(
+            'https://api.example.com/users/42',
+            json=payload,
+        ) as resp:
+            if resp.status == 200:
+                updated = await resp.json()
+                print(f'Обновлено: {updated["name"]}')
+            else:
+                print(f'Ошибка: {resp.status}')
+
+asyncio.run(update_resource())`,
+  },
+  {
+    name: 'ClientSession.patch',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP PATCH-запрос. Shortcut для session.request("PATCH", url, **kwargs). Используется для частичного обновления ресурса — в теле передаются только изменяемые поля, в отличие от PUT, который заменяет объект целиком.',
+    syntax: 'await session.patch(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL запроса.' },
+      { name: 'data', description: 'Тело запроса: bytes, str, dict или AsyncIterable.' },
+      { name: 'json', description: 'Python-объект для частичного обновления.' },
+      { name: 'headers', description: 'Дополнительные заголовки.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def partial_update():
+    async with aiohttp.ClientSession() as session:
+        # Обновляем только имя (остальные поля не меняются):
+        async with session.patch(
+            'https://api.example.com/users/42',
+            json={'name': 'New Name'},
+            headers={'Authorization': 'Bearer token'},
+        ) as resp:
+            print(resp.status)   # 200
+            data = await resp.json()
+            print(data['name'])  # 'New Name'
+
+        # Несколько полей:
+        async with session.patch(
+            'https://api.example.com/articles/1',
+            json={'title': 'Updated', 'published': True},
+        ) as resp:
+            print(await resp.json())
+
+asyncio.run(partial_update())`,
+  },
+  {
+    name: 'ClientSession.delete',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP DELETE-запрос. Shortcut для session.request("DELETE", url, **kwargs). Используется для удаления ресурса на сервере. Обычно возвращает статус 204 No Content или 200 с телом ответа.',
+    syntax: 'await session.delete(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL ресурса для удаления.' },
+      { name: 'headers', description: 'Дополнительные заголовки (например, Authorization).' },
+      { name: 'params', description: 'Параметры query string.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def delete_resource():
+    async with aiohttp.ClientSession(
+        headers={'Authorization': 'Bearer mytoken'}
+    ) as session:
+        async with session.delete(
+            'https://api.example.com/users/42',
+        ) as resp:
+            if resp.status == 204:
+                print('Удалено успешно')
+            elif resp.status == 404:
+                print('Ресурс не найден')
+            else:
+                text = await resp.text()
+                print(f'Ошибка {resp.status}: {text}')
+
+        # Мягкое удаление с параметром:
+        async with session.delete(
+            'https://api.example.com/items/5',
+            params={'soft': 'true'},
+        ) as resp:
+            print(resp.status)
+
+asyncio.run(delete_resource())`,
+  },
+  {
+    name: 'ClientSession.head',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP HEAD-запрос. Shortcut для session.request("HEAD", url, **kwargs). HEAD идентичен GET, но сервер возвращает только заголовки без тела ответа. Используется для проверки существования ресурса и получения метаданных (Content-Length, Last-Modified) без загрузки тела.',
+    syntax: 'await session.head(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL запроса.' },
+      { name: 'headers', description: 'Дополнительные заголовки.' },
+      { name: 'allow_redirects', description: 'Следовать ли редиректам. По умолчанию False для HEAD.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def check_resource():
+    async with aiohttp.ClientSession() as session:
+        async with session.head('https://example.com/file.pdf') as resp:
+            print(resp.status)
+            size = resp.headers.get('Content-Length', 'unknown')
+            content_type = resp.headers.get('Content-Type', '')
+            last_modified = resp.headers.get('Last-Modified', '')
+
+            print(f'Размер: {size} байт')
+            print(f'Тип: {content_type}')
+            print(f'Изменён: {last_modified}')
+            # Тело ответа недоступно (resp.text() вернёт '')
+
+asyncio.run(check_resource())`,
+  },
+  {
+    name: 'ClientSession.options',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP OPTIONS-запрос. Shortcut для session.request("OPTIONS", url, **kwargs). Используется для получения списка допустимых HTTP-методов для ресурса и для preflight-запросов CORS (Cross-Origin Resource Sharing).',
+    syntax: 'await session.options(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL запроса.' },
+      { name: 'headers', description: 'Дополнительные заголовки.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def check_allowed_methods():
+    async with aiohttp.ClientSession() as session:
+        async with session.options('https://api.example.com/users') as resp:
+            print(resp.status)    # 200 или 204
+
+            # Список допустимых методов:
+            allowed = resp.headers.get('Allow', '')
+            print(f'Разрешены: {allowed}')
+            # 'GET, POST, HEAD, OPTIONS'
+
+            # CORS-заголовки:
+            origin = resp.headers.get('Access-Control-Allow-Origin', '')
+            methods = resp.headers.get('Access-Control-Allow-Methods', '')
+            print(f'CORS origin: {origin}')
+            print(f'CORS methods: {methods}')
+
+asyncio.run(check_allowed_methods())`,
+  },
+  {
+    name: 'ClientSession.ws_connect',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Устанавливает WebSocket-соединение. Возвращает объект ClientWebSocketResponse через асинхронный контекстный менеджер. Позволяет отправлять и получать сообщения в реальном времени. Поддерживает текстовые, бинарные сообщения и ping/pong.',
+    syntax: 'await session.ws_connect(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL WebSocket-сервера (ws:// или wss://).' },
+      { name: 'protocols', description: 'Список поддерживаемых подпротоколов WebSocket.' },
+      { name: 'headers', description: 'Дополнительные заголовки HTTP-запроса установки соединения.' },
+      { name: 'heartbeat', description: 'Интервал ping в секундах для поддержания соединения живым.' },
+      { name: 'compress', description: 'Уровень сжатия (0 — выключено, 9 — максимальное). None — по умолчанию.' },
+      { name: 'timeout', description: 'Время ожидания установки соединения в секундах.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def websocket_client():
+    async with aiohttp.ClientSession() as session:
+        async with session.ws_connect(
+            'wss://echo.websocket.org',
+            heartbeat=30,   # Ping каждые 30 секунд
+        ) as ws:
+            # Отправка текстового сообщения:
+            await ws.send_str('Hello, WebSocket!')
+
+            # Получение ответа:
+            msg = await ws.receive()
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                print(f'Получено: {msg.data}')
+            elif msg.type == aiohttp.WSMsgType.ERROR:
+                print(f'Ошибка: {ws.exception()}')
+
+            # Цикл приёма:
+            async for msg in ws:
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    print(msg.data)
+                elif msg.type == aiohttp.WSMsgType.CLOSED:
+                    break
+
+asyncio.run(websocket_client())`,
+  },
+  {
+    name: 'ClientSession.close',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Закрывает сессию и освобождает все связанные ресурсы: соединения в пуле, коннекторы, внутренние задачи. Является корутиной — необходимо вызывать через await. При использовании ClientSession как контекстного менеджера (async with) close() вызывается автоматически.',
+    syntax: 'await session.close()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+# Рекомендуемый способ — async with (close() автоматически):
+async def with_context_manager():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(await resp.json())
+    # close() вызван автоматически
+
+# Ручное управление (например, для переиспользования сессии):
+async def manual_session():
+    session = aiohttp.ClientSession()
+    try:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.status)
+
+        async with session.post('https://httpbin.org/post',
+                                json={'key': 'value'}) as resp:
+            print(await resp.json())
+    finally:
+        await session.close()   # Обязательно в finally
+
+asyncio.run(with_context_manager())`,
+  },
+  {
+    name: 'ClientSession.closed',
+    description:
+      'Атрибут класса ClientSession библиотеки aiohttp. Булево свойство — True если сессия закрыта (вызван close() или завершён блок async with). Позволяет проверить состояние сессии перед выполнением запроса. После закрытия любые запросы через сессию вызовут исключение.',
+    syntax: 'session.closed',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    session = aiohttp.ClientSession()
+    print(session.closed)   # False
+
+    await session.close()
+    print(session.closed)   # True
+
+    # С контекстным менеджером:
+    async with aiohttp.ClientSession() as session:
+        print(session.closed)   # False
+    print(session.closed)       # True
+
+    # Проверка перед запросом:
+    if not session.closed:
+        async with session.get('https://example.com') as resp:
+            print(resp.status)
+    else:
+        print('Сессия закрыта, создайте новую')
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientSession.connector',
+    description:
+      'Атрибут класса ClientSession библиотеки aiohttp. Возвращает объект коннектора (BaseConnector), используемого сессией для управления пулом соединений. По умолчанию — TCPConnector. Через коннектор можно настроить лимиты соединений, SSL, keepalive и DNS-кэш.',
+    syntax: 'session.connector',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    # Настройка коннектора вручную:
+    connector = aiohttp.TCPConnector(
+        limit=100,           # Максимум 100 соединений
+        limit_per_host=10,   # Максимум 10 на один хост
+        ttl_dns_cache=300,   # DNS-кэш 5 минут
+        ssl=False,           # Отключить проверку SSL
+    )
+    async with aiohttp.ClientSession(connector=connector) as session:
+        print(type(session.connector))
+        # <class 'aiohttp.connector.TCPConnector'>
+
+        # Статистика коннектора:
+        print(session.connector._limit)    # 100
+
+        async with session.get('https://example.com') as resp:
+            print(resp.status)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientSession.cookie_jar',
+    description:
+      'Атрибут класса ClientSession библиотеки aiohttp. Возвращает объект хранилища куки (AbstractCookieJar). По умолчанию — CookieJar, который автоматически сохраняет и отправляет куки между запросами. Можно заменить на DummyCookieJar для отключения куки или CookieJar(unsafe=True) для работы с IP-адресами.',
+    syntax: 'session.cookie_jar',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Выполняем запрос — куки сохраняются автоматически:
+        async with session.get('https://httpbin.org/cookies/set/key/value') as resp:
+            pass
+
+        # Доступ к сохранённым куки:
+        for cookie in session.cookie_jar:
+            print(cookie.key, cookie.value)
+
+        # Ручная установка куки:
+        session.cookie_jar.update_cookies({'my_cookie': 'my_value'})
+
+    # Отключение куки:
+    jar = aiohttp.DummyCookieJar()
+    async with aiohttp.ClientSession(cookie_jar=jar) as session:
+        print(type(session.cookie_jar))
+        # <class 'aiohttp.cookiejar.DummyCookieJar'>
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientSession.loop',
+    description:
+      'Атрибут класса ClientSession библиотеки aiohttp. Возвращает объект цикла событий asyncio (event loop), связанного с данной сессией. Устарел начиная с aiohttp 4.x — использование loop в asyncio-объектах не рекомендуется. Для получения текущего цикла используйте asyncio.get_event_loop().',
+    syntax: 'session.loop',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        loop = session.loop
+        print(type(loop))
+        # <class 'uvloop.Loop'> или <class 'asyncio.unix_events._UnixSelectorEventLoop'>
+
+        # Современная альтернатива (рекомендуется):
+        current_loop = asyncio.get_event_loop()
+        print(loop is current_loop)   # True
+
+        # Проверка состояния цикла:
+        print(loop.is_running())   # True (внутри async функции)
+        print(loop.is_closed())    # False
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientSession.timeout',
+    description:
+      'Атрибут класса ClientSession библиотеки aiohttp. Возвращает объект ClientTimeout с настройками тайм-аутов по умолчанию для всех запросов сессии. Задаётся при создании сессии. Отдельные запросы могут переопределять тайм-аут через параметр timeout. При превышении выбрасывается asyncio.TimeoutError.',
+    syntax: 'session.timeout',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    # Настройка тайм-аутов для всей сессии:
+    timeout = aiohttp.ClientTimeout(
+        total=30,           # Общее время запроса
+        connect=5,          # Время установки соединения
+        sock_connect=5,     # Время TCP-соединения
+        sock_read=10,       # Время чтения данных
+    )
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        print(session.timeout.total)    # 30
+        print(session.timeout.connect)  # 5
+
+        try:
+            async with session.get('https://slow-site.example.com') as resp:
+                print(await resp.text())
+        except asyncio.TimeoutError:
+            print('Превышено время ожидания')
+
+        # Переопределение для конкретного запроса:
+        custom = aiohttp.ClientTimeout(total=5)
+        async with session.get('https://example.com', timeout=custom) as resp:
+            print(resp.status)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.status',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Целочисленный HTTP-статус код ответа сервера (например: 200, 201, 404, 500). Доступен сразу после получения заголовков, до чтения тела ответа. Соответствует полю status_code в библиотеке requests.',
+    syntax: 'response.status',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/status/404') as resp:
+            print(resp.status)   # 404
+
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.status)   # 200
+
+            # Проверка успешности:
+            if resp.status == 200:
+                data = await resp.json()
+            elif resp.status == 404:
+                print('Не найдено')
+            elif resp.status >= 500:
+                print('Ошибка сервера')
+
+            # Альтернатива — свойство ok:
+            print(resp.ok)   # True если 200 <= status < 300
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.reason',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Строка с текстовым описанием HTTP-статуса ответа (reason phrase). Например: "OK" для 200, "Not Found" для 404, "Internal Server Error" для 500. Соответствует стандартным описаниям HTTP-статусов по RFC 7231.',
+    syntax: 'response.reason',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.status)    # 200
+            print(resp.reason)    # 'OK'
+
+        async with session.get('https://httpbin.org/status/404') as resp:
+            print(resp.status)    # 404
+            print(resp.reason)    # 'NOT FOUND'
+
+        async with session.get('https://httpbin.org/status/500') as resp:
+            print(resp.status)    # 500
+            print(resp.reason)    # 'INTERNAL SERVER ERROR'
+
+        # Вывод полного статуса:
+        async with session.get('https://example.com') as resp:
+            print(f'{resp.status} {resp.reason}')
+            # '200 OK'
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.ok',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Булево свойство — True если HTTP-статус ответа находится в диапазоне 200–299 (успешные ответы). False для любых других кодов (редиректы, ошибки клиента, ошибки сервера). Удобная альтернатива проверке resp.status == 200.',
+    syntax: 'response.ok',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def fetch(url: str):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.ok:
+                return await resp.json()
+            else:
+                print(f'Ошибка: {resp.status} {resp.reason}')
+                return None
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.ok)    # True  (200)
+
+        async with session.get('https://httpbin.org/status/404') as resp:
+            print(resp.ok)    # False (404)
+
+        async with session.get('https://httpbin.org/status/301') as resp:
+            print(resp.ok)    # False (301, но обычно редирект следован)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.method',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Строка с HTTP-методом запроса, который породил данный ответ. Например: "GET", "POST", "PUT". Полезен при обработке ответов в обобщённых функциях, когда метод запроса не известен заранее.',
+    syntax: 'response.method',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def log_response(resp: aiohttp.ClientResponse):
+    print(f'{resp.method} {resp.url} → {resp.status} {resp.reason}')
+    # 'GET https://httpbin.org/get → 200 OK'
+    # 'POST https://api.example.com/users → 201 CREATED'
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.method)   # 'GET'
+            await log_response(resp)
+
+        async with session.post('https://httpbin.org/post',
+                                json={'key': 'val'}) as resp:
+            print(resp.method)   # 'POST'
+            await log_response(resp)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.url',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект yarl.URL с адресом запроса, которым был получен ответ. После редиректов содержит URL последнего запроса в цепочке (конечный адрес). Для получения исходного URL запроса (до редиректов) используйте real_url.',
+    syntax: 'response.url',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Без редиректов:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.url)
+            # URL('https://httpbin.org/get')
+            print(str(resp.url))
+            # 'https://httpbin.org/get'
+            print(resp.url.host)    # 'httpbin.org'
+            print(resp.url.path)    # '/get'
+
+        # С редиректом (url → конечный адрес):
+        async with session.get('http://httpbin.org/redirect/1') as resp:
+            print(resp.url)
+            # URL('https://httpbin.org/get')  ← после редиректа
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.real_url',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект yarl.URL с исходным URL запроса — тем, который был передан в метод session.get() / session.post() и т.д., до применения каких-либо редиректов. В отличие от url, не изменяется в цепочке редиректов.',
+    syntax: 'response.real_url',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Запрос с редиректом:
+        original = 'http://httpbin.org/redirect/2'
+        async with session.get(original) as resp:
+            print(resp.real_url)
+            # URL('http://httpbin.org/redirect/2')  ← исходный URL
+
+            print(resp.url)
+            # URL('https://httpbin.org/get')  ← конечный URL после редиректов
+
+            # Сравнение:
+            redirected = str(resp.real_url) != str(resp.url)
+            print(f'Был редирект: {redirected}')   # True
+
+        # Без редиректа — real_url и url совпадают:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.real_url == resp.url)   # True
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.connection',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Возвращает объект Connection, представляющий физическое TCP-соединение, использованное для данного запроса. Доступен только пока ответ не освобождён (до вызова release() или выхода из блока async with). Полезен для низкоуровневой отладки.',
+    syntax: 'response.connection',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            conn = resp.connection
+            print(type(conn))
+            # <class 'aiohttp.connector.Connection'>
+
+            # Информация о соединении:
+            print(conn.transport)   # asyncio.Transport объект
+
+            # После выхода из async with — соединение освобождено:
+        # resp.connection → None (ответ уже освобождён)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.content',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект StreamReader — асинхронный потоковый читатель тела ответа. Позволяет читать тело по частям (chunk by chunk) без загрузки всего содержимого в память. Используется для загрузки больших файлов и потоковой обработки данных.',
+    syntax: 'response.content',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def download_file(url: str, path: str):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            resp.raise_for_status()
+
+            # Потоковое чтение по чанкам:
+            with open(path, 'wb') as f:
+                async for chunk in resp.content.iter_chunked(8192):
+                    f.write(chunk)
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/bytes/1024') as resp:
+            # Размер тела (если известен):
+            print(resp.content_length)   # 1024 или None
+
+            # Чтение первых 100 байт:
+            first_chunk = await resp.content.read(100)
+            print(len(first_chunk))   # 100
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.cookies',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект SimpleCookie (из стандартной библиотеки http.cookies) с куки, установленными сервером в данном ответе через заголовок Set-Cookie. Содержит только куки текущего ответа, не всей сессии. Для доступа ко всем куки сессии используйте session.cookie_jar.',
+    syntax: 'response.cookies',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            'https://httpbin.org/cookies/set/session_id/abc123'
+        ) as resp:
+            # Куки этого ответа:
+            for name, morsel in resp.cookies.items():
+                print(f'{name} = {morsel.value}')
+                print(f'  path: {morsel["path"]}')
+                print(f'  expires: {morsel["expires"]}')
+
+            # Конкретное куки:
+            if 'session_id' in resp.cookies:
+                token = resp.cookies['session_id'].value
+                print(f'Токен: {token}')   # 'abc123'
+
+            # Все куки сессии (накопленные):
+            for cookie in session.cookie_jar:
+                print(cookie.key, cookie.value)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.headers',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект CIMultiDictProxy — регистронезависимый словарь (case-insensitive) HTTP-заголовков ответа. Поддерживает несколько значений для одного заголовка. Доступен сразу после получения заголовков, до чтения тела.',
+    syntax: 'response.headers',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            # Регистронезависимый доступ:
+            print(resp.headers['Content-Type'])
+            # 'application/json'
+
+            print(resp.headers.get('content-type'))
+            # 'application/json'  (то же самое)
+
+            # Проверка наличия:
+            if 'X-RateLimit-Remaining' in resp.headers:
+                limit = resp.headers['X-RateLimit-Remaining']
+
+            # Все заголовки:
+            for name, value in resp.headers.items():
+                print(f'{name}: {value}')
+
+            # Content-Type без параметров:
+            ct = resp.headers.get('Content-Type', '')
+            mime = ct.split(';')[0].strip()
+            print(mime)   # 'application/json'
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.raw_headers',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Кортеж пар (name, value) — сырые HTTP-заголовки ответа в виде байтовых строк (bytes), в том порядке, в котором они были получены от сервера. В отличие от headers, не нормализован и не декодирован. Полезен для низкоуровневой обработки и отладки.',
+    syntax: 'response.raw_headers',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            # Сырые байтовые заголовки:
+            for name, value in resp.raw_headers:
+                print(f'{name!r}: {value!r}')
+            # b'Content-Type': b'application/json'
+            # b'Server': b'gunicorn/19.9.0'
+            # ...
+
+            # Количество заголовков:
+            print(len(resp.raw_headers))
+
+            # Поиск конкретного заголовка:
+            for name, value in resp.raw_headers:
+                if name.lower() == b'content-type':
+                    print(value.decode('utf-8'))
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.links',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект CIMultiDictProxy, содержащий разобранные ссылки из заголовка Link ответа. Используется в API с пагинацией (GitHub API, JSON:API и др.) для навигации между страницами. Ключи — rel-атрибуты ссылок (next, prev, first, last).',
+    syntax: 'response.links',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def paginate_github(url: str):
+    async with aiohttp.ClientSession(
+        headers={'Accept': 'application/vnd.github.v3+json'}
+    ) as session:
+        while url:
+            async with session.get(url) as resp:
+                items = await resp.json()
+                print(f'Получено: {len(items)} элементов')
+
+                # Link header: <url>; rel="next", <url>; rel="last"
+                links = resp.links
+                print(links)
+                # {'next': {'url': URL('...'), 'rel': 'next'}, ...}
+
+                if 'next' in links:
+                    url = str(links['next']['url'])
+                else:
+                    url = None   # Последняя страница
+
+asyncio.run(paginate_github('https://api.github.com/repos/python/cpython/issues'))`,
+  },
+  {
+    name: 'ClientResponse.history',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Кортеж объектов ClientResponse для всех промежуточных ответов в цепочке редиректов (до финального). Пустой кортеж () если редиректов не было. Каждый элемент содержит статус, заголовки и URL промежуточного ответа.',
+    syntax: 'response.history',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Без редиректов:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.history)   # ()
+
+        # С редиректами:
+        async with session.get('http://httpbin.org/redirect/3') as resp:
+            print(f'Финальный статус: {resp.status}')   # 200
+            print(f'Редиректов: {len(resp.history)}')   # 3
+
+            for i, redirect in enumerate(resp.history):
+                print(f'  Редирект {i+1}: {redirect.status} → {redirect.url}')
+            # Редирект 1: 302 → http://httpbin.org/redirect/2
+            # Редирект 2: 302 → http://httpbin.org/redirect/1
+            # Редирект 3: 302 → https://httpbin.org/get
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.request_info',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект RequestInfo с информацией о запросе, породившем данный ответ: url (yarl.URL), real_url, method (строка), headers (отправленные заголовки). Позволяет из ответа восстановить детали исходного запроса без хранения их отдельно.',
+    syntax: 'response.request_info',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession(
+        headers={'User-Agent': 'MyApp/1.0'}
+    ) as session:
+        async with session.post(
+            'https://httpbin.org/post',
+            json={'key': 'value'},
+            headers={'X-Custom': 'header'},
+        ) as resp:
+            info = resp.request_info
+
+            print(info.method)      # 'POST'
+            print(info.url)         # URL('https://httpbin.org/post')
+            print(info.real_url)    # URL('https://httpbin.org/post')
+
+            # Заголовки запроса:
+            print(info.headers['User-Agent'])   # 'MyApp/1.0'
+            print(info.headers['X-Custom'])     # 'header'
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.read',
+    description:
+      'Асинхронный метод объекта ClientResponse библиотеки aiohttp. Читает и возвращает всё тело ответа как байтовую строку (bytes). Загружает тело целиком в память — не подходит для очень больших ответов (используйте content для потокового чтения). После вызова тело кэшируется.',
+    syntax: 'await response.read()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Чтение как bytes:
+        async with session.get('https://httpbin.org/image/png') as resp:
+            image_bytes = await resp.read()
+            print(type(image_bytes))   # <class 'bytes'>
+            print(len(image_bytes))    # Размер в байтах
+
+            with open('image.png', 'wb') as f:
+                f.write(image_bytes)
+
+        # Декодирование вручную:
+        async with session.get('https://httpbin.org/get') as resp:
+            raw = await resp.read()
+            text = raw.decode('utf-8')
+            print(text[:100])
+
+        # Для текста и JSON — используйте resp.text() / resp.json():
+        async with session.get('https://httpbin.org/get') as resp:
+            data = await resp.json()   # Удобнее, чем read() + decode + loads
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.release',
+    description:
+      'Асинхронный метод объекта ClientResponse библиотеки aiohttp. Освобождает ресурсы, связанные с ответом: закрывает соединение или возвращает его в пул коннектора. Вызывается автоматически при выходе из блока async with. Необходимо вызывать вручную если ответ читался без контекстного менеджера во избежание утечки соединений.',
+    syntax: 'await response.release()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Автоматическое освобождение (рекомендуется):
+        async with session.get('https://httpbin.org/get') as resp:
+            data = await resp.json()
+        # release() вызван автоматически
+
+        # Ручное освобождение (при работе без async with):
+        resp = await session.get('https://httpbin.org/get')
+        try:
+            if resp.status == 200:
+                data = await resp.json()
+            else:
+                print(f'Ошибка: {resp.status}')
+        finally:
+            await resp.release()   # Обязательно освободить!
+
+        # release() после read() — тело уже прочитано, соединение освобождается:
+        async with session.get('https://httpbin.org/get') as resp:
+            body = await resp.read()
+            # release() будет вызван при выходе из async with
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.text',
+    description:
+      'Асинхронный метод объекта ClientResponse библиотеки aiohttp. Читает тело ответа и возвращает его как строку (str). Кодировка определяется автоматически из заголовка Content-Type, либо задаётся явно через параметр encoding. Загружает всё тело в память — для больших ответов используйте потоковое чтение через content.',
+    syntax: "await response.text(encoding=None, errors='strict')",
+    arguments: [
+      { name: 'encoding', description: 'Кодировка для декодирования байт в строку. Если None — определяется из заголовка Content-Type или autodetect. По умолчанию None.' },
+      { name: 'errors', description: 'Режим обработки ошибок декодирования: "strict" (по умолчанию, выбросить UnicodeDecodeError), "ignore", "replace".' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Автоматическое определение кодировки:
+        async with session.get('https://httpbin.org/html') as resp:
+            html = await resp.text()
+            print(html[:200])
+
+        # Явная кодировка:
+        async with session.get('https://example.com') as resp:
+            text = await resp.text(encoding='utf-8')
+            print(len(text))
+
+        # Игнорирование ошибок декодирования:
+        async with session.get('https://example.com') as resp:
+            text = await resp.text(encoding='ascii', errors='ignore')
+
+        # Для JSON лучше использовать resp.json():
+        async with session.get('https://httpbin.org/get') as resp:
+            raw_json = await resp.text()   # Строка JSON
+            import json
+            data = json.loads(raw_json)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.json',
+    description:
+      'Асинхронный метод объекта ClientResponse библиотеки aiohttp. Читает тело ответа, декодирует и десериализует его как JSON. По умолчанию проверяет заголовок Content-Type — если он не соответствует application/json, выбрасывает ContentTypeError. Возвращает dict, list или другой тип в зависимости от содержимого.',
+    syntax: "await response.json(encoding=None, loads=json.loads, content_type='application/json')",
+    arguments: [
+      { name: 'encoding', description: 'Кодировка для декодирования байт. Если None — определяется автоматически.' },
+      { name: 'loads', description: 'Функция десериализации JSON. По умолчанию json.loads. Можно передать orjson.loads или ujson.loads для ускорения.' },
+      { name: 'content_type', description: 'Ожидаемый Content-Type. По умолчанию "application/json". None — отключить проверку типа.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Стандартное использование:
+        async with session.get('https://api.github.com/users/python') as resp:
+            data = await resp.json()
+            print(data['login'])    # 'python'
+            print(data['public_repos'])
+
+        # Если сервер возвращает неверный Content-Type:
+        async with session.get('https://httpbin.org/get') as resp:
+            data = await resp.json(content_type=None)   # Без проверки типа
+
+        # Быстрый JSON-парсер:
+        import orjson
+        async with session.get('https://httpbin.org/get') as resp:
+            data = await resp.json(loads=orjson.loads)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.close',
+    description:
+      'Метод объекта ClientResponse библиотеки aiohttp. Закрывает соединение, не возвращая его в пул коннектора. В отличие от release(), который возвращает соединение в пул для повторного использования, close() полностью закрывает его. Вызывается автоматически при ошибках или явно когда соединение не должно переиспользоваться.',
+    syntax: 'response.close()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        resp = await session.get('https://httpbin.org/get')
+        try:
+            if resp.status != 200:
+                # Закрываем соединение без возврата в пул:
+                resp.close()
+                return
+            data = await resp.json()
+            print(data)
+        except Exception:
+            resp.close()   # Закрыть при ошибке
+            raise
+        finally:
+            # В нормальном случае лучше release():
+            # await resp.release()
+            pass
+
+    # Предпочтительный способ — async with (вызывает release() автоматически):
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            data = await resp.json()
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.raise_for_status',
+    description:
+      'Метод объекта ClientResponse библиотеки aiohttp. Выбрасывает исключение ClientResponseError если HTTP-статус ответа указывает на ошибку (4xx или 5xx). При статусах 1xx, 2xx, 3xx ничего не происходит. Удобен для краткой проверки успешности запроса без явной проверки resp.status.',
+    syntax: 'response.raise_for_status()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def fetch_json(url: str) -> dict:
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            resp.raise_for_status()   # ClientResponseError при 4xx/5xx
+            return await resp.json()
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Успешный запрос — исключения нет:
+        async with session.get('https://httpbin.org/get') as resp:
+            resp.raise_for_status()
+            print(resp.status)   # 200
+
+        # Ошибка 404 — выбрасывает исключение:
+        try:
+            async with session.get('https://httpbin.org/status/404') as resp:
+                resp.raise_for_status()
+        except aiohttp.ClientResponseError as e:
+            print(f'Ошибка: {e.status} {e.message}')
+            # Ошибка: 404 Not Found
+
+        # Ошибка сервера 500:
+        try:
+            async with session.get('https://httpbin.org/status/500') as resp:
+                resp.raise_for_status()
+        except aiohttp.ClientResponseError as e:
+            print(f'Ошибка сервера: {e.status}')
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.wait_for_close',
+    description:
+      'Асинхронный метод объекта ClientResponse библиотеки aiohttp. Ожидает полного завершения отправки данных запроса на сервер (upload completion) и закрытия соединения. Используется в специфичных случаях, когда нужно убедиться, что данные запроса полностью переданы до продолжения выполнения.',
+    syntax: 'await response.wait_for_close()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Загрузка большого файла с ожиданием завершения:
+        with open('large_file.bin', 'rb') as f:
+            async with session.post(
+                'https://api.example.com/upload',
+                data=f,
+            ) as resp:
+                resp.raise_for_status()
+
+                # Ожидаем полного завершения передачи:
+                await resp.wait_for_close()
+                print('Данные полностью переданы и соединение закрыто')
+
+        # Обычно используется при потоковой отправке данных,
+        # когда важно убедиться в завершении передачи
+        # перед продолжением работы программы.
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'web.Application',
+    description:
+      'Класс веб-приложения серверной части aiohttp. Является точкой входа для создания ASGI/WSGI-совместимого асинхронного HTTP-сервера. Управляет маршрутизацией, middleware, жизненным циклом (startup/shutdown) и сигналами. Передаётся в web.run_app() для запуска сервера.',
+    syntax: 'app = web.Application(*, logger=<DEFAULT>, middlewares=(), debug=...)',
+    arguments: [
+      { name: 'logger', description: 'Объект logging.Logger для логирования запросов. По умолчанию используется встроенный логгер aiohttp.' },
+      { name: 'middlewares', description: 'Кортеж или список middleware-функций, применяемых к каждому запросу в заданном порядке.' },
+      { name: 'debug', description: 'Режим отладки. При True включается подробное логирование. По умолчанию берётся из asyncio.' },
+    ],
+    example: `from aiohttp import web
+
+async def handle(request: web.Request) -> web.Response:
+    name = request.match_info.get('name', 'World')
+    return web.Response(text=f'Hello, {name}!')
+
+# Middleware:
+@web.middleware
+async def error_middleware(request, handler):
+    try:
+        return await handler(request)
+    except web.HTTPException:
+        raise
+    except Exception as e:
+        return web.Response(status=500, text=str(e))
+
+app = web.Application(middlewares=[error_middleware])
+app.router.add_get('/', handle)
+app.router.add_get('/{name}', handle)
+
+if __name__ == '__main__':
+    web.run_app(app, host='0.0.0.0', port=8080)`,
+  },
+  {
+    name: 'web.Application.add_routes',
+    description:
+      'Метод класса Application. Регистрирует список маршрутов в роутере приложения за один вызов. Принимает список объектов RouteDef, созданных декораторами web.get(), web.post(), web.put() и др. или через RouteTableDef. Более удобная альтернатива многократным вызовам router.add_get(), router.add_post() и т.д.',
+    syntax: 'app.add_routes(routes)',
+    arguments: [
+      { name: 'routes', description: 'Список объектов RouteDef — результатов вызовов web.get(), web.post(), web.route() и др., или экземпляр RouteTableDef.' },
+    ],
+    example: `from aiohttp import web
+
+routes = web.RouteTableDef()
+
+@routes.get('/')
+async def index(request: web.Request) -> web.Response:
+    return web.Response(text='Главная страница')
+
+@routes.get('/users')
+async def list_users(request: web.Request) -> web.Response:
+    return web.json_response([{'id': 1, 'name': 'Ivan'}])
+
+@routes.post('/users')
+async def create_user(request: web.Request) -> web.Response:
+    data = await request.json()
+    return web.json_response(data, status=201)
+
+@routes.get('/users/{id}')
+async def get_user(request: web.Request) -> web.Response:
+    user_id = int(request.match_info['id'])
+    return web.json_response({'id': user_id})
+
+app = web.Application()
+app.add_routes(routes)   # Регистрируем все маршруты сразу
+
+web.run_app(app)`,
+  },
+  {
+    name: 'web.Application.add_subapp',
+    description:
+      'Метод класса Application. Монтирует вложенное приложение (subapp) по заданному URL-префиксу. Позволяет разбить большое приложение на модули: каждый модуль — отдельный Application со своими маршрутами, middleware и сигналами. Запросы, начинающиеся с prefix, передаются в subapp.',
+    syntax: 'app.add_subapp(prefix, subapp)',
+    arguments: [
+      { name: 'prefix', description: 'Строка URL-префикса (например "/api/v1"). Должна начинаться с "/" и не заканчиваться на "/".' },
+      { name: 'subapp', description: 'Экземпляр Application, который будет обрабатывать запросы с данным префиксом.' },
+    ],
+    example: `from aiohttp import web
+
+# Модуль API:
+api = web.Application()
+
+@api.router.add_get('/users')
+async def list_users(request):
+    return web.json_response([{'id': 1}])
+
+@api.router.add_get('/posts')
+async def list_posts(request):
+    return web.json_response([{'id': 1}])
+
+# Модуль администрирования:
+admin = web.Application()
+
+@admin.router.add_get('/dashboard')
+async def dashboard(request):
+    return web.Response(text='Admin Dashboard')
+
+# Главное приложение:
+app = web.Application()
+app.add_subapp('/api/v1', api)    # /api/v1/users, /api/v1/posts
+app.add_subapp('/admin', admin)   # /admin/dashboard
+
+web.run_app(app)`,
+  },
+  {
+    name: 'web.Application.cleanup',
+    description:
+      'Корутина класса Application. Выполняет очистку ресурсов приложения: вызывает все обработчики сигнала on_cleanup в обратном порядке (LIFO). Вызывается автоматически при остановке сервера через web.run_app(). Используется для закрытия подключений к базам данных, освобождения кэша и других ресурсов.',
+    syntax: 'await app.cleanup()',
+    arguments: [],
+    example: `from aiohttp import web
+import asyncio
+
+async def on_startup(app):
+    # Инициализация ресурсов:
+    app['db'] = await create_db_pool()
+    app['redis'] = await create_redis()
+    print('Ресурсы инициализированы')
+
+async def on_cleanup(app):
+    # Освобождение ресурсов:
+    await app['db'].close()
+    await app['redis'].close()
+    print('Ресурсы освобождены')
+
+app = web.Application()
+app.on_startup.append(on_startup)
+app.on_cleanup.append(on_cleanup)
+
+# cleanup() вызывается автоматически при остановке web.run_app()
+# Ручной вызов (например, в тестах):
+async def test():
+    await app.startup()
+    # ... тесты ...
+    await app.shutdown()
+    await app.cleanup()   # Вызывает on_cleanup обработчики`,
+  },
+  {
+    name: 'web.Application.on_cleanup',
+    description:
+      'Сигнал класса Application. Список корутин-обработчиков, вызываемых при очистке приложения (после shutdown). Обработчики выполняются в обратном порядке добавления (LIFO). Используется для освобождения ресурсов: закрытия соединений с БД, отключения от брокеров сообщений и т.д.',
+    syntax: 'app.on_cleanup.append(handler)',
+    arguments: [
+      { name: 'handler', description: 'Асинхронная функция async def handler(app) → None. Получает объект Application как аргумент.' },
+    ],
+    example: `from aiohttp import web
+import aiopg
+
+async def init_db(app):
+    app['db'] = await aiopg.create_pool(
+        'dbname=mydb user=postgres password=secret'
+    )
+
+async def close_db(app):
+    app['db'].close()
+    await app['db'].wait_closed()
+    print('БД отключена')
+
+async def close_cache(app):
+    await app['cache'].close()
+    print('Кэш очищен')
+
+app = web.Application()
+app.on_startup.append(init_db)
+
+# on_cleanup — порядок LIFO (последний добавленный — первый выполняется):
+app.on_cleanup.append(close_db)
+app.on_cleanup.append(close_cache)
+# При остановке: сначала close_cache, затем close_db
+
+web.run_app(app)`,
+  },
+  {
+    name: 'web.Application.on_response_prepare',
+    description:
+      'Сигнал класса Application. Список корутин-обработчиков, вызываемых перед отправкой каждого HTTP-ответа. Позволяет модифицировать заголовки ответа на уровне приложения: добавлять CORS-заголовки, заголовки безопасности, настраивать кэширование.',
+    syntax: 'app.on_response_prepare.append(handler)',
+    arguments: [
+      { name: 'handler', description: 'Асинхронная функция async def handler(request, response) → None. Может изменять объект response перед отправкой.' },
+    ],
+    example: `from aiohttp import web
+
+async def add_security_headers(request, response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+
+async def add_cors_headers(request, response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE'
+
+async def index(request):
+    return web.Response(text='Hello!')
+
+app = web.Application()
+# Добавляем заголовки ко всем ответам автоматически:
+app.on_response_prepare.append(add_security_headers)
+app.on_response_prepare.append(add_cors_headers)
+app.router.add_get('/', index)
+
+web.run_app(app)`,
+  },
+  {
+    name: 'web.Application.on_shutdown',
+    description:
+      'Сигнал класса Application. Список корутин-обработчиков, вызываемых при получении сигнала остановки сервера (до on_cleanup). Используется для мягкого завершения: оповещения клиентов WebSocket, завершения текущих задач, сохранения состояния. Вызывается до закрытия всех соединений.',
+    syntax: 'app.on_shutdown.append(handler)',
+    arguments: [
+      { name: 'handler', description: 'Асинхронная функция async def handler(app) → None.' },
+    ],
+    example: `from aiohttp import web
+
+# Хранилище активных WebSocket-соединений:
+websockets = set()
+
+async def ws_handler(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    websockets.add(ws)
+    try:
+        async for msg in ws:
+            await ws.send_str(f'Echo: {msg.data}')
+    finally:
+        websockets.discard(ws)
+    return ws
+
+async def on_shutdown(app):
+    # Закрываем все WebSocket перед остановкой:
+    for ws in set(websockets):
+        await ws.close(code=1001, message=b'Server shutdown')
+    print(f'Закрыто {len(websockets)} WS-соединений')
+
+app = web.Application()
+app.router.add_get('/ws', ws_handler)
+app.on_shutdown.append(on_shutdown)
+
+web.run_app(app)`,
+  },
+  {
+    name: 'web.Application.on_startup',
+    description:
+      'Сигнал класса Application. Список корутин-обработчиков, вызываемых при запуске приложения (до начала обработки запросов). Используется для инициализации ресурсов: создания пулов соединений с БД, подключения к Redis, запуска фоновых задач.',
+    syntax: 'app.on_startup.append(handler)',
+    arguments: [
+      { name: 'handler', description: 'Асинхронная функция async def handler(app) → None. Выполняется один раз при старте.' },
+    ],
+    example: `from aiohttp import web
+import aioredis
+import asyncpg
+
+async def init_db(app):
+    app['db'] = await asyncpg.create_pool(
+        host='localhost', database='mydb',
+        user='postgres', password='secret',
+        min_size=5, max_size=20,
+    )
+    print('Пул БД создан')
+
+async def init_redis(app):
+    app['redis'] = await aioredis.create_redis_pool('redis://localhost')
+    print('Redis подключён')
+
+async def start_background_tasks(app):
+    app['bg_task'] = asyncio.create_task(periodic_cleanup())
+
+app = web.Application()
+app.on_startup.append(init_db)
+app.on_startup.append(init_redis)
+app.on_startup.append(start_background_tasks)
+
+app.on_cleanup.append(lambda app: app['db'].close())
+app.on_cleanup.append(lambda app: app['redis'].close())
+
+web.run_app(app)`,
+  },
+  {
+    name: 'web.Application.router',
+    description:
+      'Атрибут класса Application. Объект UrlDispatcher — маршрутизатор приложения. Содержит таблицу URL-маршрутов и сопоставляет входящие запросы с обработчиками. Предоставляет методы add_get(), add_post(), add_route(), add_static() и другие для регистрации маршрутов.',
+    syntax: 'app.router',
+    arguments: [],
+    example: `from aiohttp import web
+
+async def index(request): return web.Response(text='Главная')
+async def about(request): return web.Response(text='О нас')
+async def get_user(request): return web.json_response({'id': request.match_info['id']})
+async def create_user(request): return web.json_response({}, status=201)
+async def upload(request): return web.Response(text='OK')
+
+app = web.Application()
+
+# Регистрация маршрутов:
+app.router.add_get('/', index)
+app.router.add_get('/about', about)
+app.router.add_get('/users/{id}', get_user)
+app.router.add_post('/users', create_user)
+app.router.add_route('*', '/upload', upload)   # Любой метод
+
+# Статические файлы:
+app.router.add_static('/static', path='./static', name='static')
+
+# Просмотр маршрутов:
+for resource in app.router.resources():
+    print(resource.canonical)
+
+web.run_app(app)`,
+  },
+  {
+    name: 'web.Application.shutdown',
+    description:
+      'Корутина класса Application. Инициирует мягкую остановку приложения: вызывает все обработчики сигнала on_shutdown. Вызывается автоматически при получении SIGINT/SIGTERM в web.run_app(). При ручном управлении жизненным циклом вызывается до cleanup().',
+    syntax: 'await app.shutdown()',
+    arguments: [],
+    example: `from aiohttp import web
+import asyncio
+
+async def on_shutdown(app):
+    print('Приложение останавливается...')
+    # Завершение текущих задач, оповещение клиентов и т.д.
+
+app = web.Application()
+app.on_shutdown.append(on_shutdown)
+
+# Автоматический вызов в web.run_app():
+# web.run_app(app)  ← при Ctrl+C вызывает shutdown() затем cleanup()
+
+# Ручное управление (например, в тестах):
+async def lifecycle():
+    runner = web.AppRunner(app)
+    await runner.setup()   # Вызывает on_startup
+
+    site = web.TCPSite(runner, 'localhost', 8080)
+    await site.start()
+    print('Сервер запущен')
+
+    await asyncio.sleep(10)   # Работаем
+
+    await runner.cleanup()    # Вызывает on_shutdown + on_cleanup
+    print('Сервер остановлен')
+
+asyncio.run(lifecycle())`,
+  },
+  {
+    name: 'web.Application.startup',
+    description:
+      'Корутина класса Application. Запускает приложение: вызывает все обработчики сигнала on_startup в порядке добавления. Вызывается автоматически при старте сервера в web.run_app(). При ручном управлении через AppRunner вызывается в runner.setup().',
+    syntax: 'await app.startup()',
+    arguments: [],
+    example: `from aiohttp import web
+import asyncio
+
+async def init_resources(app):
+    app['initialized'] = True
+    print('Ресурсы инициализированы')
+
+app = web.Application()
+app.on_startup.append(init_resources)
+
+# Ручной запуск (например, в тестах):
+async def test_app():
+    await app.startup()   # Вызывает on_startup обработчики
+    print(app['initialized'])   # True
+
+    # ... тесты ...
+
+    await app.shutdown()
+    await app.cleanup()
+
+# Стандартный запуск (startup() вызывается автоматически):
+# web.run_app(app)
+
+# Через AppRunner (рекомендуется для тестов):
+async def run_with_runner():
+    runner = web.AppRunner(app)
+    await runner.setup()   # ← вызывает app.startup() внутри
+    site = web.TCPSite(runner, 'localhost', 8080)
+    await site.start()`,
+  },
+  {
+    name: 'web.Request.method',
+    description:
+      'Атрибут объекта web.Request серверной части aiohttp. Строка с HTTP-методом входящего запроса в верхнем регистре: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS". Используется в обработчиках для различения типов запросов при обработке одного маршрута несколькими методами.',
+    syntax: 'request.method',
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handle(request: web.Request) -> web.Response:
+    print(request.method)   # 'GET', 'POST', и т.д.
+
+    if request.method == 'GET':
+        return web.json_response({'items': []})
+
+    elif request.method == 'POST':
+        data = await request.json()
+        return web.json_response(data, status=201)
+
+    return web.Response(status=405)   # Method Not Allowed
+
+# Регистрация для нескольких методов:
+app = web.Application()
+app.router.add_route('GET', '/items', handle)
+app.router.add_route('POST', '/items', handle)
+
+# Или через RouteTableDef:
+routes = web.RouteTableDef()
+
+@routes.view('/items')
+class ItemsView(web.View):
+    async def get(self):
+        return web.json_response([])
+
+    async def post(self):
+        data = await self.request.json()
+        return web.json_response(data, status=201)`,
+  },
 ];
