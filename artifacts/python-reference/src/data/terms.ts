@@ -26855,4 +26855,488 @@ buf = io.BytesIO(b'test')
 buf.close()
 # buf.getvalue() — ValueError после close()`,
   },
+  {
+    name: "TextIOBase.encoding",
+    description:
+      'Атрибут класса TextIOBase. Строка, содержащая имя кодировки, используемой для преобразования байтов в строки и обратно. Например: "utf-8", "windows-1251", "ascii". Для StringIO всегда None — объект работает только со строками в памяти, без кодирования.',
+    syntax: "stream.encoding",
+    arguments: [],
+    example: `import io
+
+# TextIOWrapper — реальная кодировка файла:
+with open('file.txt', 'r', encoding='utf-8') as f:
+    print(f.encoding)   # 'utf-8'
+
+# StringIO — работает только со строками, кодировки нет:
+buf = io.StringIO()
+print(buf.encoding)   # None
+
+# Текстовый поток поверх байтового:
+raw = io.BytesIO(b'hello')
+wrapper = io.TextIOWrapper(raw, encoding='utf-8')
+print(wrapper.encoding)   # 'utf-8'`,
+  },
+  {
+    name: "TextIOBase.errors",
+    description:
+      'Атрибут класса TextIOBase. Строка, указывающая режим обработки ошибок кодирования/декодирования. Стандартные значения: "strict" (по умолчанию, выбрасывает UnicodeError), "ignore" (пропускать ошибочные символы), "replace" (заменять символом "?"), "backslashreplace", "xmlcharrefreplace". Для StringIO всегда None.',
+    syntax: "stream.errors",
+    arguments: [],
+    example: `import io
+
+# Режим обработки ошибок файла:
+with open('file.txt', 'r', encoding='utf-8', errors='replace') as f:
+    print(f.errors)   # 'replace'
+
+# TextIOWrapper с явным указанием режима:
+raw = io.BytesIO('кириллица'.encode('cp1251'))
+wrapper = io.TextIOWrapper(raw, encoding='utf-8', errors='ignore')
+print(wrapper.errors)   # 'ignore'
+print(wrapper.read())   # Некорректные байты будут пропущены
+
+# StringIO — нет кодирования, нет ошибок:
+buf = io.StringIO('текст')
+print(buf.errors)   # None`,
+  },
+  {
+    name: "TextIOBase.newlines",
+    description:
+      'Атрибут класса TextIOBase. После чтения содержит информацию о переводах строк, встреченных в потоке. Может быть None (ещё не читали), строкой (один тип: "\\n", "\\r", "\\r\\n") или кортежем строк (несколько типов). Заполняется только при universal newlines translation (по умолчанию). Полезен для анализа формата переводов строк в файле.',
+    syntax: "stream.newlines",
+    arguments: [],
+    example: `import io
+
+# Файл с разными переводами строк:
+buf = io.StringIO("line1\\nline2\\r\\nline3\\r")
+buf.read()   # Читаем весь поток
+print(buf.newlines)
+# ('\\n', '\\r\\n', '\\r')  — все три типа встречены
+
+# Только Unix-переводы:
+buf2 = io.StringIO("line1\\nline2\\n")
+buf2.read()
+print(buf2.newlines)
+# '\\n'
+
+# До чтения — None:
+buf3 = io.StringIO("text\\n")
+print(buf3.newlines)   # None
+buf3.readline()
+print(buf3.newlines)   # '\\n'`,
+  },
+  {
+    name: "TextIOBase.buffer",
+    description:
+      "Атрибут класса TextIOBase. Ссылка на базовый двоичный буферизованный поток (BufferedIOBase), поверх которого работает текстовый поток. Доступен у TextIOWrapper. У StringIO отсутствует (работает только в памяти со строками). Позволяет получить прямой доступ к байтам потока.",
+    syntax: "stream.buffer",
+    arguments: [],
+    example: `import io
+
+# TextIOWrapper имеет базовый байтовый буфер:
+raw = io.BytesIO(b'hello world')
+wrapper = io.TextIOWrapper(raw, encoding='utf-8')
+print(type(wrapper.buffer))    # <class '_io.BytesIO'>
+print(wrapper.buffer is raw)   # True
+
+# Чтение байт напрямую через buffer:
+wrapper.read(5)                # Читаем 5 символов текстом
+print(wrapper.buffer.read())  # Читаем остаток байтами
+# b' world'
+
+# Стандартный stdin/stdout также имеет buffer:
+import sys
+sys.stdout.buffer.write(b'bytes output\\n')`,
+  },
+  {
+    name: "TextIOBase.detach",
+    description:
+      "Метод класса TextIOBase. Отсоединяет и возвращает базовый двоичный поток (buffer) от TextIOWrapper. После вызова TextIOWrapper становится непригодным для использования (любые операции выбросят UnsupportedOperation). Используется когда нужно передать управление над байтовым потоком другому коду.",
+    syntax: "stream.detach()",
+    arguments: [],
+    example: `import io
+
+raw = io.BytesIO(b'hello world')
+wrapper = io.TextIOWrapper(raw, encoding='utf-8')
+
+# Чтение через wrapper:
+print(wrapper.read(5))   # 'hello'
+
+# Отсоединяем базовый поток:
+binary_stream = wrapper.detach()
+print(type(binary_stream))   # <class '_io.BytesIO'>
+print(binary_stream.read())  # b' world'
+
+# wrapper больше не используется:
+try:
+    wrapper.read()
+except io.UnsupportedOperation as e:
+    print(e)   # detached
+
+# Полезно для передачи байтового потока:
+def process_bytes(stream: io.RawIOBase):
+    return stream.read()
+
+result = process_bytes(wrapper.detach())`,
+  },
+  {
+    name: "TextIOBase.read",
+    description:
+      'Метод класса TextIOBase. Читает и возвращает строку из потока. Если size не задан или равен -1 — читает до конца файла. При size > 0 — читает не более size символов (не байт). Возвращает пустую строку "" при достижении конца потока.',
+    syntax: "stream.read(size=-1)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Количество символов для чтения. -1 (по умолчанию) — читать до конца потока.",
+      },
+    ],
+    example: `import io
+
+buf = io.StringIO("Hello, World!")
+
+# Чтение по 5 символов:
+print(buf.read(5))    # 'Hello'
+print(buf.read(2))    # ', '
+print(buf.read())     # 'World!'  (до конца)
+print(buf.read())     # ''        (конец потока)
+
+# Перемотка и полное чтение:
+buf.seek(0)
+content = buf.read()
+print(content)        # 'Hello, World!'
+
+# Из файла:
+with open('file.txt', 'r', encoding='utf-8') as f:
+    chunk = f.read(1024)    # Блок по 1024 символа
+    while chunk:
+        print(chunk, end='')
+        chunk = f.read(1024)`,
+  },
+  {
+    name: "TextIOBase.readline",
+    description:
+      'Метод класса TextIOBase. Читает и возвращает одну строку из потока, включая символ перевода строки ("\\n") в конце. При достижении конца файла возвращает пустую строку "". Параметр size ограничивает максимальное число читаемых символов — строка обрезается, даже если перевод строки ещё не встречен.',
+    syntax: "stream.readline(size=-1)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Максимальное число символов для чтения. -1 (по умолчанию) — читать до конца строки или EOF.",
+      },
+    ],
+    example: `import io
+
+buf = io.StringIO("line1\\nline2\\nline3")
+
+print(repr(buf.readline()))    # 'line1\\n'
+print(repr(buf.readline()))    # 'line2\\n'
+print(repr(buf.readline()))    # 'line3'   (без \\n — конец потока)
+print(repr(buf.readline()))    # ''        (EOF)
+
+# Ограничение по размеру:
+buf.seek(0)
+print(repr(buf.readline(3)))   # 'lin'  (обрезано до 3 символов)
+
+# Построчный обход файла:
+with open('file.txt', 'r', encoding='utf-8') as f:
+    line = f.readline()
+    while line:
+        print(line, end='')
+        line = f.readline()`,
+  },
+  {
+    name: "TextIOBase.write",
+    description:
+      'Метод класса TextIOBase. Записывает строку s в поток и возвращает число записанных символов. Принимает только строки (str). Не добавляет перевод строки автоматически — при необходимости добавляйте "\\n" явно. Для записи байт используйте BytesIO и метод write() с байтовым аргументом.',
+    syntax: "stream.write(s)",
+    arguments: [
+      {
+        name: "s",
+        description:
+          "Строка (str) для записи в поток. Передача bytes вызывает TypeError.",
+      },
+    ],
+    example: `import io
+
+# StringIO:
+buf = io.StringIO()
+n = buf.write("Hello")
+print(n)              # 5 (символов записано)
+buf.write(", World!")
+buf.write("\\n")       # Перевод строки явно
+
+buf.seek(0)
+print(buf.read())     # 'Hello, World!\\n'
+
+# TextIOWrapper (запись в файл):
+raw = io.BytesIO()
+wrapper = io.TextIOWrapper(raw, encoding='utf-8')
+wrapper.write("Привет\\n")
+wrapper.write("Мир\\n")
+wrapper.flush()
+
+raw.seek(0)
+print(raw.read())   # b'\\xd0\\x9f\\xd1\\x80\\xd0\\xb8\\xd0\\xb2\\xd0\\xb5\\xd1\\x82\\n...'`,
+  },
+  {
+    name: "StringIO.getvalue",
+    description:
+      "Метод класса StringIO. Возвращает всё содержимое буфера в памяти как строку, независимо от текущей позиции указателя. В отличие от read(), не перемещает позицию и не требует предварительного seek(0). Выбрасывает ValueError если поток закрыт.",
+    syntax: "stream.getvalue()",
+    arguments: [],
+    example: `import io
+
+buf = io.StringIO()
+buf.write("Hello")
+buf.write(", ")
+buf.write("World!")
+
+# Получить всё содержимое без seek(0):
+print(buf.getvalue())   # 'Hello, World!'
+
+# Позиция не изменилась:
+print(buf.tell())       # 13 (конец буфера)
+buf.write(" More")
+print(buf.getvalue())   # 'Hello, World! More'
+
+# Удобно для сбора вывода:
+import sys
+old_stdout = sys.stdout
+sys.stdout = io.StringIO()
+
+print("captured line 1")
+print("captured line 2")
+
+output = sys.stdout.getvalue()
+sys.stdout = old_stdout
+print(repr(output))
+# 'captured line 1\\ncaptured line 2\\n'`,
+  },
+  {
+    name: "TextIOWrapper.line_buffering",
+    description:
+      'Атрибут класса TextIOWrapper. Булево значение: True, если включена построчная буферизация (данные сбрасываются в базовый поток при каждом записанном символе "\\n"). Устанавливается при создании через параметр line_buffering=True. Полезно для вывода в реальном времени (логи, консольный вывод).',
+    syntax: "wrapper.line_buffering",
+    arguments: [],
+    example: `import io
+
+raw = io.BytesIO()
+
+# Без построчной буферизации:
+w1 = io.TextIOWrapper(raw, encoding='utf-8', line_buffering=False)
+print(w1.line_buffering)   # False
+
+# С построчной буферизацией:
+raw2 = io.BytesIO()
+w2 = io.TextIOWrapper(raw2, encoding='utf-8', line_buffering=True)
+print(w2.line_buffering)   # True
+
+w2.write("line1\\n")   # Автоматически flush при \\n
+w2.write("partial")   # Ещё не сброшено (нет \\n)
+
+# Стандартный stderr обычно использует построчную буферизацию:
+import sys
+print(sys.stderr.line_buffering)   # True`,
+  },
+  {
+    name: "TextIOWrapper.write_through",
+    description:
+      "Атрибут класса TextIOWrapper. Булево значение: True, если каждый вызов write() немедленно сбрасывает данные в базовый байтовый буфер (без накопления в TextIOWrapper). Не означает сброс до диска — данные могут оставаться в буфере BytesIO или BufferedWriter. Устанавливается при создании через параметр write_through=True.",
+    syntax: "wrapper.write_through",
+    arguments: [],
+    example: `import io
+
+raw = io.BytesIO()
+
+# Обычный режим — данные могут накапливаться:
+w1 = io.TextIOWrapper(raw, encoding='utf-8', write_through=False)
+print(w1.write_through)   # False
+
+# Режим write_through — каждый write() сразу уходит в BytesIO:
+raw2 = io.BytesIO()
+w2 = io.TextIOWrapper(raw2, encoding='utf-8', write_through=True)
+print(w2.write_through)   # True
+
+w2.write("hello")
+# Данные сразу в raw2, без ожидания flush():
+raw2.seek(0)
+print(raw2.read())   # b'hello'`,
+  },
+  {
+    name: "TextIOWrapper.reconfigure",
+    description:
+      "Метод класса TextIOWrapper. Переконфигурирует поток с новыми параметрами кодирования или буферизации. Позволяет изменить encoding, errors, newline, line_buffering или write_through на уже существующем потоке. Выбрасывает UnsupportedOperation если поток не пуст (есть непрочитанные данные) при смене кодировки.",
+    syntax:
+      "wrapper.reconfigure(*, encoding=None, errors=None, newline=None, line_buffering=None, write_through=None)",
+    arguments: [
+      {
+        name: "encoding",
+        description:
+          "Новая кодировка. Если None — текущая кодировка не меняется.",
+      },
+      {
+        name: "errors",
+        description:
+          'Новый режим обработки ошибок ("strict", "ignore", "replace" и др.). Если None — не меняется.',
+      },
+      {
+        name: "newline",
+        description:
+          "Новый режим обработки переводов строк. Если None — не меняется.",
+      },
+      {
+        name: "line_buffering",
+        description:
+          "Включить/выключить построчную буферизацию. Если None — не меняется.",
+      },
+      {
+        name: "write_through",
+        description:
+          "Включить/выключить режим немедленной записи в базовый поток. Если None — не меняется.",
+      },
+    ],
+    example: `import io
+
+raw = io.BytesIO()
+wrapper = io.TextIOWrapper(raw, encoding='utf-8')
+print(wrapper.encoding)        # 'utf-8'
+print(wrapper.line_buffering)  # False
+
+# Переключение на другую кодировку:
+wrapper.reconfigure(encoding='latin-1')
+print(wrapper.encoding)        # 'latin-1'
+
+# Включение построчной буферизации:
+wrapper.reconfigure(line_buffering=True)
+print(wrapper.line_buffering)  # True
+
+# Несколько параметров сразу:
+wrapper.reconfigure(
+    encoding='utf-8',
+    errors='replace',
+    write_through=True,
+)`,
+  },
+  {
+    name: "IncrementalNewlineDecoder.decode",
+    description:
+      "Метод вспомогательного класса IncrementalNewlineDecoder из модуля io. Декодирует входные данные с нормализацией переводов строк (\\r\\n и \\r → \\n). Параметр final=True сигнализирует, что это последний фрагмент данных — декодер сбрасывает внутреннее состояние.",
+    syntax: "decoder.decode(input, final=False)",
+    arguments: [
+      {
+        name: "input",
+        description:
+          "Байтовая строка (bytes) или строка (str) для декодирования.",
+      },
+      {
+        name: "final",
+        description:
+          "Если True — последний фрагмент; декодер завершает обработку и сбрасывает буфер. По умолчанию False.",
+      },
+    ],
+    example: `import io
+
+decoder = io.IncrementalNewlineDecoder(
+    decoder=None,   # None — входные данные уже строки
+    translate=True, # Нормализовать переводы строк → \\n
+)
+
+# Нормализация переводов строк:
+print(repr(decoder.decode("line1\\r\\nline2\\r", final=False)))
+# 'line1\\nline2'   (\\r в конце буферизован)
+
+print(repr(decoder.decode("\\nline3", final=True)))
+# '\\nline3'        (буфер сброшен: \\r + \\n → \\n)
+
+# С базовым декодером (bytes → str):
+import codecs
+base = codecs.getincrementaldecoder('utf-8')('strict')
+nd = io.IncrementalNewlineDecoder(base, translate=True)
+print(repr(nd.decode(b"hello\\r\\nworld", final=True)))
+# 'hello\\nworld'`,
+  },
+  {
+    name: "IncrementalNewlineDecoder.getstate",
+    description:
+      "Метод вспомогательного класса IncrementalNewlineDecoder. Возвращает текущее состояние декодера в виде кортежа (buffer, flags), где buffer — накопленные данные, flags — целочисленные флаги состояния. Используется для сохранения состояния с целью последующего восстановления через setstate().",
+    syntax: "decoder.getstate()",
+    arguments: [],
+    example: `import io
+
+decoder = io.IncrementalNewlineDecoder(decoder=None, translate=True)
+
+# Начальное состояние:
+state = decoder.getstate()
+print(state)   # (b'', 0)  — буфер пуст, флаги 0
+
+# После частичного декодирования (\\r без \\n — в буфере):
+decoder.decode("line1\\r", final=False)
+state_mid = decoder.getstate()
+print(state_mid)   # Буфер содержит незавершённый \\r
+
+# Сохранение/восстановление:
+saved = decoder.getstate()
+# ... другая работа ...
+decoder.setstate(saved)   # Возврат к сохранённому состоянию`,
+  },
+  {
+    name: "IncrementalNewlineDecoder.setstate",
+    description:
+      "Метод вспомогательного класса IncrementalNewlineDecoder. Восстанавливает состояние декодера из кортежа, ранее полученного через getstate(). Позволяет реализовать возобновляемое декодирование: сохранить состояние после обработки фрагмента данных, а затем продолжить с того же места.",
+    syntax: "decoder.setstate(state)",
+    arguments: [
+      {
+        name: "state",
+        description:
+          "Кортеж (buffer, flags), ранее полученный через getstate(). buffer — байтовые данные, flags — целочисленные флаги состояния.",
+      },
+    ],
+    example: `import io
+
+decoder = io.IncrementalNewlineDecoder(decoder=None, translate=True)
+
+# Декодируем первый фрагмент:
+result1 = decoder.decode("part1\\r", final=False)
+
+# Сохраняем состояние:
+saved_state = decoder.getstate()
+
+# Продолжаем:
+result2 = decoder.decode("\\npart2\\n", final=True)
+print(repr(result1 + result2))   # 'part1\\npart2\\n'
+
+# Восстанавливаем к моменту после первого фрагмента:
+decoder.setstate(saved_state)
+
+# Повторяем обработку со второго фрагмента:
+result2_retry = decoder.decode("\\npart2_retry\\n", final=True)
+print(repr(result2_retry))   # '\\npart2_retry\\n'`,
+  },
+  {
+    name: "IncrementalNewlineDecoder.newlines",
+    description:
+      'Атрибут вспомогательного класса IncrementalNewlineDecoder. Аналогичен TextIOBase.newlines. После декодирования содержит информацию о переводах строк, встреченных во входных данных: None (не встречено), строка (один тип) или кортеж строк (несколько типов). Значения: "\\n", "\\r", "\\r\\n".',
+    syntax: "decoder.newlines",
+    arguments: [],
+    example: `import io
+
+decoder = io.IncrementalNewlineDecoder(decoder=None, translate=True)
+
+print(decoder.newlines)   # None (ещё не декодировали)
+
+decoder.decode("line1\\n", final=False)
+print(decoder.newlines)   # '\\n'
+
+decoder.decode("line2\\r\\n", final=False)
+print(decoder.newlines)   # ('\\n', '\\r\\n')
+
+decoder.decode("line3\\r", final=True)
+print(decoder.newlines)   # ('\\n', '\\r\\n', '\\r')  — все три типа
+
+# Полезно для анализа формата файла:
+def detect_newlines(text: str) -> str | tuple | None:
+    d = io.IncrementalNewlineDecoder(None, translate=False)
+    d.decode(text, final=True)
+    return d.newlines`,
+  },
 ];
