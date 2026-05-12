@@ -21482,950 +21482,7057 @@ print(prio.maxsize)  # 0 — неограниченно
 if q2.maxsize > 0:
     print(f"Очередь ограничена: {q2.maxsize} элементов")`,
   },
- export interface TermArgument {
-  name: string;
-  description: string;
-}
-
-export interface Term {
-  name: string;
-  description: string;
-  syntax: string;
-  arguments: TermArgument[];
-  example: string;
-}
-
-export const terms: Term[] = [
   {
-    name: 'aiohttp.web.Request.version',
-    description: 'Атрибут, возвращающий версию HTTP-протокола входящего запроса. Значение представлено как именованный кортеж с полями major и minor (например, (1, 1) для HTTP/1.1).',
-    syntax: 'request.version',
+    name: "simplequeue.qsize()",
+
+    description:
+      "Возвращает приблизительное количество элементов в SimpleQueue. SimpleQueue — упрощённая, неограниченная и реэнтерабельная очередь без поддержки task_done() и join(). Результат qsize() не гарантированно точен в многопоточной среде.",
+    syntax: "simplequeue.qsize()",
     arguments: [],
-    example: `from aiohttp import web
+    example: `import queue
 
-async def handler(request: web.Request) -> web.Response:
-    version = request.version
-    print(version.major, version.minor)  # 1 1
-    return web.Response(text=f'HTTP/{version.major}.{version.minor}')
+sq = queue.SimpleQueue()
+print(sq.qsize())  # 0
 
-app = web.Application()
-app.router.add_get('/', handler)
-web.run_app(app)`
+sq.put('a')
+sq.put('b')
+sq.put('c')
+print(sq.qsize())  # 3
+
+sq.get()
+print(sq.qsize())  # 2
+
+# SimpleQueue не имеет maxsize — всегда неограничена`,
   },
   {
-    name: 'aiohttp.web.Request.url',
-    description: 'Атрибут, возвращающий полный URL запроса в виде объекта yarl.URL. Содержит схему, хост, путь, строку запроса и другие компоненты адреса.',
-    syntax: 'request.url',
+    name: "simplequeue.empty()",
+
+    description:
+      "Возвращает True, если SimpleQueue пуста, иначе False. Как и в обычной Queue, результат не гарантирован в многопоточной среде. SimpleQueue не поддерживает full() — у неё нет ограничения по размеру.",
+    syntax: "simplequeue.empty()",
     arguments: [],
-    example: `from aiohttp import web
+    example: `import queue
 
-async def handler(request: web.Request) -> web.Response:
-    url = request.url
-    print(url.scheme)   # http
-    print(url.host)     # localhost
-    print(url.path)     # /items
-    print(url.query)    # <MultiDictProxy>
-    return web.Response(text=str(url))
+sq = queue.SimpleQueue()
+print(sq.empty())  # True
 
-app = web.Application()
-app.router.add_get('/items', handler)
-web.run_app(app)`
+sq.put(42)
+print(sq.empty())  # False
+
+sq.get()
+print(sq.empty())  # True
+
+# SimpleQueue — только empty(), нет full() и maxsize:
+# sq.full()    → AttributeError
+# sq.maxsize   → AttributeError`,
   },
   {
-    name: 'aiohttp.web.Request.path',
-    description: 'Атрибут, возвращающий путь URL запроса без строки запроса (query string) и без хоста. Например, для URL http://example.com/users?page=1 вернёт "/users".',
-    syntax: 'request.path',
-    arguments: [],
-    example: `from aiohttp import web
+    name: "simplequeue.put(item, block=True, timeout=None)",
 
-async def handler(request: web.Request) -> web.Response:
-    path = request.path
-    # GET http://localhost/api/users?page=2
-    print(path)  # /api/users
-    return web.Response(text=path)
-
-app = web.Application()
-app.router.add_get('/api/users', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Request.query',
-    description: 'Атрибут, возвращающий параметры строки запроса (query string) в виде объекта MultiDictProxy. Поддерживает множественные значения для одного ключа. Является распарсенным представлением query_string.',
-    syntax: 'request.query',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    # GET /search?q=python&page=1&tag=async&tag=web
-    q = request.query.get('q', '')          # 'python'
-    page = request.query.get('page', '1')   # '1'
-    tags = request.query.getall('tag', [])  # ['async', 'web']
-    return web.Response(text=f'q={q}, page={page}, tags={tags}')
-
-app = web.Application()
-app.router.add_get('/search', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Request.query_string',
-    description: 'Атрибут, возвращающий сырую строку запроса (query string) URL без символа "?". Если параметров нет — возвращает пустую строку.',
-    syntax: 'request.query_string',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    # GET /search?q=python&page=2
-    qs = request.query_string
-    print(qs)  # 'q=python&page=2'
-    return web.Response(text=qs)
-
-app = web.Application()
-app.router.add_get('/search', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Request.headers',
-    description: 'Атрибут, возвращающий заголовки HTTP-запроса в виде объекта CIMultiDictProxy (нечувствительного к регистру MultiDict). Позволяет получать заголовки по имени, независимо от регистра ключа.',
-    syntax: 'request.headers',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    content_type = request.headers.get('Content-Type', 'не задан')
-    auth = request.headers.get('Authorization', '')
-    user_agent = request.headers.get('User-Agent', '')
-
-    print(content_type)  # application/json
-    print(auth)          # Bearer eyJ...
-    return web.Response(text=f'UA: {user_agent}')
-
-app = web.Application()
-app.router.add_post('/data', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Request.keep_alive',
-    description: 'Атрибут, возвращающий булево значение: True, если соединение поддерживает keep-alive (постоянное соединение), False — если соединение будет закрыто после ответа. Зависит от версии HTTP и заголовка Connection.',
-    syntax: 'request.keep_alive',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    if request.keep_alive:
-        print('Соединение будет сохранено')
-    else:
-        print('Соединение будет закрыто')
-    return web.Response(text=str(request.keep_alive))
-
-app = web.Application()
-app.router.add_get('/', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Request.match_info',
-    description: 'Атрибут, возвращающий объект UrlMappingMatchInfo с переменными, извлечёнными из шаблона маршрута. Используется для получения динамических сегментов пути, объявленных в фигурных скобках при регистрации маршрута.',
-    syntax: 'request.match_info',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    # Маршрут: /users/{user_id}/posts/{post_id}
-    user_id = request.match_info['user_id']
-    post_id = request.match_info['post_id']
-    return web.Response(text=f'user={user_id}, post={post_id}')
-
-app = web.Application()
-app.router.add_get('/users/{user_id}/posts/{post_id}', handler)
-web.run_app(app)
-# GET /users/42/posts/7 -> user=42, post=7`
-  },
-  {
-    name: 'aiohttp.web.Request.app',
-    description: 'Атрибут, возвращающий экземпляр web.Application, к которому относится данный запрос. Позволяет обращаться к глобальным ресурсам приложения (например, к пулу соединений с базой данных, настройкам и другим объектам, сохранённым в app).',
-    syntax: 'request.app',
-    arguments: [],
-    example: `from aiohttp import web
-import aiopg
-
-async def handler(request: web.Request) -> web.Response:
-    # Получаем пул БД, сохранённый при старте приложения
-    pool = request.app['db_pool']
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute('SELECT count(*) FROM users')
-            count = await cur.fetchone()
-    return web.Response(text=f'Users: {count[0]}')
-
-async def startup(app):
-    app['db_pool'] = await aiopg.create_pool('dbname=test')
-
-app = web.Application()
-app.on_startup.append(startup)
-app.router.add_get('/', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Request.read()',
-    description: 'Корутина, которая читает всё тело запроса и возвращает его в виде объекта bytes. Подходит для обработки бинарных данных. Повторный вызов на том же объекте запроса вернёт уже прочитанные данные из кэша.',
-    syntax: 'await request.read()',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    body: bytes = await request.read()
-    print(f'Получено {len(body)} байт')
-    print(body[:50])  # первые 50 байт
-
-    # Повторный вызов безопасен — данные кэшируются:
-    body_again = await request.read()
-    assert body == body_again
-
-    return web.Response(text=f'Размер тела: {len(body)} байт')
-
-app = web.Application()
-app.router.add_post('/upload', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Request.text()',
-    description: 'Корутина, которая читает тело запроса и декодирует его в строку. Кодировка определяется из заголовка Content-Type (charset). Если кодировка не указана, по умолчанию используется UTF-8.',
-    syntax: 'await request.text()',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    # Content-Type: text/plain; charset=utf-8
-    text = await request.text()
-    print(f'Получен текст: {text}')
-    return web.Response(text=f'Эхо: {text}')
-
-app = web.Application()
-app.router.add_post('/echo', handler)
-web.run_app(app)
-
-# curl -X POST http://localhost:8080/echo \\
-#      -H "Content-Type: text/plain" \\
-#      -d "Привет, мир!"`
-  },
-  {
-    name: 'aiohttp.web.Request.json()',
-    description: 'Корутина, которая читает тело запроса и десериализует его из формата JSON в объект Python (dict, list и т.д.). Использует стандартный модуль json или пользовательский загрузчик, если он задан. Выбрасывает исключение, если тело не является валидным JSON.',
-    syntax: 'await request.json(loads=json.loads)',
+    description:
+      "Добавляет элемент в SimpleQueue. Так как SimpleQueue неограниченна, метод никогда не блокируется — параметры block и timeout принимаются для совместимости с Queue, но игнорируются. Никогда не возбуждает queue.Full.",
+    syntax: "simplequeue.put(item, block=True, timeout=None)",
     arguments: [
       {
-        name: 'loads',
-        description: 'Необязательная функция для десериализации JSON. По умолчанию используется json.loads из стандартной библиотеки. Можно передать альтернативу, например ujson.loads.'
-      }
+        name: "item",
+        description:
+          "Элемент для добавления в очередь. Может быть любым объектом Python.",
+      },
+      {
+        name: "block",
+        description:
+          "Принимается для совместимости с Queue, но игнорируется — SimpleQueue всегда неограниченна.",
+      },
+      {
+        name: "timeout",
+        description: "Принимается для совместимости с Queue, но игнорируется.",
+      },
     ],
-    example: `from aiohttp import web
-import json
+    example: `import queue
+import threading
 
-async def handler(request: web.Request) -> web.Response:
-    try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        raise web.HTTPBadRequest(text='Невалидный JSON')
+sq = queue.SimpleQueue()
 
-    name = data.get('name', 'Аноним')
-    age = data.get('age', 0)
-    return web.Response(text=f'Привет, {name}! Тебе {age} лет.')
+# put() никогда не блокируется
+for i in range(1000):
+    sq.put(i)  # не заблокируется — очередь неограничена
 
-app = web.Application()
-app.router.add_post('/greet', handler)
-web.run_app(app)
+print(sq.qsize())  # 1000
 
-# curl -X POST http://localhost:8080/greet \\
-#      -H "Content-Type: application/json" \\
-#      -d '{"name": "Алиса", "age": 30}'`
+# Использование в продюсер-консьюмер паттерне:
+def producer(q):
+    for item in range(5):
+        q.put(f"задача-{item}")
+    q.put(None)  # сигнал завершения
+
+threading.Thread(target=producer, args=(sq,)).start()`,
   },
   {
-    name: 'aiohttp.web.Request.multipart()',
-    description: 'Метод, возвращающий MultipartReader для последовательного чтения частей multipart-запроса (например, при загрузке файлов через форму с enctype="multipart/form-data"). Каждая часть читается отдельно как поток.',
-    syntax: 'request.multipart()',
-    arguments: [],
-    example: `from aiohttp import web
+    name: "simplequeue.put_nowait(item)",
 
-async def handler(request: web.Request) -> web.Response:
-    reader = await request.multipart()
+    description:
+      "Немедленно добавляет элемент в SimpleQueue. Эквивалентно put(item). Поскольку SimpleQueue неограниченна, метод идентичен put() и никогда не возбуждает queue.Full. Существует для совместимости интерфейса с Queue.",
+    syntax: "simplequeue.put_nowait(item)",
+    arguments: [
+      { name: "item", description: "Элемент для добавления в очередь." },
+    ],
+    example: `import queue
 
-    uploaded_files = []
-    async for part in reader:
-        if part.filename:
-            # Читаем содержимое файла
-            content = await part.read()
-            uploaded_files.append({
-                'filename': part.filename,
-                'size': len(content),
-                'content_type': part.headers.get('Content-Type')
-            })
+sq = queue.SimpleQueue()
 
-    return web.json_response({'uploaded': uploaded_files})
+sq.put_nowait('первый')
+sq.put_nowait('второй')
+sq.put_nowait('третий')
 
-app = web.Application()
-app.router.add_post('/upload', handler)
-web.run_app(app)`
+print(sq.qsize())  # 3
+
+# В отличие от Queue, queue.Full никогда не возникает:
+for i in range(10000):
+    sq.put_nowait(i)  # всегда успешно
+
+print(sq.qsize())  # 10003`,
   },
   {
-    name: 'aiohttp.web.Request.post()',
-    description: 'Корутина, которая читает и парсит тело запроса как данные HTML-формы (application/x-www-form-urlencoded или multipart/form-data). Возвращает объект MultiDictProxy с полями формы. Для multipart-запросов файлы доступны как объекты FileField.',
-    syntax: 'await request.post()',
-    arguments: [],
-    example: `from aiohttp import web
+    name: "simplequeue.get(block=True, timeout=None)",
 
-async def handler(request: web.Request) -> web.Response:
-    # Content-Type: application/x-www-form-urlencoded
-    data = await request.post()
-
-    username = data.get('username', '')
-    password = data.get('password', '')
-
-    if not username or not password:
-        raise web.HTTPBadRequest(text='Заполните все поля')
-
-    # Для multipart/form-data доступны и файлы:
-    # file_field = data.get('avatar')  # FileField
-    # content = file_field.file.read()
-
-    return web.Response(text=f'Пользователь: {username}')
-
-app = web.Application()
-app.router.add_post('/login', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Response.status',
-    description: 'Атрибут, возвращающий или устанавливающий HTTP-статус код ответа в виде целого числа. По умолчанию равен 200. Может быть изменён до вызова prepare().',
-    syntax: 'response.status',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    response = web.Response(text='Не найдено')
-    response.status = 404
-    print(response.status)  # 404
-    return response
-
-app = web.Application()
-app.router.add_get('/missing', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Response.reason',
-    description: 'Атрибут, возвращающий или устанавливающий текстовое пояснение к HTTP-статусу (reason phrase). Например, для статуса 404 стандартное значение — "Not Found". Если не задано явно, определяется автоматически на основе кода статуса.',
-    syntax: 'response.reason',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    response = web.Response(status=418)
-    print(response.reason)   # "I'm a Teapot"
-
-    # Можно задать своё пояснение:
-    response.reason = 'Custom Reason'
-    print(response.reason)   # "Custom Reason"
-    return response
-
-app = web.Application()
-app.router.add_get('/', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Response.headers',
-    description: 'Атрибут, возвращающий заголовки ответа в виде объекта CIMultiDict (нечувствительного к регистру). Позволяет читать и изменять заголовки ответа до его отправки клиенту. После вызова prepare() заголовки становятся неизменяемыми.',
-    syntax: 'response.headers',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    response = web.Response(text='Привет')
-
-    response.headers['X-Custom-Header'] = 'my-value'
-    response.headers['Cache-Control'] = 'no-cache'
-
-    print(response.headers['Content-Type'])  # text/plain; charset=utf-8
-    return response
-
-app = web.Application()
-app.router.add_get('/', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Response.body',
-    description: 'Атрибут, возвращающий или устанавливающий тело ответа в виде объекта bytes. При установке значения автоматически обновляется заголовок Content-Length. Несовместим с атрибутом text — можно использовать только один из них.',
-    syntax: 'response.body',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    response = web.Response()
-    response.body = b'\\x89PNG\\r\\n...'  # бинарные данные
-    response.content_type = 'image/png'
-
-    print(len(response.body))  # размер в байтах
-    return response
-
-app = web.Application()
-app.router.add_get('/image', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Response.text',
-    description: 'Атрибут, возвращающий или устанавливающий тело ответа в виде строки. При чтении декодирует bytes-тело с кодировкой из Content-Type. При записи кодирует строку в bytes и обновляет Content-Length. Несовместим с атрибутом body.',
-    syntax: 'response.text',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    response = web.Response()
-    response.text = 'Привет, мир!'
-    response.content_type = 'text/plain'
-
-    print(response.text)        # 'Привет, мир!'
-    print(type(response.body))  # <class 'bytes'>
-    return response
-
-app = web.Application()
-app.router.add_get('/', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Response.prepare()',
-    description: 'Корутина, которая инициализирует HTTP-ответ: отправляет строку статуса и заголовки клиенту. После вызова изменение заголовков невозможно. Обычно вызывается явно при потоковой передаче данных (streaming), перед последовательными вызовами write().',
-    syntax: 'await response.prepare(request)',
+    description:
+      "Извлекает и возвращает элемент из SimpleQueue. Если очередь пуста и block=True — блокирует поток до появления элемента. При block=False или истечении timeout возбуждает queue.Empty. Потокобезопасен.",
+    syntax: "simplequeue.get(block=True, timeout=None)",
     arguments: [
       {
-        name: 'request',
-        description: 'Объект web.Request текущего запроса, для которого подготавливается ответ.'
-      }
+        name: "block",
+        description:
+          "Если True (по умолчанию) — блокирует поток, пока не появится элемент. Если False — сразу возбуждает queue.Empty.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах при block=True. None — ждёт бесконечно.",
+      },
     ],
-    example: `from aiohttp import web
-import asyncio
+    example: `import queue
+import threading
 
-async def handler(request: web.Request) -> web.StreamResponse:
-    response = web.StreamResponse()
-    response.content_type = 'text/plain'
+sq = queue.SimpleQueue()
 
-    # Отправляем заголовки клиенту
-    await response.prepare(request)
-
-    # Теперь можно писать данные по частям
-    for i in range(5):
-        await response.write(f'Строка {i}\\n'.encode())
-        await asyncio.sleep(0.5)
-
-    return response
-
-app = web.Application()
-app.router.add_get('/stream', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Response.write()',
-    description: 'Корутина, отправляющая порцию данных в теле ответа клиенту. Может вызываться многократно для потоковой передачи. Перед первым вызовом write() необходимо вызвать prepare(). Принимает данные в виде bytes.',
-    syntax: 'await response.write(data)',
-    arguments: [
-      {
-        name: 'data',
-        description: 'Данные типа bytes для отправки клиенту. Строки необходимо предварительно закодировать, например: data.encode("utf-8").'
-      }
-    ],
-    example: `from aiohttp import web
-import asyncio
-
-async def handler(request: web.Request) -> web.StreamResponse:
-    response = web.StreamResponse()
-    await response.prepare(request)
-
-    lines = ['Первая строка', 'Вторая строка', 'Третья строка']
-    for line in lines:
-        await response.write((line + '\\n').encode('utf-8'))
-        await asyncio.sleep(0.3)
-
-    await response.write_eof()
-    return response
-
-app = web.Application()
-app.router.add_get('/stream', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.Response.write_eof()',
-    description: 'Корутина, сигнализирующая об окончании потоковой передачи тела ответа. Отправляет финальный пустой чанк при chunked-кодировании. После вызова дальнейшая запись в ответ невозможна. Обычно вызывается явно только при потоковых ответах (StreamResponse); для обычного Response вызывается автоматически.',
-    syntax: 'await response.write_eof()',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.StreamResponse:
-    response = web.StreamResponse()
-    await response.prepare(request)
-
-    await response.write(b'chunk 1\\n')
-    await response.write(b'chunk 2\\n')
-    await response.write(b'chunk 3\\n')
-
-    # Явно завершаем поток
-    await response.write_eof()
-    return response
-
-app = web.Application()
-app.router.add_get('/chunked', handler)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.run_app()',
-    description: 'Функция для запуска aiohttp-приложения. Создаёт event loop, инициализирует приложение, запускает TCP-сервер и блокирует выполнение до получения сигнала завершения (Ctrl+C / SIGTERM). Является основной точкой входа для запуска aiohttp-сервера в production и разработке.',
-    syntax: 'web.run_app(app, *, host=None, port=None, path=None, ssl_context=None, shutdown_timeout=60.0, keepalive_timeout=75.0, access_log=...)',
-    arguments: [
-      {
-        name: 'app',
-        description: 'Экземпляр web.Application или корутина/функция, возвращающая приложение (Application Factory).'
-      },
-      {
-        name: 'host',
-        description: 'Хост для привязки сервера. По умолчанию "0.0.0.0" (все интерфейсы). Можно передать строку или список строк.'
-      },
-      {
-        name: 'port',
-        description: 'Порт для прослушивания. По умолчанию 8080, или 8443 при использовании SSL.'
-      },
-      {
-        name: 'path',
-        description: 'Путь к Unix-сокету вместо TCP. Если задан — host и port игнорируются.'
-      },
-      {
-        name: 'ssl_context',
-        description: 'Объект ssl.SSLContext для включения HTTPS. Если не задан — сервер работает по HTTP.'
-      },
-      {
-        name: 'shutdown_timeout',
-        description: 'Таймаут в секундах на завершение активных соединений при остановке сервера. По умолчанию 60.0.'
-      }
-    ],
-    example: `from aiohttp import web
-import ssl
-
-async def index(request: web.Request) -> web.Response:
-    return web.Response(text='Привет от aiohttp!')
-
-app = web.Application()
-app.router.add_get('/', index)
-
-# Простой запуск на localhost:8080
-web.run_app(app)
-
-# Запуск на конкретном хосте и порту
-web.run_app(app, host='127.0.0.1', port=9000)
-
-# Запуск с HTTPS
-ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-ssl_ctx.load_cert_chain('cert.pem', 'key.pem')
-web.run_app(app, port=443, ssl_context=ssl_ctx)
-
-# Запуск через Unix-сокет
-web.run_app(app, path='/tmp/myapp.sock')`
-  },
-  {
-    name: 'aiohttp.TCPConnector',
-    description: 'Класс для управления пулом TCP-соединений в aiohttp. Контролирует максимальное количество одновременных соединений, настройки SSL, DNS-кэш и время жизни соединений. Используется при создании ClientSession для тонкой настройки сетевого слоя.',
-    syntax: 'aiohttp.TCPConnector(limit=100, ssl=None, ttl_dns_cache=10, use_dns_cache=True, keepalive_timeout=15.0, enable_cleanup_closed=False)',
-    arguments: [
-      {
-        name: 'limit',
-        description: 'Максимальное количество одновременных соединений во всём пуле. По умолчанию 100. Значение 0 — без ограничений.'
-      },
-      {
-        name: 'ssl',
-        description: 'Настройки SSL: объект ssl.SSLContext, False (отключить проверку сертификата) или None (использовать настройки по умолчанию).'
-      },
-      {
-        name: 'ttl_dns_cache',
-        description: 'Время жизни DNS-кэша в секундах. По умолчанию 10. Помогает снизить количество DNS-запросов при частых обращениях к одному хосту.'
-      },
-      {
-        name: 'keepalive_timeout',
-        description: 'Время в секундах, в течение которого неактивное соединение остаётся в пуле. По умолчанию 15.0.'
-      }
-    ],
-    example: `import aiohttp
-import ssl
-
-# Базовое использование с лимитом соединений
-connector = aiohttp.TCPConnector(limit=50)
-
-async with aiohttp.ClientSession(connector=connector) as session:
-    async with session.get('https://example.com') as resp:
-        print(resp.status)
-
-# Отключить проверку SSL-сертификата (не для production!)
-connector = aiohttp.TCPConnector(ssl=False)
-
-# Использовать свой SSL-контекст
-ssl_ctx = ssl.create_default_context()
-ssl_ctx.load_verify_locations('ca-bundle.crt')
-connector = aiohttp.TCPConnector(ssl=ssl_ctx)
-
-async with aiohttp.ClientSession(connector=connector) as session:
-    async with session.get('https://secure.example.com') as resp:
-        data = await resp.text()`
-  },
-  {
-    name: 'aiohttp.UnixConnector',
-    description: 'Коннектор для подключения к серверу через Unix domain socket вместо TCP. Применяется для взаимодействия с локальными сервисами (Docker, systemd, gunicorn), которые слушают на Unix-сокетах. Не поддерживает SSL.',
-    syntax: 'aiohttp.UnixConnector(path, force_close=False, limit=100)',
-    arguments: [
-      {
-        name: 'path',
-        description: 'Путь к Unix-сокету на файловой системе, например "/var/run/docker.sock".'
-      },
-      {
-        name: 'force_close',
-        description: 'Если True — соединение закрывается после каждого запроса, без возврата в пул. По умолчанию False.'
-      },
-      {
-        name: 'limit',
-        description: 'Максимальное количество одновременных соединений. По умолчанию 100.'
-      }
-    ],
-    example: `import aiohttp
-
-# Подключение к Docker API через Unix-сокет
-connector = aiohttp.UnixConnector(path='/var/run/docker.sock')
-
-async with aiohttp.ClientSession(connector=connector) as session:
-    # Запрос к Docker API (используем http://localhost как фиктивный хост)
-    async with session.get('http://localhost/v1.41/containers/json') as resp:
-        containers = await resp.json()
-        for c in containers:
-            print(c['Names'], c['Status'])
-
-# Подключение к локальному gunicorn-серверу
-connector = aiohttp.UnixConnector(path='/tmp/gunicorn.sock')
-async with aiohttp.ClientSession(connector=connector) as session:
-    async with session.post('http://localhost/api/data', json={'key': 'val'}) as resp:
-        result = await resp.json()`
-  },
-  {
-    name: 'aiohttp.CookieJar',
-    description: 'Класс для хранения и управления HTTP-cookies в рамках ClientSession. По умолчанию фильтрует небезопасные cookies (с IP-адресами вместо доменов). Поддерживает сохранение и загрузку cookies между сессиями.',
-    syntax: 'aiohttp.CookieJar(unsafe=False, quote_cookie=True, treat_as_secure_origin=[])',
-    arguments: [
-      {
-        name: 'unsafe',
-        description: 'Если True — разрешает принимать cookies от серверов с IP-адресами (нестандартное поведение). По умолчанию False.'
-      },
-      {
-        name: 'quote_cookie',
-        description: 'Если True — значения cookies будут экранироваться (URL-encode). По умолчанию True.'
-      },
-      {
-        name: 'treat_as_secure_origin',
-        description: 'Список URL-источников, которые следует считать безопасными (для Secure-cookies при HTTP-соединении).'
-      }
-    ],
-    example: `import aiohttp
-
-# Стандартная jar (только безопасные домены)
-jar = aiohttp.CookieJar()
-
-async with aiohttp.ClientSession(cookie_jar=jar) as session:
-    await session.get('https://example.com/login')
-    # Cookies автоматически сохранены в jar
-
-    await session.get('https://example.com/profile')
-    # Cookies автоматически отправлены
-
-# Разрешить cookies от IP-адресов (для тестирования)
-jar = aiohttp.CookieJar(unsafe=True)
-
-async with aiohttp.ClientSession(cookie_jar=jar) as session:
-    await session.get('http://127.0.0.1:8080/')
-
-# Сохранить и загрузить cookies
-jar.save('cookies.pkl')
-jar.load('cookies.pkl')`
-  },
-  {
-    name: 'aiohttp.FormData',
-    description: 'Класс для формирования тела запроса в формате multipart/form-data или application/x-www-form-urlencoded. Позволяет добавлять текстовые поля и файлы, после чего передаётся в параметр data при отправке запроса.',
-    syntax: 'aiohttp.FormData(fields=(), quote_fields=True, charset=None)',
-    arguments: [
-      {
-        name: 'fields',
-        description: 'Начальные поля формы: список кортежей (name, value) или словарь. Можно добавлять поля позже через метод add_field().'
-      },
-      {
-        name: 'quote_fields',
-        description: 'Если True — имена полей будут URL-экранированы. По умолчанию True.'
-      },
-      {
-        name: 'charset',
-        description: 'Кодировка для текстовых полей. По умолчанию None (используется UTF-8).'
-      }
-    ],
-    example: `import aiohttp
-
-async def upload():
-    data = aiohttp.FormData()
-
-    # Текстовое поле
-    data.add_field('username', 'alice')
-    data.add_field('description', 'Тестовая загрузка')
-
-    # Загрузка файла с заголовками
-    with open('photo.jpg', 'rb') as f:
-        data.add_field(
-            'avatar',
-            f,
-            filename='photo.jpg',
-            content_type='image/jpeg'
-        )
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post('https://example.com/upload', data=data) as resp:
-            print(resp.status)
-            result = await resp.json()
-            print(result)`
-  },
-  {
-    name: 'aiohttp.ClientTimeout',
-    description: 'Класс для задания таймаутов клиентских запросов в aiohttp. Позволяет раздельно настраивать общий таймаут, таймаут соединения и таймаут чтения данных от сервера. Передаётся в ClientSession или в отдельный запрос.',
-    syntax: 'aiohttp.ClientTimeout(total=None, connect=None, sock_connect=None, sock_read=None)',
-    arguments: [
-      {
-        name: 'total',
-        description: 'Максимальное время в секундах на весь запрос (от начала до получения полного ответа). None — без ограничений.'
-      },
-      {
-        name: 'connect',
-        description: 'Максимальное время в секундах на установку соединения (включая DNS-разрешение). None — без ограничений.'
-      },
-      {
-        name: 'sock_connect',
-        description: 'Максимальное время в секундах на установку TCP-соединения с сокетом (без DNS). None — без ограничений.'
-      },
-      {
-        name: 'sock_read',
-        description: 'Максимальное время в секундах ожидания данных от сервера после установки соединения. None — без ограничений.'
-      }
-    ],
-    example: `import aiohttp
-
-# Таймаут для всей сессии
-timeout = aiohttp.ClientTimeout(total=30, connect=5, sock_read=20)
-
-async with aiohttp.ClientSession(timeout=timeout) as session:
-    try:
-        async with session.get('https://example.com/data') as resp:
-            data = await resp.json()
-    except aiohttp.ServerTimeoutError:
-        print('Сервер не ответил вовремя')
-    except aiohttp.ClientConnectorError:
-        print('Не удалось подключиться')
-
-# Таймаут для конкретного запроса (переопределяет таймаут сессии)
-short = aiohttp.ClientTimeout(total=5)
-async with aiohttp.ClientSession() as session:
-    async with session.get('https://slow.example.com', timeout=short) as resp:
-        print(resp.status)`
-  },
-  {
-    name: 'aiohttp.MultipartReader.at_eof()',
-    description: 'Метод, проверяющий, достигнут ли конец multipart-потока. Возвращает True, если все части были прочитаны, и False, если ещё остались непрочитанные части. Используется в цикле чтения как условие остановки.',
-    syntax: 'reader.at_eof()',
-    arguments: [],
-    example: `from aiohttp import web
-
-async def handler(request: web.Request) -> web.Response:
-    reader = await request.multipart()
-    parts = []
-
-    # Ручной цикл вместо async for
-    while not reader.at_eof():
-        part = await reader.next()
-        if part is None:
+def consumer(q):
+    while True:
+        item = q.get()  # блокирует, пока нет элемента
+        if item is None:
             break
-        content = await part.read()
-        parts.append({
-            'name': part.name,
-            'size': len(content)
-        })
+        print(f"Получен: {item}")
 
-    return web.json_response({'parts': parts})
+threading.Thread(target=consumer, args=(sq,)).start()
 
-app = web.Application()
-app.router.add_post('/upload', handler)
-web.run_app(app)`
+sq.put('данные 1')
+sq.put('данные 2')
+sq.put(None)  # сигнал остановки
+
+# С таймаутом:
+try:
+    val = sq.get(timeout=1.0)
+except queue.Empty:
+    print("Очередь пуста")`,
   },
   {
-    name: 'aiohttp.MultipartReader.next()',
-    description: 'Корутина, возвращающая следующую часть multipart-запроса в виде объекта BodyPartReader. Если все части прочитаны — возвращает None. Каждую часть нужно прочитать полностью перед вызовом next(), иначе её данные будут пропущены.',
-    syntax: 'await reader.next()',
-    arguments: [],
-    example: `from aiohttp import web
+    name: "simplequeue.get_nowait()",
 
-async def handler(request: web.Request) -> web.Response:
-    reader = await request.multipart()
-    result = {}
+    description:
+      "Немедленно извлекает элемент из SimpleQueue без ожидания. Эквивалентно get(block=False). Если очередь пуста — сразу возбуждает queue.Empty.",
+    syntax: "simplequeue.get_nowait()",
+    arguments: [],
+    example: `import queue
+
+sq = queue.SimpleQueue()
+sq.put(10)
+sq.put(20)
+sq.put(30)
+
+print(sq.get_nowait())  # 10
+print(sq.get_nowait())  # 20
+print(sq.get_nowait())  # 30
+
+try:
+    sq.get_nowait()  # очередь пуста
+except queue.Empty:
+    print("Нечего извлекать")
+
+# Полная обработка всего содержимого очереди:
+sq.put(1); sq.put(2); sq.put(3)
+results = []
+while not sq.empty():
+    results.append(sq.get_nowait())
+print(results)  # [1, 2, 3]`,
+  },
+  {
+    name: "queue.Empty",
+
+    description:
+      "Исключение, возбуждаемое при попытке извлечь элемент из пустой очереди с block=False или по истечении timeout. Наследуется от Exception. Используется с get_nowait() и get(block=False) для обработки случая пустой очереди без блокировки.",
+    syntax: "except queue.Empty:\n    ...",
+    arguments: [],
+    example: `import queue
+
+q = queue.Queue()
+sq = queue.SimpleQueue()
+
+# Вариант 1: get_nowait()
+try:
+    item = q.get_nowait()
+except queue.Empty:
+    print("Очередь пуста")
+
+# Вариант 2: get с таймаутом
+q.put('задача')
+try:
+    item = q.get(timeout=0.5)
+    print(f"Получено: {item}")
+except queue.Empty:
+    print("Не дождались элемента")
+
+# Вариант 3: цикл опроса
+for _ in range(3):
+    q.put(i)
+
+while True:
+    try:
+        print(q.get_nowait())
+    except queue.Empty:
+        break  # очередь исчерпана`,
+  },
+  {
+    name: "queue.Full",
+
+    description:
+      "Исключение, возбуждаемое при попытке добавить элемент в заполненную очередь с block=False или по истечении timeout. Наследуется от Exception. Актуально только для Queue и LifoQueue/PriorityQueue с заданным maxsize > 0. SimpleQueue никогда не возбуждает queue.Full.",
+    syntax: "except queue.Full:\n    ...",
+    arguments: [],
+    example: `import queue
+
+# Очередь с ограничением
+q = queue.Queue(maxsize=2)
+q.put('a')
+q.put('b')
+
+# Вариант 1: put_nowait()
+try:
+    q.put_nowait('c')
+except queue.Full:
+    print("Очередь заполнена — элемент отброшен")
+
+# Вариант 2: put с таймаутом
+try:
+    q.put('c', timeout=1.0)
+except queue.Full:
+    print("Не удалось добавить за 1 секунду")
+
+# Вариант 3: put с block=False
+try:
+    q.put('c', block=False)
+except queue.Full:
+    print("Нет места в очереди")`,
+  },
+  {
+    name: "multiprocessing.active_children()",
+
+    description:
+      "Возвращает список всех активных дочерних процессов текущего процесса. Вызов этого метода автоматически завершает (join) все уже закончившие работу дочерние процессы. Полезен для мониторинга и управления пулом рабочих процессов.",
+    syntax: "multiprocessing.active_children()",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def worker(name, duration):
+    time.sleep(duration)
+    print(f"{name} завершён")
+
+if __name__ == '__main__':
+    processes = [
+        multiprocessing.Process(target=worker, args=(f"worker-{i}", i * 0.5))
+        for i in range(1, 4)
+    ]
+    for p in processes:
+        p.start()
+
+    time.sleep(0.7)
+    active = multiprocessing.active_children()
+    print(f"Активных процессов: {len(active)}")
+    for p in active:
+        print(f"  {p.name}, pid={p.pid}")`,
+  },
+  {
+    name: "multiprocessing.cpu_count()",
+
+    description:
+      "Возвращает количество логических процессоров (CPU) в системе. Используется для определения оптимального числа рабочих процессов. Если количество определить невозможно — возбуждает NotImplementedError.",
+    syntax: "multiprocessing.cpu_count()",
+    arguments: [],
+    example: `import multiprocessing
+
+cpus = multiprocessing.cpu_count()
+print(f"Логических CPU: {cpus}")  # например: 8
+
+# Типичный паттерн — создать пул по числу CPU:
+with multiprocessing.Pool(processes=cpus) as pool:
+    results = pool.map(str, range(20))
+    print(results[:5])  # ['0', '1', '2', '3', '4']
+
+# Оставить один CPU для системы:
+workers = max(1, cpus - 1)
+print(f"Рабочих процессов: {workers}")`,
+  },
+  {
+    name: "multiprocessing.current_process()",
+
+    description:
+      "Возвращает объект Process, соответствующий текущему выполняемому процессу. Аналог threading.current_thread() для процессов. Позволяет получить имя, PID и другие атрибуты текущего процесса изнутри него.",
+    syntax: "multiprocessing.current_process()",
+    arguments: [],
+    example: `import multiprocessing
+
+def show_info():
+    proc = multiprocessing.current_process()
+    print(f"Имя: {proc.name}")
+    print(f"PID: {proc.pid}")
+    print(f"Является ли daemon: {proc.daemon}")
+
+if __name__ == '__main__':
+    # В главном процессе:
+    main = multiprocessing.current_process()
+    print(f"Главный процесс: {main.name}")  # MainProcess
+
+    # В дочернем процессе:
+    p = multiprocessing.Process(target=show_info, name="Worker-1")
+    p.start()
+    p.join()`,
+  },
+  {
+    name: "multiprocessing.parent_process()",
+
+    description:
+      "Возвращает объект Process, соответствующий родительскому процессу текущего дочернего процесса. В главном процессе возвращает None. Добавлено в Python 3.8. Позволяет дочернему процессу получить информацию о своём создателе.",
+    syntax: "multiprocessing.parent_process()",
+    arguments: [],
+    example: `import multiprocessing
+
+def child_task():
+    parent = multiprocessing.parent_process()
+    current = multiprocessing.current_process()
+    print(f"Я: {current.name} (pid={current.pid})")
+    print(f"Мой родитель: {parent.name} (pid={parent.pid})")
+
+if __name__ == '__main__':
+    main = multiprocessing.current_process()
+    print(f"Главный процесс: {main.name}, pid={main.pid}")
+
+    p = multiprocessing.Process(target=child_task, name="Child")
+    p.start()
+    p.join()
+
+    # В главном процессе parent_process() возвращает None:
+    print(multiprocessing.parent_process())  # None`,
+  },
+  {
+    name: "multiprocessing.freeze_support()",
+
+    description:
+      'Добавляет поддержку создания дочерних процессов при упаковке программы в исполняемый файл с помощью PyInstaller, cx_Freeze и аналогов (только Windows). Должен вызываться сразу после if __name__ == "__main__":. На других платформах — no-op.',
+    syntax: 'if __name__ == "__main__":\n    multiprocessing.freeze_support()',
+    arguments: [],
+    example: `import multiprocessing
+
+def worker():
+    print("Рабочий процесс запущен")
+
+# Обязательный шаблон для Windows и заморозки:
+if __name__ == '__main__':
+    multiprocessing.freeze_support()  # должен быть первым!
+
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()
+    print("Готово")
+
+# Без freeze_support() замороженное приложение на Windows
+# будет бесконечно запускать новые процессы (fork bomb).
+# На Linux/macOS вызов безопасен, но ничего не делает.`,
+  },
+  {
+    name: "multiprocessing.get_all_start_methods()",
+
+    description:
+      'Возвращает список всех методов запуска процессов, поддерживаемых на текущей платформе. Возможные значения: "spawn" (создание нового интерпретатора), "fork" (копирование родителя), "forkserver" (через сервер форков). Набор зависит от ОС.',
+    syntax: "multiprocessing.get_all_start_methods()",
+    arguments: [],
+    example: `import multiprocessing
+
+methods = multiprocessing.get_all_start_methods()
+print(methods)
+# Linux:   ['fork', 'spawn', 'forkserver']
+# macOS:   ['spawn', 'fork', 'forkserver']  (Python 3.8+: spawn по умолчанию)
+# Windows: ['spawn']
+
+# Текущий метод по умолчанию:
+print(multiprocessing.get_start_method())
+# Linux:   'fork'
+# macOS:   'spawn'
+# Windows: 'spawn'`,
+  },
+  {
+    name: "multiprocessing.get_context(method=None)",
+
+    description:
+      "Возвращает объект контекста с тем же API, что и модуль multiprocessing, но использующий указанный метод запуска процессов. Позволяет явно выбрать метод без изменения глобального состояния. Предпочтительнее set_start_method() для библиотек.",
+    syntax: "multiprocessing.get_context(method=None)",
+    arguments: [
+      {
+        name: "method",
+        description:
+          'Метод запуска: "spawn", "fork" или "forkserver". None — метод по умолчанию для платформы.',
+      },
+    ],
+    example: `import multiprocessing
+
+def worker(q):
+    q.put("результат из spawn-процесса")
+
+if __name__ == '__main__':
+    # Явно используем spawn — безопасен на всех платформах
+    ctx = multiprocessing.get_context('spawn')
+
+    q = ctx.Queue()
+    p = ctx.Process(target=worker, args=(q,))
+    p.start()
+    p.join()
+
+    print(q.get())  # результат из spawn-процесса
+
+    # Для fork (только Linux):
+    fork_ctx = multiprocessing.get_context('fork')
+    p2 = fork_ctx.Process(target=worker, args=(q,))
+    p2.start()
+    p2.join()`,
+  },
+  {
+    name: "multiprocessing.get_start_method(allow_none=False)",
+
+    description:
+      'Возвращает текущий метод запуска дочерних процессов. По умолчанию зависит от платформы: "fork" на Linux, "spawn" на Windows и macOS (Python 3.8+). Если метод не установлен явно и allow_none=True — возвращает None.',
+    syntax: "multiprocessing.get_start_method(allow_none=False)",
+    arguments: [
+      {
+        name: "allow_none",
+        description:
+          "Если True и метод не установлен явно — возвращает None вместо платформенного значения по умолчанию.",
+      },
+    ],
+    example: `import multiprocessing
+
+# Метод по умолчанию (зависит от платформы):
+print(multiprocessing.get_start_method())
+# 'fork'   — Linux
+# 'spawn'  — Windows, macOS
+
+# С allow_none=True — None если не задан явно:
+print(multiprocessing.get_start_method(allow_none=True))
+# None  — если set_start_method не вызывался
+
+# После явной установки:
+if __name__ == '__main__':
+    multiprocessing.set_start_method('spawn')
+    print(multiprocessing.get_start_method())  # 'spawn'`,
+  },
+  {
+    name: "multiprocessing.set_executable(executable)",
+
+    description:
+      'Задаёт путь к исполняемому файлу Python, который будет использоваться для запуска дочерних процессов при методе "spawn". По умолчанию используется тот же интерпретатор, что и родительский. Применяется для виртуальных окружений или встроенных сред.',
+    syntax: "multiprocessing.set_executable(executable)",
+    arguments: [
+      {
+        name: "executable",
+        description:
+          'Путь к исполняемому файлу Python (например, "/usr/bin/python3.11").',
+      },
+    ],
+    example: `import multiprocessing
+import sys
+
+def worker():
+    print(f"Дочерний процесс: {sys.executable}")
+
+if __name__ == '__main__':
+    # Показываем текущий интерпретатор
+    print(f"Родительский: {sys.executable}")
+
+    # Задаём конкретный интерпретатор для дочерних процессов
+    multiprocessing.set_executable('/usr/bin/python3')
+
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()
+
+    # Полезно при работе с venv или conda:
+    # multiprocessing.set_executable(sys.executable)`,
+  },
+  {
+    name: "multiprocessing.set_start_method(method, force=False)",
+
+    description:
+      'Устанавливает метод запуска дочерних процессов для всей программы. Должен вызываться только один раз в блоке if __name__ == "__main__". Повторный вызов без force=True возбуждает RuntimeError. Влияет на все последующие Process(), Pool() и т.д.',
+    syntax: "multiprocessing.set_start_method(method, force=False)",
+    arguments: [
+      {
+        name: "method",
+        description:
+          'Метод запуска: "spawn" (все платформы), "fork" (POSIX), "forkserver" (POSIX).',
+      },
+      {
+        name: "force",
+        description:
+          "Если True — позволяет переустановить метод повторно. Использовать осторожно.",
+      },
+    ],
+    example: `import multiprocessing
+
+def worker(n):
+    return n ** 2
+
+if __name__ == '__main__':
+    # Устанавливаем spawn — безопасен на всех платформах
+    multiprocessing.set_start_method('spawn')
+
+    with multiprocessing.Pool(4) as pool:
+        results = pool.map(worker, range(8))
+    print(results)  # [0, 1, 4, 9, 16, 25, 36, 49]
+
+    # Повторный вызов без force вызовет ошибку:
+    # multiprocessing.set_start_method('fork')  # RuntimeError!
+    multiprocessing.set_start_method('fork', force=True)  # OK`,
+  },
+  {
+    name: "multiprocessing.log_to_stderr(level=None)",
+
+    description:
+      "Включает логирование модуля multiprocessing в stderr и возвращает настроенный логгер. Если level не задан — уровень логирования не изменяется. Удобен для отладки проблем с процессами — позволяет видеть события запуска, завершения и ошибок.",
+    syntax: "multiprocessing.log_to_stderr(level=None)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          "Уровень логирования (logging.DEBUG, logging.INFO и т.д.). Если None — уровень не изменяется.",
+      },
+    ],
+    example: `import multiprocessing
+import logging
+
+def worker():
+    print("Рабочий процесс выполняется")
+
+if __name__ == '__main__':
+    # Включаем логирование в stderr
+    logger = multiprocessing.log_to_stderr(level=logging.DEBUG)
+
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()
+    # В stderr будут сообщения вида:
+    # [DEBUG/Process-1] child process calling self.run()
+    # [DEBUG/Process-1] process shutting down
+    # [DEBUG/MainProcess] process no longer alive`,
+  },
+  {
+    name: "multiprocessing.get_logger()",
+
+    description:
+      "Возвращает объект логгера, используемый модулем multiprocessing. Изначально у него нет обработчиков (handlers) — сообщения не выводятся. Для вывода в stderr используйте log_to_stderr(). Позволяет настроить логирование вручную.",
+    syntax: "multiprocessing.get_logger()",
+    arguments: [],
+    example: `import multiprocessing
+import logging
+
+# Получаем логгер модуля
+logger = multiprocessing.get_logger()
+
+# Добавляем свой обработчик
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(
+    '[%(levelname)s/%(processName)s] %(message)s'
+))
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+def worker():
+    log = multiprocessing.get_logger()
+    log.info("Рабочий процесс запущен")
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()`,
+  },
+  {
+    name: "multiprocessing.allow_connection_pickling()",
+
+    description:
+      "Устанавливает поддержку сериализации (pickling) объектов соединений (Connection) из multiprocessing.connection. По умолчанию Connection нельзя передать через pickle — этот вызов разрешает передачу соединений между процессами через очереди или каналы.",
+    syntax: "multiprocessing.allow_connection_pickling()",
+    arguments: [],
+    example: `import multiprocessing
+import multiprocessing.connection
+
+# Разрешаем передачу Connection объектов через pickle
+multiprocessing.allow_connection_pickling()
+
+def send_data(conn):
+    conn.send("Привет от дочернего процесса!")
+    conn.close()
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe()
+
+    p = multiprocessing.Process(target=send_data, args=(child_conn,))
+    p.start()
+
+    msg = parent_conn.recv()
+    print(msg)  # Привет от дочернего процесса!
+
+    p.join()
+    parent_conn.close()`,
+  },
+  {
+    name: "Process.run()",
+
+    description:
+      "Метод, содержащий код, выполняемый в дочернем процессе. По умолчанию вызывает функцию, переданную в аргументе target конструктора. Переопределяется при создании подкласса Process для определения логики процесса. Не вызывайте напрямую — используйте start().",
+    syntax: "process.run()",
+    arguments: [],
+    example: `import multiprocessing
+
+# Способ 1: передача target в конструктор
+def my_task(n):
+    print(f"Квадрат {n} = {n ** 2}")
+
+p = multiprocessing.Process(target=my_task, args=(5,))
+p.start()
+p.join()
+
+# Способ 2: переопределение run() в подклассе
+class MyProcess(multiprocessing.Process):
+    def __init__(self, value):
+        super().__init__()
+        self.value = value
+
+    def run(self):
+        print(f"Процесс {self.name}: значение = {self.value}")
+
+if __name__ == '__main__':
+    proc = MyProcess(42)
+    proc.start()
+    proc.join()`,
+  },
+  {
+    name: "Process.start()",
+
+    description:
+      "Запускает процесс, вызывая run() в дочернем процессе. Должен вызываться не более одного раза для каждого объекта Process. Создаёт новый процесс ОС с помощью текущего метода запуска (spawn/fork/forkserver).",
+    syntax: "process.start()",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker(msg):
+    print(f"Дочерний процесс: {msg}")
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=worker, args=("Привет!",))
+
+    print(f"Запускаем процесс...")
+    p.start()     # создаёт и запускает дочерний процесс
+    print(f"PID дочернего: {p.pid}")
+
+    p.join()      # ждём завершения
+    print("Готово")
+
+    # start() можно вызвать только один раз:
+    # p.start()   # AssertionError — процесс уже запущен`,
+  },
+  {
+    name: "Process.terminate()",
+
+    description:
+      "Посылает процессу сигнал SIGTERM (на Unix) или вызывает TerminateProcess() (на Windows), запрашивая его завершение. Процесс может не завершиться мгновенно — используйте join() после terminate() для ожидания. Дочерние процессы завершаемого не останавливаются автоматически.",
+    syntax: "process.terminate()",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def long_task():
+    print("Начинаю долгую задачу...")
+    time.sleep(60)  # имитация долгой работы
+    print("Задача завершена")
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=long_task)
+    p.start()
+
+    time.sleep(1)
+    print(f"Процесс жив: {p.is_alive()}")  # True
+
+    p.terminate()   # посылаем SIGTERM
+    p.join()        # ждём завершения
+
+    print(f"Процесс жив: {p.is_alive()}")  # False
+    print(f"Код завершения: {p.exitcode}")  # -15 (SIGTERM) на Unix`,
+  },
+  {
+    name: "Process.kill()",
+
+    description:
+      "Посылает процессу сигнал SIGKILL (на Unix) или вызывает TerminateProcess() (на Windows). В отличие от terminate(), SIGKILL невозможно перехватить или проигнорировать — процесс гарантированно завершается немедленно. Добавлено в Python 3.7.",
+    syntax: "process.kill()",
+    arguments: [],
+    example: `import multiprocessing
+import signal
+import time
+
+def stubborn_task():
+    # Этот процесс игнорирует SIGTERM
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    print("Игнорирую SIGTERM, работаю дальше...")
+    time.sleep(60)
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=stubborn_task)
+    p.start()
+    time.sleep(0.5)
+
+    p.terminate()   # SIGTERM — будет проигнорирован
+    time.sleep(0.5)
+    print(f"После terminate: {p.is_alive()}")  # True
+
+    p.kill()        # SIGKILL — невозможно игнорировать
+    p.join()
+    print(f"После kill: {p.is_alive()}")  # False`,
+  },
+  {
+    name: "Process.close()",
+
+    description:
+      "Освобождает ресурсы, связанные с объектом Process. После вызова большинство методов и атрибутов объекта становятся недоступными. Процесс должен быть завершён перед вызовом close(). Добавлено в Python 3.7. Рекомендуется использовать как контекстный менеджер (with).",
+    syntax: "process.close()",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker():
+    pass
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()
+    p.close()  # освобождаем ресурсы
+
+    # После close() атрибуты недоступны:
+    # p.pid  → ValueError: process object is closed
+
+    # Предпочтительный способ — контекстный менеджер:
+    with multiprocessing.Process(target=worker) as p:
+        p.start()
+    # close() вызывается автоматически при выходе из with`,
+  },
+  {
+    name: "Process.join([timeout])",
+
+    description:
+      "Блокирует вызывающий поток до завершения процесса или истечения timeout секунд. Если timeout не задан — ждёт бесконечно. После join() используйте exitcode для проверки результата. Нельзя вызывать до start() или из самого процесса.",
+    syntax: "process.join(timeout=None)",
+    arguments: [
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах. None — ждёт до завершения процесса.",
+      },
+    ],
+    example: `import multiprocessing
+import time
+
+def slow_worker():
+    time.sleep(2)
+    print("Работа завершена")
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=slow_worker)
+    p.start()
+
+    # Ждём максимум 1 секунду
+    p.join(timeout=1)
+
+    if p.is_alive():
+        print("Процесс ещё работает — принудительно завершаем")
+        p.terminate()
+        p.join()  # ждём финального завершения
+    else:
+        print(f"Процесс завершился, код: {p.exitcode}")`,
+  },
+  {
+    name: "Process.is_alive()",
+
+    description:
+      "Возвращает True, если процесс ещё выполняется, и False после его завершения. Может использоваться для опроса состояния процесса без блокировки. После завершения процесса автоматически освобождает связанные ресурсы.",
+    syntax: "process.is_alive()",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def worker():
+    time.sleep(1.5)
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=worker)
+    p.start()
+
+    # Опрос состояния в цикле без блокировки
+    while p.is_alive():
+        print("Процесс работает...")
+        time.sleep(0.5)
+
+    print(f"Процесс завершён, exitcode={p.exitcode}")
+    # Процесс работает...
+    # Процесс работает...
+    # Процесс работает...
+    # Процесс завершён, exitcode=0`,
+  },
+  {
+    name: "Process.name",
+
+    description:
+      'Строковый атрибут — имя процесса. Задаётся при создании (Process(name="...")) или устанавливается вручную. Используется только для идентификации в логах и отладке — не влияет на поведение. По умолчанию генерируется автоматически: "Process-1", "Process-2" и т.д.',
+    syntax: "process.name",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker():
+    proc = multiprocessing.current_process()
+    print(f"Меня зовут: {proc.name}")
+
+if __name__ == '__main__':
+    # Имя по умолчанию
+    p1 = multiprocessing.Process(target=worker)
+    p1.start(); p1.join()  # Меня зовут: Process-1
+
+    # Явное задание имени
+    p2 = multiprocessing.Process(target=worker, name="DataProcessor")
+    p2.start(); p2.join()  # Меня зовут: DataProcessor
+
+    # Изменение имени после создания
+    p3 = multiprocessing.Process(target=worker)
+    p3.name = "CustomName"
+    p3.start(); p3.join()  # Меня зовут: CustomName`,
+  },
+  {
+    name: "Process.daemon",
+
+    description:
+      "Булев атрибут, определяющий, является ли процесс демоном. Демон-процесс автоматически завершается при завершении родительского процесса. Должен быть установлен до вызова start(). Демон-процессы не могут порождать дочерние процессы.",
+    syntax: "process.daemon",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def background_monitor():
+    while True:
+        print("Мониторинг...")
+        time.sleep(0.3)
+
+def main_task():
+    print("Главная задача выполняется")
+    time.sleep(1)
+    print("Главная задача завершена")
+
+if __name__ == '__main__':
+    # Демон завершится автоматически вместе с main_task
+    monitor = multiprocessing.Process(target=background_monitor)
+    monitor.daemon = True   # устанавливаем до start()!
+    monitor.start()
+
+    worker = multiprocessing.Process(target=main_task)
+    worker.start()
+    worker.join()
+    # После завершения worker программа завершится,
+    # и monitor будет убит автоматически`,
+  },
+  {
+    name: "Process.pid",
+
+    description:
+      "Атрибут — идентификатор процесса (PID) в операционной системе. Доступен только после вызова start(). До запуска равен None. Используется для взаимодействия с процессом через системные средства (kill, psutil и т.д.).",
+    syntax: "process.pid",
+    arguments: [],
+    example: `import multiprocessing
+import os
+
+def worker():
+    print(f"Мой PID: {os.getpid()}")
+    print(f"Родительский PID: {os.getppid()}")
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=worker)
+
+    print(f"До start(): pid = {p.pid}")  # None
+
+    p.start()
+    print(f"После start(): pid = {p.pid}")  # например: 12345
+    p.join()
+
+    print(f"После join(): pid = {p.pid}")   # 12345 (сохраняется)
+
+    # PID главного процесса:
+    print(f"Главный процесс: {os.getpid()}")`,
+  },
+  {
+    name: "Process.exitcode",
+
+    description:
+      "Атрибут — код завершения процесса. None если процесс ещё выполняется. 0 — успешное завершение. Положительное число — код ошибки. Отрицательное число — номер сигнала, которым был убит процесс (например, -15 для SIGTERM, -9 для SIGKILL).",
+    syntax: "process.exitcode",
+    arguments: [],
+    example: `import multiprocessing
+import sys
+
+def success_worker():
+    pass  # завершается с кодом 0
+
+def error_worker():
+    sys.exit(2)  # завершается с кодом 2
+
+def crash_worker():
+    raise RuntimeError("Ошибка!")  # exitcode = 1
+
+if __name__ == '__main__':
+    for func, label in [(success_worker, "успех"),
+                        (error_worker, "ошибка"),
+                        (crash_worker, "сбой")]:
+        p = multiprocessing.Process(target=func)
+        p.start()
+        p.join()
+        print(f"{label}: exitcode = {p.exitcode}")
+    # успех: exitcode = 0
+    # ошибка: exitcode = 2
+    # сбой: exitcode = 1`,
+  },
+  {
+    name: "Process.authkey",
+
+    description:
+      "Байтовый атрибут — ключ аутентификации процесса. Используется для проверки подлинности при установке соединений между процессами через multiprocessing.connection. По умолчанию наследуется от родительского процесса (случайные байты, генерируемые os.urandom()).",
+    syntax: "process.authkey",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker():
+    proc = multiprocessing.current_process()
+    print(f"Ключ дочернего: {proc.authkey[:8]}...")  # первые 8 байт
+
+if __name__ == '__main__':
+    main = multiprocessing.current_process()
+    print(f"Ключ главного: {main.authkey[:8]}...")
+
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()
+    # Ключи одинаковы — дочерний наследует от родителя
+
+    # Установка своего ключа аутентификации:
+    main.authkey = b'my-secret-key-32bytes-padded!!!!'
+    print(f"Новый ключ: {main.authkey}")`,
+  },
+  {
+    name: "Process.sentinel",
+
+    description:
+      "Дескриптор файла (Unix) или дескриптор объекта (Windows), который становится готов к чтению при завершении процесса. Используется с select.select() или selectors для одновременного ожидания нескольких процессов без блокировки. Доступен только после start().",
+    syntax: "process.sentinel",
+    arguments: [],
+    example: `import multiprocessing
+import select
+import time
+
+def worker(delay):
+    time.sleep(delay)
+
+if __name__ == '__main__':
+    processes = [
+        multiprocessing.Process(target=worker, args=(i,))
+        for i in [1, 2, 3]
+    ]
+    for p in processes:
+        p.start()
+
+    sentinels = {p.sentinel: p for p in processes}
+
+    # Ждём завершения любого из процессов без блокировки
+    while sentinels:
+        ready, _, _ = select.select(sentinels.keys(), [], [], 0.5)
+        for fd in ready:
+            proc = sentinels.pop(fd)
+            proc.join()
+            print(f"{proc.name} завершён, exitcode={proc.exitcode}")`,
+  },
+  {
+    name: "Pool.apply(func[, args[, kwds]])",
+
+    description:
+      "Вызывает функцию func с аргументами args и именованными аргументами kwds в одном из рабочих процессов пула и блокирует вызывающий процесс до получения результата. Аналог встроенной функции apply() — синхронный, выполняется в одном процессе за раз.",
+    syntax: "pool.apply(func[, args[, kwds]])",
+    arguments: [
+      {
+        name: "func",
+        description: "Вызываемая функция. Должна быть picklable.",
+      },
+      { name: "args", description: "Кортеж позиционных аргументов для func." },
+      { name: "kwds", description: "Словарь именованных аргументов для func." },
+    ],
+    example: `import multiprocessing
+
+def power(base, exp):
+    return base ** exp
+
+if __name__ == '__main__':
+    with multiprocessing.Pool(4) as pool:
+        # Синхронный вызов — блокирует до результата
+        result = pool.apply(power, args=(2, 10))
+        print(result)  # 1024
+
+        result = pool.apply(power, kwds={'base': 3, 'exp': 4})
+        print(result)  # 81
+
+    # Для параллельного выполнения используйте map() или apply_async()`,
+  },
+  {
+    name: "Pool.apply_async(func[, args[, kwds[, callback[, error_callback]]]])",
+
+    description:
+      "Асинхронный вариант apply(). Отправляет задачу в пул и сразу возвращает объект AsyncResult, не блокируя вызывающий процесс. Callback вызывается в главном процессе при успешном завершении, error_callback — при исключении.",
+    syntax:
+      "pool.apply_async(func[, args[, kwds[, callback[, error_callback]]]])",
+    arguments: [
+      { name: "func", description: "Вызываемая функция." },
+      { name: "args", description: "Кортеж позиционных аргументов." },
+      { name: "kwds", description: "Словарь именованных аргументов." },
+      {
+        name: "callback",
+        description:
+          "Функция, вызываемая с результатом при успешном завершении.",
+      },
+      {
+        name: "error_callback",
+        description: "Функция, вызываемая с исключением при ошибке.",
+      },
+    ],
+    example: `import multiprocessing
+
+def square(n):
+    return n ** 2
+
+def on_result(result):
+    print(f"Готово: {result}")
+
+def on_error(e):
+    print(f"Ошибка: {e}")
+
+if __name__ == '__main__':
+    with multiprocessing.Pool(4) as pool:
+        # Запускаем несколько задач параллельно
+        results = [
+            pool.apply_async(square, args=(i,), callback=on_result)
+            for i in range(5)
+        ]
+        # Ждём все результаты
+        values = [r.get(timeout=5) for r in results]
+    print(values)  # [0, 1, 4, 9, 16]`,
+  },
+  {
+    name: "Pool.map(func, iterable[, chunksize])",
+
+    description:
+      "Параллельный аналог встроенного map(). Применяет func к каждому элементу iterable, распределяя задачи по рабочим процессам пула. Блокирует до получения всех результатов. Возвращает список результатов в том же порядке, что и входные данные.",
+    syntax: "pool.map(func, iterable[, chunksize])",
+    arguments: [
+      {
+        name: "func",
+        description:
+          "Функция, применяемая к каждому элементу. Принимает один аргумент.",
+      },
+      {
+        name: "iterable",
+        description: "Итерируемый объект с входными данными.",
+      },
+      {
+        name: "chunksize",
+        description:
+          "Размер порций задач для передачи рабочим процессам. Большие значения снижают накладные расходы при обработке больших данных.",
+      },
+    ],
+    example: `import multiprocessing
+
+def square(n):
+    return n ** 2
+
+def is_even(n):
+    return n % 2 == 0
+
+if __name__ == '__main__':
+    data = range(10)
+
+    with multiprocessing.Pool() as pool:
+        squares = pool.map(square, data)
+        print(squares)  # [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]
+
+        evens = pool.map(is_even, data)
+        print(evens)  # [True, False, True, False, ...]
+
+        # chunksize для больших данных:
+        result = pool.map(square, range(10000), chunksize=500)`,
+  },
+  {
+    name: "Pool.map_async(func, iterable[, chunksize[, callback[, error_callback]]])",
+
+    description:
+      "Асинхронный вариант map(). Возвращает объект AsyncResult немедленно, не ожидая завершения всех задач. Позволяет продолжать работу в главном процессе пока пул обрабатывает данные. Результаты доступны через .get().",
+    syntax:
+      "pool.map_async(func, iterable[, chunksize[, callback[, error_callback]]])",
+    arguments: [
+      { name: "func", description: "Функция, применяемая к каждому элементу." },
+      {
+        name: "iterable",
+        description: "Итерируемый объект с входными данными.",
+      },
+      { name: "chunksize", description: "Размер порций задач." },
+      {
+        name: "callback",
+        description:
+          "Вызывается со списком результатов при успешном завершении всех задач.",
+      },
+      {
+        name: "error_callback",
+        description: "Вызывается с исключением при ошибке в любой задаче.",
+      },
+    ],
+    example: `import multiprocessing
+import time
+
+def slow_square(n):
+    time.sleep(0.1)
+    return n ** 2
+
+if __name__ == '__main__':
+    with multiprocessing.Pool(4) as pool:
+        # Запускаем асинхронно и продолжаем работу
+        async_result = pool.map_async(slow_square, range(8))
+
+        print("Работаем пока пул считает...")
+        # ... другая работа ...
+
+        results = async_result.get(timeout=10)
+        print(results)  # [0, 1, 4, 9, 16, 25, 36, 49]`,
+  },
+  {
+    name: "Pool.imap(func, iterable[, chunksize])",
+
+    description:
+      "Ленивый (lazy) вариант map() — возвращает итератор, выдающий результаты по одному по мере их готовности. Экономит память при обработке больших данных, так как не хранит все результаты в памяти одновременно. Результаты возвращаются в порядке входных данных.",
+    syntax: "pool.imap(func, iterable[, chunksize])",
+    arguments: [
+      { name: "func", description: "Функция, применяемая к каждому элементу." },
+      {
+        name: "iterable",
+        description: "Итерируемый объект с входными данными.",
+      },
+      {
+        name: "chunksize",
+        description:
+          "Размер порций. По умолчанию 1 — каждый элемент отправляется отдельно.",
+      },
+    ],
+    example: `import multiprocessing
+
+def process_line(line):
+    return line.strip().upper()
+
+if __name__ == '__main__':
+    lines = [f"строка {i}\n" for i in range(100)]
+
+    with multiprocessing.Pool(4) as pool:
+        # Обрабатываем результаты по мере готовности
+        for result in pool.imap(process_line, lines, chunksize=10):
+            print(result)  # СТРОКА 0, СТРОКА 1, ...
+
+        # В отличие от map() — не загружает всё в память сразу
+        # Идеален для обработки больших файлов построчно`,
+  },
+  {
+    name: "Pool.imap_unordered(func, iterable[, chunksize])",
+
+    description:
+      "Аналог imap(), но результаты возвращаются в порядке завершения задач, а не в порядке входных данных. Быстрее imap() при неравномерном времени выполнения задач — результат быстрой задачи не ждёт медленной. Полезен когда порядок вывода неважен.",
+    syntax: "pool.imap_unordered(func, iterable[, chunksize])",
+    arguments: [
+      { name: "func", description: "Функция, применяемая к каждому элементу." },
+      {
+        name: "iterable",
+        description: "Итерируемый объект с входными данными.",
+      },
+      { name: "chunksize", description: "Размер порций задач." },
+    ],
+    example: `import multiprocessing
+import time
+import random
+
+def variable_task(n):
+    time.sleep(random.uniform(0, 0.5))  # разное время выполнения
+    return n ** 2
+
+if __name__ == '__main__':
+    with multiprocessing.Pool(4) as pool:
+        # Результаты приходят по мере готовности (не по порядку!)
+        for result in pool.imap_unordered(variable_task, range(8)):
+            print(result, end=' ')  # например: 25 0 9 1 49 16 4 36
+        print()
+
+        # Для сравнения — imap вернёт: 0 1 4 9 16 25 36 49 (по порядку)`,
+  },
+  {
+    name: "Pool.starmap(func, iterable[, chunksize])",
+
+    description:
+      "Аналог map(), но каждый элемент iterable — это кортеж аргументов, которые распаковываются в func. Аналог itertools.starmap() с параллельным выполнением. Удобен когда функция принимает несколько аргументов.",
+    syntax: "pool.starmap(func, iterable[, chunksize])",
+    arguments: [
+      { name: "func", description: "Функция с несколькими аргументами." },
+      {
+        name: "iterable",
+        description: "Итерируемый объект кортежей аргументов.",
+      },
+      { name: "chunksize", description: "Размер порций задач." },
+    ],
+    example: `import multiprocessing
+
+def power(base, exp):
+    return base ** exp
+
+def add(a, b, c):
+    return a + b + c
+
+if __name__ == '__main__':
+    with multiprocessing.Pool(4) as pool:
+        # Каждый кортеж распаковывается как аргументы функции
+        pairs = [(2, 1), (2, 2), (2, 3), (2, 4), (2, 5)]
+        results = pool.starmap(power, pairs)
+        print(results)  # [2, 4, 8, 16, 32]
+
+        triples = [(1, 2, 3), (4, 5, 6), (7, 8, 9)]
+        sums = pool.starmap(add, triples)
+        print(sums)  # [6, 15, 24]`,
+  },
+  {
+    name: "Pool.starmap_async(func, iterable[, chunksize[, callback[, error_callback]]])",
+
+    description:
+      "Асинхронный вариант starmap(). Распаковывает кортежи аргументов и выполняет задачи параллельно, не блокируя вызывающий процесс. Возвращает AsyncResult. Сочетает удобство starmap с неблокирующим поведением map_async.",
+    syntax:
+      "pool.starmap_async(func, iterable[, chunksize[, callback[, error_callback]]])",
+    arguments: [
+      { name: "func", description: "Функция с несколькими аргументами." },
+      {
+        name: "iterable",
+        description: "Итерируемый объект кортежей аргументов.",
+      },
+      { name: "chunksize", description: "Размер порций задач." },
+      {
+        name: "callback",
+        description:
+          "Вызывается со списком результатов при успешном завершении.",
+      },
+      {
+        name: "error_callback",
+        description: "Вызывается с исключением при ошибке.",
+      },
+    ],
+    example: `import multiprocessing
+
+def multiply(a, b):
+    return a * b
+
+def on_done(results):
+    print(f"Все результаты: {results}")
+
+if __name__ == '__main__':
+    pairs = [(1, 2), (3, 4), (5, 6), (7, 8)]
+
+    with multiprocessing.Pool(4) as pool:
+        async_result = pool.starmap_async(
+            multiply,
+            pairs,
+            callback=on_done
+        )
+        # Продолжаем работу пока пул считает...
+        results = async_result.get(timeout=5)
+        print(results)  # [2, 12, 30, 56]`,
+  },
+  {
+    name: "Pool.close()",
+
+    description:
+      "Запрещает отправку новых задач в пул. Уже поставленные в очередь задачи будут выполнены до конца. После close() необходимо вызвать join() для ожидания завершения всех рабочих процессов. Используется в паре с join() при явном управлении пулом.",
+    syntax: "pool.close()",
+    arguments: [],
+    example: `import multiprocessing
+
+def square(n):
+    return n ** 2
+
+if __name__ == '__main__':
+    pool = multiprocessing.Pool(4)
+
+    results = [pool.apply_async(square, (i,)) for i in range(10)]
+
+    pool.close()   # больше задач не принимаем
+    pool.join()    # ждём завершения всех текущих задач
+
+    values = [r.get() for r in results]
+    print(values)  # [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]
+
+    # Предпочтительный способ — контекстный менеджер:
+    with multiprocessing.Pool(4) as pool:
+        values = pool.map(square, range(10))
+    # close() и join() вызываются автоматически`,
+  },
+  {
+    name: "Pool.terminate()",
+
+    description:
+      "Немедленно останавливает все рабочие процессы пула, не ожидая завершения текущих задач. Используется при аварийном завершении работы или для отмены всех задач. При использовании пула как контекстного менеджера вызывается автоматически при исключении.",
+    syntax: "pool.terminate()",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def long_task(n):
+    time.sleep(10)
+    return n
+
+if __name__ == '__main__':
+    pool = multiprocessing.Pool(4)
+
+    # Запускаем долгие задачи
+    results = [pool.apply_async(long_task, (i,)) for i in range(8)]
+
+    time.sleep(1)
+    print("Отменяем все задачи!")
+    pool.terminate()  # немедленно убиваем все процессы
+    pool.join()
+
+    # При исключении в with-блоке terminate() вызывается автоматически:
+    try:
+        with multiprocessing.Pool(4) as pool:
+            pool.map(long_task, range(8))
+    except KeyboardInterrupt:
+        pass  # пул уже завершён`,
+  },
+  {
+    name: "Pool.join()",
+
+    description:
+      "Блокирует вызывающий процесс до завершения всех рабочих процессов пула. Должен вызываться только после close() или terminate(). Гарантирует, что все ресурсы пула освобождены перед продолжением работы главного процесса.",
+    syntax: "pool.join()",
+    arguments: [],
+    example: `import multiprocessing
+
+def compute(n):
+    return sum(range(n))
+
+if __name__ == '__main__':
+    pool = multiprocessing.Pool(4)
+
+    # Отправляем задачи
+    async_results = [pool.apply_async(compute, (i * 1000,)) for i in range(8)]
+
+    # Закрываем пул для новых задач
+    pool.close()
+
+    # Блокируем до завершения всех задач
+    pool.join()
+
+    # Теперь можно безопасно читать результаты
+    results = [r.get() for r in async_results]
+    print(results[:3])  # [0, 499500, 1999000]
+
+    # С контекстным менеджером join() не нужен явно:
+    with multiprocessing.Pool(4) as pool:
+        result = pool.map(compute, range(8))`,
+  },
+  {
+    name: "Queue.qsize()",
+
+    description:
+      "Возвращает приблизительное число элементов в очереди multiprocessing.Queue. Не доступен на macOS (возбуждает NotImplementedError). В многопроцессорной среде результат приблизителен — между вызовом и следующей операцией другой процесс может изменить очередь.",
+    syntax: "queue.qsize()",
+    arguments: [],
+    example: `import multiprocessing
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    q.put('a')
+    q.put('b')
+    q.put('c')
+
+    print(q.qsize())  # 3  (недоступно на macOS)
+
+    q.get()
+    print(q.qsize())  # 2
+
+    # На macOS:
+    # q.qsize()  → NotImplementedError`,
+  },
+  {
+    name: "Queue.empty()",
+
+    description:
+      "Возвращает True если очередь multiprocessing.Queue пуста. Результат приблизителен — в многопроцессорной среде другой процесс может изменить очередь сразу после вызова. Не рекомендуется использовать для управления логикой — используйте блокирующий get().",
+    syntax: "queue.empty()",
+    arguments: [],
+    example: `import multiprocessing
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    print(q.empty())  # True
+
+    q.put(1)
+    print(q.empty())  # False
+
+    q.get()
+    print(q.empty())  # True
+
+    # Антипаттерн в многопроцессорном коде:
+    # if not q.empty():   # небезопасно!
+    #     item = q.get()
+    # Используйте блокирующий get() вместо empty()`,
+  },
+  {
+    name: "Queue.full()",
+
+    description:
+      "Возвращает True если очередь multiprocessing.Queue заполнена (достигла maxsize). Для неограниченных очередей (maxsize=0) всегда возвращает False. Результат приблизителен в многопроцессорной среде.",
+    syntax: "queue.full()",
+    arguments: [],
+    example: `import multiprocessing
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue(maxsize=3)
+
+    q.put(1)
+    q.put(2)
+    print(q.full())  # False
+
+    q.put(3)
+    print(q.full())  # True
+
+    # Неограниченная очередь:
+    q2 = multiprocessing.Queue()
+    print(q2.full())  # False — всегда`,
+  },
+  {
+    name: "Queue.put(obj[, block[, timeout]])",
+
+    description:
+      "Помещает объект obj в очередь multiprocessing.Queue. Если очередь заполнена и block=True — ждёт до timeout секунд. При block=False или истечении timeout возбуждает queue.Full. Потокобезопасен и процессобезопасен.",
+    syntax: "queue.put(obj[, block[, timeout]])",
+    arguments: [
+      {
+        name: "obj",
+        description: "Объект для помещения в очередь. Должен быть picklable.",
+      },
+      {
+        name: "block",
+        description:
+          "Если True (по умолчанию) — блокирует при заполненной очереди. Если False — сразу возбуждает queue.Full.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах при block=True. None — ждёт бесконечно.",
+      },
+    ],
+    example: `import multiprocessing
+
+def producer(q):
+    for item in range(5):
+        q.put(item)
+        print(f"Отправлено: {item}")
+
+def consumer(q):
+    for _ in range(5):
+        item = q.get()
+        print(f"Получено: {item}")
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue(maxsize=2)
+
+    p = multiprocessing.Process(target=producer, args=(q,))
+    c = multiprocessing.Process(target=consumer, args=(q,))
+
+    p.start(); c.start()
+    p.join(); c.join()`,
+  },
+  {
+    name: "Queue.put_nowait(obj)",
+
+    description:
+      "Немедленно помещает объект в очередь без ожидания. Эквивалентно put(obj, block=False). Если очередь заполнена — сразу возбуждает queue.Full. Объект должен быть picklable — данные сериализуются для передачи между процессами.",
+    syntax: "queue.put_nowait(obj)",
+    arguments: [
+      { name: "obj", description: "Picklable объект для помещения в очередь." },
+    ],
+    example: `import multiprocessing
+import queue
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue(maxsize=3)
+
+    q.put_nowait('a')
+    q.put_nowait('b')
+    q.put_nowait('c')
+
+    try:
+        q.put_nowait('d')  # очередь заполнена
+    except queue.Full:
+        print("Очередь заполнена — элемент отброшен")
+
+    print(q.qsize())  # 3`,
+  },
+  {
+    name: "Queue.get([block[, timeout]])",
+
+    description:
+      "Извлекает и возвращает объект из очереди multiprocessing.Queue. Если очередь пуста и block=True — ждёт до timeout секунд. При block=False или истечении timeout возбуждает queue.Empty. Данные десериализуются из pickle.",
+    syntax: "queue.get([block[, timeout]])",
+    arguments: [
+      {
+        name: "block",
+        description:
+          "Если True (по умолчанию) — блокирует, пока не появится элемент. Если False — сразу возбуждает queue.Empty.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах при block=True. None — ждёт бесконечно.",
+      },
+    ],
+    example: `import multiprocessing
+import queue
+
+def worker(q, result_q):
+    data = q.get()  # блокирует, пока нет данных
+    result = data ** 2
+    result_q.put(result)
+
+if __name__ == '__main__':
+    task_q = multiprocessing.Queue()
+    result_q = multiprocessing.Queue()
+
+    p = multiprocessing.Process(target=worker, args=(task_q, result_q))
+    p.start()
+
+    task_q.put(7)
+    result = result_q.get(timeout=5)
+    print(result)  # 49
+
+    p.join()`,
+  },
+  {
+    name: "Queue.get_nowait()",
+
+    description:
+      "Немедленно извлекает объект из очереди без ожидания. Эквивалентно get(block=False). Если очередь пуста — сразу возбуждает queue.Empty. Используется для неблокирующего опроса очереди.",
+    syntax: "queue.get_nowait()",
+    arguments: [],
+    example: `import multiprocessing
+import queue
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    q.put(10)
+    q.put(20)
+
+    print(q.get_nowait())  # 10
+    print(q.get_nowait())  # 20
+
+    try:
+        q.get_nowait()  # очередь пуста
+    except queue.Empty:
+        print("Нечего извлекать")
+
+    # Опрос всего содержимого:
+    q.put(1); q.put(2); q.put(3)
+    items = []
+    while True:
+        try:
+            items.append(q.get_nowait())
+        except queue.Empty:
+            break
+    print(items)  # [1, 2, 3]`,
+  },
+  {
+    name: "Queue.close()",
+
+    description:
+      "Сигнализирует, что текущий процесс больше не будет добавлять данные в очередь. Фоновый поток, отправляющий данные, будет корректно завершён после очистки буфера. Не блокирует — для ожидания полной отправки используйте join_thread().",
+    syntax: "queue.close()",
+    arguments: [],
+    example: `import multiprocessing
+
+def producer(q):
+    for i in range(5):
+        q.put(i)
+    q.close()       # сигнализируем об окончании записи
+    q.join_thread() # ждём отправки всех буферизованных данных
+
+def consumer(q):
+    for _ in range(5):
+        print(q.get())
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+
+    p = multiprocessing.Process(target=producer, args=(q,))
+    c = multiprocessing.Process(target=consumer, args=(q,))
+
+    p.start(); c.start()
+    p.join(); c.join()`,
+  },
+  {
+    name: "Queue.join_thread()",
+
+    description:
+      "Ожидает завершения фонового потока очереди — убеждается, что все данные из буфера отправлены. Должен вызываться после close(). По умолчанию при завершении процесса join_thread() вызывается автоматически, если не был вызван cancel_join_thread().",
+    syntax: "queue.join_thread()",
+    arguments: [],
+    example: `import multiprocessing
+
+def safe_producer(q, data):
+    for item in data:
+        q.put(item)
+    # Гарантируем отправку всех данных перед завершением процесса
+    q.close()
+    q.join_thread()  # ждём полной отправки буфера
+    print("Все данные отправлены")
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    p = multiprocessing.Process(
+        target=safe_producer,
+        args=(q, list(range(100)))
+    )
+    p.start()
+    p.join()
+
+    # Читаем все данные
+    items = []
+    while not q.empty():
+        items.append(q.get())
+    print(f"Получено {len(items)} элементов")`,
+  },
+  {
+    name: "Queue.cancel_join_thread()",
+
+    description:
+      "Отменяет автоматический вызов join_thread() при завершении процесса. Позволяет процессу завершиться немедленно, не дожидаясь отправки буферизованных данных. Данные в буфере могут быть потеряны. Используется только когда потеря данных допустима.",
+    syntax: "queue.cancel_join_thread()",
+    arguments: [],
+    example: `import multiprocessing
+
+def fast_exit_producer(q):
+    for i in range(1000):
+        q.put(i)
+    # Разрешаем процессу завершиться немедленно
+    # без ожидания отправки всех данных
+    q.cancel_join_thread()
+    print("Процесс завершается (данные могут быть потеряны)")
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    p = multiprocessing.Process(target=fast_exit_producer, args=(q,))
+    p.start()
+    p.join()
+
+    # Некоторые элементы могут не дойти!
+    count = 0
+    while not q.empty():
+        q.get()
+        count += 1
+    print(f"Получено: {count} из 1000 (часть потеряна)")`,
+  },
+  {
+    name: "JoinableQueue.task_done()",
+
+    description:
+      "Сигнализирует, что обработка ранее извлечённого элемента завершена. Работает аналогично queue.Queue.task_done() — уменьшает счётчик незавершённых задач. Должен вызываться после каждого get(). Вызов большее количество раз, чем get() — ValueError.",
+    syntax: "joinable_queue.task_done()",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker(q):
+    while True:
+        item = q.get()
+        if item is None:
+            q.task_done()
+            break
+        print(f"Обрабатываю: {item}")
+        # ... обработка задачи ...
+        q.task_done()  # сообщаем о завершении
+
+if __name__ == '__main__':
+    q = multiprocessing.JoinableQueue()
+
+    p = multiprocessing.Process(target=worker, args=(q,))
+    p.start()
+
+    for task in ['задача-1', 'задача-2', 'задача-3']:
+        q.put(task)
+
+    q.join()    # ждём task_done() для всех элементов
+    q.put(None) # сигнал воркеру остановиться
+    p.join()`,
+  },
+  {
+    name: "JoinableQueue.join()",
+
+    description:
+      "Блокирует вызывающий процесс до тех пор, пока все элементы в JoinableQueue не будут обработаны (task_done() вызван для каждого). Аналог queue.Queue.join(), но для межпроцессного взаимодействия. Счётчик увеличивается при put() и уменьшается при task_done().",
+    syntax: "joinable_queue.join()",
+    arguments: [],
+    example: `import multiprocessing
+
+def batch_worker(q, results):
+    while True:
+        item = q.get()
+        if item is None:
+            q.task_done()
+            break
+        results.append(item ** 2)
+        q.task_done()
+
+if __name__ == '__main__':
+    q = multiprocessing.JoinableQueue()
+    manager = multiprocessing.Manager()
+    results = manager.list()
+
+    workers = [
+        multiprocessing.Process(target=batch_worker, args=(q, results))
+        for _ in range(4)
+    ]
+    for w in workers:
+        w.start()
+
+    for i in range(20):
+        q.put(i)
+
+    q.join()  # ждём обработки всех 20 задач
+    print(f"Обработано задач: {len(results)}")
+
+    for _ in workers:
+        q.put(None)
+    for w in workers:
+        w.join()`,
+  },
+  {
+    name: "Connection.send(obj)",
+
+    description:
+      "Отправляет объект obj через соединение. Объект сериализуется через pickle перед отправкой — должен быть picklable. Принимающий конец читает данные через recv(). Используется с multiprocessing.Pipe() для двустороннего или одностороннего обмена между процессами.",
+    syntax: "connection.send(obj)",
+    arguments: [
+      {
+        name: "obj",
+        description: "Любой picklable объект Python для передачи через канал.",
+      },
+    ],
+    example: `import multiprocessing
+
+def child(conn):
+    data = conn.recv()
+    print(f"Дочерний получил: {data}")
+    conn.send(data * 2)  # отправляем результат обратно
+    conn.close()
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe()
+
+    p = multiprocessing.Process(target=child, args=(child_conn,))
+    p.start()
+
+    parent_conn.send({'number': 21, 'label': 'ответ'})
+    result = parent_conn.recv()
+    print(f"Родитель получил: {result}")
+    # {'number': 21, 'label': 'ответ', ...} * 2 не работает для dict
+    p.join()`,
+  },
+  {
+    name: "Connection.recv()",
+
+    description:
+      "Получает объект, отправленный через send(). Блокирует вызывающий процесс до поступления данных. Десериализует объект из pickle. Если соединение закрыто и буфер пуст — возбуждает EOFError.",
+    syntax: "connection.recv()",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def producer(conn):
+    for i in range(3):
+        time.sleep(0.3)
+        conn.send(f"сообщение-{i}")
+    conn.send(None)  # сигнал завершения
+    conn.close()
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+    # duplex=False — однонаправленный: child отправляет, parent получает
+
+    p = multiprocessing.Process(target=producer, args=(child_conn,))
+    p.start()
 
     while True:
-        part = await reader.next()
-        if part is None:
-            break  # Все части прочитаны
+        msg = parent_conn.recv()  # блокирует до прихода данных
+        if msg is None:
+            break
+        print(f"Получено: {msg}")
 
-        if part.filename:
-            # Это файл
-            data = await part.read()
-            result[part.name] = f'file:{part.filename} ({len(data)} bytes)'
-        else:
-            # Это текстовое поле
-            text = await part.text()
-            result[part.name] = text
-
-    return web.json_response(result)
-
-app = web.Application()
-app.router.add_post('/form', handler)
-web.run_app(app)`
+    p.join()`,
   },
   {
-    name: 'aiohttp.MultipartWriter.append()',
-    description: 'Метод, добавляющий произвольные данные как новую часть multipart-сообщения. Принимает строку, bytes или объект с интерфейсом чтения. Возвращает объект Payload, которому можно задать дополнительные заголовки.',
-    syntax: 'writer.append(obj, headers=None)',
+    name: "Connection.fileno()",
+
+    description:
+      "Возвращает целочисленный файловый дескриптор (fd) соединения. Используется для низкоуровневой работы с select.select() или selectors — позволяет ожидать данные из нескольких соединений одновременно без блокировки.",
+    syntax: "connection.fileno()",
+    arguments: [],
+    example: `import multiprocessing
+import select
+
+def sender(conn, items):
+    for item in items:
+        conn.send(item)
+    conn.close()
+
+if __name__ == '__main__':
+    conns = []
+    processes = []
+    for i in range(3):
+        parent, child = multiprocessing.Pipe(duplex=False)
+        p = multiprocessing.Process(target=sender, args=(child, [i * 10, i * 20]))
+        p.start()
+        conns.append(parent)
+        processes.append(p)
+
+    fd_map = {c.fileno(): c for c in conns}
+
+    # Ожидаем данные из любого соединения:
+    readable, _, _ = select.select(fd_map.keys(), [], [], 2.0)
+    for fd in readable:
+        print(fd_map[fd].recv())`,
+  },
+  {
+    name: "Connection.close()",
+
+    description:
+      "Закрывает соединение. После закрытия любой вызов send() или recv() возбуждает OSError. Если другой конец пытается recv() после закрытия — получает EOFError. Соединения закрываются автоматически при сборке мусора, но явный вызов предпочтителен.",
+    syntax: "connection.close()",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker(conn):
+    result = conn.recv() ** 2
+    conn.send(result)
+    conn.close()  # явно закрываем свой конец
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe()
+
+    p = multiprocessing.Process(target=worker, args=(child_conn,))
+    p.start()
+
+    parent_conn.send(7)
+    print(parent_conn.recv())  # 49
+
+    parent_conn.close()  # закрываем родительский конец
+    p.join()
+
+    # Использование как контекстного менеджера:
+    with multiprocessing.Pipe()[0] as conn:
+        pass  # close() вызывается автоматически`,
+  },
+  {
+    name: "Connection.poll([timeout])",
+
+    description:
+      "Проверяет, есть ли данные, доступные для чтения. Возвращает True если данные есть. Если timeout не задан — возвращает результат немедленно (неблокирующий). С timeout=None — блокирует до поступления данных. Позволяет избежать блокирующего recv().",
+    syntax: "connection.poll([timeout])",
     arguments: [
       {
-        name: 'obj',
-        description: 'Данные для добавления: строка str, байты bytes, объект IOBase или другой поддерживаемый тип.'
+        name: "timeout",
+        description:
+          "Время ожидания в секундах. 0 или отсутствие — немедленная проверка. None — блокирует до появления данных.",
+      },
+    ],
+    example: `import multiprocessing
+import time
+
+def slow_sender(conn):
+    time.sleep(1.0)
+    conn.send("данные готовы")
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+
+    p = multiprocessing.Process(target=slow_sender, args=(child_conn,))
+    p.start()
+
+    # Неблокирующая проверка
+    print(parent_conn.poll())       # False — данных ещё нет
+    print(parent_conn.poll(0.5))    # False — 0.5 с недостаточно
+    print(parent_conn.poll(2.0))    # True  — данные появились
+
+    print(parent_conn.recv())  # данные готовы
+    p.join()`,
+  },
+  {
+    name: "Connection.send_bytes(buffer[, offset[, size]])",
+
+    description:
+      "Отправляет сырые байты из буфера через соединение без сериализации pickle. Быстрее send() для бинарных данных — нет накладных расходов на pickle. Принимающий конец читает данные через recv_bytes() или recv_bytes_into().",
+    syntax: "connection.send_bytes(buffer[, offset[, size]])",
+    arguments: [
+      {
+        name: "buffer",
+        description:
+          "Bytes-like объект с данными для отправки (bytes, bytearray, memoryview).",
       },
       {
-        name: 'headers',
-        description: 'Дополнительные заголовки для этой части в виде словаря или CIMultiDict. Например, Content-Disposition, Content-Type.'
-      }
+        name: "offset",
+        description: "Начальная позиция в буфере. По умолчанию 0.",
+      },
+      {
+        name: "size",
+        description:
+          "Количество байт для отправки. По умолчанию — весь буфер начиная с offset.",
+      },
+    ],
+    example: `import multiprocessing
+import array
+
+def receiver(conn):
+    raw = conn.recv_bytes()
+    arr = array.array('i')
+    arr.frombytes(raw)
+    print(f"Получен массив: {arr.tolist()}")
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+
+    p = multiprocessing.Process(target=receiver, args=(child_conn,))
+    p.start()
+
+    # Отправляем бинарные данные напрямую
+    data = array.array('i', [1, 2, 3, 4, 5])
+    parent_conn.send_bytes(data.tobytes())
+
+    # Отправка части буфера:
+    buf = b'Hello, World!'
+    parent_conn.send_bytes(buf, offset=7, size=5)  # 'World'
+
+    p.join()`,
+  },
+  {
+    name: "Connection.recv_bytes([maxlength])",
+
+    description:
+      "Получает сырые байты, отправленные через send_bytes(). Блокирует до поступления данных. Если полученное сообщение длиннее maxlength — возбуждает OSError и соединение становится непригодным. Возвращает объект bytes.",
+    syntax: "connection.recv_bytes([maxlength])",
+    arguments: [
+      {
+        name: "maxlength",
+        description:
+          "Максимально допустимый размер сообщения в байтах. Если сообщение длиннее — возбуждает OSError.",
+      },
+    ],
+    example: `import multiprocessing
+
+def image_sender(conn):
+    # Имитация отправки бинарных данных (изображение, файл и т.д.)
+    fake_image = bytes(range(256)) * 10  # 2560 байт
+    conn.send_bytes(fake_image)
+    conn.close()
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+
+    p = multiprocessing.Process(target=image_sender, args=(child_conn,))
+    p.start()
+
+    raw_data = parent_conn.recv_bytes()
+    print(f"Получено байт: {len(raw_data)}")  # 2560
+
+    # С ограничением размера:
+    # raw_data = parent_conn.recv_bytes(maxlength=1000)
+    # OSError если > 1000 байт
+
+    p.join()`,
+  },
+  {
+    name: "Connection.recv_bytes_into(buffer[, offset])",
+
+    description:
+      "Получает байты в существующий буфер (без создания нового объекта bytes). Более эффективно по памяти, чем recv_bytes() — особенно при работе с большими данными и заранее выделенными буферами. Возвращает число прочитанных байт.",
+    syntax: "connection.recv_bytes_into(buffer[, offset])",
+    arguments: [
+      {
+        name: "buffer",
+        description:
+          "Записываемый bytes-like объект (bytearray, array, memoryview) для приёма данных.",
+      },
+      {
+        name: "offset",
+        description:
+          "Позиция в буфере, начиная с которой записываются данные. По умолчанию 0.",
+      },
+    ],
+    example: `import multiprocessing
+import array
+
+def data_sender(conn):
+    data = array.array('d', [3.14, 2.71, 1.41, 1.73])
+    conn.send_bytes(data.tobytes())
+    conn.close()
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+
+    p = multiprocessing.Process(target=data_sender, args=(child_conn,))
+    p.start()
+
+    # Заранее выделяем буфер нужного размера
+    buf = bytearray(4 * 8)  # 4 double по 8 байт = 32 байта
+    n = parent_conn.recv_bytes_into(buf)
+    print(f"Прочитано байт: {n}")  # 32
+
+    result = array.array('d')
+    result.frombytes(buf)
+    print(result.tolist())  # [3.14, 2.71, 1.41, 1.73]
+
+    p.join()`,
+  },
+  {
+    name: "Value.value",
+    description: `Атрибут объекта Value из модуля multiprocessing.sharedctypes. Обеспечивает доступ к числовому значению, хранящемуся в разделяемой памяти, из нескольких процессов одновременно.
+
+Value создаётся через multiprocessing.Value(typecode, value) и размещает одно значение в общей памяти. Атрибут .value используется как для чтения, так и для записи этого значения.
+
+Объект Value по умолчанию создаётся с блокировкой (Lock), поэтому доступ через .value потокобезопасен в большинстве сценариев. Для составных операций (чтение-изменение-запись) необходимо явно использовать контекстный менеджер with val.get_lock():.`,
+    syntax: "val.value",
+    arguments: [],
+    example: `import multiprocessing
+
+# Создание разделяемого значения (тип 'i' — целое число)
+counter = multiprocessing.Value('i', 0)
+
+def increment(val, n):
+    for _ in range(n):
+        with val.get_lock():   # явная блокировка для составных операций
+            val.value += 1
+
+processes = [
+    multiprocessing.Process(target=increment, args=(counter, 1000))
+    for _ in range(4)
+]
+for p in processes:
+    p.start()
+for p in processes:
+    p.join()
+
+print(counter.value)  # 4000
+
+# Другие типы Value:
+flag = multiprocessing.Value('b', False)   # байт (bool)
+result = multiprocessing.Value('d', 0.0)   # double (float)
+
+# Чтение и запись
+flag.value = True
+print(flag.value)   # True`,
+  },
+  {
+    name: "Array.typecode",
+    description: `Атрибут объекта Array из модуля multiprocessing.sharedctypes. Возвращает символ типа (typecode), который был задан при создании массива в разделяемой памяти.
+
+Array создаётся через multiprocessing.Array(typecode, size_or_initializer) и размещает массив фиксированного размера в общей памяти. Атрибут .typecode позволяет узнать тип элементов массива без обращения к ctypes.
+
+Символы типов совпадают со стандартным модулем array Python:
+- 'b' / 'B' — signed/unsigned byte
+- 'h' / 'H' — signed/unsigned short
+- 'i' / 'I' — signed/unsigned int
+- 'l' / 'L' — signed/unsigned long
+- 'f' — float
+- 'd' — double
+- 'c' — char (bytes)`,
+    syntax: "arr.typecode",
+    arguments: [],
+    example: `import multiprocessing
+
+# Создание разделяемого массива целых чисел
+arr = multiprocessing.Array('i', [1, 2, 3, 4, 5])
+print(arr.typecode)   # 'i'
+
+# Создание массива чисел с плавающей точкой
+farr = multiprocessing.Array('d', 10)  # 10 элементов, инициализированы 0.0
+print(farr.typecode)  # 'd'
+
+# Работа с массивом из нескольких процессов
+def fill_array(shared_arr, start, value):
+    for i in range(start, start + 2):
+        shared_arr[i] = value
+
+data = multiprocessing.Array('i', 6)
+p1 = multiprocessing.Process(target=fill_array, args=(data, 0, 10))
+p2 = multiprocessing.Process(target=fill_array, args=(data, 2, 20))
+p3 = multiprocessing.Process(target=fill_array, args=(data, 4, 30))
+for p in [p1, p2, p3]:
+    p.start()
+for p in [p1, p2, p3]:
+    p.join()
+
+print(list(data))       # [10, 10, 20, 20, 30, 30]
+print(data.typecode)    # 'i'`,
+  },
+  {
+    name: "Manager.start()",
+    description: `Метод запуска серверного процесса менеджера. Запускает отдельный процесс-сервер, который будет управлять разделяемыми объектами (dict, list, Value, Array и др.) и предоставлять к ним доступ другим процессам через прокси-объекты.
+
+Менеджер создаётся через multiprocessing.Manager() или SyncManager(). После вызова start() менеджер готов к созданию разделяемых объектов. Аргументы initializer и initargs позволяют выполнить инициализационный код в серверном процессе перед началом обслуживания.
+
+После завершения работы менеджер необходимо остановить через shutdown() или использовать контекстный менеджер with multiprocessing.Manager() as m:.`,
+    syntax: "Manager.start([initializer[, initargs]])",
+    arguments: [
+      {
+        name: "initializer",
+        description:
+          "Callable-объект, вызываемый при старте серверного процесса менеджера. Если None — инициализация не выполняется.",
+      },
+      {
+        name: "initargs",
+        description:
+          "Кортеж аргументов, передаваемых в initializer. По умолчанию ().",
+      },
+    ],
+    example: `import multiprocessing
+from multiprocessing.managers import BaseManager
+
+# Вариант 1: через контекстный менеджер (рекомендуется)
+with multiprocessing.Manager() as manager:
+    shared_dict = manager.dict()
+    shared_list = manager.list()
+    # менеджер автоматически остановится при выходе из блока
+
+# Вариант 2: явный вызов start() и shutdown()
+manager = multiprocessing.Manager()
+manager.start()
+shared = manager.dict({'key': 'value'})
+# работа с shared...
+manager.shutdown()
+
+# Вариант 3: с инициализатором
+def init_worker(db_url):
+    import sqlite3
+    global conn
+    conn = sqlite3.connect(db_url)
+
+manager = multiprocessing.Manager()
+manager.start(initializer=init_worker, initargs=(':memory:',))
+manager.shutdown()`,
+  },
+  {
+    name: "Manager.shutdown()",
+    description: `Метод остановки серверного процесса менеджера. Завершает серверный процесс, управляющий разделяемыми объектами, и освобождает связанные ресурсы.
+
+После вызова shutdown() все прокси-объекты, созданные через этот менеджер (dict, list, Value и др.), становятся недоступными — попытка обратиться к ним вызовет исключение. Вызывается автоматически при использовании контекстного менеджера with Manager() as m:.
+
+Если менеджер создан через multiprocessing.Manager() (без явного управления), следует вызывать shutdown() в блоке finally или использовать with-синтаксис для гарантированного освобождения ресурсов.`,
+    syntax: "Manager.shutdown()",
+    arguments: [],
+    example: `import multiprocessing
+
+# Безопасное завершение через with (рекомендуется)
+with multiprocessing.Manager() as m:
+    data = m.dict()
+    data['status'] = 'running'
+    # shutdown() вызывается автоматически
+
+# Явный вызов в блоке try/finally
+manager = multiprocessing.Manager()
+try:
+    shared = manager.list([1, 2, 3])
+    # обработка...
+    p = multiprocessing.Process(target=lambda lst: lst.append(4), args=(shared,))
+    p.start()
+    p.join()
+    print(list(shared))  # [1, 2, 3, 4]
+finally:
+    manager.shutdown()  # всегда завершаем менеджер
+
+# После shutdown() прокси недоступны:
+# shared.append(5)  → исключение`,
+  },
+  {
+    name: "Manager.join()",
+    description: `Метод ожидания завершения серверного процесса менеджера. Блокирует выполнение текущего процесса до тех пор, пока серверный процесс менеджера не завершится.
+
+Обычно вызывается после shutdown() для гарантии полного завершения серверного процесса перед продолжением основной программы. Если не вызвать join(), серверный процесс может остаться как зомби-процесс до завершения родительского.
+
+При использовании контекстного менеджера with Manager() as m: вызовы shutdown() и join() происходят автоматически.`,
+    syntax: "Manager.join()",
+    arguments: [],
+    example: `import multiprocessing
+
+# Явное использование shutdown() + join()
+manager = multiprocessing.Manager()
+shared_data = manager.dict()
+
+def worker(d, key, value):
+    d[key] = value
+
+processes = [
+    multiprocessing.Process(target=worker, args=(shared_data, f'key{i}', i))
+    for i in range(5)
+]
+for p in processes:
+    p.start()
+for p in processes:
+    p.join()
+
+print(dict(shared_data))  # {'key0': 0, 'key1': 1, ...}
+
+manager.shutdown()
+manager.join()   # ждём полного завершения серверного процесса
+
+# Контекстный менеджер делает это автоматически:
+with multiprocessing.Manager() as m:
+    d = m.dict()
+    # ...
+# здесь shutdown() и join() уже вызваны`,
+  },
+  {
+    name: "Manager.dict()",
+    description: `Метод создания разделяемого словаря. Возвращает прокси-объект, ссылающийся на словарь, хранящийся в серверном процессе менеджера. Поддерживает все стандартные операции dict: чтение, запись, удаление, итерация, методы keys(), values(), items() и др.
+
+В отличие от обычного dict, разделяемый словарь безопасен для использования из нескольких процессов одновременно — все операции проксируются через менеджер и выполняются атомарно на стороне сервера.
+
+Важно: составные операции (проверка + запись) не атомарны без дополнительной синхронизации. Также изменение вложенных мутабельных объектов (например, список внутри dict) не отслеживается автоматически — нужно переприсваивать значение.`,
+    syntax: "Manager.dict([iterable[, kwds]])",
+    arguments: [
+      {
+        name: "iterable",
+        description:
+          "Итерируемый объект пар (ключ, значение) или другой словарь для инициализации. Если не указан — создаётся пустой словарь.",
+      },
+      {
+        name: "kwds",
+        description:
+          "Именованные аргументы, добавляемые в словарь при создании. Аналогично dict(a=1, b=2).",
+      },
+    ],
+    example: `import multiprocessing
+
+def worker(shared_dict, key, value):
+    shared_dict[key] = value
+
+with multiprocessing.Manager() as m:
+    # Пустой словарь
+    d = m.dict()
+
+    # Инициализация из существующего словаря
+    d2 = m.dict({'a': 1, 'b': 2})
+
+    # Инициализация через kwds
+    d3 = m.dict(x=10, y=20)
+
+    # Параллельная запись из нескольких процессов
+    processes = [
+        multiprocessing.Process(target=worker, args=(d, f'key{i}', i * 10))
+        for i in range(5)
+    ]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+
+    print(dict(d))  # {'key0': 0, 'key1': 10, 'key2': 20, ...}
+
+    # Внимание: вложенные изменения нужно переприсваивать
+    d['list'] = [1, 2, 3]
+    tmp = d['list']
+    tmp.append(4)
+    d['list'] = tmp   # обязательно переприсвоить!`,
+  },
+  {
+    name: "Manager.list()",
+    description: `Метод создания разделяемого списка. Возвращает прокси-объект, ссылающийся на список, хранящийся в серверном процессе менеджера. Поддерживает все стандартные операции list: append, extend, insert, remove, pop, индексирование, срезы и итерацию.
+
+Разделяемый список безопасен для использования из нескольких процессов одновременно. Все операции проксируются через менеджер.
+
+Как и у Manager.dict(), изменения вложенных мутабельных объектов не распространяются автоматически — необходимо явно переприсваивать элемент. Для частых операций append из множества процессов рассмотрите использование Queue для лучшей производительности.`,
+    syntax: "Manager.list([iterable])",
+    arguments: [
+      {
+        name: "iterable",
+        description:
+          "Итерируемый объект для инициализации списка. Если не указан — создаётся пустой список.",
+      },
+    ],
+    example: `import multiprocessing
+
+def collect_results(shared_list, value):
+    shared_list.append(value ** 2)
+
+with multiprocessing.Manager() as m:
+    # Пустой список
+    results = m.list()
+
+    # Инициализация из итерируемого объекта
+    data = m.list([10, 20, 30])
+    print(list(data))   # [10, 20, 30]
+
+    # Параллельное заполнение из процессов
+    processes = [
+        multiprocessing.Process(target=collect_results, args=(results, i))
+        for i in range(1, 6)
+    ]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+
+    print(sorted(results))  # [1, 4, 9, 16, 25]
+
+    # Стандартные операции списка
+    data.append(40)
+    data.extend([50, 60])
+    data.insert(0, 5)
+    print(data[0])      # 5
+    print(len(data))    # 6
+
+    # Изменение вложенного списка — нужно переприсваивать
+    data[0] = [1, 2]
+    inner = data[0]
+    inner.append(3)
+    data[0] = inner     # обязательно переприсвоить!`,
+  },
+  {
+    name: "Manager.Value()",
+    description: `Метод создания разделяемого скалярного значения через менеджер. Возвращает прокси-объект с атрибутом .value для доступа к значению из нескольких процессов.
+
+В отличие от multiprocessing.Value() (разделяемая память через ctypes), Manager.Value() хранит значение в серверном процессе менеджера и доступно через прокси. Это медленнее, но позволяет работать с нестандартными типами данных и использоваться в распределённых системах через RemoteManager.
+
+Объект поддерживает тот же интерфейс, что и multiprocessing.Value: атрибут .value для чтения и записи. Синхронизация обеспечивается менеджером автоматически.`,
+    syntax: "Manager.Value(typecode, value)",
+    arguments: [
+      {
+        name: "typecode",
+        description:
+          "Символ типа данных (как в модуле array): 'i' — int, 'd' — double, 'f' — float, 'b' — byte и др.",
+      },
+      { name: "value", description: "Начальное значение переменной." },
+    ],
+    example: `import multiprocessing
+
+def increment(shared_val, n):
+    for _ in range(n):
+        shared_val.value += 1  # не атомарно — нужна внешняя синхронизация
+
+with multiprocessing.Manager() as m:
+    # Создание разделяемого целого числа
+    counter = m.Value('i', 0)
+    print(counter.value)   # 0
+
+    # Создание разделяемого числа с плавающей точкой
+    score = m.Value('d', 3.14)
+    print(score.value)     # 3.14
+
+    # Изменение значения
+    counter.value = 42
+    score.value += 1.0
+
+    # Использование из нескольких процессов (с блокировкой)
+    lock = m.Lock()
+    total = m.Value('i', 0)
+
+    def safe_increment(val, lk, n):
+        for _ in range(n):
+            with lk:
+                val.value += 1
+
+    procs = [
+        multiprocessing.Process(target=safe_increment, args=(total, lock, 100))
+        for _ in range(4)
+    ]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join()
+    print(total.value)   # 400`,
+  },
+  {
+    name: "Manager.Array()",
+    description: `Метод создания разделяемого массива фиксированного размера через менеджер. Возвращает прокси-объект, предоставляющий доступ к массиву из нескольких процессов.
+
+В отличие от multiprocessing.Array() (разделяемая память через ctypes), Manager.Array() хранит массив в серверном процессе менеджера. Это позволяет использовать его в сценариях с RemoteManager и не ограничивает тип данных ctypes.
+
+Поддерживает индексирование, срезы и итерацию. Атрибут .typecode возвращает тип элементов. Изменения через индекс (arr[i] = x) проксируются через менеджер и видны всем процессам.`,
+    syntax: "Manager.Array(typecode, sequence)",
+    arguments: [
+      {
+        name: "typecode",
+        description:
+          "Символ типа данных элементов массива: 'i' — int, 'd' — double, 'f' — float, 'b' — byte, 'c' — char и др.",
+      },
+      {
+        name: "sequence",
+        description:
+          "Последовательность (список, кортеж) для инициализации массива, либо целое число — размер массива (элементы инициализируются нулями).",
+      },
+    ],
+    example: `import multiprocessing
+
+def fill_segment(arr, start, end, value):
+    for i in range(start, end):
+        arr[i] = value
+
+with multiprocessing.Manager() as m:
+    # Инициализация из списка
+    arr = m.Array('i', [0, 1, 2, 3, 4, 5, 6, 7])
+    print(list(arr))        # [0, 1, 2, 3, 4, 5, 6, 7]
+    print(arr.typecode)     # 'i'
+
+    # Инициализация нулями (задаём размер числом)
+    farr = m.Array('d', 5)  # 5 элементов double = 0.0
+    print(list(farr))       # [0.0, 0.0, 0.0, 0.0, 0.0]
+
+    # Параллельная запись в разные сегменты
+    procs = [
+        multiprocessing.Process(target=fill_segment, args=(arr, i*2, i*2+2, (i+1)*10))
+        for i in range(4)
+    ]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join()
+
+    print(list(arr))   # [10, 10, 20, 20, 30, 30, 40, 40]
+
+    # Срезы и индексирование
+    print(arr[0])      # 10
+    print(arr[2:4])    # [20, 20]`,
+  },
+  {
+    name: "json.dump()",
+    description: `Сериализует объект Python в JSON и записывает результат в файловый объект (file-like object). Является основной функцией для записи JSON в файл.
+
+Поддерживает следующие типы Python → JSON:
+- dict → object, list/tuple → array, str → string
+- int/float → number, True/False → true/false, None → null
+
+Функция не возвращает строку — результат сразу пишется в fp. Для получения JSON как строки используйте json.dumps(). Кодировка файла должна совпадать с ожидаемой (по умолчанию ensure_ascii=True гарантирует ASCII-совместимость).`,
+    syntax:
+      "json.dump(obj, fp, *, skipkeys=False, ensure_ascii=True, check_circular=True, allow_nan=True, cls=None, indent=None, separators=None, default=None, sort_keys=False, **kw)",
+    arguments: [
+      {
+        name: "obj",
+        description:
+          "Сериализуемый объект Python (dict, list, str, int, float, bool, None).",
+      },
+      {
+        name: "fp",
+        description:
+          "Файловый объект с методом write(), куда записывается JSON. Например, открытый через open().",
+      },
+      {
+        name: "skipkeys",
+        description:
+          "Если True — ключи словаря нестандартных типов (не str/int/float/bool/None) пропускаются без исключения. По умолчанию False.",
+      },
+      {
+        name: "ensure_ascii",
+        description:
+          "Если True (по умолчанию) — все не-ASCII символы экранируются (\\uXXXX). Если False — символы Unicode записываются как есть.",
+      },
+      {
+        name: "check_circular",
+        description:
+          "Если True (по умолчанию) — проверяет цикличные ссылки. Если False — при цикличных ссылках возникнет RecursionError.",
+      },
+      {
+        name: "allow_nan",
+        description:
+          "Если True (по умолчанию) — float('nan'), float('inf'), float('-inf') записываются как NaN, Infinity, -Infinity (нестандартный JSON). Если False — бросается ValueError.",
+      },
+      {
+        name: "indent",
+        description:
+          "Отступ для форматирования: целое число (количество пробелов) или строка (например, '\\t'). None — компактный вывод без отступов.",
+      },
+      {
+        name: "separators",
+        description:
+          "Кортеж (item_separator, key_separator). По умолчанию (', ', ': ') или (',', ':') при indent=None.",
+      },
+      {
+        name: "default",
+        description:
+          "Функция, вызываемая для объектов, которые не сериализуются стандартно. Должна вернуть сериализуемый объект или бросить TypeError.",
+      },
+      {
+        name: "sort_keys",
+        description:
+          "Если True — ключи словарей сортируются по алфавиту. Полезно для воспроизводимых результатов.",
+      },
+    ],
+    example: `import json
+
+data = {
+    'name': 'Иван',
+    'age': 30,
+    'languages': ['Python', 'JavaScript'],
+    'active': True,
+    'score': None,
+}
+
+# Запись в файл
+with open('data.json', 'w', encoding='utf-8') as f:
+    json.dump(data, f, ensure_ascii=False, indent=4)
+# data.json:
+# {
+#     "name": "Иван",
+#     "age": 30,
+#     "languages": ["Python", "JavaScript"],
+#     "active": true,
+#     "score": null
+# }
+
+# Компактный вывод без отступов
+with open('compact.json', 'w') as f:
+    json.dump(data, f, separators=(',', ':'))
+
+# Кастомный default для несериализуемых типов
+from datetime import datetime
+
+def default_serializer(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f'Не сериализуем: {type(obj)}')
+
+event = {'name': 'Запуск', 'time': datetime(2024, 1, 15, 12, 0)}
+with open('event.json', 'w') as f:
+    json.dump(event, f, default=default_serializer)
+# {"name": "Запуск", "time": "2024-01-15T12:00:00"}`,
+  },
+  {
+    name: "json.dumps()",
+    description: `Сериализует объект Python в JSON-строку и возвращает её. Функционально идентична json.dump(), но вместо записи в файл возвращает строку.
+
+Используется когда нужно:
+- передать JSON в HTTP-ответе или запросе
+- сохранить JSON в переменной для дальнейшей обработки
+- логировать данные в JSON-формате
+
+Все параметры, кроме fp, идентичны json.dump(). Для записи JSON в файл используйте json.dump() — это эффективнее, чем dumps() + write().`,
+    syntax:
+      "json.dumps(obj, *, skipkeys=False, ensure_ascii=True, check_circular=True, allow_nan=True, cls=None, indent=None, separators=None, default=None, sort_keys=False, **kw)",
+    arguments: [
+      { name: "obj", description: "Сериализуемый объект Python." },
+      {
+        name: "skipkeys",
+        description:
+          "Если True — ключи нестандартных типов пропускаются. По умолчанию False.",
+      },
+      {
+        name: "ensure_ascii",
+        description:
+          "Если True (по умолчанию) — не-ASCII символы экранируются. Если False — Unicode записывается как есть.",
+      },
+      {
+        name: "check_circular",
+        description: "Проверка цикличных ссылок. По умолчанию True.",
+      },
+      {
+        name: "allow_nan",
+        description: "Разрешить NaN, Infinity, -Infinity. По умолчанию True.",
+      },
+      {
+        name: "indent",
+        description:
+          "Отступ для форматирования (число пробелов или строка). None — компактный вывод.",
+      },
+      {
+        name: "separators",
+        description:
+          "Кортеж (item_separator, key_separator) для управления разделителями.",
+      },
+      {
+        name: "default",
+        description: "Функция для обработки несериализуемых объектов.",
+      },
+      {
+        name: "sort_keys",
+        description: "Сортировать ключи словарей. По умолчанию False.",
+      },
+    ],
+    example: `import json
+
+data = {'id': 1, 'name': 'Продукт', 'price': 99.99, 'in_stock': True}
+
+# Базовая сериализация
+s = json.dumps(data)
+print(s)
+# '{"id": 1, "name": "Продукт", "price": 99.99, "in_stock": true}'
+
+# Красивый вывод с отступами
+pretty = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
+print(pretty)
+# {
+#   "id": 1,
+#   "in_stock": true,
+#   "name": "Продукт",
+#   "price": 99.99
+# }
+
+# Компактный вывод (минимум пробелов)
+compact = json.dumps(data, separators=(',', ':'))
+print(compact)
+# '{"id":1,"name":"Продукт","price":99.99,"in_stock":true}'
+
+# Использование в HTTP-ответе (Django)
+from django.http import HttpResponse
+
+def api_view(request):
+    payload = {'status': 'ok', 'data': [1, 2, 3]}
+    return HttpResponse(
+        json.dumps(payload, ensure_ascii=False),
+        content_type='application/json; charset=utf-8'
+    )
+
+# Кастомный encoder через класс
+class SetEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, set):
+            return sorted(obj)
+        return super().default(obj)
+
+print(json.dumps({'tags': {3, 1, 2}}, cls=SetEncoder))
+# '{"tags": [1, 2, 3]}'`,
+  },
+  {
+    name: "json.load()",
+    description: `Десериализует JSON из файлового объекта и возвращает соответствующий объект Python. Является основной функцией для чтения JSON из файла.
+
+JSON → Python соответствие типов:
+- object → dict, array → list, string → str
+- number (int) → int, number (float) → float
+- true/false → True/False, null → None
+
+Параметры object_hook и object_pairs_hook позволяют кастомизировать парсинг объектов JSON — например, преобразовывать словари в экземпляры классов. Параметры parse_float и parse_int позволяют управлять точностью числовых значений.`,
+    syntax:
+      "json.load(fp, *, cls=None, object_hook=None, parse_float=None, parse_int=None, parse_constant=None, object_pairs_hook=None, **kw)",
+    arguments: [
+      {
+        name: "fp",
+        description:
+          "Файловый объект с методом read(), содержащий JSON. Например, открытый через open().",
+      },
+      {
+        name: "cls",
+        description:
+          "Кастомный класс JSONDecoder для парсинга. Если None — используется стандартный декодер.",
+      },
+      {
+        name: "object_hook",
+        description:
+          "Функция, вызываемая для каждого JSON-объекта (dict). Принимает dict, возвращает любой объект — заменяет стандартный dict в результате.",
+      },
+      {
+        name: "parse_float",
+        description:
+          "Callable для парсинга чисел с плавающей точкой. По умолчанию float. Можно заменить на decimal.Decimal для точных вычислений.",
+      },
+      {
+        name: "parse_int",
+        description: "Callable для парсинга целых чисел. По умолчанию int.",
+      },
+      {
+        name: "parse_constant",
+        description:
+          "Устарело с Python 3.1. Callable для парсинга NaN, Infinity, -Infinity.",
+      },
+      {
+        name: "object_pairs_hook",
+        description:
+          "Функция, вызываемая со списком пар (ключ, значение) для каждого JSON-объекта. Имеет приоритет над object_hook. Полезно для OrderedDict или обработки дублирующихся ключей.",
+      },
+    ],
+    example: `import json
+from decimal import Decimal
+
+# Базовое чтение JSON из файла
+with open('data.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+
+print(data['name'])   # Иван
+print(type(data))     # <class 'dict'>
+
+# object_hook — преобразование словарей в объекты
+class User:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+def as_user(d):
+    if 'name' in d and 'age' in d:
+        return User(**d)
+    return d
+
+with open('user.json', 'r') as f:
+    user = json.load(f, object_hook=as_user)
+print(user.name)   # Иван
+
+# parse_float — точные вычисления с Decimal
+with open('prices.json', 'r') as f:
+    prices = json.load(f, parse_float=Decimal)
+# {"price": 99.99} → {'price': Decimal('99.99')}
+
+# object_pairs_hook — сохранение порядка и дублей
+from collections import OrderedDict
+
+with open('config.json', 'r') as f:
+    config = json.load(f, object_pairs_hook=OrderedDict)`,
+  },
+  {
+    name: "json.loads()",
+    description: `Десериализует JSON из строки (str, bytes или bytearray) и возвращает соответствующий объект Python. Функционально идентична json.load(), но принимает строку, а не файловый объект.
+
+Используется когда JSON приходит как строка — из HTTP-ответа, базы данных, переменной окружения, сообщения очереди и т.д.
+
+Начиная с Python 3.6 принимает также bytes и bytearray — они декодируются как UTF-8, UTF-16 или UTF-32 автоматически. При передаче некорректного JSON бросает json.JSONDecodeError (подкласс ValueError).`,
+    syntax:
+      "json.loads(s, *, cls=None, object_hook=None, parse_float=None, parse_int=None, parse_constant=None, object_pairs_hook=None, **kw)",
+    arguments: [
+      {
+        name: "s",
+        description:
+          "Строка (str), байты (bytes) или bytearray с JSON-данными для парсинга.",
+      },
+      {
+        name: "cls",
+        description:
+          "Кастомный класс JSONDecoder. Если None — используется стандартный.",
+      },
+      {
+        name: "object_hook",
+        description:
+          "Функция, вызываемая для каждого JSON-объекта (dict). Позволяет преобразовывать объекты в кастомные типы.",
+      },
+      {
+        name: "parse_float",
+        description:
+          "Callable для парсинга чисел с плавающей точкой. По умолчанию float. Используйте decimal.Decimal для точных вычислений.",
+      },
+      {
+        name: "parse_int",
+        description: "Callable для парсинга целых чисел. По умолчанию int.",
+      },
+      { name: "parse_constant", description: "Устарело с Python 3.1." },
+      {
+        name: "object_pairs_hook",
+        description:
+          "Функция со списком пар (ключ, значение) для каждого JSON-объекта. Имеет приоритет над object_hook.",
+      },
+    ],
+    example: `import json
+from decimal import Decimal
+
+# Базовый парсинг строки
+s = '{"name": "Анна", "age": 25, "active": true, "score": null}'
+data = json.loads(s)
+print(data)          # {'name': 'Анна', 'age': 25, 'active': True, 'score': None}
+print(data['name'])  # Анна
+print(type(data))    # <class 'dict'>
+
+# Парсинг массива
+arr = json.loads('[1, 2, 3, "four", true]')
+print(arr)           # [1, 2, 3, 'four', True]
+
+# Обработка ошибок
+try:
+    json.loads('{invalid json}')
+except json.JSONDecodeError as e:
+    print(f'Ошибка: {e.msg} на позиции {e.pos}')
+
+# parse_float для точных финансовых расчётов
+price_json = '{"price": 19.99, "tax": 1.50}'
+prices = json.loads(price_json, parse_float=Decimal)
+print(prices['price'])          # Decimal('19.99')
+print(type(prices['price']))    # <class 'decimal.Decimal'>
+
+# Парсинг ответа API (requests)
+import urllib.request
+with urllib.request.urlopen('https://api.example.com/data') as r:
+    data = json.loads(r.read().decode('utf-8'))
+
+# Парсинг bytes (Python 3.6+)
+raw = b'{"status": "ok"}'
+result = json.loads(raw)
+print(result)   # {'status': 'ok'}`,
+  },
+  {
+    name: "JSONEncoder.default()",
+    description: `Метод, вызываемый для объектов, которые JSONEncoder не умеет сериализовать стандартно. Переопределяется в подклассах для добавления поддержки кастомных типов.
+
+По умолчанию бросает TypeError. При переопределении метод должен либо вернуть JSON-сериализуемый объект (dict, list, str, int, float, bool, None), либо вызвать super().default(o) для стандартного поведения.
+
+Вызывается автоматически из encode() и iterencode() при встрече несериализуемого объекта. Это основной способ расширения JSONEncoder — гораздо проще, чем переопределять encode() целиком.`,
+    syntax: "JSONEncoder.default(o)",
+    arguments: [
+      {
+        name: "o",
+        description:
+          "Несериализуемый объект, для которого нужно вернуть JSON-совместимое представление.",
+      },
+    ],
+    example: `import json
+from datetime import datetime, date
+from decimal import Decimal
+from enum import Enum
+
+class AdvancedEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, (datetime, date)):
+            return o.isoformat()
+        if isinstance(o, Decimal):
+            return float(o)
+        if isinstance(o, Enum):
+            return o.value
+        if hasattr(o, '__dict__'):
+            return o.__dict__
+        return super().default(o)  # бросит TypeError
+
+class Status(Enum):
+    ACTIVE = 'active'
+    INACTIVE = 'inactive'
+
+class User:
+    def __init__(self, name, created):
+        self.name = name
+        self.created = created
+
+data = {
+    'user': User('Иван', datetime(2024, 1, 15)),
+    'price': Decimal('99.99'),
+    'status': Status.ACTIVE,
+    'date': date(2024, 6, 1),
+}
+
+print(json.dumps(data, cls=AdvancedEncoder, ensure_ascii=False, indent=2))
+# {
+#   "user": {"name": "Иван", "created": "2024-01-15T00:00:00"},
+#   "price": 99.99,
+#   "status": "active",
+#   "date": "2024-06-01"
+# }`,
+  },
+  {
+    name: "JSONEncoder.encode()",
+    description: `Метод, сериализующий объект Python в JSON-строку. Является основным методом кодирования — именно он вызывается при использовании json.dumps() с кастомным cls.
+
+Принимает один объект и возвращает строку. Для потоковой записи больших объектов используйте iterencode() — он возвращает итератор фрагментов, не загружая всё в память сразу.
+
+Метод можно переопределить для полного контроля над процессом кодирования, однако обычно достаточно переопределить только default() для поддержки кастомных типов.`,
+    syntax: "JSONEncoder.encode(o)",
+    arguments: [
+      {
+        name: "o",
+        description: "Объект Python для сериализации в JSON-строку.",
+      },
+    ],
+    example: `import json
+
+# Использование encode() напрямую
+encoder = json.JSONEncoder(ensure_ascii=False, indent=2)
+result = encoder.encode({'name': 'Мария', 'score': 42})
+print(result)
+# {
+#   "name": "Мария",
+#   "score": 42
+# }
+
+# encode() в подклассе
+class PrettyEncoder(json.JSONEncoder):
+    def encode(self, o):
+        if isinstance(o, list):
+            # компактный вывод для списков (всё в одну строку)
+            return '[' + ', '.join(self.encode(item) for item in o) + ']'
+        return super().encode(o)
+
+enc = PrettyEncoder()
+print(enc.encode([1, 2, 3]))        # [1, 2, 3]
+print(enc.encode({'a': [1, 2]}))    # {"a": [1, 2]}
+
+# json.dumps() использует encode() внутри
+print(json.dumps([1, 2, 3], cls=PrettyEncoder))
+
+# Эквивалентность:
+encoder = json.JSONEncoder()
+s1 = encoder.encode({'key': 'value'})
+s2 = json.dumps({'key': 'value'})
+print(s1 == s2)   # True`,
+  },
+  {
+    name: "JSONEncoder.iterencode()",
+    description: `Метод, возвращающий итератор фрагментов JSON-строки. Позволяет кодировать большие объекты по частям без загрузки всей строки в память — полезно для потоковой записи в файл или HTTP-ответ.
+
+Каждый элемент итератора — это строковый фрагмент итогового JSON. Для получения полной строки можно объединить фрагменты через ''.join(encoder.iterencode(obj)).
+
+Параметр _one_shot управляет внутренней оптимизацией (использование C-расширения). В большинстве случаев не требует изменений.`,
+    syntax: "JSONEncoder.iterencode(o)",
+    arguments: [
+      {
+        name: "o",
+        description: "Объект Python для потоковой сериализации в JSON.",
+      },
+    ],
+    example: `import json
+
+data = {'items': list(range(1000)), 'name': 'Большой список'}
+
+encoder = json.JSONEncoder()
+
+# Потоковая запись в файл без загрузки в память
+with open('large.json', 'w', encoding='utf-8') as f:
+    for chunk in encoder.iterencode(data):
+        f.write(chunk)
+
+# Потоковый HTTP-ответ (Django/Flask)
+def streaming_json_response():
+    encoder = json.JSONEncoder(ensure_ascii=False)
+    large_data = {'results': list(range(10000))}
+    # StreamingHttpResponse принимает итератор
+    from django.http import StreamingHttpResponse
+    return StreamingHttpResponse(
+        encoder.iterencode(large_data),
+        content_type='application/json'
+    )
+
+# Объединение фрагментов в строку
+encoder = json.JSONEncoder(indent=2)
+obj = {'a': 1, 'b': [1, 2, 3]}
+full_json = ''.join(encoder.iterencode(obj))
+print(full_json)
+
+# Просмотр фрагментов
+for chunk in json.JSONEncoder().iterencode({'x': [1, 2]}):
+    print(repr(chunk))
+# '{"x"' → ': ' → '[1' → ', 2' → ']' → '}'`,
+  },
+  {
+    name: "JSONEncoder.item_separator",
+    description: `Атрибут класса JSONEncoder, задающий строку-разделитель между элементами массива и парами ключ-значение в объекте.
+
+По умолчанию равен ', ' (запятая и пробел). При indent=None (компактный режим) json.dumps() автоматически использует ',' без пробела для минимизации размера.
+
+Изменяется через параметр separators в виде кортежа (item_separator, key_separator) при вызове json.dumps() или json.JSONEncoder(). Кастомное значение item_separator полезно для создания NDJSON (Newline Delimited JSON) или других форматов.`,
+    syntax: "JSONEncoder.item_separator",
+    arguments: [],
+    example: `import json
+
+# Просмотр значений по умолчанию
+enc = json.JSONEncoder()
+print(repr(enc.item_separator))   # ', '
+print(repr(enc.key_separator))    # ': '
+
+# Изменение через separators
+compact = json.dumps([1, 2, 3], separators=(',', ':'))
+print(compact)    # [1,2,3]  ← item_separator = ','
+
+pretty = json.dumps({'a': 1, 'b': 2}, separators=(', ', ': '))
+print(pretty)     # {"a": 1, "b": 2}
+
+# Кастомный encoder с изменёнными разделителями
+class CompactEncoder(json.JSONEncoder):
+    item_separator = ','
+    key_separator = ':'
+
+print(json.dumps({'x': [1, 2]}, cls=CompactEncoder))
+# {"x":[1,2]}
+
+# NDJSON: объекты разделены переносом строки, а не запятой
+objects = [{'id': 1}, {'id': 2}, {'id': 3}]
+ndjson = '\\n'.join(json.dumps(obj, separators=(',', ':')) for obj in objects)
+print(ndjson)
+# {"id":1}
+# {"id":2}
+# {"id":3}`,
+  },
+  {
+    name: "JSONEncoder.key_separator",
+    description: `Атрибут класса JSONEncoder, задающий строку-разделитель между ключом и значением в JSON-объекте.
+
+По умолчанию равен ': ' (двоеточие и пробел). В компактном режиме (separators=(',', ':')) становится ':' без пробела.
+
+Изменяется через параметр separators в виде кортежа (item_separator, key_separator). Вместе с item_separator управляет форматированием JSON — как читаемого для человека (с пробелами), так и минимального по размеру (без пробелов).`,
+    syntax: "JSONEncoder.key_separator",
+    arguments: [],
+    example: `import json
+
+# Значения по умолчанию
+enc = json.JSONEncoder()
+print(repr(enc.key_separator))    # ': '
+
+# Стандартный вывод
+print(json.dumps({'a': 1}))             # {"a": 1}  ← ': '
+
+# Компактный вывод без пробелов
+print(json.dumps({'a': 1}, separators=(',', ':')))   # {"a":1}
+
+# Кастомный разделитель (нестандартный формат)
+class ArrowEncoder(json.JSONEncoder):
+    key_separator = ' => '
+    item_separator = ' | '
+
+print(json.dumps({'x': 1, 'y': 2}, cls=ArrowEncoder))
+# {"x" => 1 | "y" => 2}
+
+# Минимальный размер JSON для передачи по сети
+data = {'status': 'ok', 'code': 200, 'data': [1, 2, 3]}
+minimal = json.dumps(data, separators=(',', ':'))
+print(f'Размер: {len(minimal)} байт')
+# {"status":"ok","code":200,"data":[1,2,3]}
+# Размер: 40 байт (против 45 со стандартными разделителями)`,
+  },
+  {
+    name: "JSONEncoder.skipkeys",
+    description: `Атрибут экземпляра JSONEncoder, определяющий поведение при встрече ключей словаря нестандартных типов (не str, int, float, bool, None).
+
+По умолчанию False — при нестандартном ключе бросается TypeError. Если True — такие ключи молча пропускаются.
+
+Задаётся через параметр skipkeys при создании JSONEncoder или через json.dumps(skipkeys=True). Полезно при работе с данными, где ключи могут быть кортежами или другими нехэшируемыми типами, но требуется продолжить сериализацию без прерывания.`,
+    syntax: "JSONEncoder.skipkeys",
+    arguments: [],
+    example: `import json
+
+data = {
+    'valid_key': 'значение',
+    (1, 2): 'кортеж-ключ',      # недопустимо в JSON
+    42: 'числовой ключ',         # допустимо — будет "42"
+    None: 'none-ключ',           # допустимо — будет "null"
+    True: 'bool-ключ',           # допустимо — будет "true"
+}
+
+# skipkeys=False (по умолчанию) — бросает TypeError
+try:
+    json.dumps(data)
+except TypeError as e:
+    print(e)   # keys must be str, int, float, bool or None, not tuple
+
+# skipkeys=True — кортеж-ключ пропускается
+result = json.dumps(data, skipkeys=True, ensure_ascii=False)
+print(result)
+# {"valid_key": "значение", "42": "числовой ключ",
+#  "null": "none-ключ", "true": "bool-ключ"}
+
+# Проверка атрибута
+enc = json.JSONEncoder(skipkeys=True)
+print(enc.skipkeys)   # True
+
+enc2 = json.JSONEncoder()
+print(enc2.skipkeys)  # False`,
+  },
+  {
+    name: "JSONEncoder.ensure_ascii",
+    description: `Атрибут экземпляра JSONEncoder, управляющий экранированием не-ASCII символов в выводе.
+
+По умолчанию True — все символы вне ASCII-диапазона экранируются как \\uXXXX. Это гарантирует совместимость результата с любой ASCII-системой, но увеличивает размер строки для текстов с кириллицей, китайскими иероглифами и другими Unicode-символами.
+
+Если False — Unicode-символы записываются как есть, что уменьшает размер вывода и делает его читаемым. При записи в файл убедитесь, что файл открыт с правильной кодировкой (encoding='utf-8').`,
+    syntax: "JSONEncoder.ensure_ascii",
+    arguments: [],
+    example: `import json
+
+data = {'сообщение': 'Привет, мир!', 'emoji': '✓'}
+
+# ensure_ascii=True (по умолчанию) — всё экранируется
+s1 = json.dumps(data)
+print(s1)
+# {"\\u0441\\u043e\\u043e\\u0431\\u0449\\u0435\\u043d\\u0438\\u0435":
+#  "\\u041f\\u0440\\u0438\\u0432\\u0435\\u0442, \\u043c\\u0438\\u0440!",
+#  "emoji": "\\u2713"}
+
+# ensure_ascii=False — Unicode как есть
+s2 = json.dumps(data, ensure_ascii=False)
+print(s2)
+# {"сообщение": "Привет, мир!", "emoji": "✓"}
+
+print(f'ASCII: {len(s1)} байт, Unicode: {len(s2)} байт')
+# ASCII: 118 байт, Unicode: 40 байт
+
+# Проверка атрибута
+enc = json.JSONEncoder(ensure_ascii=False)
+print(enc.ensure_ascii)   # False
+
+# При записи в файл с ensure_ascii=False обязательна кодировка utf-8
+with open('output.json', 'w', encoding='utf-8') as f:
+    json.dump(data, f, ensure_ascii=False)`,
+  },
+  {
+    name: "JSONEncoder.check_circular",
+    description: `Атрибут экземпляра JSONEncoder, определяющий, проверять ли объект на наличие циклических ссылок перед сериализацией.
+
+По умолчанию True — перед кодированием каждого объекта JSONEncoder проверяет, не встречался ли он уже в текущем стеке вызовов. При обнаружении цикла бросается ValueError: Circular reference detected.
+
+Если False — проверка не выполняется. Это незначительно ускоряет сериализацию, но при наличии цикличных ссылок возникнет RecursionError вместо понятного ValueError. Отключайте только если уверены в отсутствии циклов.`,
+    syntax: "JSONEncoder.check_circular",
+    arguments: [],
+    example: `import json
+
+# Создание циклической ссылки
+a = {}
+b = {'ref': a}
+a['ref'] = b   # a → b → a (цикл)
+
+# check_circular=True (по умолчанию) — понятная ошибка
+try:
+    json.dumps(a)
+except ValueError as e:
+    print(e)   # Circular reference detected
+
+# check_circular=False — RecursionError (трудно отладить)
+try:
+    json.dumps(a, check_circular=False)
+except RecursionError as e:
+    print('Переполнение стека!')
+
+# Корректный случай без цикла — check_circular=False безопасен
+data = {'items': [1, 2, 3], 'nested': {'key': 'value'}}
+result = json.dumps(data, check_circular=False)
+print(result)   # {"items": [1, 2, 3], "nested": {"key": "value"}}
+
+# Проверка атрибута
+enc = json.JSONEncoder(check_circular=False)
+print(enc.check_circular)   # False`,
+  },
+  {
+    name: "JSONEncoder.allow_nan",
+    description: `Атрибут экземпляра JSONEncoder, управляющий обработкой специальных значений float: NaN, Infinity и -Infinity.
+
+По умолчанию True — эти значения записываются как NaN, Infinity, -Infinity (нестандартное расширение JSON, поддерживаемое JavaScript, но не соответствующее RFC 8259).
+
+Если False — при встрече NaN, Infinity или -Infinity бросается ValueError. Используйте False для строгого соответствия стандарту JSON, если данные будут передаваться в системы, не поддерживающие NaN/Infinity.`,
+    syntax: "JSONEncoder.allow_nan",
+    arguments: [],
+    example: `import json
+import math
+
+data = {
+    'normal': 42.0,
+    'nan': float('nan'),
+    'inf': float('inf'),
+    'neg_inf': float('-inf'),
+    'pi': math.pi,
+}
+
+# allow_nan=True (по умолчанию) — нестандартный JSON
+result = json.dumps(data)
+print(result)
+# {"normal": 42.0, "nan": NaN, "inf": Infinity, "neg_inf": -Infinity, "pi": 3.14...}
+
+# allow_nan=False — строгий RFC 8259
+try:
+    json.dumps(data, allow_nan=False)
+except ValueError as e:
+    print(e)   # Out of range float values are not JSON compliant
+
+# Обход: заменить NaN/Infinity перед сериализацией
+def sanitize(obj):
+    if isinstance(obj, float):
+        if math.isnan(obj): return None
+        if math.isinf(obj): return None
+    return obj
+
+# Кастомный encoder с обработкой NaN
+class SafeEncoder(json.JSONEncoder):
+    def default(self, o):
+        return super().default(o)
+
+    def iterencode(self, o, _one_shot=False):
+        if isinstance(o, float) and (math.isnan(o) or math.isinf(o)):
+            o = None
+        return super().iterencode(o, _one_shot)`,
+  },
+  {
+    name: "JSONEncoder.sort_keys",
+    description: `Атрибут экземпляра JSONEncoder, определяющий, сортировать ли ключи словарей в алфавитном порядке при сериализации.
+
+По умолчанию False — ключи записываются в порядке вставки (Python 3.7+ гарантирует сохранение порядка dict). Если True — ключи сортируются по алфавиту.
+
+Сортировка полезна для:
+- воспроизводимых результатов (при сравнении файлов через diff)
+- читаемости вывода с предсказуемым порядком полей
+- тестирования, где важна стабильность вывода`,
+    syntax: "JSONEncoder.sort_keys",
+    arguments: [],
+    example: `import json
+
+data = {'zebra': 3, 'apple': 1, 'mango': 2}
+
+# sort_keys=False (по умолчанию) — порядок вставки
+print(json.dumps(data))
+# {"zebra": 3, "apple": 1, "mango": 2}
+
+# sort_keys=True — алфавитный порядок
+print(json.dumps(data, sort_keys=True))
+# {"apple": 1, "mango": 2, "zebra": 3}
+
+# Вложенные словари тоже сортируются
+nested = {'z': {'b': 2, 'a': 1}, 'a': {'y': 9, 'x': 8}}
+print(json.dumps(nested, sort_keys=True, indent=2))
+# {
+#   "a": {
+#     "x": 8,
+#     "y": 9
+#   },
+#   "z": {
+#     "a": 1,
+#     "b": 2
+#   }
+# }
+
+# Использование в тестах для стабильного сравнения
+import json
+
+def assert_json_equal(obj1, obj2):
+    s1 = json.dumps(obj1, sort_keys=True)
+    s2 = json.dumps(obj2, sort_keys=True)
+    assert s1 == s2, f'Объекты отличаются: {s1} != {s2}'`,
+  },
+  {
+    name: "JSONEncoder.indent",
+    description: `Атрибут экземпляра JSONEncoder, задающий отступ для форматирования JSON с переносами строк.
+
+Если None (по умолчанию) — JSON выводится компактно в одну строку. Если задано целое число — каждый уровень вложенности отделяется указанным количеством пробелов. Если задана строка — используется она как отступ (например, '\\t' для табуляции).
+
+При ненулевом indent автоматически добавляются переносы строк после каждого элемента массива и пары ключ-значение, что делает JSON читаемым для человека, но увеличивает размер файла.`,
+    syntax: "JSONEncoder.indent",
+    arguments: [],
+    example: `import json
+
+data = {'name': 'Python', 'version': 3.12, 'features': ['typing', 'async', 'dataclasses']}
+
+# indent=None (по умолчанию) — компактный вывод
+print(json.dumps(data))
+# {"name": "Python", "version": 3.12, "features": ["typing", "async", "dataclasses"]}
+
+# indent=4 — 4 пробела на каждый уровень
+print(json.dumps(data, indent=4))
+# {
+#     "name": "Python",
+#     "version": 3.12,
+#     "features": [
+#         "typing",
+#         "async",
+#         "dataclasses"
+#     ]
+# }
+
+# indent=2 — самый популярный вариант
+print(json.dumps(data, indent=2))
+
+# indent='\\t' — табуляция
+print(json.dumps(data, indent='\t'))
+
+# Сравнение размеров
+compact = json.dumps(data)
+pretty = json.dumps(data, indent=4)
+print(f'Компактный: {len(compact)} байт')
+print(f'Читаемый:   {len(pretty)} байт')
+
+# Проверка атрибута
+enc = json.JSONEncoder(indent=2)
+print(enc.indent)   # 2`,
+  },
+  {
+    name: "JSONDecoder.decode()",
+    description: `Метод десериализации JSON-строки в объект Python. Является основным методом класса JSONDecoder — именно он вызывается внутри json.loads().
+
+Принимает строку с валидным JSON и возвращает соответствующий объект Python. Если строка содержит данные после корректного JSON-значения (например, пробелы или дополнительный текст) — бросает JSONDecodeError.
+
+Для разбора строки, в которой JSON-значение находится не в начале, используйте raw_decode() — он принимает индекс начала.`,
+    syntax: "JSONDecoder.decode(s)",
+    arguments: [
+      {
+        name: "s",
+        description:
+          "Строка с JSON-данными. Должна содержать ровно одно JSON-значение (с возможными пробелами в конце).",
+      },
+    ],
+    example: `import json
+
+decoder = json.JSONDecoder()
+
+# Базовое декодирование
+result = decoder.decode('{"name": "Анна", "age": 25}')
+print(result)          # {'name': 'Анна', 'age': 25}
+print(type(result))    # <class 'dict'>
+
+# Декодирование разных типов
+print(decoder.decode('[1, 2, 3]'))        # [1, 2, 3]
+print(decoder.decode('"строка"'))         # строка
+print(decoder.decode('42'))               # 42
+print(decoder.decode('true'))             # True
+print(decoder.decode('null'))             # None
+
+# Ошибка при лишних данных после JSON
+try:
+    decoder.decode('{"a": 1} лишний текст')
+except json.JSONDecodeError as e:
+    print(e)   # Extra data: line 1 column 9 (char 8)
+
+# Пробелы в конце допустимы
+print(decoder.decode('42   '))    # 42 — OK
+
+# decode() эквивалентен json.loads()
+s = '{"key": "value"}'
+assert decoder.decode(s) == json.loads(s)`,
+  },
+  {
+    name: "JSONDecoder.raw_decode()",
+    description: `Метод декодирования JSON-значения из строки начиная с указанной позиции. В отличие от decode(), не требует, чтобы строка состояла только из JSON — он находит и парсит первое JSON-значение, начиная с idx, и возвращает кортеж (объект, конечная_позиция).
+
+Полезен для разбора потоков данных, где JSON-значения идут подряд без явных разделителей, или для извлечения JSON из строки с дополнительным контентом (например, NDJSON, логи, смешанные форматы).
+
+Возвращает tuple (obj, end), где end — индекс символа, следующего за распарсенным JSON. Это позволяет продолжить разбор с позиции end.`,
+    syntax: "JSONDecoder.raw_decode(s, idx=0)",
+    arguments: [
+      {
+        name: "s",
+        description: "Строка, из которой нужно декодировать JSON-значение.",
+      },
+      {
+        name: "idx",
+        description:
+          "Индекс символа в строке, с которого начинается поиск JSON-значения. По умолчанию 0 (начало строки).",
+      },
+    ],
+    example: `import json
+
+decoder = json.JSONDecoder()
+
+# Базовый пример
+obj, end = decoder.raw_decode('{"a": 1} лишний текст')
+print(obj)    # {'a': 1}
+print(end)    # 8  ← позиция после JSON
+
+# Разбор с ненулевого индекса
+s = 'prefix {"key": "val"} suffix'
+#           ^-- индекс 7
+obj, end = decoder.raw_decode(s, idx=7)
+print(obj)    # {'key': 'val'}
+print(end)    # 21
+
+# Разбор потока NDJSON (несколько JSON-объектов подряд)
+ndjson = '{"id":1}{"id":2}{"id":3}'
+pos = 0
+results = []
+while pos < len(ndjson):
+    obj, pos = decoder.raw_decode(ndjson, pos)
+    results.append(obj)
+print(results)   # [{'id': 1}, {'id': 2}, {'id': 3}]
+
+# Разбор строки с JSON + дополнительным текстом (например, лог)
+log_line = '2024-01-15 INFO {"event": "login", "user": "ivan"}'
+json_start = log_line.index('{')
+event, _ = decoder.raw_decode(log_line, json_start)
+print(event)   # {'event': 'login', 'user': 'ivan'}`,
+  },
+  {
+    name: "JSONDecoder.object_hook",
+    description: `Атрибут экземпляра JSONDecoder, хранящий функцию-callback, вызываемую для каждого декодированного JSON-объекта (object, то есть {}).
+
+Если задана, функция получает dict (уже декодированный стандартно) и должна вернуть объект, который будет использован вместо dict в итоговом результате. Это позволяет преобразовывать JSON-объекты в экземпляры классов, namedtuple, dataclass и др.
+
+Задаётся при создании JSONDecoder(object_hook=func) или через json.loads(object_hook=func). Если одновременно задан object_pairs_hook — он имеет приоритет над object_hook.`,
+    syntax: "JSONDecoder.object_hook",
+    arguments: [],
+    example: `import json
+from dataclasses import dataclass
+from datetime import datetime
+
+@dataclass
+class Point:
+    x: float
+    y: float
+
+@dataclass
+class User:
+    name: str
+    age: int
+    created: str
+
+# Преобразование JSON-объектов в dataclass
+def as_point(d):
+    if 'x' in d and 'y' in d:
+        return Point(**d)
+    return d
+
+decoder = json.JSONDecoder(object_hook=as_point)
+result = decoder.decode('{"x": 1.5, "y": 2.7}')
+print(result)         # Point(x=1.5, y=2.7)
+print(type(result))   # <class '__main__.Point'>
+
+# Через json.loads
+user = json.loads(
+    '{"name": "Мария", "age": 28, "created": "2024-01-01"}',
+    object_hook=lambda d: User(**d)
+)
+print(user.name)   # Мария
+
+# Проверка атрибута
+print(decoder.object_hook)   # <function as_point at 0x...>
+
+dec2 = json.JSONDecoder()
+print(dec2.object_hook)      # None`,
+  },
+  {
+    name: "JSONDecoder.object_pairs_hook",
+    description: `Атрибут экземпляра JSONDecoder, хранящий функцию-callback, вызываемую для каждого JSON-объекта со списком пар (ключ, значение) в порядке появления.
+
+В отличие от object_hook (получает dict), object_pairs_hook получает список кортежей [(ключ, значение), ...] — это позволяет обрабатывать дублирующиеся ключи и сохранять исходный порядок. Имеет приоритет над object_hook, если оба заданы.
+
+Типичные применения: создание OrderedDict, выявление дублирующихся ключей, преобразование в кастомные структуры с сохранением порядка полей.`,
+    syntax: "JSONDecoder.object_pairs_hook",
+    arguments: [],
+    example: `import json
+from collections import OrderedDict
+
+# Сохранение порядка ключей через OrderedDict
+decoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
+result = decoder.decode('{"z": 3, "a": 1, "m": 2}')
+print(result)          # OrderedDict([('z', 3), ('a', 1), ('m', 2)])
+print(list(result))    # ['z', 'a', 'm']  — порядок сохранён
+
+# Обнаружение дублирующихся ключей
+def detect_duplicates(pairs):
+    keys = [k for k, v in pairs]
+    if len(keys) != len(set(keys)):
+        duplicates = [k for k in keys if keys.count(k) > 1]
+        raise ValueError(f'Дублирующиеся ключи: {set(duplicates)}')
+    return dict(pairs)
+
+try:
+    json.loads('{"a": 1, "b": 2, "a": 3}', object_pairs_hook=detect_duplicates)
+except ValueError as e:
+    print(e)   # Дублирующиеся ключи: {'a'}
+
+# Без detect_duplicates стандартный парсер берёт последнее значение:
+print(json.loads('{"a": 1, "a": 2}'))   # {'a': 2}
+
+# Проверка атрибута
+dec = json.JSONDecoder(object_pairs_hook=OrderedDict)
+print(dec.object_pairs_hook)   # <class 'collections.OrderedDict'>`,
+  },
+  {
+    name: "JSONDecoder.parse_float",
+    description: `Атрибут экземпляра JSONDecoder, хранящий callable для парсинга чисел с плавающей точкой из JSON.
+
+По умолчанию None — используется встроенный float. При задании любого callable он получает строку с числом (например, '3.14') и должен вернуть нужный объект.
+
+Наиболее частое применение — замена на decimal.Decimal для точных финансовых расчётов, поскольку float не может точно представить многие десятичные дроби. Задаётся через JSONDecoder(parse_float=Decimal) или json.loads(parse_float=Decimal).`,
+    syntax: "JSONDecoder.parse_float",
+    arguments: [],
+    example: `import json
+from decimal import Decimal
+
+# По умолчанию — float (возможна потеря точности)
+result = json.loads('{"price": 19.99}')
+print(result['price'])          # 19.99
+print(type(result['price']))    # <class 'float'>
+print(result['price'] == 19.99) # True, но внутри неточно
+
+# parse_float=Decimal — точное представление
+result = json.loads('{"price": 19.99}', parse_float=Decimal)
+print(result['price'])          # 19.99
+print(type(result['price']))    # <class 'decimal.Decimal'>
+
+# Демонстрация проблемы float:
+import decimal
+a = float('0.1') + float('0.2')
+b = Decimal('0.1') + Decimal('0.2')
+print(a)   # 0.30000000000000004  ← неточно
+print(b)   # 0.3                  ← точно
+
+# Проверка атрибута
+dec = json.JSONDecoder(parse_float=Decimal)
+print(dec.parse_float)    # <class 'decimal.Decimal'>
+
+dec2 = json.JSONDecoder()
+print(dec2.parse_float)   # None (используется float)
+
+# Кастомный парсер с округлением
+import functools
+rounded_float = functools.partial(round, ndigits=2)
+result = json.loads('{"val": 1.23456789}', parse_float=rounded_float)
+print(result)   # {'val': 1.23}`,
+  },
+  {
+    name: "JSONDecoder.parse_int",
+    description: `Атрибут экземпляра JSONDecoder, хранящий callable для парсинга целых чисел из JSON.
+
+По умолчанию None — используется встроенный int. При задании callable он получает строку с целым числом (например, '42') и должен вернуть нужный объект.
+
+Используется реже, чем parse_float. Типичные случаи: ограничение диапазона значений, преобразование в numpy.int64 или другой числовой тип, логирование больших целых чисел JavaScript (до 2^53).`,
+    syntax: "JSONDecoder.parse_int",
+    arguments: [],
+    example: `import json
+
+# По умолчанию — int
+result = json.loads('{"count": 42}')
+print(type(result['count']))   # <class 'int'>
+
+# parse_int — кастомный парсер
+def bounded_int(s):
+    """Ограничивает целое число диапазоном [-1000, 1000]."""
+    value = int(s)
+    return max(-1000, min(1000, value))
+
+result = json.loads('{"a": 500, "b": 9999, "c": -5000}',
+                    parse_int=bounded_int)
+print(result)   # {'a': 500, 'b': 1000, 'c': -1000}
+
+# Использование для обнаружения больших чисел JS
+def safe_int(s):
+    value = int(s)
+    js_max = 2 ** 53
+    if abs(value) > js_max:
+        import warnings
+        warnings.warn(f'Число {value} превышает точность JavaScript')
+    return value
+
+json.loads('{"id": 9007199254740993}', parse_int=safe_int)
+# UserWarning: Число 9007199254740993 превышает точность JavaScript
+
+# Проверка атрибута
+dec = json.JSONDecoder(parse_int=int)
+print(dec.parse_int)   # <class 'int'>
+
+dec2 = json.JSONDecoder()
+print(dec2.parse_int)  # None`,
+  },
+  {
+    name: "JSONDecoder.parse_constant",
+    description: `Атрибут экземпляра JSONDecoder, хранящий callable для обработки специальных констант JSON: -Infinity, Infinity и NaN.
+
+Устарел начиная с Python 3.1 и удалён в Python 3.9. В современных версиях Python использовать не следует.
+
+В Python 3.1+ NaN, Infinity и -Infinity парсятся встроенным декодером напрямую в float значения. Атрибут сохранён для обратной совместимости, но при передаче в JSONDecoder вызывает DeprecationWarning.`,
+    syntax: "JSONDecoder.parse_constant",
+    arguments: [],
+    example: `import json
+
+# Современный способ — parse_constant устарел и удалён в Python 3.9
+# Используйте parse_float для обработки числовых значений
+
+# NaN и Infinity парсятся напрямую (при allow_nan=True у encoder)
+# Но стандартный json.loads не принимает NaN по умолчанию:
+try:
+    json.loads('NaN')
+except json.JSONDecodeError as e:
+    print(e)   # Expecting value
+
+# NaN/Infinity появляются в JSON при сериализации с allow_nan=True
+import json
+s = json.dumps(float('nan'))    # 'NaN' — нестандартный JSON
+s2 = json.dumps(float('inf'))   # 'Infinity'
+
+# Современная замена: пост-обработка через object_hook
+def handle_specials(d):
+    for k, v in d.items():
+        if v == 'NaN':
+            d[k] = float('nan')
+        elif v == 'Infinity':
+            d[k] = float('inf')
+    return d
+
+# Или используйте библиотеку simplejson с поддержкой NaN/Inf
+# pip install simplejson
+# import simplejson
+# simplejson.loads('NaN', allow_nan=True)`,
+  },
+  {
+    name: "JSONDecoder.strict",
+    description: `Атрибут экземпляра JSONDecoder, определяющий режим строгого разбора строк. Управляет тем, разрешены ли управляющие символы (коды 0–31) внутри JSON-строк.
+
+По умолчанию True (строгий режим) — управляющие символы (\\n, \\t, \\r и другие) внутри JSON-строк без экранирования вызывают JSONDecodeError. По стандарту RFC 8259 они должны быть экранированы.
+
+Если False — управляющие символы допускаются внутри строк напрямую. Это нарушает стандарт JSON, но может быть нужно для разбора нестандартных источников данных.`,
+    syntax: "JSONDecoder.strict",
+    arguments: [],
+    example: `import json
+
+# strict=True (по умолчанию) — символ переноса строки без экранирования запрещён
+decoder_strict = json.JSONDecoder(strict=True)
+
+try:
+    decoder_strict.decode('"строка\\nс переносом"')   # \\n экранирован — OK
+    decoder_strict.decode('{"a": "b"}')               # OK
+
+    # Реальный символ переноса строки без \\n — ошибка:
+    bad_json = '{"text": "line1\nline2"}'   # \n — реальный байт 0x0A
+    decoder_strict.decode(bad_json)
+except json.JSONDecodeError as e:
+    print(e)   # Invalid control character at: ...
+
+# strict=False — управляющие символы допускаются
+decoder_lenient = json.JSONDecoder(strict=False)
+result = decoder_lenient.decode('{"text": "line1\nline2"}')
+print(result)   # {'text': 'line1\nline2'}
+
+# Проверка атрибута
+print(decoder_strict.strict)    # True
+print(decoder_lenient.strict)   # False
+
+# json.loads() использует strict=True по умолчанию
+# Нет параметра strict в json.loads() — только через JSONDecoder
+data = json.JSONDecoder(strict=False).decode('{"msg": "a\tb"}')
+print(data)   # {'msg': 'a\tb'}`,
+  },
+  {
+    name: "json.JSONDecodeError()",
+    description: `Исключение, бросаемое при ошибке разбора JSON. Является подклассом ValueError и содержит подробную информацию о местонахождении ошибки в исходной строке.
+
+Дополнительные атрибуты по сравнению с ValueError:
+- msg — краткое описание ошибки (без позиции)
+- doc — полная исходная строка JSON, в которой возникла ошибка
+- pos — индекс символа, на котором произошла ошибка
+- lineno — номер строки (1-based) в doc, где возникла ошибка
+- colno — номер столбца (1-based) в строке lineno
+
+JSONDecodeError бросается из json.loads(), json.load(), JSONDecoder.decode() и JSONDecoder.raw_decode() при любой синтаксической ошибке JSON.`,
+    syntax: "json.JSONDecodeError(msg, doc, pos)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          'Строка с описанием ошибки (например, "Expecting value", "Extra data", "Invalid control character").',
+      },
+      {
+        name: "doc",
+        description: "Полная исходная строка JSON, в которой произошла ошибка.",
+      },
+      {
+        name: "pos",
+        description: "Индекс символа в doc, на котором обнаружена ошибка.",
+      },
+    ],
+    example: `import json
+
+# Типичные ошибки и их атрибуты
+examples = [
+    '{invalid}',             # неверный ключ
+    '{"a": 1,}',             # лишняя запятая
+    '{"a": undefined}',      # undefined не существует в JSON
+    '[1, 2',                 # незакрытый массив
+]
+
+for s in examples:
+    try:
+        json.loads(s)
+    except json.JSONDecodeError as e:
+        print(f'Строка:   {repr(s)}')
+        print(f'  msg:    {e.msg}')
+        print(f'  pos:    {e.pos}')
+        print(f'  lineno: {e.lineno}')
+        print(f'  colno:  {e.colno}')
+        print()
+
+# Многострочный JSON — lineno и colno точно указывают место
+multiline = """{
+    "name": "Тест",
+    "value": WRONG
+}"""
+try:
+    json.loads(multiline)
+except json.JSONDecodeError as e:
+    print(f'Ошибка на строке {e.lineno}, столбце {e.colno}')
+    print(f'Символ: {repr(e.doc[e.pos])}')
+# Ошибка на строке 3, столбце 14
+
+# JSONDecodeError является подклассом ValueError
+print(issubclass(json.JSONDecodeError, ValueError))   # True`,
+  },
+  {
+    name: "io.DEFAULT_BUFFER_SIZE",
+    description: `Константа модуля io, содержащая размер буфера по умолчанию в байтах, используемый буферизованными потоками ввода-вывода.
+
+На большинстве платформ значение равно 8192 (8 КБ). Это значение используется при создании буферизованных объектов (BufferedReader, BufferedWriter, BufferedRandom), если размер буфера явно не задан через параметр buffering.
+
+Значение определяется операционной системой через os.stat() на реальных файлах (поле st_blksize), либо берётся как константа для потоков, не связанных с файловой системой. Задание buffering=io.DEFAULT_BUFFER_SIZE эквивалентно buffering=-1 (буфер по умолчанию).`,
+    syntax: "io.DEFAULT_BUFFER_SIZE",
+    arguments: [],
+    example: `import io
+
+# Значение константы
+print(io.DEFAULT_BUFFER_SIZE)   # 8192
+
+# Явное использование при создании потока
+with open('data.bin', 'rb', buffering=io.DEFAULT_BUFFER_SIZE) as f:
+    chunk = f.read(io.DEFAULT_BUFFER_SIZE)
+
+# Чтение файла кусками по размеру буфера
+def read_in_chunks(filepath):
+    with open(filepath, 'rb') as f:
+        while True:
+            chunk = f.read(io.DEFAULT_BUFFER_SIZE)
+            if not chunk:
+                break
+            yield chunk
+
+# Использование в BufferedReader вручную
+raw = io.FileIO('data.bin', 'rb')
+buffered = io.BufferedReader(raw, buffer_size=io.DEFAULT_BUFFER_SIZE)
+data = buffered.read()
+buffered.close()
+
+# Сравнение с другими размерами буфера
+print(io.DEFAULT_BUFFER_SIZE)    # 8192  (8 KB)
+print(io.DEFAULT_BUFFER_SIZE * 8)  # 65536 (64 KB) — для больших файлов`,
+  },
+  {
+    name: "io.open()",
+    description: `Функция открытия файла и возврата потокового объекта. Является псевдонимом встроенной функции open() и предпочтительным способом работы с файлами в модуле io.
+
+Режимы открытия (параметр mode):
+- 'r' — чтение (по умолчанию), 'w' — запись, 'a' — добавление, 'x' — создание (ошибка если существует)
+- 'b' — бинарный режим, 't' — текстовый (по умолчанию)
+- '+' — чтение и запись одновременно
+- Комбинации: 'rb', 'wb', 'r+', 'rb+' и др.
+
+Возвращаемый тип зависит от комбинации параметров:
+- Текстовый файл → TextIOWrapper
+- Буферизованный бинарный → BufferedReader / BufferedWriter / BufferedRandom
+- Небуферизованный бинарный → FileIO`,
+    syntax: `io.open(file, mode='r', buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None)`,
+    arguments: [
+      {
+        name: "file",
+        description:
+          "Путь к файлу (str, bytes, Path) или дескриптор файла (int).",
+      },
+      {
+        name: "mode",
+        description:
+          "Режим открытия: 'r', 'w', 'a', 'x', 'b', 't', '+' и их комбинации. По умолчанию 'r' (текстовое чтение).",
+      },
+      {
+        name: "buffering",
+        description:
+          "-1 — буфер по умолчанию; 0 — без буфера (только бинарный режим); 1 — построчная буферизация; >1 — размер буфера в байтах.",
+      },
+      {
+        name: "encoding",
+        description:
+          "Кодировка для текстового режима (например, 'utf-8', 'cp1251'). None — системная кодировка (locale.getpreferredencoding).",
+      },
+      {
+        name: "errors",
+        description:
+          "Обработка ошибок кодирования: 'strict' (ошибка), 'ignore' (пропустить), 'replace' (заменить на ?), 'surrogateescape' и др.",
+      },
+      {
+        name: "newline",
+        description:
+          "Управление переводом строк: None — универсальный режим (\\n, \\r, \\r\\n → \\n); '' — без перевода; '\\n', '\\r', '\\r\\n' — конкретный разделитель.",
+      },
+      {
+        name: "closefd",
+        description:
+          "Если False и file — дескриптор (int) — дескриптор не закрывается при закрытии потока. По умолчанию True.",
+      },
+      {
+        name: "opener",
+        description:
+          "Кастомный callable(path, flags) для открытия файла. Если None — используется os.open().",
+      },
+    ],
+    example: `import io
+
+# Текстовое чтение (по умолчанию)
+with io.open('readme.txt', 'r', encoding='utf-8') as f:
+    text = f.read()
+
+# Текстовая запись
+with io.open('output.txt', 'w', encoding='utf-8', newline='\\n') as f:
+    f.write('Привет, мир!\\n')
+
+# Бинарное чтение
+with io.open('image.png', 'rb') as f:
+    header = f.read(8)
+
+# Бинарная запись без буфера
+with io.open('raw.bin', 'wb', buffering=0) as f:
+    f.write(b'\\x00\\x01\\x02')
+
+# Чтение и запись одновременно
+with io.open('data.txt', 'r+', encoding='utf-8') as f:
+    content = f.read()
+    f.seek(0)
+    f.write(content.upper())
+
+# Кастомный opener (открыть с флагами ОС)
+import os
+def my_opener(path, flags):
+    return os.open(path, flags, mode=0o600)  # права 600
+
+with io.open('secret.txt', 'w', opener=my_opener) as f:
+    f.write('секрет')
+
+# Обработка ошибок кодировки
+with io.open('mixed.txt', 'r', encoding='utf-8', errors='replace') as f:
+    text = f.read()  # некорректные байты → '?'`,
+  },
+  {
+    name: "io.open_code()",
+    description: `Функция открытия файла для чтения исходного кода Python. Предназначена для хуков импорта и инструментов, читающих .py-файлы — обеспечивает правильную обработку в средах с зашифрованным или защищённым кодом.
+
+В отличие от io.open(), функция open_code() открывает файл без трансляции переводов строк и предполагает, что файл будет декодирован как исходный код. В CPython является псевдонимом io.open(path, 'rb'), но может быть переопределена через sys.set_coroutine_origin_tracking_depth() или аудит-хуки.
+
+Позволяет среде выполнения (например, с шифрованием исходников) перехватывать чтение .py-файлов через механизм аудита Python (sys.addaudithook).`,
+    syntax: "io.open_code(path)",
+    arguments: [
+      {
+        name: "path",
+        description:
+          "Путь к файлу исходного кода Python (str). Файл открывается в бинарном режиме.",
+      },
+    ],
+    example: `import io
+
+# Чтение исходного кода Python-файла
+with io.open_code('mymodule.py') as f:
+    source_bytes = f.read()
+
+print(type(source_bytes))   # <class 'bytes'>
+print(source_bytes[:50])    # b'import os\\nimport sys\\n...'
+
+# Декодирование прочитанного кода
+source = source_bytes.decode('utf-8')
+print(source[:100])
+
+# Компиляция прочитанного кода
+code = compile(source_bytes, 'mymodule.py', 'exec')
+exec(code)
+
+# Отличие от io.open():
+# io.open(path, 'r') — текстовый режим, трансляция переносов строк
+# io.open_code(path) — бинарный режим, без трансляции, с аудит-хуком
+
+# Использование в инструментах импорта
+import sys
+
+def my_audit_hook(event, args):
+    if event == 'open':
+        path, mode, flags = args
+        print(f'Открывается файл: {path} (mode={mode})')
+
+sys.addaudithook(my_audit_hook)
+# Теперь io.open_code() будет вызывать хук при открытии файла`,
+  },
+  {
+    name: "io.UnsupportedOperation",
+    description: `Исключение, бросаемое при вызове метода, не поддерживаемого данным потоком ввода-вывода. Является подклассом одновременно OSError и ValueError.
+
+Типичные случаи возникновения:
+- Вызов write() на потоке, открытом только для чтения
+- Вызов read() на потоке, открытом только для записи
+- Вызов seek() на потоке, не поддерживающем позиционирование (например, sys.stdin)
+- Вызов truncate() на потоке без поддержки этой операции
+
+Наследование от обоих OSError и ValueError позволяет перехватывать исключение как любым из этих типов.`,
+    syntax: "io.UnsupportedOperation",
+    arguments: [],
+    example: `import io
+
+# Попытка записи в поток только для чтения
+with io.open('data.txt', 'r') as f:
+    try:
+        f.write('текст')
+    except io.UnsupportedOperation as e:
+        print(e)   # write
+
+# Попытка позиционирования в непозиционируемом потоке
+import sys
+try:
+    sys.stdin.seek(0)
+except io.UnsupportedOperation as e:
+    print(e)   # underlying stream is not seekable
+
+# Попытка чтения из потока только для записи
+stream = io.BytesIO()
+stream.read()   # OK — BytesIO поддерживает оба направления
+
+write_only = io.open('output.txt', 'w')
+try:
+    write_only.read()
+except io.UnsupportedOperation as e:
+    print(e)   # not readable
+finally:
+    write_only.close()
+
+# UnsupportedOperation является подклассом OSError и ValueError
+print(issubclass(io.UnsupportedOperation, OSError))    # True
+print(issubclass(io.UnsupportedOperation, ValueError)) # True
+
+# Перехват как OSError тоже работает
+try:
+    io.open('data.txt', 'r').write('x')
+except OSError as e:
+    print(type(e).__name__)   # UnsupportedOperation`,
+  },
+  {
+    name: "io.SEEK_SET",
+    description: `Константа позиционирования потока — начало файла. Числовое значение: 0.
+
+Используется как аргумент whence в методе seek() для указания, что смещение отсчитывается от начала файла. Это наиболее распространённый режим позиционирования: seek(n, io.SEEK_SET) перемещает указатель на позицию n от начала файла.
+
+Числовое значение 0 можно передавать напрямую (seek(n, 0)), однако использование именованной константы io.SEEK_SET делает код более читаемым и явным.`,
+    syntax: "io.SEEK_SET",
+    arguments: [],
+    example: `import io
+
+with io.open('data.txt', 'r+', encoding='utf-8') as f:
+    f.write('Hello, World!')
+
+    # SEEK_SET — от начала файла (значение 0)
+    f.seek(0, io.SEEK_SET)     # перейти в начало
+    print(f.read(5))           # Hello
+
+    f.seek(7, io.SEEK_SET)     # перейти на позицию 7 от начала
+    print(f.read(5))           # World
+
+    # SEEK_SET используется по умолчанию (whence=0)
+    f.seek(0)                  # то же самое, что seek(0, io.SEEK_SET)
+    print(f.read())            # Hello, World!
+
+# Проверка значения константы
+print(io.SEEK_SET)   # 0
+print(io.SEEK_CUR)   # 1
+print(io.SEEK_END)   # 2
+
+# Работа с бинарным потоком
+with io.open('binary.bin', 'rb') as f:
+    f.seek(0, io.SEEK_SET)    # начало файла
+    header = f.read(4)         # первые 4 байта (например, magic bytes PNG)
+    print(header)`,
+  },
+  {
+    name: "io.SEEK_CUR",
+    description: `Константа позиционирования потока — текущая позиция. Числовое значение: 1.
+
+Используется как аргумент whence в методе seek() для указания, что смещение отсчитывается от текущей позиции указателя. Положительное смещение двигает вперёд, отрицательное — назад.
+
+seek(0, io.SEEK_CUR) — удобный способ узнать текущую позицию без изменения, хотя метод tell() делает то же самое более явно.`,
+    syntax: "io.SEEK_CUR",
+    arguments: [],
+    example: `import io
+
+with io.open('data.bin', 'rb') as f:
+    # Чтение заголовка
+    header = f.read(8)
+    print(f'После header: позиция {f.tell()}')  # 8
+
+    # SEEK_CUR — смещение от текущей позиции (значение 1)
+    f.seek(4, io.SEEK_CUR)    # пропустить 4 байта вперёд
+    print(f'После пропуска: позиция {f.tell()}')  # 12
+
+    f.seek(-2, io.SEEK_CUR)   # вернуться на 2 байта назад
+    print(f'После возврата: позиция {f.tell()}')  # 10
+
+    # Узнать текущую позицию (эквивалент tell())
+    pos = f.seek(0, io.SEEK_CUR)
+    print(f'Текущая позиция: {pos}')   # 10
+
+# Пример: пропуск блоков фиксированного размера
+def read_blocks(filepath, block_size, skip_every_n=2):
+    with io.open(filepath, 'rb') as f:
+        i = 0
+        while True:
+            block = f.read(block_size)
+            if not block:
+                break
+            if i % skip_every_n == 0:
+                yield block
+            else:
+                f.seek(block_size, io.SEEK_CUR)
+            i += 1`,
+  },
+  {
+    name: "io.SEEK_END",
+    description: `Константа позиционирования потока — конец файла. Числовое значение: 2.
+
+Используется как аргумент whence в методе seek() для указания, что смещение отсчитывается от конца файла. Смещение обычно отрицательное (для перемещения назад от конца) или нулевое (перейти в самый конец).
+
+seek(0, io.SEEK_END) — стандартный способ перейти в конец файла и узнать его размер через tell(). Поддерживается не всеми потоками — для некоторых (сокеты, pipes) вызывает io.UnsupportedOperation.`,
+    syntax: "io.SEEK_END",
+    arguments: [],
+    example: `import io
+
+with io.open('data.bin', 'rb') as f:
+    # SEEK_END — смещение от конца файла (значение 2)
+
+    # Переход в конец файла
+    f.seek(0, io.SEEK_END)
+    file_size = f.tell()
+    print(f'Размер файла: {file_size} байт')
+
+    # Чтение последних N байт
+    n = 16
+    f.seek(-n, io.SEEK_END)
+    tail = f.read(n)
+    print(f'Последние {n} байт: {tail}')
+
+    # Чтение предпоследнего блока
+    block_size = 512
+    f.seek(-block_size * 2, io.SEEK_END)
+    prev_block = f.read(block_size)
+
+# Получение размера файла без полного чтения
+def get_file_size(filepath):
+    with io.open(filepath, 'rb') as f:
+        f.seek(0, io.SEEK_END)
+        return f.tell()
+
+print(get_file_size('data.bin'))   # размер в байтах
+
+# Добавление в конец (эквивалентно режиму 'a')
+with io.open('log.txt', 'r+b') as f:
+    f.seek(0, io.SEEK_END)
+    f.write(b'новая запись\\n')`,
+  },
+  {
+    name: "IOBase.close()",
+    description: `Метод закрытия потока. Освобождает системные ресурсы, связанные с потоком: дескриптор файла, буферы, сетевые соединения. После закрытия любой вызов метода ввода-вывода бросает ValueError.
+
+Метод идемпотентен — повторный вызов close() не вызывает исключения и не имеет эффекта. Внутри close() вызывает flush() для сброса буфера перед закрытием.
+
+Рекомендуется использовать контекстный менеджер with, который гарантирует вызов close() даже при исключении. Прямой вызов close() требуется только при работе вне контекстного менеджера — в этом случае используйте try/finally.`,
+    syntax: "IOBase.close()",
+    arguments: [],
+    example: `import io
+
+# Рекомендуемый способ — контекстный менеджер
+with open('data.txt', 'r') as f:
+    text = f.read()
+# close() вызван автоматически, даже при исключении
+
+# Явный вызов close() в try/finally
+f = open('data.txt', 'r')
+try:
+    text = f.read()
+finally:
+    f.close()   # гарантированное закрытие
+
+# Идемпотентность — повторный вызов безопасен
+f = open('data.txt', 'r')
+f.close()
+f.close()   # не вызывает ошибки
+
+# После закрытия — ValueError
+f = open('data.txt', 'r')
+f.close()
+try:
+    f.read()
+except ValueError as e:
+    print(e)   # I/O operation on closed file.
+
+# BytesIO и StringIO тоже закрываются
+buf = io.BytesIO(b'data')
+buf.close()
+print(buf.closed)   # True`,
+  },
+  {
+    name: "IOBase.closed",
+    description: `Атрибут (свойство) потока, показывающий, закрыт ли поток. Возвращает True если поток закрыт, False если открыт.
+
+Доступен только для чтения — установить напрямую нельзя. Устанавливается в True после вызова close() или при выходе из контекстного менеджера with.
+
+Используется для проверки состояния потока перед выполнением операций ввода-вывода, а также в отладочных целях и при написании контекстных менеджеров.`,
+    syntax: "IOBase.closed",
+    arguments: [],
+    example: `import io
+
+# Проверка состояния файла
+f = open('data.txt', 'r')
+print(f.closed)   # False
+
+f.close()
+print(f.closed)   # True
+
+# В контекстном менеджере
+with open('data.txt', 'r') as f:
+    print(f.closed)   # False
+print(f.closed)       # True — закрыт после выхода из with
+
+# Защитная проверка перед операцией
+def safe_read(f):
+    if f.closed:
+        raise ValueError('Попытка чтения из закрытого потока')
+    return f.read()
+
+# StringIO и BytesIO
+buf = io.StringIO('hello')
+print(buf.closed)   # False
+buf.close()
+print(buf.closed)   # True
+
+# Нельзя установить напрямую
+try:
+    f.closed = False
+except AttributeError as e:
+    print(e)   # can't set attribute`,
+  },
+  {
+    name: "IOBase.fileno()",
+    description: `Метод, возвращающий целочисленный дескриптор файла (file descriptor) операционной системы, связанный с потоком.
+
+Дескриптор файла — это целое число, используемое ядром ОС для идентификации открытого файла или другого ресурса (сокета, трубы). Стандартные дескрипторы: 0 — stdin, 1 — stdout, 2 — stderr.
+
+Если поток не связан с реальным файловым дескриптором (например, io.BytesIO, io.StringIO) — бросает io.UnsupportedOperation. Используется при работе с низкоуровневыми API ОС через модуль os.`,
+    syntax: "IOBase.fileno()",
+    arguments: [],
+    example: `import io
+import os
+
+# Дескриптор реального файла
+with open('data.txt', 'r') as f:
+    fd = f.fileno()
+    print(fd)          # например: 3, 4, 5...
+    print(type(fd))    # <class 'int'>
+
+# Стандартные дескрипторы
+import sys
+print(sys.stdin.fileno())   # 0
+print(sys.stdout.fileno())  # 1
+print(sys.stderr.fileno())  # 2
+
+# Использование с os (низкоуровневое чтение)
+with open('data.bin', 'rb') as f:
+    fd = f.fileno()
+    data = os.read(fd, 1024)   # низкоуровневое чтение через ОС
+
+# BytesIO и StringIO не имеют дескриптора
+buf = io.BytesIO(b'data')
+try:
+    buf.fileno()
+except io.UnsupportedOperation as e:
+    print(e)   # fileno
+
+# Проверка дескриптора через os
+with open('data.txt', 'r') as f:
+    fd = f.fileno()
+    stat = os.fstat(fd)   # статистика файла по дескриптору
+    print(stat.st_size)   # размер файла`,
+  },
+  {
+    name: "IOBase.flush()",
+    description: `Метод принудительного сброса буфера записи в базовый поток или файловую систему. Гарантирует, что все данные из буфера приложения переданы в ОС.
+
+Важно понимать разницу уровней:
+- flush() сбрасывает буфер Python → буфер ОС
+- os.fsync(f.fileno()) дополнительно сбрасывает буфер ОС → физический диск
+
+После flush() данные доступны другим процессам, читающим этот файл, но не обязательно записаны на диск. Для гарантированной записи на диск используйте os.fsync() после flush().
+
+Для потоков без буферизации (FileIO с buffering=0) flush() не имеет эффекта. Вызывается автоматически при close().`,
+    syntax: "IOBase.flush()",
+    arguments: [],
+    example: `import io
+import os
+
+# Принудительный сброс буфера
+with open('log.txt', 'w', encoding='utf-8') as f:
+    f.write('Запись 1\\n')
+    f.flush()   # данные переданы в ОС, другие процессы их видят
+    f.write('Запись 2\\n')
+    # flush() вызывается автоматически при close()
+
+# Реальная запись на диск (не только в буфер ОС)
+with open('critical.txt', 'w') as f:
+    f.write('критические данные')
+    f.flush()
+    os.fsync(f.fileno())   # гарантированная запись на физический диск
+
+# Потоковый вывод (например, прогресс)
+import sys
+for i in range(5):
+    sys.stdout.write(f'\\rШаг {i+1}/5...')
+    sys.stdout.flush()   # без flush() вывод будет буферизован
+
+# BytesIO — flush() безопасен, но не имеет эффекта
+buf = io.BytesIO()
+buf.write(b'data')
+buf.flush()   # OK, ничего не происходит
+print(buf.getvalue())   # b'data'`,
+  },
+  {
+    name: "IOBase.isatty()",
+    description: `Метод проверки, подключён ли поток к интерактивному терминалу (TTY — TeleTYpewriter). Возвращает True если поток является терминалом, False в противном случае.
+
+Используется для определения интерактивного режима работы: если вывод идёт в терминал — можно использовать цветной вывод, прогресс-бары, интерактивные запросы. Если в файл или pipe — лучше простой текст.
+
+Большинство файлов, BytesIO и StringIO возвращают False. sys.stdout возвращает True при запуске в интерактивной оболочке и False при перенаправлении вывода (python script.py > file.txt).`,
+    syntax: "IOBase.isatty()",
+    arguments: [],
+    example: `import io
+import sys
+
+# Проверка интерактивного терминала
+print(sys.stdout.isatty())   # True в терминале, False при > file.txt
+print(sys.stdin.isatty())    # True в интерактивном режиме
+
+# Адаптивный вывод
+def print_progress(current, total):
+    if sys.stdout.isatty():
+        # Интерактивный режим — перезаписываем строку
+        print(f'\\r{current}/{total} ({current/total:.0%})', end='', flush=True)
+    else:
+        # Pipe или файл — обычный вывод
+        print(f'Progress: {current}/{total}')
+
+# Цветной вывод только в терминале
+def colored(text, color_code):
+    if sys.stdout.isatty():
+        return f'\\033[{color_code}m{text}\\033[0m'
+    return text
+
+print(colored('Успех!', '32'))   # зелёный в терминале, обычный в файле
+
+# Обычные файлы и буферы — всегда False
+with open('data.txt', 'r') as f:
+    print(f.isatty())   # False
+
+buf = io.BytesIO()
+print(buf.isatty())     # False`,
+  },
+  {
+    name: "IOBase.readable()",
+    description: `Метод проверки, поддерживает ли поток чтение. Возвращает True если поток открыт для чтения, False в противном случае.
+
+Позволяет проверить возможность чтения до фактической попытки — это удобнее, чем перехватывать io.UnsupportedOperation. Потоки, открытые только для записи ('w', 'a', 'x'), возвращают False.
+
+Используется при написании универсальных функций, принимающих произвольный поток ввода-вывода, и при реализации кастомных классов-потоков.`,
+    syntax: "IOBase.readable()",
+    arguments: [],
+    example: `import io
+
+# Проверка читаемости потоков
+with open('data.txt', 'r') as f:
+    print(f.readable())   # True
+
+with open('data.txt', 'w') as f:
+    print(f.readable())   # False
+
+with open('data.txt', 'r+') as f:
+    print(f.readable())   # True (r+ — чтение и запись)
+
+# BytesIO и StringIO — всегда читаемы
+print(io.BytesIO(b'data').readable())    # True
+print(io.StringIO('text').readable())    # True
+
+# Универсальная функция для любого потока
+def safe_read(stream, n=-1):
+    if not stream.readable():
+        raise io.UnsupportedOperation('Поток не поддерживает чтение')
+    return stream.read(n)
+
+# Кастомный класс потока
+class WriteOnlyStream(io.RawIOBase):
+    def readable(self):
+        return False
+
+    def writable(self):
+        return True
+
+stream = WriteOnlyStream()
+print(stream.readable())   # False
+print(stream.writable())   # True`,
+  },
+  {
+    name: "IOBase.readline()",
+    description: `Метод чтения одной строки из потока. Читает символы до тех пор, пока не встретит символ новой строки '\\n', конец файла или не прочитает size байт/символов.
+
+Возвращённая строка включает символ новой строки '\\n' (если он присутствует в файле). Последняя строка файла без '\\n' возвращается как есть. Пустая строка '' означает конец файла.
+
+В бинарном режиме возвращает bytes с b'\\n' в конце. В текстовом — str. Параметр size ограничивает максимальное количество читаемых байт/символов (строка может оказаться короче полной строки файла).`,
+    syntax: "IOBase.readline(size=-1)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Максимальное количество байт/символов для чтения. -1 (по умолчанию) — читать до конца строки или EOF.",
+      },
+    ],
+    example: `import io
+
+# Создаём тестовый файл
+with open('lines.txt', 'w', encoding='utf-8') as f:
+    f.write('строка 1\\nстрока 2\\nстрока 3\\n')
+
+# Чтение строк по одной
+with open('lines.txt', 'r', encoding='utf-8') as f:
+    print(repr(f.readline()))   # 'строка 1\\n'
+    print(repr(f.readline()))   # 'строка 2\\n'
+    print(repr(f.readline()))   # 'строка 3\\n'
+    print(repr(f.readline()))   # ''  ← EOF
+
+# Чтение с ограничением по размеру
+with open('lines.txt', 'r') as f:
+    print(repr(f.readline(5)))   # 'строк'  ← только 5 символов
+
+# Итерация по строкам (эффективнее readlines())
+with open('lines.txt', 'r', encoding='utf-8') as f:
+    for line in f:   # использует readline() внутри
+        print(line.rstrip())
+
+# StringIO
+buf = io.StringIO('line 1\\nline 2\\nline 3')
+print(buf.readline())   # 'line 1\\n'
+print(buf.readline())   # 'line 2\\n'
+
+# BytesIO
+bbuf = io.BytesIO(b'row1\\nrow2\\n')
+print(bbuf.readline())   # b'row1\\n'`,
+  },
+  {
+    name: "IOBase.readlines()",
+    description: `Метод чтения всех строк потока в список. Читает поток до EOF и возвращает список строк, каждая из которых заканчивается символом '\\n' (кроме последней, если файл не заканчивается переносом строки).
+
+Параметр hint позволяет ограничить количество читаемых байт: метод читает строки, пока суммарный их размер не превысит hint. Это полезно для частичного чтения больших файлов по строкам.
+
+Для больших файлов предпочтительно итерироваться по файловому объекту напрямую (for line in f:) — это не загружает весь файл в память. readlines() загружает все строки сразу.`,
+    syntax: "IOBase.readlines(hint=-1)",
+    arguments: [
+      {
+        name: "hint",
+        description:
+          "Приблизительный лимит байт для чтения. -1 (по умолчанию) — читать весь файл. При hint > 0 читаются строки, пока их суммарный размер не превысит hint.",
+      },
+    ],
+    example: `import io
+
+with open('lines.txt', 'w') as f:
+    f.write('line 1\\nline 2\\nline 3\\nline 4\\n')
+
+# Чтение всех строк
+with open('lines.txt', 'r') as f:
+    lines = f.readlines()
+print(lines)   # ['line 1\\n', 'line 2\\n', 'line 3\\n', 'line 4\\n']
+
+# Удаление символов новой строки
+lines = [l.rstrip('\\n') for l in lines]
+
+# С параметром hint — частичное чтение
+with open('lines.txt', 'r') as f:
+    partial = f.readlines(hint=14)   # ~14 байт → ['line 1\\n', 'line 2\\n']
+print(partial)
+
+# Эффективная альтернатива для больших файлов (без загрузки в память)
+with open('large.txt', 'r') as f:
+    for line in f:               # итерация строка за строкой
+        process(line.rstrip())
+
+# StringIO
+buf = io.StringIO('a\\nb\\nc\\n')
+print(buf.readlines())   # ['a\\n', 'b\\n', 'c\\n']
+
+# BytesIO
+bbuf = io.BytesIO(b'x\\ny\\nz\\n')
+print(bbuf.readlines())   # [b'x\\n', b'y\\n', b'z\\n']`,
+  },
+  {
+    name: "IOBase.seek()",
+    description: `Метод изменения текущей позиции в потоке. Перемещает указатель чтения/записи на заданное смещение относительно точки отсчёта whence и возвращает новую абсолютную позицию.
+
+Значения whence:
+- io.SEEK_SET (0) — от начала файла (по умолчанию)
+- io.SEEK_CUR (1) — от текущей позиции
+- io.SEEK_END (2) — от конца файла
+
+Не все потоки поддерживают позиционирование. Сокеты, pipes и stdin/stdout при запуске из скрипта не поддерживают seek() и бросают io.UnsupportedOperation. Поддержку можно проверить через seekable().
+
+В текстовом режиме допустимы только seek(0) и значения, возвращённые предыдущим вызовом tell().`,
+    syntax: "IOBase.seek(offset, whence=SEEK_SET)",
+    arguments: [
+      {
+        name: "offset",
+        description:
+          "Смещение в байтах/символах. В текстовом режиме должен быть 0 или значение из tell().",
+      },
+      {
+        name: "whence",
+        description:
+          "Точка отсчёта: io.SEEK_SET (0) — начало, io.SEEK_CUR (1) — текущая позиция, io.SEEK_END (2) — конец файла. По умолчанию SEEK_SET.",
+      },
+    ],
+    example: `import io
+
+with open('data.bin', 'rb') as f:
+    # Перейти в начало файла
+    f.seek(0, io.SEEK_SET)   # или просто f.seek(0)
+    header = f.read(4)
+
+    # Перейти на конкретную позицию
+    f.seek(100)
+    data = f.read(20)
+
+    # Пропустить вперёд от текущей позиции
+    f.seek(50, io.SEEK_CUR)
+
+    # Перейти к последним 10 байтам
+    f.seek(-10, io.SEEK_END)
+    tail = f.read()
+
+    # Узнать размер файла
+    f.seek(0, io.SEEK_END)
+    size = f.tell()
+    print(f'Размер: {size} байт')
+
+# Текстовый режим — только seek(0) или значения из tell()
+with open('text.txt', 'r', encoding='utf-8') as f:
+    pos = f.tell()
+    line = f.readline()
+    f.seek(pos)           # вернуться к началу строки
+    line_again = f.readline()
+
+# BytesIO — полная поддержка seek
+buf = io.BytesIO(b'Hello, World!')
+buf.seek(7)
+print(buf.read())   # b'World!'
+buf.seek(-6, io.SEEK_END)
+print(buf.read())   # b'World!'`,
+  },
+  {
+    name: "IOBase.seekable()",
+    description: `Метод проверки, поддерживает ли поток позиционирование (метод seek()). Возвращает True если seek(), tell() и truncate() поддерживаются, False в противном случае.
+
+Файлы на диске поддерживают позиционирование. Сокеты, трубы (pipes), stdin/stdout в неинтерактивном режиме — не поддерживают. Попытка вызвать seek() на непозиционируемом потоке бросает io.UnsupportedOperation.
+
+Используется при написании универсального кода, работающего с произвольными потоками.`,
+    syntax: "IOBase.seekable()",
+    arguments: [],
+    example: `import io
+import sys
+
+# Файлы поддерживают позиционирование
+with open('data.txt', 'r') as f:
+    print(f.seekable())   # True
+
+# StringIO и BytesIO — поддерживают
+print(io.BytesIO(b'data').seekable())     # True
+print(io.StringIO('text').seekable())     # True
+
+# stdin/stdout — зависит от среды
+print(sys.stdin.seekable())    # False (обычно)
+print(sys.stdout.seekable())   # False (обычно)
+
+# Безопасное позиционирование
+def rewind_if_possible(stream):
+    if stream.seekable():
+        stream.seek(0)
+        return True
+    return False
+
+# Кастомный класс без позиционирования
+class ForwardOnlyStream(io.RawIOBase):
+    def seekable(self):
+        return False
+
+    def readable(self):
+        return True
+
+stream = ForwardOnlyStream()
+print(stream.seekable())   # False
+try:
+    stream.seek(0)
+except io.UnsupportedOperation:
+    print('Позиционирование не поддерживается')`,
+  },
+  {
+    name: "IOBase.tell()",
+    description: `Метод получения текущей позиции указателя в потоке. Возвращает целое число — количество байт/символов от начала файла до текущей позиции.
+
+В бинарном режиме возвращает абсолютное смещение в байтах. В текстовом режиме возвращает непрозрачный токен (opaque number) — его значение зависит от реализации и не обязательно равно числу символов; используется только для передачи обратно в seek().
+
+Вызов tell() не изменяет текущую позицию. Эквивалент seek(0, SEEK_CUR). Бросает io.UnsupportedOperation для потоков без поддержки позиционирования.`,
+    syntax: "IOBase.tell()",
+    arguments: [],
+    example: `import io
+
+# Бинарный режим — байтовое смещение
+with open('data.bin', 'rb') as f:
+    print(f.tell())   # 0 (начало)
+    f.read(10)
+    print(f.tell())   # 10
+    f.seek(0)
+    print(f.tell())   # 0
+
+# Запоминание позиции для возврата
+with open('data.txt', 'r', encoding='utf-8') as f:
+    f.readline()              # прочитали первую строку
+    bookmark = f.tell()       # запомнили позицию
+    f.readline()              # прочитали вторую строку
+    f.seek(bookmark)          # вернулись
+    line = f.readline()       # снова вторая строка
+
+# Размер файла через tell()
+def get_size(filepath):
+    with open(filepath, 'rb') as f:
+        f.seek(0, io.SEEK_END)
+        return f.tell()
+
+# BytesIO
+buf = io.BytesIO(b'Hello, World!')
+buf.read(5)
+print(buf.tell())   # 5
+
+buf.seek(0)
+print(buf.tell())   # 0
+
+# StringIO
+sbuf = io.StringIO('абвгд')
+sbuf.read(3)
+pos = sbuf.tell()
+sbuf.seek(pos)       # корректный возврат к позиции`,
+  },
+  {
+    name: "IOBase.truncate()",
+    description: `Метод усечения потока до заданного размера. Если size не указан — усекает до текущей позиции tell(). Возвращает новый размер файла в байтах.
+
+После truncate() позиция в потоке не изменяется — если она была за пределами нового размера, при последующей записи возможно создание разреженного файла (sparse file) с нулевыми байтами между старой позицией и новой записью.
+
+Поддерживается только для записываемых и позиционируемых потоков. Бросает io.UnsupportedOperation для только-читаемых или непозиционируемых потоков.`,
+    syntax: "IOBase.truncate(size=None)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Размер в байтах, до которого усекается файл. None (по умолчанию) — усечь до текущей позиции tell().",
+      },
+    ],
+    example: `import io
+
+# Усечение до конкретного размера
+with open('data.txt', 'r+', encoding='utf-8') as f:
+    content = f.read()
+    print(f'Исходный размер: {len(content)} символов')
+
+    f.seek(0)
+    f.truncate(10)   # оставить только первые 10 байт
+
+# Усечение до текущей позиции
+with open('data.txt', 'r+', encoding='utf-8') as f:
+    f.seek(5)
+    f.truncate()     # усечь всё после позиции 5
+
+# Очистка файла (нулевой размер)
+with open('log.txt', 'r+') as f:
+    f.seek(0)
+    f.truncate(0)    # полная очистка
+    f.seek(0)
+    f.write('Новое начало')
+
+# BytesIO
+buf = io.BytesIO(b'Hello, World!')
+buf.seek(5)
+buf.truncate()           # усечь до позиции 5
+print(buf.getvalue())    # b'Hello'
+
+buf2 = io.BytesIO(b'Hello, World!')
+buf2.truncate(7)         # усечь до 7 байт
+print(buf2.getvalue())   # b'Hello, '`,
+  },
+  {
+    name: "IOBase.writable()",
+    description: `Метод проверки, поддерживает ли поток запись. Возвращает True если поток открыт для записи, False в противном случае.
+
+Потоки, открытые в режимах 'w', 'a', 'x', 'r+', 'w+', 'a+', возвращают True. Потоки только для чтения ('r') возвращают False.
+
+Используется при написании универсальных функций, принимающих произвольный поток, а также при реализации кастомных классов-потоков. Попытка вызвать write() на незаписываемом потоке бросает io.UnsupportedOperation.`,
+    syntax: "IOBase.writable()",
+    arguments: [],
+    example: `import io
+
+# Проверка записываемости потоков
+with open('data.txt', 'r') as f:
+    print(f.writable())   # False
+
+with open('data.txt', 'w') as f:
+    print(f.writable())   # True
+
+with open('data.txt', 'r+') as f:
+    print(f.writable())   # True
+
+with open('data.txt', 'a') as f:
+    print(f.writable())   # True
+
+# BytesIO — всегда записываем
+buf = io.BytesIO()
+print(buf.writable())   # True
+
+# Безопасная запись
+def safe_write(stream, data):
+    if not stream.writable():
+        raise io.UnsupportedOperation('Поток не поддерживает запись')
+    stream.write(data)
+
+# Кастомный класс
+class ReadOnlyStream(io.RawIOBase):
+    def readable(self):
+        return True
+
+    def writable(self):
+        return False
+
+stream = ReadOnlyStream()
+print(stream.writable())   # False
+
+try:
+    stream.write(b'data')
+except io.UnsupportedOperation as e:
+    print(e)   # write`,
+  },
+  {
+    name: "IOBase.writelines()",
+    description: `Метод записи списка строк (или байтовых строк) в поток без добавления разделителей между ними. Является эквивалентом последовательного вызова write() для каждого элемента.
+
+Метод не добавляет символы новой строки автоматически — их нужно включать в элементы списка явно. Принимает любой итерируемый объект строк (list, tuple, generator и др.).
+
+В текстовом режиме принимает итерируемое строк (str). В бинарном — итерируемое байтов (bytes). Возвращает None.`,
+    syntax: "IOBase.writelines(lines)",
+    arguments: [
+      {
+        name: "lines",
+        description:
+          "Итерируемый объект строк (str в текстовом режиме) или байтовых строк (bytes в бинарном режиме) для записи.",
+      },
+    ],
+    example: `import io
+
+# Запись списка строк в файл
+lines = ['строка 1\\n', 'строка 2\\n', 'строка 3\\n']
+with open('output.txt', 'w', encoding='utf-8') as f:
+    f.writelines(lines)
+# Результат: строка 1\nстрока 2\nстрока 3\n
+
+# Разделители нужно добавлять явно
+words = ['apple', 'banana', 'cherry']
+with open('fruits.txt', 'w') as f:
+    f.writelines(word + '\\n' for word in words)  # генератор
+
+# Бинарный режим
+with open('binary.bin', 'wb') as f:
+    f.writelines([b'chunk1', b'chunk2', b'chunk3'])
+
+# StringIO
+buf = io.StringIO()
+buf.writelines(['hello ', 'world', '\\n', 'foo'])
+print(buf.getvalue())   # 'hello world\\nfoo'
+
+# BytesIO
+bbuf = io.BytesIO()
+bbuf.writelines([b'part1', b'_', b'part2'])
+print(bbuf.getvalue())   # b'part1_part2'
+
+# Эквивалент через write()
+with open('out.txt', 'w') as f:
+    for line in lines:
+        f.write(line)   # то же самое, что writelines(lines)`,
+  },
+  {
+    name: "RawIOBase.read()",
+    description: `Метод небуферизованного чтения из сырого потока. Читает и возвращает до size байт. Если size равен -1 или не указан — читает до конца файла (вызывает readall()).
+
+RawIOBase — это низкоуровневый небуферизованный поток. В отличие от BufferedReader, здесь нет внутреннего буфера: каждый вызов read() напрямую обращается к ОС. Метод может вернуть меньше байт, чем запрошено, даже если данные ещё есть — это нормально для сырых потоков.
+
+Возвращает bytes. При достижении EOF возвращает b'' (пустые байты). Если данные временно недоступны — возвращает None (только для неблокирующих потоков).`,
+    syntax: "RawIOBase.read(size=-1)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Максимальное количество байт для чтения. -1 (по умолчанию) — читать до EOF через readall().",
+      },
+    ],
+    example: `import io
+
+# FileIO — конкретная реализация RawIOBase
+raw = io.FileIO('data.bin', 'rb')
+
+# Чтение всего файла (size=-1)
+data = raw.read()
+print(len(data))   # размер файла в байтах
+
+# Чтение первых 16 байт
+raw.seek(0)
+chunk = raw.read(16)
+print(chunk)   # b'\\x89PNG\\r\\n...'
+
+# read() может вернуть меньше size байт — это нормально
+raw.seek(0)
+part = raw.read(1024)   # запросили 1024, получили меньше если файл мал
+
+# Чтение по кускам до EOF
+raw.seek(0)
+while True:
+    chunk = raw.read(io.DEFAULT_BUFFER_SIZE)
+    if not chunk:   # b'' — EOF
+        break
+    process(chunk)
+
+raw.close()
+
+# Обёртывание в BufferedReader для буферизации
+raw = io.FileIO('data.bin', 'rb')
+buffered = io.BufferedReader(raw)
+data = buffered.read()   # буферизованное чтение
+buffered.close()`,
+  },
+  {
+    name: "RawIOBase.readall()",
+    description: `Метод чтения всех байт от текущей позиции до конца файла. Возвращает bytes с полным содержимым от текущей позиции до EOF.
+
+Вызывается автоматически из read(-1) или read() без аргументов. Для больших файлов загружает всё содержимое в память целиком — при работе с большими файлами лучше читать кусками через read(size).
+
+Конкретные реализации (FileIO) переопределяют этот метод для эффективного чтения через системные вызовы ОС, которые могут читать файл сразу одной операцией.`,
+    syntax: "RawIOBase.readall()",
+    arguments: [],
+    example: `import io
+
+# Чтение всего файла через readall()
+raw = io.FileIO('data.bin', 'rb')
+data = raw.readall()
+print(f'Прочитано: {len(data)} байт')
+raw.close()
+
+# readall() эквивалентен read(-1) и read()
+raw = io.FileIO('data.bin', 'rb')
+d1 = raw.readall()
+
+raw.seek(0)
+d2 = raw.read(-1)
+
+raw.seek(0)
+d3 = raw.read()
+
+assert d1 == d2 == d3   # все три эквивалентны
+raw.close()
+
+# Чтение с промежуточной позиции
+raw = io.FileIO('data.bin', 'rb')
+raw.read(10)          # пропустить первые 10 байт
+rest = raw.readall()  # прочитать всё остальное
+raw.close()
+
+# Для больших файлов — читать кусками, не readall()
+def process_large_file(path, chunk_size=io.DEFAULT_BUFFER_SIZE):
+    with io.FileIO(path, 'rb') as raw:
+        while True:
+            chunk = raw.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk`,
+  },
+  {
+    name: "RawIOBase.readinto()",
+    description: `Метод чтения байт непосредственно в предварительно выделенный буфер (объект, поддерживающий запись в буфер протокола buffer protocol). Возвращает количество прочитанных байт или None.
+
+Главное преимущество перед read() — отсутствие лишнего выделения памяти: данные записываются напрямую в существующий объект bytearray или memoryview. Это критично для высокопроизводительного кода, обрабатывающего большие объёмы данных.
+
+Возвращает количество реально прочитанных байт (может быть меньше len(b) даже если данные ещё есть), 0 при EOF, или None для неблокирующих потоков при отсутствии данных.`,
+    syntax: "RawIOBase.readinto(b)",
+    arguments: [
+      {
+        name: "b",
+        description:
+          "Изменяемый байтовый буфер (bytearray, memoryview, array.array) куда записываются прочитанные данные. Размер буфера определяет максимум байт для чтения.",
+      },
+    ],
+    example: `import io
+
+# Чтение в bytearray без выделения новой памяти
+buf = bytearray(1024)   # буфер на 1024 байта
+
+with io.FileIO('data.bin', 'rb') as raw:
+    n = raw.readinto(buf)
+    print(f'Прочитано: {n} байт')
+    data = buf[:n]   # только реально прочитанные байты
+
+# Повторное использование буфера для минимизации аллокаций
+buf = bytearray(io.DEFAULT_BUFFER_SIZE)
+with io.FileIO('large.bin', 'rb') as raw:
+    total = 0
+    while True:
+        n = raw.readinto(buf)
+        if not n:   # 0 — EOF, None — нет данных (неблокирующий)
+            break
+        total += n
+        process(buf[:n])   # обработка прочитанных байт
+    print(f'Итого: {total} байт')
+
+# Использование memoryview для работы со срезами без копирования
+buf = bytearray(4096)
+mv = memoryview(buf)
+with io.FileIO('data.bin', 'rb') as raw:
+    n = raw.readinto(mv[100:200])   # читать в срез [100:200]
+    print(n)   # прочитано в buf[100:100+n]`,
+  },
+  {
+    name: "RawIOBase.write()",
+    description: `Метод небуферизованной записи байт в сырой поток. Записывает объект байтов b в поток и возвращает количество реально записанных байт.
+
+Как и read(), метод работает напрямую с ОС без внутреннего буфера. Возвращаемое количество байт может быть меньше len(b) — вызывающий код должен проверять это и при необходимости дозаписывать оставшееся.
+
+Принимает любой объект, поддерживающий buffer protocol: bytes, bytearray, memoryview, array.array. Для удобной записи без проверки числа байт используйте BufferedWriter, который гарантирует полную запись.`,
+    syntax: "RawIOBase.write(b)",
+    arguments: [
+      {
+        name: "b",
+        description:
+          "Байтовый объект для записи (bytes, bytearray, memoryview). Возвращается количество реально записанных байт.",
+      },
+    ],
+    example: `import io
+
+# Простая запись через FileIO
+with io.FileIO('output.bin', 'wb') as raw:
+    n = raw.write(b'Hello, World!')
+    print(f'Записано: {n} байт')   # 13
+
+# ВАЖНО: write() может записать меньше чем len(b)
+# Надёжная запись с проверкой
+def write_all(raw_stream, data):
+    """Гарантированная запись всех байт."""
+    total = 0
+    mv = memoryview(data)
+    while total < len(data):
+        n = raw_stream.write(mv[total:])
+        if n is None or n == 0:
+            raise IOError('Ошибка записи')
+        total += n
+    return total
+
+with io.FileIO('data.bin', 'wb') as raw:
+    write_all(raw, b'x' * 100000)
+
+# Запись bytearray и memoryview
+with io.FileIO('output.bin', 'wb') as raw:
+    arr = bytearray(b'\\x00\\x01\\x02\\x03')
+    raw.write(arr)
+
+    mv = memoryview(b'binary data')
+    raw.write(mv)
+
+# BufferedWriter — удобнее, гарантирует полную запись
+with io.FileIO('out.bin', 'wb') as raw:
+    buffered = io.BufferedWriter(raw)
+    buffered.write(b'автоматически полная запись')
+    buffered.flush()`,
+  },
+  {
+    name: "FileIO.mode",
+    description: `Атрибут объекта FileIO (и любого файлового объекта), содержащий режим открытия файла в виде строки.
+
+Возвращает строку, переданную в параметр mode при открытии файла: 'r', 'rb', 'w', 'wb', 'a', 'ab', 'r+', 'rb+', 'w+', 'wb+' и др. Позволяет узнать, в каком режиме открыт файл — полезно в универсальных функциях, принимающих файловый объект.
+
+Атрибут доступен только для чтения. Присутствует на всех файловых объектах, возвращаемых open() и io.FileIO().`,
+    syntax: "FileIO.mode",
+    arguments: [],
+    example: `import io
+
+# Проверка режима через FileIO
+raw = io.FileIO('data.bin', 'rb')
+print(raw.mode)   # 'rb'
+raw.close()
+
+# Режим стандартного файлового объекта
+with open('data.txt', 'r') as f:
+    print(f.mode)   # 'r'
+
+with open('data.txt', 'w') as f:
+    print(f.mode)   # 'w'
+
+with open('data.bin', 'rb+') as f:
+    print(f.mode)   # 'rb+'
+
+# Использование в универсальной функции
+def is_binary_mode(file_obj):
+    return 'b' in file_obj.mode
+
+def is_writable_mode(file_obj):
+    return any(m in file_obj.mode for m in ('w', 'a', 'x', '+'))
+
+with open('data.txt', 'r') as f:
+    print(is_binary_mode(f))    # False
+    print(is_writable_mode(f))  # False
+
+with open('data.bin', 'rb+') as f:
+    print(is_binary_mode(f))    # True
+    print(is_writable_mode(f))  # True
+
+# Все возможные режимы
+modes = ['r', 'rb', 'w', 'wb', 'a', 'ab', 'r+', 'rb+', 'w+', 'x']`,
+  },
+  {
+    name: "FileIO.name",
+    description: `Атрибут объекта FileIO (и любого файлового объекта), содержащий имя или дескриптор файла, переданный при открытии.
+
+Если файл открыт по пути — возвращает строку с путём (как передан в open()). Если файл открыт по дескриптору (int) — возвращает этот целочисленный дескриптор. Атрибут присутствует на всех файловых объектах, включая TextIOWrapper, BufferedReader/Writer.
+
+Полезен для логирования, отладки и отображения пользователю информации о том, с каким файлом ведётся работа. Только для чтения.`,
+    syntax: "FileIO.name",
+    arguments: [],
+    example: `import io
+
+# Имя файла, открытого по пути
+with open('data.txt', 'r') as f:
+    print(f.name)   # 'data.txt'
+
+with open('/tmp/report.csv', 'w') as f:
+    print(f.name)   # '/tmp/report.csv'
+
+# FileIO — имя как путь
+raw = io.FileIO('image.png', 'rb')
+print(raw.name)   # 'image.png'
+raw.close()
+
+# Открытие по файловому дескриптору — name = int
+import os
+fd = os.open('data.txt', os.O_RDONLY)
+with open(fd, 'r') as f:
+    print(f.name)    # целое число, например: 5
+    print(type(f.name))   # <class 'int'>
+
+# Стандартные потоки
+import sys
+print(sys.stdin.name)    # '<stdin>'
+print(sys.stdout.name)   # '<stdout>'
+print(sys.stderr.name)   # '<stderr>'
+
+# Использование в логировании
+def log_file_operation(file_obj, operation):
+    print(f'[{operation}] файл: {file_obj.name}, режим: {file_obj.mode}')
+
+with open('report.txt', 'w') as f:
+    log_file_operation(f, 'запись')
+    # [запись] файл: report.txt, режим: w`,
+  },
+  {
+    name: "BufferedIOBase.raw",
+    description: `Атрибут, содержащий ссылку на базовый сырой (RawIOBase) поток, который обёрнут буферизованным потоком. Доступен у BufferedReader, BufferedWriter, BufferedRandom.
+
+Позволяет получить прямой доступ к небуферизованному потоку нижнего уровня. Полезен для низкоуровневых операций, которые нельзя выполнить через буферизованный интерфейс, например: получение файлового дескриптора, применение флагов ОС, работа с неблокирующим режимом.
+
+После вызова detach() атрибут raw становится недействительным. У BytesIO нет атрибута raw — он не оборачивает сырой поток.`,
+    syntax: "BufferedIOBase.raw",
+    arguments: [],
+    example: `import io
+
+# Получение сырого потока из BufferedReader
+raw = io.FileIO('data.bin', 'rb')
+buffered = io.BufferedReader(raw)
+
+print(buffered.raw is raw)   # True
+print(type(buffered.raw))    # <class '_io.FileIO'>
+
+# Доступ к атрибутам сырого потока
+print(buffered.raw.name)     # 'data.bin'
+print(buffered.raw.mode)     # 'rb'
+
+# Низкоуровневый дескриптор через raw
+import os
+fd = buffered.raw.fileno()
+stat = os.fstat(fd)
+print(f'Размер файла: {stat.st_size} байт')
+
+# BufferedWriter
+raw_w = io.FileIO('output.bin', 'wb')
+buffered_w = io.BufferedWriter(raw_w)
+print(type(buffered_w.raw))   # <class '_io.FileIO'>
+
+buffered_w.close()   # закрывает и raw тоже
+
+# open() возвращает буферизованный поток с .raw
+with open('data.bin', 'rb') as f:
+    print(type(f))        # <class '_io.BufferedReader'>
+    print(type(f.raw))    # <class '_io.FileIO'>`,
+  },
+  {
+    name: "BufferedIOBase.detach()",
+    description: `Метод отсоединения базового сырого потока от буферизованного объекта. Возвращает сырой поток (RawIOBase), сбросив перед этим буфер записи (для BufferedWriter).
+
+После detach() буферизованный объект становится непригодным для использования — любые попытки выполнить на нём операции ввода-вывода бросают ValueError. Сырой поток при этом остаётся открытым и пригодным для использования.
+
+Используется в ситуациях, когда нужно передать владение потоком другому объекту или перейти от буферизованной работы к небуферизованной без закрытия файла.`,
+    syntax: "BufferedIOBase.detach()",
+    arguments: [],
+    example: `import io
+
+# Отсоединение сырого потока
+raw = io.FileIO('data.bin', 'rb')
+buffered = io.BufferedReader(raw)
+
+# Работа через буферизованный поток
+data = buffered.read(10)
+
+# Отсоединяем — получаем сырой поток обратно
+raw2 = buffered.detach()
+print(raw2 is raw)   # True — тот же объект
+
+# Буферизованный поток теперь непригоден
+try:
+    buffered.read()
+except ValueError as e:
+    print(e)   # raw stream has been detached
+
+# Сырой поток по-прежнему работает
+raw2.seek(0)
+chunk = raw2.read(1024)
+raw2.close()
+
+# Смена буфера — типичный сценарий
+raw = io.FileIO('data.bin', 'rb')
+buf1 = io.BufferedReader(raw, buffer_size=1024)
+raw_back = buf1.detach()
+buf2 = io.BufferedReader(raw_back, buffer_size=65536)  # другой размер буфера
+buf2.close()`,
+  },
+  {
+    name: "BufferedIOBase.read()",
+    description: `Метод чтения из буферизованного потока с внутренним буфером. Читает и возвращает до size байт. Если size равен -1 или не указан — читает до EOF. Возвращает bytes.
+
+Ключевое отличие от RawIOBase.read(): буферизованный read() гарантирует возврат ровно size байт (или меньше только при EOF). Внутренний буфер снижает количество системных вызовов — данные читаются большими кусками из ОС, а возвращаются нужными порциями.
+
+При EOF возвращает b''. Блокирует поток до получения нужного количества байт (для блокирующих потоков).`,
+    syntax: "BufferedIOBase.read(size=-1)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Количество байт для чтения. -1 (по умолчанию) — читать до EOF. В отличие от RawIOBase, гарантированно возвращает size байт (если EOF не достигнут раньше).",
+      },
+    ],
+    example: `import io
+
+# Буферизованное чтение файла
+with open('data.bin', 'rb') as f:   # возвращает BufferedReader
+    # Чтение всего файла
+    data = f.read()
+
+    # Чтение по N байт
+    f.seek(0)
+    header = f.read(4)    # ровно 4 байта (или меньше при EOF)
+    body = f.read(1024)   # ровно 1024 байта (или остаток до EOF)
+
+# Явный BufferedReader
+raw = io.FileIO('data.bin', 'rb')
+buf = io.BufferedReader(raw, buffer_size=io.DEFAULT_BUFFER_SIZE)
+
+buf.read(16)    # 16 байт (1 системный вызов может прочитать 8192)
+buf.read(16)    # ещё 16 байт — из буфера, без системного вызова!
+buf.close()
+
+# BytesIO — буферизованный поток в памяти
+buf = io.BytesIO(b'Hello, World! Python io')
+print(buf.read(5))    # b'Hello'
+print(buf.read(2))    # b', '
+print(buf.read(-1))   # b'World! Python io'  ← до EOF
+print(buf.read())     # b''  ← EOF
+
+# Чтение по кускам
+with open('large.bin', 'rb') as f:
+    while chunk := f.read(65536):
+        process(chunk)`,
+  },
+  {
+    name: "BufferedIOBase.read1()",
+    description: `Метод чтения из буферизованного потока с использованием не более одного вызова к базовому сырому потоку. Возвращает bytes размером до size байт.
+
+Ключевое отличие от read(): read() может выполнять несколько системных вызовов для накопления нужного числа байт, тогда как read1() ограничивается одним обращением к RawIOBase.read() или RawIOBase.readinto(). Если буфер не пуст — возвращает данные из него без обращения к ОС.
+
+Полезен при реализации собственных протоколов, парсеров и обёрток потоков, где важно контролировать количество системных вызовов и избегать блокировки в ожидании данных.`,
+    syntax: "BufferedIOBase.read1([size])",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Максимальное количество байт для чтения. Если не указан или -1 — возвращает произвольное количество байт за одно обращение к базовому потоку.",
+      },
+    ],
+    example: `import io
+
+# Разница между read() и read1()
+raw = io.FileIO('data.bin', 'rb')
+buf = io.BufferedReader(raw, buffer_size=8192)
+
+# read(100): может читать 8192 из ОС, вернуть 100 из буфера
+chunk_a = buf.read(100)
+
+# read1(100): возвращает то, что уже в буфере (может быть 8192-100=8092 байт)
+# или читает из ОС ровно один раз и возвращает до 100 байт
+chunk_b = buf.read1(100)
+
+buf.close()
+
+# Типичный сценарий: реализация peek-парсера
+class ProtocolReader:
+    def __init__(self, raw_stream):
+        self.buf = io.BufferedReader(raw_stream)
+
+    def read_message(self):
+        # read1() без аргумента — один системный вызов
+        # не блокирует дольше необходимого
+        data = self.buf.read1()
+        return data
+
+# BytesIO
+buf = io.BytesIO(b'Hello, World!')
+print(buf.read1(5))    # b'Hello'
+print(buf.read1(100))  # b', World!'  ← всё оставшееся за один вызов`,
+  },
+  {
+    name: "BufferedIOBase.readinto()",
+    description: `Метод буферизованного чтения непосредственно в предварительно выделенный буфер. Аналог RawIOBase.readinto(), но с внутренней буферизацией — данные могут поступать из буфера без обращения к ОС.
+
+Принимает изменяемый байтовый объект (bytearray, memoryview) и записывает в него прочитанные байты. Возвращает количество реально прочитанных байт (0 при EOF). В отличие от RawIOBase.readinto(), гарантирует заполнение буфера полностью (до len(b) байт) если данных достаточно.
+
+Сочетает преимущества буферизации (меньше системных вызовов) и работы без лишнего выделения памяти (zero-copy чтение в существующий буфер).`,
+    syntax: "BufferedIOBase.readinto(b)",
+    arguments: [
+      {
+        name: "b",
+        description:
+          "Изменяемый байтовый буфер (bytearray, memoryview) куда записываются прочитанные данные. Читается ровно len(b) байт (или меньше при EOF).",
+      },
+    ],
+    example: `import io
+
+# Буферизованное чтение в существующий буфер
+buf = bytearray(1024)
+
+with open('data.bin', 'rb') as f:   # BufferedReader
+    n = f.readinto(buf)
+    print(f'Прочитано: {n} байт')
+    data = buf[:n]
+
+# Повторное использование буфера (zero-copy обработка)
+buf = bytearray(io.DEFAULT_BUFFER_SIZE)  # 8192 байт
+with open('large.bin', 'rb') as f:
+    while True:
+        n = f.readinto(buf)
+        if n == 0:   # EOF
+            break
+        process(buf[:n])
+
+# Использование memoryview для работы со срезами
+big_buffer = bytearray(65536)
+mv = memoryview(big_buffer)
+
+with open('data.bin', 'rb') as f:
+    n1 = f.readinto(mv[:1024])    # прочитать в первые 1024 байт
+    n2 = f.readinto(mv[1024:])    # прочитать остаток в хвост буфера
+
+# Сравнение с readinto из RawIOBase
+raw = io.FileIO('data.bin', 'rb')
+buf_reader = io.BufferedReader(raw)
+arr = bytearray(512)
+n = buf_reader.readinto(arr)   # буферизовано — меньше системных вызовов
+buf_reader.close()`,
+  },
+  {
+    name: "BufferedIOBase.readinto1()",
+    description: `Метод буферизованного чтения в существующий буфер, ограниченный одним обращением к базовому сырому потоку. Аналог read1(), но записывает данные в предоставленный буфер вместо создания нового объекта bytes.
+
+Сочетает преимущества readinto() (zero-copy, без лишних аллокаций) и read1() (не более одного системного вызова к ОС). Возвращает количество прочитанных байт или 0 при EOF.
+
+Применяется в высокопроизводительных парсерах протоколов и асинхронных обёртках, где нужно минимизировать как количество системных вызовов, так и число аллокаций памяти.`,
+    syntax: "BufferedIOBase.readinto1(b)",
+    arguments: [
+      {
+        name: "b",
+        description:
+          "Изменяемый байтовый буфер (bytearray, memoryview) куда записываются прочитанные данные. За один вызов выполняется не более одного обращения к базовому сырому потоку.",
+      },
+    ],
+    example: `import io
+
+# readinto1() — один системный вызов, zero-copy
+buf = bytearray(4096)
+
+raw = io.FileIO('data.bin', 'rb')
+buffered = io.BufferedReader(raw)
+
+# Не более одного обращения к raw за вызов
+n = buffered.readinto1(buf)
+print(f'Прочитано: {n} байт (не более одного системного вызова)')
+
+# Сравнение readinto vs readinto1
+buf_a = bytearray(4096)
+buf_b = bytearray(4096)
+
+raw = io.FileIO('data.bin', 'rb')
+b_reader = io.BufferedReader(raw, buffer_size=8192)
+
+# readinto: выполнит столько системных вызовов, сколько нужно для len(buf_a)
+n_a = b_reader.readinto(buf_a)
+
+b_reader.seek(0)
+# readinto1: не более одного системного вызова
+n_b = b_reader.readinto1(buf_b)
+
+b_reader.close()
+
+# Цикл с readinto1 для потокового парсинга
+buf = bytearray(io.DEFAULT_BUFFER_SIZE)
+with open('stream.bin', 'rb') as f:
+    while True:
+        n = f.readinto1(buf)
+        if n == 0:
+            break
+        parse_chunk(buf[:n])   # обрабатываем одну порцию`,
+  },
+  {
+    name: "BufferedIOBase.write()",
+    description: `Метод записи байт в буферизованный поток. Записывает объект байтов b в внутренний буфер и возвращает количество записанных байт (всегда равное len(b)).
+
+Ключевое отличие от RawIOBase.write(): буферизованный write() всегда записывает все байты (len(b)) — никогда не возвращает меньше. Данные сначала накапливаются во внутреннем буфере и сбрасываются в ОС одной порцией при переполнении буфера или вызове flush()/close().
+
+Буферизация значительно ускоряет запись множества небольших порций данных, сокращая количество системных вызовов write().`,
+    syntax: "BufferedIOBase.write(b)",
+    arguments: [
+      {
+        name: "b",
+        description:
+          "Байтовый объект для записи (bytes, bytearray, memoryview). Всегда записываются все len(b) байт — возвращаемое значение всегда равно len(b).",
+      },
+    ],
+    example: `import io
+
+# Буферизованная запись через BufferedWriter
+raw = io.FileIO('output.bin', 'wb')
+buf = io.BufferedWriter(raw, buffer_size=8192)
+
+# Множество мелких записей — эффективно благодаря буферу
+for i in range(1000):
+    n = buf.write(f'строка {i}\\n'.encode())
+    print(n)   # всегда len(b), не меньше
+# Реальные системные вызовы — значительно меньше 1000
+
+buf.flush()   # сброс буфера в ОС
+buf.close()   # flush() + close()
+
+# open() возвращает BufferedWriter для 'wb'
+with open('data.bin', 'wb') as f:
+    f.write(b'\\x89PNG\\r\\n\\x1a\\n')   # PNG-заголовок
+    f.write(b'\\x00' * 1024)            # нулевые данные
+
+# BytesIO — запись в буфер в памяти
+buf = io.BytesIO()
+buf.write(b'Hello')
+buf.write(b', ')
+buf.write(b'World!')
+print(buf.getvalue())   # b'Hello, World!'
+
+# Запись bytearray и memoryview
+with open('out.bin', 'wb') as f:
+    f.write(bytearray([0x00, 0x01, 0x02, 0xFF]))
+    f.write(memoryview(b'binary data')[2:7])`,
+  },
+  {
+    name: "BytesIO.getbuffer()",
+    description: `Метод получения объекта memoryview над внутренним буфером BytesIO без копирования данных. Возвращает записываемый memoryview, указывающий непосредственно на содержимое BytesIO.
+
+Ключевые особенности: данные не копируются (zero-copy), memoryview поддерживает как чтение, так и запись (изменения видны через BytesIO), пока memoryview активен — BytesIO нельзя изменить в размере (нельзя вызвать write() если это изменит размер, seek() с расширением и т.п.).
+
+Используется для передачи содержимого BytesIO в функции, принимающие buffer protocol, без лишних копий памяти.`,
+    syntax: "BytesIO.getbuffer()",
+    arguments: [],
+    example: `import io
+
+buf = io.BytesIO(b'Hello, World!')
+
+# Получение memoryview без копирования
+view = buf.getbuffer()
+print(bytes(view))     # b'Hello, World!'
+print(len(view))       # 13
+
+# Запись через memoryview изменяет BytesIO
+view[0] = ord('h')     # изменяем первый байт
+print(buf.getvalue())  # b'hello, World!'
+
+# Передача в функции, принимающие buffer protocol
+view2 = buf.getbuffer()
+# socket.send(view2)   # без копирования данных
+# ssl_sock.write(view2)
+
+# Пока view активен — нельзя менять размер
+buf2 = io.BytesIO(b'data')
+view3 = buf2.getbuffer()
+try:
+    buf2.write(b'extra')   # ошибка — resize запрещён
+except BufferError as e:
+    print(e)   # Existing exports of data: object cannot be re-sized
+
+# Освобождение view разблокирует BytesIO
+view3.release()
+buf2.write(b'extra')   # теперь можно
+
+# Срезы memoryview — zero-copy подмассивы
+data = io.BytesIO(b'ABCDEFGH')
+view4 = data.getbuffer()
+sub = view4[2:5]       # срез без копирования
+print(bytes(sub))      # b'CDE'`,
+  },
+  {
+    name: "BytesIO.getvalue()",
+    description: `Метод получения всего содержимого буфера BytesIO в виде объекта bytes. Возвращает копию всех данных независимо от текущей позиции указателя.
+
+В отличие от read(), который возвращает данные от текущей позиции до конца, getvalue() всегда возвращает полное содержимое — с самого начала. Это позволяет получить результат записи не перематывая поток в начало.
+
+Создаёт копию данных (в отличие от getbuffer()). Работает на открытом и закрытом BytesIO. Незаменим при использовании BytesIO как промежуточного буфера для сборки бинарных данных.`,
+    syntax: "BytesIO.getvalue()",
+    arguments: [],
+    example: `import io
+
+# Сборка бинарных данных в памяти
+buf = io.BytesIO()
+buf.write(b'\\x89PNG\\r\\n\\x1a\\n')   # PNG signature
+buf.write(b'\\x00\\x00\\x00\\rIHDR')   # chunk header
+buf.write(b'\\x00' * 13)               # IHDR data
+
+# getvalue() не зависит от позиции
+print(buf.tell())          # 26 (конец буфера)
+data = buf.getvalue()      # все 26 байт с начала
+print(len(data))           # 26
+
+# Сравнение с read()
+buf.seek(10)
+print(len(buf.read()))     # 16 (от позиции 10 до конца)
+buf.seek(10)
+print(len(buf.getvalue())) # 26 (всегда полное содержимое!)
+
+# Типичный паттерн: BytesIO как промежуточный буфер
+def build_packet(cmd, payload):
+    buf = io.BytesIO()
+    buf.write(cmd.encode('ascii'))
+    buf.write(len(payload).to_bytes(4, 'big'))
+    buf.write(payload)
+    return buf.getvalue()   # получить готовый пакет
+
+packet = build_packet('DATA', b'hello')
+print(packet)   # b'DATA\\x00\\x00\\x00\\x05hello'
+
+# Работает и после close()
+buf = io.BytesIO(b'test')
+buf.close()
+# buf.getvalue() — ValueError после close()`,
+  },
+  {
+    name: "TextIOBase.encoding",
+    description:
+      'Атрибут класса TextIOBase. Строка, содержащая имя кодировки, используемой для преобразования байтов в строки и обратно. Например: "utf-8", "windows-1251", "ascii". Для StringIO всегда None — объект работает только со строками в памяти, без кодирования.',
+    syntax: "stream.encoding",
+    arguments: [],
+    example: `import io
+
+# TextIOWrapper — реальная кодировка файла:
+with open('file.txt', 'r', encoding='utf-8') as f:
+    print(f.encoding)   # 'utf-8'
+
+# StringIO — работает только со строками, кодировки нет:
+buf = io.StringIO()
+print(buf.encoding)   # None
+
+# Текстовый поток поверх байтового:
+raw = io.BytesIO(b'hello')
+wrapper = io.TextIOWrapper(raw, encoding='utf-8')
+print(wrapper.encoding)   # 'utf-8'`,
+  },
+  {
+    name: "TextIOBase.errors",
+    description:
+      'Атрибут класса TextIOBase. Строка, указывающая режим обработки ошибок кодирования/декодирования. Стандартные значения: "strict" (по умолчанию, выбрасывает UnicodeError), "ignore" (пропускать ошибочные символы), "replace" (заменять символом "?"), "backslashreplace", "xmlcharrefreplace". Для StringIO всегда None.',
+    syntax: "stream.errors",
+    arguments: [],
+    example: `import io
+
+# Режим обработки ошибок файла:
+with open('file.txt', 'r', encoding='utf-8', errors='replace') as f:
+    print(f.errors)   # 'replace'
+
+# TextIOWrapper с явным указанием режима:
+raw = io.BytesIO('кириллица'.encode('cp1251'))
+wrapper = io.TextIOWrapper(raw, encoding='utf-8', errors='ignore')
+print(wrapper.errors)   # 'ignore'
+print(wrapper.read())   # Некорректные байты будут пропущены
+
+# StringIO — нет кодирования, нет ошибок:
+buf = io.StringIO('текст')
+print(buf.errors)   # None`,
+  },
+  {
+    name: "TextIOBase.newlines",
+    description:
+      'Атрибут класса TextIOBase. После чтения содержит информацию о переводах строк, встреченных в потоке. Может быть None (ещё не читали), строкой (один тип: "\\n", "\\r", "\\r\\n") или кортежем строк (несколько типов). Заполняется только при universal newlines translation (по умолчанию). Полезен для анализа формата переводов строк в файле.',
+    syntax: "stream.newlines",
+    arguments: [],
+    example: `import io
+
+# Файл с разными переводами строк:
+buf = io.StringIO("line1\\nline2\\r\\nline3\\r")
+buf.read()   # Читаем весь поток
+print(buf.newlines)
+# ('\\n', '\\r\\n', '\\r')  — все три типа встречены
+
+# Только Unix-переводы:
+buf2 = io.StringIO("line1\\nline2\\n")
+buf2.read()
+print(buf2.newlines)
+# '\\n'
+
+# До чтения — None:
+buf3 = io.StringIO("text\\n")
+print(buf3.newlines)   # None
+buf3.readline()
+print(buf3.newlines)   # '\\n'`,
+  },
+  {
+    name: "TextIOBase.buffer",
+    description:
+      "Атрибут класса TextIOBase. Ссылка на базовый двоичный буферизованный поток (BufferedIOBase), поверх которого работает текстовый поток. Доступен у TextIOWrapper. У StringIO отсутствует (работает только в памяти со строками). Позволяет получить прямой доступ к байтам потока.",
+    syntax: "stream.buffer",
+    arguments: [],
+    example: `import io
+
+# TextIOWrapper имеет базовый байтовый буфер:
+raw = io.BytesIO(b'hello world')
+wrapper = io.TextIOWrapper(raw, encoding='utf-8')
+print(type(wrapper.buffer))    # <class '_io.BytesIO'>
+print(wrapper.buffer is raw)   # True
+
+# Чтение байт напрямую через buffer:
+wrapper.read(5)                # Читаем 5 символов текстом
+print(wrapper.buffer.read())  # Читаем остаток байтами
+# b' world'
+
+# Стандартный stdin/stdout также имеет buffer:
+import sys
+sys.stdout.buffer.write(b'bytes output\\n')`,
+  },
+  {
+    name: "TextIOBase.detach",
+    description:
+      "Метод класса TextIOBase. Отсоединяет и возвращает базовый двоичный поток (buffer) от TextIOWrapper. После вызова TextIOWrapper становится непригодным для использования (любые операции выбросят UnsupportedOperation). Используется когда нужно передать управление над байтовым потоком другому коду.",
+    syntax: "stream.detach()",
+    arguments: [],
+    example: `import io
+
+raw = io.BytesIO(b'hello world')
+wrapper = io.TextIOWrapper(raw, encoding='utf-8')
+
+# Чтение через wrapper:
+print(wrapper.read(5))   # 'hello'
+
+# Отсоединяем базовый поток:
+binary_stream = wrapper.detach()
+print(type(binary_stream))   # <class '_io.BytesIO'>
+print(binary_stream.read())  # b' world'
+
+# wrapper больше не используется:
+try:
+    wrapper.read()
+except io.UnsupportedOperation as e:
+    print(e)   # detached
+
+# Полезно для передачи байтового потока:
+def process_bytes(stream: io.RawIOBase):
+    return stream.read()
+
+result = process_bytes(wrapper.detach())`,
+  },
+  {
+    name: "TextIOBase.read",
+    description:
+      'Метод класса TextIOBase. Читает и возвращает строку из потока. Если size не задан или равен -1 — читает до конца файла. При size > 0 — читает не более size символов (не байт). Возвращает пустую строку "" при достижении конца потока.',
+    syntax: "stream.read(size=-1)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Количество символов для чтения. -1 (по умолчанию) — читать до конца потока.",
+      },
+    ],
+    example: `import io
+
+buf = io.StringIO("Hello, World!")
+
+# Чтение по 5 символов:
+print(buf.read(5))    # 'Hello'
+print(buf.read(2))    # ', '
+print(buf.read())     # 'World!'  (до конца)
+print(buf.read())     # ''        (конец потока)
+
+# Перемотка и полное чтение:
+buf.seek(0)
+content = buf.read()
+print(content)        # 'Hello, World!'
+
+# Из файла:
+with open('file.txt', 'r', encoding='utf-8') as f:
+    chunk = f.read(1024)    # Блок по 1024 символа
+    while chunk:
+        print(chunk, end='')
+        chunk = f.read(1024)`,
+  },
+  {
+    name: "TextIOBase.readline",
+    description:
+      'Метод класса TextIOBase. Читает и возвращает одну строку из потока, включая символ перевода строки ("\\n") в конце. При достижении конца файла возвращает пустую строку "". Параметр size ограничивает максимальное число читаемых символов — строка обрезается, даже если перевод строки ещё не встречен.',
+    syntax: "stream.readline(size=-1)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Максимальное число символов для чтения. -1 (по умолчанию) — читать до конца строки или EOF.",
+      },
+    ],
+    example: `import io
+
+buf = io.StringIO("line1\\nline2\\nline3")
+
+print(repr(buf.readline()))    # 'line1\\n'
+print(repr(buf.readline()))    # 'line2\\n'
+print(repr(buf.readline()))    # 'line3'   (без \\n — конец потока)
+print(repr(buf.readline()))    # ''        (EOF)
+
+# Ограничение по размеру:
+buf.seek(0)
+print(repr(buf.readline(3)))   # 'lin'  (обрезано до 3 символов)
+
+# Построчный обход файла:
+with open('file.txt', 'r', encoding='utf-8') as f:
+    line = f.readline()
+    while line:
+        print(line, end='')
+        line = f.readline()`,
+  },
+  {
+    name: "TextIOBase.write",
+    description:
+      'Метод класса TextIOBase. Записывает строку s в поток и возвращает число записанных символов. Принимает только строки (str). Не добавляет перевод строки автоматически — при необходимости добавляйте "\\n" явно. Для записи байт используйте BytesIO и метод write() с байтовым аргументом.',
+    syntax: "stream.write(s)",
+    arguments: [
+      {
+        name: "s",
+        description:
+          "Строка (str) для записи в поток. Передача bytes вызывает TypeError.",
+      },
+    ],
+    example: `import io
+
+# StringIO:
+buf = io.StringIO()
+n = buf.write("Hello")
+print(n)              # 5 (символов записано)
+buf.write(", World!")
+buf.write("\\n")       # Перевод строки явно
+
+buf.seek(0)
+print(buf.read())     # 'Hello, World!\\n'
+
+# TextIOWrapper (запись в файл):
+raw = io.BytesIO()
+wrapper = io.TextIOWrapper(raw, encoding='utf-8')
+wrapper.write("Привет\\n")
+wrapper.write("Мир\\n")
+wrapper.flush()
+
+raw.seek(0)
+print(raw.read())   # b'\\xd0\\x9f\\xd1\\x80\\xd0\\xb8\\xd0\\xb2\\xd0\\xb5\\xd1\\x82\\n...'`,
+  },
+  {
+    name: "StringIO.getvalue",
+    description:
+      "Метод класса StringIO. Возвращает всё содержимое буфера в памяти как строку, независимо от текущей позиции указателя. В отличие от read(), не перемещает позицию и не требует предварительного seek(0). Выбрасывает ValueError если поток закрыт.",
+    syntax: "stream.getvalue()",
+    arguments: [],
+    example: `import io
+
+buf = io.StringIO()
+buf.write("Hello")
+buf.write(", ")
+buf.write("World!")
+
+# Получить всё содержимое без seek(0):
+print(buf.getvalue())   # 'Hello, World!'
+
+# Позиция не изменилась:
+print(buf.tell())       # 13 (конец буфера)
+buf.write(" More")
+print(buf.getvalue())   # 'Hello, World! More'
+
+# Удобно для сбора вывода:
+import sys
+old_stdout = sys.stdout
+sys.stdout = io.StringIO()
+
+print("captured line 1")
+print("captured line 2")
+
+output = sys.stdout.getvalue()
+sys.stdout = old_stdout
+print(repr(output))
+# 'captured line 1\\ncaptured line 2\\n'`,
+  },
+  {
+    name: "TextIOWrapper.line_buffering",
+    description:
+      'Атрибут класса TextIOWrapper. Булево значение: True, если включена построчная буферизация (данные сбрасываются в базовый поток при каждом записанном символе "\\n"). Устанавливается при создании через параметр line_buffering=True. Полезно для вывода в реальном времени (логи, консольный вывод).',
+    syntax: "wrapper.line_buffering",
+    arguments: [],
+    example: `import io
+
+raw = io.BytesIO()
+
+# Без построчной буферизации:
+w1 = io.TextIOWrapper(raw, encoding='utf-8', line_buffering=False)
+print(w1.line_buffering)   # False
+
+# С построчной буферизацией:
+raw2 = io.BytesIO()
+w2 = io.TextIOWrapper(raw2, encoding='utf-8', line_buffering=True)
+print(w2.line_buffering)   # True
+
+w2.write("line1\\n")   # Автоматически flush при \\n
+w2.write("partial")   # Ещё не сброшено (нет \\n)
+
+# Стандартный stderr обычно использует построчную буферизацию:
+import sys
+print(sys.stderr.line_buffering)   # True`,
+  },
+  {
+    name: "TextIOWrapper.write_through",
+    description:
+      "Атрибут класса TextIOWrapper. Булево значение: True, если каждый вызов write() немедленно сбрасывает данные в базовый байтовый буфер (без накопления в TextIOWrapper). Не означает сброс до диска — данные могут оставаться в буфере BytesIO или BufferedWriter. Устанавливается при создании через параметр write_through=True.",
+    syntax: "wrapper.write_through",
+    arguments: [],
+    example: `import io
+
+raw = io.BytesIO()
+
+# Обычный режим — данные могут накапливаться:
+w1 = io.TextIOWrapper(raw, encoding='utf-8', write_through=False)
+print(w1.write_through)   # False
+
+# Режим write_through — каждый write() сразу уходит в BytesIO:
+raw2 = io.BytesIO()
+w2 = io.TextIOWrapper(raw2, encoding='utf-8', write_through=True)
+print(w2.write_through)   # True
+
+w2.write("hello")
+# Данные сразу в raw2, без ожидания flush():
+raw2.seek(0)
+print(raw2.read())   # b'hello'`,
+  },
+  {
+    name: "TextIOWrapper.reconfigure",
+    description:
+      "Метод класса TextIOWrapper. Переконфигурирует поток с новыми параметрами кодирования или буферизации. Позволяет изменить encoding, errors, newline, line_buffering или write_through на уже существующем потоке. Выбрасывает UnsupportedOperation если поток не пуст (есть непрочитанные данные) при смене кодировки.",
+    syntax:
+      "wrapper.reconfigure(*, encoding=None, errors=None, newline=None, line_buffering=None, write_through=None)",
+    arguments: [
+      {
+        name: "encoding",
+        description:
+          "Новая кодировка. Если None — текущая кодировка не меняется.",
+      },
+      {
+        name: "errors",
+        description:
+          'Новый режим обработки ошибок ("strict", "ignore", "replace" и др.). Если None — не меняется.',
+      },
+      {
+        name: "newline",
+        description:
+          "Новый режим обработки переводов строк. Если None — не меняется.",
+      },
+      {
+        name: "line_buffering",
+        description:
+          "Включить/выключить построчную буферизацию. Если None — не меняется.",
+      },
+      {
+        name: "write_through",
+        description:
+          "Включить/выключить режим немедленной записи в базовый поток. Если None — не меняется.",
+      },
+    ],
+    example: `import io
+
+raw = io.BytesIO()
+wrapper = io.TextIOWrapper(raw, encoding='utf-8')
+print(wrapper.encoding)        # 'utf-8'
+print(wrapper.line_buffering)  # False
+
+# Переключение на другую кодировку:
+wrapper.reconfigure(encoding='latin-1')
+print(wrapper.encoding)        # 'latin-1'
+
+# Включение построчной буферизации:
+wrapper.reconfigure(line_buffering=True)
+print(wrapper.line_buffering)  # True
+
+# Несколько параметров сразу:
+wrapper.reconfigure(
+    encoding='utf-8',
+    errors='replace',
+    write_through=True,
+)`,
+  },
+  {
+    name: "IncrementalNewlineDecoder.decode",
+    description:
+      "Метод вспомогательного класса IncrementalNewlineDecoder из модуля io. Декодирует входные данные с нормализацией переводов строк (\\r\\n и \\r → \\n). Параметр final=True сигнализирует, что это последний фрагмент данных — декодер сбрасывает внутреннее состояние.",
+    syntax: "decoder.decode(input, final=False)",
+    arguments: [
+      {
+        name: "input",
+        description:
+          "Байтовая строка (bytes) или строка (str) для декодирования.",
+      },
+      {
+        name: "final",
+        description:
+          "Если True — последний фрагмент; декодер завершает обработку и сбрасывает буфер. По умолчанию False.",
+      },
+    ],
+    example: `import io
+
+decoder = io.IncrementalNewlineDecoder(
+    decoder=None,   # None — входные данные уже строки
+    translate=True, # Нормализовать переводы строк → \\n
+)
+
+# Нормализация переводов строк:
+print(repr(decoder.decode("line1\\r\\nline2\\r", final=False)))
+# 'line1\\nline2'   (\\r в конце буферизован)
+
+print(repr(decoder.decode("\\nline3", final=True)))
+# '\\nline3'        (буфер сброшен: \\r + \\n → \\n)
+
+# С базовым декодером (bytes → str):
+import codecs
+base = codecs.getincrementaldecoder('utf-8')('strict')
+nd = io.IncrementalNewlineDecoder(base, translate=True)
+print(repr(nd.decode(b"hello\\r\\nworld", final=True)))
+# 'hello\\nworld'`,
+  },
+  {
+    name: "IncrementalNewlineDecoder.getstate",
+    description:
+      "Метод вспомогательного класса IncrementalNewlineDecoder. Возвращает текущее состояние декодера в виде кортежа (buffer, flags), где buffer — накопленные данные, flags — целочисленные флаги состояния. Используется для сохранения состояния с целью последующего восстановления через setstate().",
+    syntax: "decoder.getstate()",
+    arguments: [],
+    example: `import io
+
+decoder = io.IncrementalNewlineDecoder(decoder=None, translate=True)
+
+# Начальное состояние:
+state = decoder.getstate()
+print(state)   # (b'', 0)  — буфер пуст, флаги 0
+
+# После частичного декодирования (\\r без \\n — в буфере):
+decoder.decode("line1\\r", final=False)
+state_mid = decoder.getstate()
+print(state_mid)   # Буфер содержит незавершённый \\r
+
+# Сохранение/восстановление:
+saved = decoder.getstate()
+# ... другая работа ...
+decoder.setstate(saved)   # Возврат к сохранённому состоянию`,
+  },
+  {
+    name: "IncrementalNewlineDecoder.setstate",
+    description:
+      "Метод вспомогательного класса IncrementalNewlineDecoder. Восстанавливает состояние декодера из кортежа, ранее полученного через getstate(). Позволяет реализовать возобновляемое декодирование: сохранить состояние после обработки фрагмента данных, а затем продолжить с того же места.",
+    syntax: "decoder.setstate(state)",
+    arguments: [
+      {
+        name: "state",
+        description:
+          "Кортеж (buffer, flags), ранее полученный через getstate(). buffer — байтовые данные, flags — целочисленные флаги состояния.",
+      },
+    ],
+    example: `import io
+
+decoder = io.IncrementalNewlineDecoder(decoder=None, translate=True)
+
+# Декодируем первый фрагмент:
+result1 = decoder.decode("part1\\r", final=False)
+
+# Сохраняем состояние:
+saved_state = decoder.getstate()
+
+# Продолжаем:
+result2 = decoder.decode("\\npart2\\n", final=True)
+print(repr(result1 + result2))   # 'part1\\npart2\\n'
+
+# Восстанавливаем к моменту после первого фрагмента:
+decoder.setstate(saved_state)
+
+# Повторяем обработку со второго фрагмента:
+result2_retry = decoder.decode("\\npart2_retry\\n", final=True)
+print(repr(result2_retry))   # '\\npart2_retry\\n'`,
+  },
+  {
+    name: "IncrementalNewlineDecoder.newlines",
+    description:
+      'Атрибут вспомогательного класса IncrementalNewlineDecoder. Аналогичен TextIOBase.newlines. После декодирования содержит информацию о переводах строк, встреченных во входных данных: None (не встречено), строка (один тип) или кортеж строк (несколько типов). Значения: "\\n", "\\r", "\\r\\n".',
+    syntax: "decoder.newlines",
+    arguments: [],
+    example: `import io
+
+decoder = io.IncrementalNewlineDecoder(decoder=None, translate=True)
+
+print(decoder.newlines)   # None (ещё не декодировали)
+
+decoder.decode("line1\\n", final=False)
+print(decoder.newlines)   # '\\n'
+
+decoder.decode("line2\\r\\n", final=False)
+print(decoder.newlines)   # ('\\n', '\\r\\n')
+
+decoder.decode("line3\\r", final=True)
+print(decoder.newlines)   # ('\\n', '\\r\\n', '\\r')  — все три типа
+
+# Полезно для анализа формата файла:
+def detect_newlines(text: str) -> str | tuple | None:
+    d = io.IncrementalNewlineDecoder(None, translate=False)
+    d.decode(text, final=True)
+    return d.newlines`,
+  },
+   {
+    name: 'ClientSession.request',
+    description:
+      'Универсальный метод класса ClientSession библиотеки aiohttp для выполнения HTTP-запроса с произвольным методом. Является основой для методов get(), post(), put() и других. Возвращает объект ClientResponse в виде асинхронного контекстного менеджера. Используется когда нужен метод, не имеющий собственного shortcut-метода.',
+    syntax: 'await session.request(method, url, **kwargs)',
+    arguments: [
+      { name: 'method', description: 'Строка HTTP-метода в верхнем регистре: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" и др.' },
+      { name: 'url', description: 'URL запроса — строка или yarl.URL объект.' },
+      { name: 'params', description: 'Параметры строки запроса (query string). dict, list кортежей или строка.' },
+      { name: 'data', description: 'Тело запроса: bytes, str, dict (form-data), AsyncIterable или FormData.' },
+      { name: 'json', description: 'Объект Python, который будет сериализован в JSON и отправлен как тело с Content-Type: application/json.' },
+      { name: 'headers', description: 'Дополнительные HTTP-заголовки запроса в виде dict или CIMultiDict.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout с ограничениями времени ожидания.' },
+      { name: 'ssl', description: 'SSL-контекст, False (отключить проверку) или None (по умолчанию).' },
     ],
     example: `import aiohttp
+import asyncio
 
-async def send_multipart():
-    with aiohttp.MultipartWriter('mixed') as writer:
-        # Добавить текст
-        writer.append('Привет, мир!')
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Универсальный запрос:
+        async with session.request('GET', 'https://httpbin.org/get',
+                                   params={'key': 'value'}) as resp:
+            print(resp.status)          # 200
+            data = await resp.json()
+            print(data['url'])
 
-        # Добавить bytes с заголовком
-        writer.append(
-            b'\\x89PNG binary data',
-            headers={'Content-Type': 'image/png'}
-        )
+        # PATCH через request():
+        async with session.request(
+            'PATCH',
+            'https://api.example.com/items/1',
+            json={'name': 'updated'},
+            headers={'Authorization': 'Bearer token'},
+        ) as resp:
+            print(await resp.json())
 
-        # Добавить файл
-        with open('report.pdf', 'rb') as f:
-            writer.append(f, headers={
-                'Content-Disposition': 'attachment; filename="report.pdf"'
-            })
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                'https://example.com/upload',
-                data=writer
-            ) as resp:
-                print(resp.status)`
+asyncio.run(main())`,
   },
   {
-    name: 'aiohttp.MultipartWriter.append_json()',
-    description: 'Метод, сериализующий объект Python в JSON и добавляющий его как часть multipart-сообщения с заголовком Content-Type: application/json. Удобная обёртка над append() для передачи структурированных данных вместе с файлами.',
-    syntax: 'writer.append_json(obj, headers=None)',
+    name: 'ClientSession.get',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP GET-запрос. Shortcut для session.request("GET", url, **kwargs). Возвращает объект ClientResponse в виде асинхронного контекстного менеджера. Используется для получения данных от API, загрузки страниц и файлов.',
+    syntax: 'await session.get(url, **kwargs)',
     arguments: [
-      {
-        name: 'obj',
-        description: 'Объект Python, сериализуемый в JSON: словарь, список, строка, число и т.д.'
-      },
-      {
-        name: 'headers',
-        description: 'Дополнительные заголовки для данной части. Content-Type: application/json устанавливается автоматически.'
-      }
+      { name: 'url', description: 'URL запроса — строка или yarl.URL.' },
+      { name: 'params', description: 'Параметры query string: dict, list пар или строка.' },
+      { name: 'headers', description: 'Дополнительные заголовки запроса.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+      { name: 'allow_redirects', description: 'Следовать ли редиректам. По умолчанию True.' },
+      { name: 'ssl', description: 'SSL-контекст или False для отключения проверки сертификата.' },
     ],
     example: `import aiohttp
+import asyncio
 
-async def send_with_metadata():
-    with aiohttp.MultipartWriter('form-data') as writer:
-        # Метаданные в JSON
-        writer.append_json({
-            'user_id': 42,
-            'tags': ['photo', 'avatar'],
-            'description': 'Фото профиля'
-        })
+async def fetch_data():
+    async with aiohttp.ClientSession() as session:
+        # Простой GET:
+        async with session.get('https://api.github.com/users/python') as resp:
+            print(resp.status)       # 200
+            user = await resp.json()
+            print(user['login'])     # 'python'
 
-        # Файл изображения
-        with open('avatar.png', 'rb') as f:
-            writer.append(f, headers={
-                'Content-Disposition': 'form-data; name="file"; filename="avatar.png"',
-                'Content-Type': 'image/png'
-            })
+        # С параметрами:
+        params = {'q': 'aiohttp', 'sort': 'stars'}
+        async with session.get(
+            'https://api.github.com/search/repositories',
+            params=params,
+            headers={'Accept': 'application/vnd.github.v3+json'},
+        ) as resp:
+            data = await resp.json()
+            print(data['total_count'])
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                'https://api.example.com/photos',
-                data=writer
-            ) as resp:
-                print(await resp.json())`
+asyncio.run(fetch_data())`,
   },
   {
-    name: 'aiohttp.MultipartWriter.append_form()',
-    description: 'Метод, добавляющий данные формы (список кортежей или словарь) как часть multipart-сообщения с заголовком Content-Type: application/x-www-form-urlencoded. Используется для вложения закодированных полей формы внутрь multipart-запроса.',
-    syntax: 'writer.append_form(obj, headers=None)',
+    name: 'ClientSession.post',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP POST-запрос. Shortcut для session.request("POST", url, **kwargs). Поддерживает отправку JSON, form-data, файлов и произвольных байт. Возвращает объект ClientResponse через асинхронный контекстный менеджер.',
+    syntax: 'await session.post(url, **kwargs)',
     arguments: [
-      {
-        name: 'obj',
-        description: 'Данные формы: словарь {key: value} или список кортежей [(key, value), ...]. Будут закодированы как application/x-www-form-urlencoded.'
-      },
-      {
-        name: 'headers',
-        description: 'Дополнительные заголовки для данной части. Content-Type: application/x-www-form-urlencoded устанавливается автоматически.'
-      }
+      { name: 'url', description: 'URL запроса.' },
+      { name: 'data', description: 'Тело запроса: bytes, str, dict (form-data), FormData или AsyncIterable.' },
+      { name: 'json', description: 'Python-объект для отправки как JSON (устанавливает Content-Type: application/json).' },
+      { name: 'headers', description: 'Дополнительные заголовки запроса.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
     ],
     example: `import aiohttp
+import asyncio
 
-async def send_mixed_multipart():
-    with aiohttp.MultipartWriter('mixed') as writer:
-        # Поля формы как отдельная часть
-        writer.append_form({
-            'action': 'upload',
-            'folder': 'documents',
-            'overwrite': 'true'
-        })
+async def send_data():
+    async with aiohttp.ClientSession() as session:
+        # Отправка JSON:
+        async with session.post(
+            'https://api.example.com/users',
+            json={'name': 'Ivan', 'email': 'ivan@example.com'},
+        ) as resp:
+            result = await resp.json()
+            print(result['id'])
 
-        # Или как список кортежей (сохраняет порядок)
-        writer.append_form([
-            ('category', 'reports'),
-            ('year', '2024'),
-            ('year', '2025'),  # Дублирующийся ключ
-        ])
+        # Отправка form-data:
+        async with session.post(
+            'https://httpbin.org/post',
+            data={'field1': 'value1', 'field2': 'value2'},
+        ) as resp:
+            print(resp.status)
 
-        # Бинарный файл
-        with open('doc.pdf', 'rb') as f:
-            writer.append(f, headers={'Content-Type': 'application/pdf'})
-
-        async with aiohttp.ClientSession() as session:
+        # Загрузка файла:
+        with open('photo.jpg', 'rb') as f:
             async with session.post(
-                'https://example.com/api/upload',
-                data=writer
+                'https://api.example.com/upload',
+                data={'file': f},
             ) as resp:
-                print(resp.status)`
+                print(await resp.text())
+
+asyncio.run(send_data())`,
   },
   {
-    name: 'aiohttp.web.get()',
-    description: 'Декоратор и функция из web.RouteTableDef для регистрации обработчика GET-запросов по указанному пути. Используется совместно с RouteTableDef для декларативного описания маршрутов вне класса Application.',
-    syntax: 'web.get(path, handler, **kwargs)',
+    name: 'ClientSession.put',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP PUT-запрос. Shortcut для session.request("PUT", url, **kwargs). Обычно используется для полной замены существующего ресурса. Поддерживает те же параметры тела запроса, что и post().',
+    syntax: 'await session.put(url, **kwargs)',
     arguments: [
-      {
-        name: 'path',
-        description: 'URL-шаблон маршрута. Поддерживает динамические сегменты в фигурных скобках: "/users/{id}".'
-      },
-      {
-        name: 'handler',
-        description: 'Асинхронная функция-обработчик, принимающая объект web.Request и возвращающая web.Response.'
-      },
-      {
-        name: '**kwargs',
-        description: 'Дополнительные параметры маршрута, например name (имя маршрута для url_for) или expect_handler.'
-      }
+      { name: 'url', description: 'URL запроса.' },
+      { name: 'data', description: 'Тело запроса: bytes, str, dict или AsyncIterable.' },
+      { name: 'json', description: 'Python-объект для сериализации в JSON.' },
+      { name: 'headers', description: 'Дополнительные заголовки.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def update_resource():
+    async with aiohttp.ClientSession(
+        headers={'Authorization': 'Bearer mytoken'}
+    ) as session:
+        payload = {
+            'id': 42,
+            'name': 'Updated Name',
+            'email': 'new@example.com',
+            'active': True,
+        }
+        async with session.put(
+            'https://api.example.com/users/42',
+            json=payload,
+        ) as resp:
+            if resp.status == 200:
+                updated = await resp.json()
+                print(f'Обновлено: {updated["name"]}')
+            else:
+                print(f'Ошибка: {resp.status}')
+
+asyncio.run(update_resource())`,
+  },
+  {
+    name: 'ClientSession.patch',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP PATCH-запрос. Shortcut для session.request("PATCH", url, **kwargs). Используется для частичного обновления ресурса — в теле передаются только изменяемые поля, в отличие от PUT, который заменяет объект целиком.',
+    syntax: 'await session.patch(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL запроса.' },
+      { name: 'data', description: 'Тело запроса: bytes, str, dict или AsyncIterable.' },
+      { name: 'json', description: 'Python-объект для частичного обновления.' },
+      { name: 'headers', description: 'Дополнительные заголовки.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def partial_update():
+    async with aiohttp.ClientSession() as session:
+        # Обновляем только имя (остальные поля не меняются):
+        async with session.patch(
+            'https://api.example.com/users/42',
+            json={'name': 'New Name'},
+            headers={'Authorization': 'Bearer token'},
+        ) as resp:
+            print(resp.status)   # 200
+            data = await resp.json()
+            print(data['name'])  # 'New Name'
+
+        # Несколько полей:
+        async with session.patch(
+            'https://api.example.com/articles/1',
+            json={'title': 'Updated', 'published': True},
+        ) as resp:
+            print(await resp.json())
+
+asyncio.run(partial_update())`,
+  },
+  {
+    name: 'ClientSession.delete',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP DELETE-запрос. Shortcut для session.request("DELETE", url, **kwargs). Используется для удаления ресурса на сервере. Обычно возвращает статус 204 No Content или 200 с телом ответа.',
+    syntax: 'await session.delete(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL ресурса для удаления.' },
+      { name: 'headers', description: 'Дополнительные заголовки (например, Authorization).' },
+      { name: 'params', description: 'Параметры query string.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def delete_resource():
+    async with aiohttp.ClientSession(
+        headers={'Authorization': 'Bearer mytoken'}
+    ) as session:
+        async with session.delete(
+            'https://api.example.com/users/42',
+        ) as resp:
+            if resp.status == 204:
+                print('Удалено успешно')
+            elif resp.status == 404:
+                print('Ресурс не найден')
+            else:
+                text = await resp.text()
+                print(f'Ошибка {resp.status}: {text}')
+
+        # Мягкое удаление с параметром:
+        async with session.delete(
+            'https://api.example.com/items/5',
+            params={'soft': 'true'},
+        ) as resp:
+            print(resp.status)
+
+asyncio.run(delete_resource())`,
+  },
+  {
+    name: 'ClientSession.head',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP HEAD-запрос. Shortcut для session.request("HEAD", url, **kwargs). HEAD идентичен GET, но сервер возвращает только заголовки без тела ответа. Используется для проверки существования ресурса и получения метаданных (Content-Length, Last-Modified) без загрузки тела.',
+    syntax: 'await session.head(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL запроса.' },
+      { name: 'headers', description: 'Дополнительные заголовки.' },
+      { name: 'allow_redirects', description: 'Следовать ли редиректам. По умолчанию False для HEAD.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def check_resource():
+    async with aiohttp.ClientSession() as session:
+        async with session.head('https://example.com/file.pdf') as resp:
+            print(resp.status)
+            size = resp.headers.get('Content-Length', 'unknown')
+            content_type = resp.headers.get('Content-Type', '')
+            last_modified = resp.headers.get('Last-Modified', '')
+
+            print(f'Размер: {size} байт')
+            print(f'Тип: {content_type}')
+            print(f'Изменён: {last_modified}')
+            # Тело ответа недоступно (resp.text() вернёт '')
+
+asyncio.run(check_resource())`,
+  },
+  {
+    name: 'ClientSession.options',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP OPTIONS-запрос. Shortcut для session.request("OPTIONS", url, **kwargs). Используется для получения списка допустимых HTTP-методов для ресурса и для preflight-запросов CORS (Cross-Origin Resource Sharing).',
+    syntax: 'await session.options(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL запроса.' },
+      { name: 'headers', description: 'Дополнительные заголовки.' },
+      { name: 'timeout', description: 'Объект aiohttp.ClientTimeout.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def check_allowed_methods():
+    async with aiohttp.ClientSession() as session:
+        async with session.options('https://api.example.com/users') as resp:
+            print(resp.status)    # 200 или 204
+
+            # Список допустимых методов:
+            allowed = resp.headers.get('Allow', '')
+            print(f'Разрешены: {allowed}')
+            # 'GET, POST, HEAD, OPTIONS'
+
+            # CORS-заголовки:
+            origin = resp.headers.get('Access-Control-Allow-Origin', '')
+            methods = resp.headers.get('Access-Control-Allow-Methods', '')
+            print(f'CORS origin: {origin}')
+            print(f'CORS methods: {methods}')
+
+asyncio.run(check_allowed_methods())`,
+  },
+  {
+    name: 'ClientSession.ws_connect',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Устанавливает WebSocket-соединение. Возвращает объект ClientWebSocketResponse через асинхронный контекстный менеджер. Позволяет отправлять и получать сообщения в реальном времени. Поддерживает текстовые, бинарные сообщения и ping/pong.',
+    syntax: 'await session.ws_connect(url, **kwargs)',
+    arguments: [
+      { name: 'url', description: 'URL WebSocket-сервера (ws:// или wss://).' },
+      { name: 'protocols', description: 'Список поддерживаемых подпротоколов WebSocket.' },
+      { name: 'headers', description: 'Дополнительные заголовки HTTP-запроса установки соединения.' },
+      { name: 'heartbeat', description: 'Интервал ping в секундах для поддержания соединения живым.' },
+      { name: 'compress', description: 'Уровень сжатия (0 — выключено, 9 — максимальное). None — по умолчанию.' },
+      { name: 'timeout', description: 'Время ожидания установки соединения в секундах.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def websocket_client():
+    async with aiohttp.ClientSession() as session:
+        async with session.ws_connect(
+            'wss://echo.websocket.org',
+            heartbeat=30,   # Ping каждые 30 секунд
+        ) as ws:
+            # Отправка текстового сообщения:
+            await ws.send_str('Hello, WebSocket!')
+
+            # Получение ответа:
+            msg = await ws.receive()
+            if msg.type == aiohttp.WSMsgType.TEXT:
+                print(f'Получено: {msg.data}')
+            elif msg.type == aiohttp.WSMsgType.ERROR:
+                print(f'Ошибка: {ws.exception()}')
+
+            # Цикл приёма:
+            async for msg in ws:
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    print(msg.data)
+                elif msg.type == aiohttp.WSMsgType.CLOSED:
+                    break
+
+asyncio.run(websocket_client())`,
+  },
+  {
+    name: 'ClientSession.close',
+    description:
+      'Метод класса ClientSession библиотеки aiohttp. Закрывает сессию и освобождает все связанные ресурсы: соединения в пуле, коннекторы, внутренние задачи. Является корутиной — необходимо вызывать через await. При использовании ClientSession как контекстного менеджера (async with) close() вызывается автоматически.',
+    syntax: 'await session.close()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+# Рекомендуемый способ — async with (close() автоматически):
+async def with_context_manager():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(await resp.json())
+    # close() вызван автоматически
+
+# Ручное управление (например, для переиспользования сессии):
+async def manual_session():
+    session = aiohttp.ClientSession()
+    try:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.status)
+
+        async with session.post('https://httpbin.org/post',
+                                json={'key': 'value'}) as resp:
+            print(await resp.json())
+    finally:
+        await session.close()   # Обязательно в finally
+
+asyncio.run(with_context_manager())`,
+  },
+  {
+    name: 'ClientSession.closed',
+    description:
+      'Атрибут класса ClientSession библиотеки aiohttp. Булево свойство — True если сессия закрыта (вызван close() или завершён блок async with). Позволяет проверить состояние сессии перед выполнением запроса. После закрытия любые запросы через сессию вызовут исключение.',
+    syntax: 'session.closed',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    session = aiohttp.ClientSession()
+    print(session.closed)   # False
+
+    await session.close()
+    print(session.closed)   # True
+
+    # С контекстным менеджером:
+    async with aiohttp.ClientSession() as session:
+        print(session.closed)   # False
+    print(session.closed)       # True
+
+    # Проверка перед запросом:
+    if not session.closed:
+        async with session.get('https://example.com') as resp:
+            print(resp.status)
+    else:
+        print('Сессия закрыта, создайте новую')
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientSession.connector',
+    description:
+      'Атрибут класса ClientSession библиотеки aiohttp. Возвращает объект коннектора (BaseConnector), используемого сессией для управления пулом соединений. По умолчанию — TCPConnector. Через коннектор можно настроить лимиты соединений, SSL, keepalive и DNS-кэш.',
+    syntax: 'session.connector',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    # Настройка коннектора вручную:
+    connector = aiohttp.TCPConnector(
+        limit=100,           # Максимум 100 соединений
+        limit_per_host=10,   # Максимум 10 на один хост
+        ttl_dns_cache=300,   # DNS-кэш 5 минут
+        ssl=False,           # Отключить проверку SSL
+    )
+    async with aiohttp.ClientSession(connector=connector) as session:
+        print(type(session.connector))
+        # <class 'aiohttp.connector.TCPConnector'>
+
+        # Статистика коннектора:
+        print(session.connector._limit)    # 100
+
+        async with session.get('https://example.com') as resp:
+            print(resp.status)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientSession.cookie_jar',
+    description:
+      'Атрибут класса ClientSession библиотеки aiohttp. Возвращает объект хранилища куки (AbstractCookieJar). По умолчанию — CookieJar, который автоматически сохраняет и отправляет куки между запросами. Можно заменить на DummyCookieJar для отключения куки или CookieJar(unsafe=True) для работы с IP-адресами.',
+    syntax: 'session.cookie_jar',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Выполняем запрос — куки сохраняются автоматически:
+        async with session.get('https://httpbin.org/cookies/set/key/value') as resp:
+            pass
+
+        # Доступ к сохранённым куки:
+        for cookie in session.cookie_jar:
+            print(cookie.key, cookie.value)
+
+        # Ручная установка куки:
+        session.cookie_jar.update_cookies({'my_cookie': 'my_value'})
+
+    # Отключение куки:
+    jar = aiohttp.DummyCookieJar()
+    async with aiohttp.ClientSession(cookie_jar=jar) as session:
+        print(type(session.cookie_jar))
+        # <class 'aiohttp.cookiejar.DummyCookieJar'>
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientSession.loop',
+    description:
+      'Атрибут класса ClientSession библиотеки aiohttp. Возвращает объект цикла событий asyncio (event loop), связанного с данной сессией. Устарел начиная с aiohttp 4.x — использование loop в asyncio-объектах не рекомендуется. Для получения текущего цикла используйте asyncio.get_event_loop().',
+    syntax: 'session.loop',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        loop = session.loop
+        print(type(loop))
+        # <class 'uvloop.Loop'> или <class 'asyncio.unix_events._UnixSelectorEventLoop'>
+
+        # Современная альтернатива (рекомендуется):
+        current_loop = asyncio.get_event_loop()
+        print(loop is current_loop)   # True
+
+        # Проверка состояния цикла:
+        print(loop.is_running())   # True (внутри async функции)
+        print(loop.is_closed())    # False
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientSession.timeout',
+    description:
+      'Атрибут класса ClientSession библиотеки aiohttp. Возвращает объект ClientTimeout с настройками тайм-аутов по умолчанию для всех запросов сессии. Задаётся при создании сессии. Отдельные запросы могут переопределять тайм-аут через параметр timeout. При превышении выбрасывается asyncio.TimeoutError.',
+    syntax: 'session.timeout',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    # Настройка тайм-аутов для всей сессии:
+    timeout = aiohttp.ClientTimeout(
+        total=30,           # Общее время запроса
+        connect=5,          # Время установки соединения
+        sock_connect=5,     # Время TCP-соединения
+        sock_read=10,       # Время чтения данных
+    )
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        print(session.timeout.total)    # 30
+        print(session.timeout.connect)  # 5
+
+        try:
+            async with session.get('https://slow-site.example.com') as resp:
+                print(await resp.text())
+        except asyncio.TimeoutError:
+            print('Превышено время ожидания')
+
+        # Переопределение для конкретного запроса:
+        custom = aiohttp.ClientTimeout(total=5)
+        async with session.get('https://example.com', timeout=custom) as resp:
+            print(resp.status)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.status',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Целочисленный HTTP-статус код ответа сервера (например: 200, 201, 404, 500). Доступен сразу после получения заголовков, до чтения тела ответа. Соответствует полю status_code в библиотеке requests.',
+    syntax: 'response.status',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/status/404') as resp:
+            print(resp.status)   # 404
+
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.status)   # 200
+
+            # Проверка успешности:
+            if resp.status == 200:
+                data = await resp.json()
+            elif resp.status == 404:
+                print('Не найдено')
+            elif resp.status >= 500:
+                print('Ошибка сервера')
+
+            # Альтернатива — свойство ok:
+            print(resp.ok)   # True если 200 <= status < 300
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.reason',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Строка с текстовым описанием HTTP-статуса ответа (reason phrase). Например: "OK" для 200, "Not Found" для 404, "Internal Server Error" для 500. Соответствует стандартным описаниям HTTP-статусов по RFC 7231.',
+    syntax: 'response.reason',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.status)    # 200
+            print(resp.reason)    # 'OK'
+
+        async with session.get('https://httpbin.org/status/404') as resp:
+            print(resp.status)    # 404
+            print(resp.reason)    # 'NOT FOUND'
+
+        async with session.get('https://httpbin.org/status/500') as resp:
+            print(resp.status)    # 500
+            print(resp.reason)    # 'INTERNAL SERVER ERROR'
+
+        # Вывод полного статуса:
+        async with session.get('https://example.com') as resp:
+            print(f'{resp.status} {resp.reason}')
+            # '200 OK'
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.ok',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Булево свойство — True если HTTP-статус ответа находится в диапазоне 200–299 (успешные ответы). False для любых других кодов (редиректы, ошибки клиента, ошибки сервера). Удобная альтернатива проверке resp.status == 200.',
+    syntax: 'response.ok',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def fetch(url: str):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.ok:
+                return await resp.json()
+            else:
+                print(f'Ошибка: {resp.status} {resp.reason}')
+                return None
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.ok)    # True  (200)
+
+        async with session.get('https://httpbin.org/status/404') as resp:
+            print(resp.ok)    # False (404)
+
+        async with session.get('https://httpbin.org/status/301') as resp:
+            print(resp.ok)    # False (301, но обычно редирект следован)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.method',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Строка с HTTP-методом запроса, который породил данный ответ. Например: "GET", "POST", "PUT". Полезен при обработке ответов в обобщённых функциях, когда метод запроса не известен заранее.',
+    syntax: 'response.method',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def log_response(resp: aiohttp.ClientResponse):
+    print(f'{resp.method} {resp.url} → {resp.status} {resp.reason}')
+    # 'GET https://httpbin.org/get → 200 OK'
+    # 'POST https://api.example.com/users → 201 CREATED'
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.method)   # 'GET'
+            await log_response(resp)
+
+        async with session.post('https://httpbin.org/post',
+                                json={'key': 'val'}) as resp:
+            print(resp.method)   # 'POST'
+            await log_response(resp)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.url',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект yarl.URL с адресом запроса, которым был получен ответ. После редиректов содержит URL последнего запроса в цепочке (конечный адрес). Для получения исходного URL запроса (до редиректов) используйте real_url.',
+    syntax: 'response.url',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Без редиректов:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.url)
+            # URL('https://httpbin.org/get')
+            print(str(resp.url))
+            # 'https://httpbin.org/get'
+            print(resp.url.host)    # 'httpbin.org'
+            print(resp.url.path)    # '/get'
+
+        # С редиректом (url → конечный адрес):
+        async with session.get('http://httpbin.org/redirect/1') as resp:
+            print(resp.url)
+            # URL('https://httpbin.org/get')  ← после редиректа
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.real_url',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект yarl.URL с исходным URL запроса — тем, который был передан в метод session.get() / session.post() и т.д., до применения каких-либо редиректов. В отличие от url, не изменяется в цепочке редиректов.',
+    syntax: 'response.real_url',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Запрос с редиректом:
+        original = 'http://httpbin.org/redirect/2'
+        async with session.get(original) as resp:
+            print(resp.real_url)
+            # URL('http://httpbin.org/redirect/2')  ← исходный URL
+
+            print(resp.url)
+            # URL('https://httpbin.org/get')  ← конечный URL после редиректов
+
+            # Сравнение:
+            redirected = str(resp.real_url) != str(resp.url)
+            print(f'Был редирект: {redirected}')   # True
+
+        # Без редиректа — real_url и url совпадают:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.real_url == resp.url)   # True
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.connection',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Возвращает объект Connection, представляющий физическое TCP-соединение, использованное для данного запроса. Доступен только пока ответ не освобождён (до вызова release() или выхода из блока async with). Полезен для низкоуровневой отладки.',
+    syntax: 'response.connection',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            conn = resp.connection
+            print(type(conn))
+            # <class 'aiohttp.connector.Connection'>
+
+            # Информация о соединении:
+            print(conn.transport)   # asyncio.Transport объект
+
+            # После выхода из async with — соединение освобождено:
+        # resp.connection → None (ответ уже освобождён)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.content',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект StreamReader — асинхронный потоковый читатель тела ответа. Позволяет читать тело по частям (chunk by chunk) без загрузки всего содержимого в память. Используется для загрузки больших файлов и потоковой обработки данных.',
+    syntax: 'response.content',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def download_file(url: str, path: str):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            resp.raise_for_status()
+
+            # Потоковое чтение по чанкам:
+            with open(path, 'wb') as f:
+                async for chunk in resp.content.iter_chunked(8192):
+                    f.write(chunk)
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/bytes/1024') as resp:
+            # Размер тела (если известен):
+            print(resp.content_length)   # 1024 или None
+
+            # Чтение первых 100 байт:
+            first_chunk = await resp.content.read(100)
+            print(len(first_chunk))   # 100
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.cookies',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект SimpleCookie (из стандартной библиотеки http.cookies) с куки, установленными сервером в данном ответе через заголовок Set-Cookie. Содержит только куки текущего ответа, не всей сессии. Для доступа ко всем куки сессии используйте session.cookie_jar.',
+    syntax: 'response.cookies',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            'https://httpbin.org/cookies/set/session_id/abc123'
+        ) as resp:
+            # Куки этого ответа:
+            for name, morsel in resp.cookies.items():
+                print(f'{name} = {morsel.value}')
+                print(f'  path: {morsel["path"]}')
+                print(f'  expires: {morsel["expires"]}')
+
+            # Конкретное куки:
+            if 'session_id' in resp.cookies:
+                token = resp.cookies['session_id'].value
+                print(f'Токен: {token}')   # 'abc123'
+
+            # Все куки сессии (накопленные):
+            for cookie in session.cookie_jar:
+                print(cookie.key, cookie.value)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.headers',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект CIMultiDictProxy — регистронезависимый словарь (case-insensitive) HTTP-заголовков ответа. Поддерживает несколько значений для одного заголовка. Доступен сразу после получения заголовков, до чтения тела.',
+    syntax: 'response.headers',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            # Регистронезависимый доступ:
+            print(resp.headers['Content-Type'])
+            # 'application/json'
+
+            print(resp.headers.get('content-type'))
+            # 'application/json'  (то же самое)
+
+            # Проверка наличия:
+            if 'X-RateLimit-Remaining' in resp.headers:
+                limit = resp.headers['X-RateLimit-Remaining']
+
+            # Все заголовки:
+            for name, value in resp.headers.items():
+                print(f'{name}: {value}')
+
+            # Content-Type без параметров:
+            ct = resp.headers.get('Content-Type', '')
+            mime = ct.split(';')[0].strip()
+            print(mime)   # 'application/json'
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.raw_headers',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Кортеж пар (name, value) — сырые HTTP-заголовки ответа в виде байтовых строк (bytes), в том порядке, в котором они были получены от сервера. В отличие от headers, не нормализован и не декодирован. Полезен для низкоуровневой обработки и отладки.',
+    syntax: 'response.raw_headers',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            # Сырые байтовые заголовки:
+            for name, value in resp.raw_headers:
+                print(f'{name!r}: {value!r}')
+            # b'Content-Type': b'application/json'
+            # b'Server': b'gunicorn/19.9.0'
+            # ...
+
+            # Количество заголовков:
+            print(len(resp.raw_headers))
+
+            # Поиск конкретного заголовка:
+            for name, value in resp.raw_headers:
+                if name.lower() == b'content-type':
+                    print(value.decode('utf-8'))
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.links',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект CIMultiDictProxy, содержащий разобранные ссылки из заголовка Link ответа. Используется в API с пагинацией (GitHub API, JSON:API и др.) для навигации между страницами. Ключи — rel-атрибуты ссылок (next, prev, first, last).',
+    syntax: 'response.links',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def paginate_github(url: str):
+    async with aiohttp.ClientSession(
+        headers={'Accept': 'application/vnd.github.v3+json'}
+    ) as session:
+        while url:
+            async with session.get(url) as resp:
+                items = await resp.json()
+                print(f'Получено: {len(items)} элементов')
+
+                # Link header: <url>; rel="next", <url>; rel="last"
+                links = resp.links
+                print(links)
+                # {'next': {'url': URL('...'), 'rel': 'next'}, ...}
+
+                if 'next' in links:
+                    url = str(links['next']['url'])
+                else:
+                    url = None   # Последняя страница
+
+asyncio.run(paginate_github('https://api.github.com/repos/python/cpython/issues'))`,
+  },
+  {
+    name: 'ClientResponse.history',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Кортеж объектов ClientResponse для всех промежуточных ответов в цепочке редиректов (до финального). Пустой кортеж () если редиректов не было. Каждый элемент содержит статус, заголовки и URL промежуточного ответа.',
+    syntax: 'response.history',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Без редиректов:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.history)   # ()
+
+        # С редиректами:
+        async with session.get('http://httpbin.org/redirect/3') as resp:
+            print(f'Финальный статус: {resp.status}')   # 200
+            print(f'Редиректов: {len(resp.history)}')   # 3
+
+            for i, redirect in enumerate(resp.history):
+                print(f'  Редирект {i+1}: {redirect.status} → {redirect.url}')
+            # Редирект 1: 302 → http://httpbin.org/redirect/2
+            # Редирект 2: 302 → http://httpbin.org/redirect/1
+            # Редирект 3: 302 → https://httpbin.org/get
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.request_info',
+    description:
+      'Атрибут объекта ClientResponse библиотеки aiohttp. Объект RequestInfo с информацией о запросе, породившем данный ответ: url (yarl.URL), real_url, method (строка), headers (отправленные заголовки). Позволяет из ответа восстановить детали исходного запроса без хранения их отдельно.',
+    syntax: 'response.request_info',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession(
+        headers={'User-Agent': 'MyApp/1.0'}
+    ) as session:
+        async with session.post(
+            'https://httpbin.org/post',
+            json={'key': 'value'},
+            headers={'X-Custom': 'header'},
+        ) as resp:
+            info = resp.request_info
+
+            print(info.method)      # 'POST'
+            print(info.url)         # URL('https://httpbin.org/post')
+            print(info.real_url)    # URL('https://httpbin.org/post')
+
+            # Заголовки запроса:
+            print(info.headers['User-Agent'])   # 'MyApp/1.0'
+            print(info.headers['X-Custom'])     # 'header'
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.read',
+    description:
+      'Асинхронный метод объекта ClientResponse библиотеки aiohttp. Читает и возвращает всё тело ответа как байтовую строку (bytes). Загружает тело целиком в память — не подходит для очень больших ответов (используйте content для потокового чтения). После вызова тело кэшируется.',
+    syntax: 'await response.read()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Чтение как bytes:
+        async with session.get('https://httpbin.org/image/png') as resp:
+            image_bytes = await resp.read()
+            print(type(image_bytes))   # <class 'bytes'>
+            print(len(image_bytes))    # Размер в байтах
+
+            with open('image.png', 'wb') as f:
+                f.write(image_bytes)
+
+        # Декодирование вручную:
+        async with session.get('https://httpbin.org/get') as resp:
+            raw = await resp.read()
+            text = raw.decode('utf-8')
+            print(text[:100])
+
+        # Для текста и JSON — используйте resp.text() / resp.json():
+        async with session.get('https://httpbin.org/get') as resp:
+            data = await resp.json()   # Удобнее, чем read() + decode + loads
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.release',
+    description:
+      'Асинхронный метод объекта ClientResponse библиотеки aiohttp. Освобождает ресурсы, связанные с ответом: закрывает соединение или возвращает его в пул коннектора. Вызывается автоматически при выходе из блока async with. Необходимо вызывать вручную если ответ читался без контекстного менеджера во избежание утечки соединений.',
+    syntax: 'await response.release()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Автоматическое освобождение (рекомендуется):
+        async with session.get('https://httpbin.org/get') as resp:
+            data = await resp.json()
+        # release() вызван автоматически
+
+        # Ручное освобождение (при работе без async with):
+        resp = await session.get('https://httpbin.org/get')
+        try:
+            if resp.status == 200:
+                data = await resp.json()
+            else:
+                print(f'Ошибка: {resp.status}')
+        finally:
+            await resp.release()   # Обязательно освободить!
+
+        # release() после read() — тело уже прочитано, соединение освобождается:
+        async with session.get('https://httpbin.org/get') as resp:
+            body = await resp.read()
+            # release() будет вызван при выходе из async with
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.text',
+    description:
+      'Асинхронный метод объекта ClientResponse библиотеки aiohttp. Читает тело ответа и возвращает его как строку (str). Кодировка определяется автоматически из заголовка Content-Type, либо задаётся явно через параметр encoding. Загружает всё тело в память — для больших ответов используйте потоковое чтение через content.',
+    syntax: "await response.text(encoding=None, errors='strict')",
+    arguments: [
+      { name: 'encoding', description: 'Кодировка для декодирования байт в строку. Если None — определяется из заголовка Content-Type или autodetect. По умолчанию None.' },
+      { name: 'errors', description: 'Режим обработки ошибок декодирования: "strict" (по умолчанию, выбросить UnicodeDecodeError), "ignore", "replace".' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Автоматическое определение кодировки:
+        async with session.get('https://httpbin.org/html') as resp:
+            html = await resp.text()
+            print(html[:200])
+
+        # Явная кодировка:
+        async with session.get('https://example.com') as resp:
+            text = await resp.text(encoding='utf-8')
+            print(len(text))
+
+        # Игнорирование ошибок декодирования:
+        async with session.get('https://example.com') as resp:
+            text = await resp.text(encoding='ascii', errors='ignore')
+
+        # Для JSON лучше использовать resp.json():
+        async with session.get('https://httpbin.org/get') as resp:
+            raw_json = await resp.text()   # Строка JSON
+            import json
+            data = json.loads(raw_json)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.json',
+    description:
+      'Асинхронный метод объекта ClientResponse библиотеки aiohttp. Читает тело ответа, декодирует и десериализует его как JSON. По умолчанию проверяет заголовок Content-Type — если он не соответствует application/json, выбрасывает ContentTypeError. Возвращает dict, list или другой тип в зависимости от содержимого.',
+    syntax: "await response.json(encoding=None, loads=json.loads, content_type='application/json')",
+    arguments: [
+      { name: 'encoding', description: 'Кодировка для декодирования байт. Если None — определяется автоматически.' },
+      { name: 'loads', description: 'Функция десериализации JSON. По умолчанию json.loads. Можно передать orjson.loads или ujson.loads для ускорения.' },
+      { name: 'content_type', description: 'Ожидаемый Content-Type. По умолчанию "application/json". None — отключить проверку типа.' },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Стандартное использование:
+        async with session.get('https://api.github.com/users/python') as resp:
+            data = await resp.json()
+            print(data['login'])    # 'python'
+            print(data['public_repos'])
+
+        # Если сервер возвращает неверный Content-Type:
+        async with session.get('https://httpbin.org/get') as resp:
+            data = await resp.json(content_type=None)   # Без проверки типа
+
+        # Быстрый JSON-парсер:
+        import orjson
+        async with session.get('https://httpbin.org/get') as resp:
+            data = await resp.json(loads=orjson.loads)
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.close',
+    description:
+      'Метод объекта ClientResponse библиотеки aiohttp. Закрывает соединение, не возвращая его в пул коннектора. В отличие от release(), который возвращает соединение в пул для повторного использования, close() полностью закрывает его. Вызывается автоматически при ошибках или явно когда соединение не должно переиспользоваться.',
+    syntax: 'response.close()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        resp = await session.get('https://httpbin.org/get')
+        try:
+            if resp.status != 200:
+                # Закрываем соединение без возврата в пул:
+                resp.close()
+                return
+            data = await resp.json()
+            print(data)
+        except Exception:
+            resp.close()   # Закрыть при ошибке
+            raise
+        finally:
+            # В нормальном случае лучше release():
+            # await resp.release()
+            pass
+
+    # Предпочтительный способ — async with (вызывает release() автоматически):
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            data = await resp.json()
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.raise_for_status',
+    description:
+      'Метод объекта ClientResponse библиотеки aiohttp. Выбрасывает исключение ClientResponseError если HTTP-статус ответа указывает на ошибку (4xx или 5xx). При статусах 1xx, 2xx, 3xx ничего не происходит. Удобен для краткой проверки успешности запроса без явной проверки resp.status.',
+    syntax: 'response.raise_for_status()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def fetch_json(url: str) -> dict:
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            resp.raise_for_status()   # ClientResponseError при 4xx/5xx
+            return await resp.json()
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Успешный запрос — исключения нет:
+        async with session.get('https://httpbin.org/get') as resp:
+            resp.raise_for_status()
+            print(resp.status)   # 200
+
+        # Ошибка 404 — выбрасывает исключение:
+        try:
+            async with session.get('https://httpbin.org/status/404') as resp:
+                resp.raise_for_status()
+        except aiohttp.ClientResponseError as e:
+            print(f'Ошибка: {e.status} {e.message}')
+            # Ошибка: 404 Not Found
+
+        # Ошибка сервера 500:
+        try:
+            async with session.get('https://httpbin.org/status/500') as resp:
+                resp.raise_for_status()
+        except aiohttp.ClientResponseError as e:
+            print(f'Ошибка сервера: {e.status}')
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'ClientResponse.wait_for_close',
+    description:
+      'Асинхронный метод объекта ClientResponse библиотеки aiohttp. Ожидает полного завершения отправки данных запроса на сервер (upload completion) и закрытия соединения. Используется в специфичных случаях, когда нужно убедиться, что данные запроса полностью переданы до продолжения выполнения.',
+    syntax: 'await response.wait_for_close()',
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Загрузка большого файла с ожиданием завершения:
+        with open('large_file.bin', 'rb') as f:
+            async with session.post(
+                'https://api.example.com/upload',
+                data=f,
+            ) as resp:
+                resp.raise_for_status()
+
+                # Ожидаем полного завершения передачи:
+                await resp.wait_for_close()
+                print('Данные полностью переданы и соединение закрыто')
+
+        # Обычно используется при потоковой отправке данных,
+        # когда важно убедиться в завершении передачи
+        # перед продолжением работы программы.
+
+asyncio.run(main())`,
+  },
+  {
+    name: 'web.Application',
+    description:
+      'Класс веб-приложения серверной части aiohttp. Является точкой входа для создания ASGI/WSGI-совместимого асинхронного HTTP-сервера. Управляет маршрутизацией, middleware, жизненным циклом (startup/shutdown) и сигналами. Передаётся в web.run_app() для запуска сервера.',
+    syntax: 'app = web.Application(*, logger=<DEFAULT>, middlewares=(), debug=...)',
+    arguments: [
+      { name: 'logger', description: 'Объект logging.Logger для логирования запросов. По умолчанию используется встроенный логгер aiohttp.' },
+      { name: 'middlewares', description: 'Кортеж или список middleware-функций, применяемых к каждому запросу в заданном порядке.' },
+      { name: 'debug', description: 'Режим отладки. При True включается подробное логирование. По умолчанию берётся из asyncio.' },
+    ],
+    example: `from aiohttp import web
+
+async def handle(request: web.Request) -> web.Response:
+    name = request.match_info.get('name', 'World')
+    return web.Response(text=f'Hello, {name}!')
+
+# Middleware:
+@web.middleware
+async def error_middleware(request, handler):
+    try:
+        return await handler(request)
+    except web.HTTPException:
+        raise
+    except Exception as e:
+        return web.Response(status=500, text=str(e))
+
+app = web.Application(middlewares=[error_middleware])
+app.router.add_get('/', handle)
+app.router.add_get('/{name}', handle)
+
+if __name__ == '__main__':
+    web.run_app(app, host='0.0.0.0', port=8080)`,
+  },
+  {
+    name: 'web.Application.add_routes',
+    description:
+      'Метод класса Application. Регистрирует список маршрутов в роутере приложения за один вызов. Принимает список объектов RouteDef, созданных декораторами web.get(), web.post(), web.put() и др. или через RouteTableDef. Более удобная альтернатива многократным вызовам router.add_get(), router.add_post() и т.д.',
+    syntax: 'app.add_routes(routes)',
+    arguments: [
+      { name: 'routes', description: 'Список объектов RouteDef — результатов вызовов web.get(), web.post(), web.route() и др., или экземпляр RouteTableDef.' },
     ],
     example: `from aiohttp import web
 
@@ -22435,3110 +28542,370 @@ routes = web.RouteTableDef()
 async def index(request: web.Request) -> web.Response:
     return web.Response(text='Главная страница')
 
-@routes.get('/users/{user_id}')
-async def get_user(request: web.Request) -> web.Response:
-    user_id = request.match_info['user_id']
-    return web.json_response({'id': user_id, 'name': 'Алиса'})
-
-app = web.Application()
-app.add_routes(routes)
-web.run_app(app)`
-  },
-  {
-    name: 'aiohttp.web.post()',
-    description: 'Декоратор и функция из web.RouteTableDef для регистрации обработчика POST-запросов по указанному пути. Применяется для создания ресурсов, отправки форм и обработки JSON-данных от клиента.',
-    syntax: 'web.post(path, handler, **kwargs)',
-    arguments: [
-      {
-        name: 'path',
-        description: 'URL-шаблон маршрута. Поддерживает динамические сегменты: "/articles/{slug}".'
-      },
-      {
-        name: 'handler',
-        description: 'Асинхронная функция-обработчик, принимающая web.Request и возвращающая web.Response.'
-      },
-      {
-        name: '**kwargs',
-        description: 'Дополнительные параметры, например name для именования маршрута.'
-      }
-    ],
-    example: `from aiohttp import web
-
-routes = web.RouteTableDef()
+@routes.get('/users')
+async def list_users(request: web.Request) -> web.Response:
+    return web.json_response([{'id': 1, 'name': 'Ivan'}])
 
 @routes.post('/users')
 async def create_user(request: web.Request) -> web.Response:
     data = await request.json()
-    name = data.get('name', '').strip()
+    return web.json_response(data, status=201)
 
-    if not name:
-        raise web.HTTPBadRequest(text='Поле name обязательно')
-
-    # Имитация создания пользователя
-    new_user = {'id': 101, 'name': name}
-    return web.json_response(new_user, status=201)
+@routes.get('/users/{id}')
+async def get_user(request: web.Request) -> web.Response:
+    user_id = int(request.match_info['id'])
+    return web.json_response({'id': user_id})
 
 app = web.Application()
-app.add_routes(routes)
-web.run_app(app)
+app.add_routes(routes)   # Регистрируем все маршруты сразу
 
-# curl -X POST http://localhost:8080/users \\
-#      -H "Content-Type: application/json" \\
-#      -d '{"name": "Боб"}'`
+web.run_app(app)`,
   },
   {
-    name: 'aiohttp.web.route()',
-    description: 'Универсальный декоратор и функция из web.RouteTableDef для регистрации обработчика с произвольным HTTP-методом. Используется когда нужно обработать нестандартный метод (PATCH, DELETE, HEAD, OPTIONS и т.д.) или передать метод динамически.',
-    syntax: 'web.route(method, path, handler, **kwargs)',
+    name: 'web.Application.add_subapp',
+    description:
+      'Метод класса Application. Монтирует вложенное приложение (subapp) по заданному URL-префиксу. Позволяет разбить большое приложение на модули: каждый модуль — отдельный Application со своими маршрутами, middleware и сигналами. Запросы, начинающиеся с prefix, передаются в subapp.',
+    syntax: 'app.add_subapp(prefix, subapp)',
     arguments: [
-      {
-        name: 'method',
-        description: 'HTTP-метод в виде строки в верхнем регистре: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE" или "*" для любого метода.'
-      },
-      {
-        name: 'path',
-        description: 'URL-шаблон маршрута. Поддерживает динамические сегменты в фигурных скобках.'
-      },
-      {
-        name: 'handler',
-        description: 'Асинхронная функция-обработчик, принимающая web.Request и возвращающая web.Response.'
-      },
-      {
-        name: '**kwargs',
-        description: 'Дополнительные параметры маршрута, например name.'
-      }
+      { name: 'prefix', description: 'Строка URL-префикса (например "/api/v1"). Должна начинаться с "/" и не заканчиваться на "/".' },
+      { name: 'subapp', description: 'Экземпляр Application, который будет обрабатывать запросы с данным префиксом.' },
     ],
     example: `from aiohttp import web
 
-routes = web.RouteTableDef()
+# Модуль API:
+api = web.Application()
 
-@routes.route('PATCH', '/users/{id}')
-async def patch_user(request: web.Request) -> web.Response:
-    user_id = request.match_info['id']
-    data = await request.json()
-    return web.json_response({'id': user_id, 'updated': data})
+@api.router.add_get('/users')
+async def list_users(request):
+    return web.json_response([{'id': 1}])
 
-@routes.route('DELETE', '/users/{id}')
-async def delete_user(request: web.Request) -> web.Response:
-    user_id = request.match_info['id']
-    return web.json_response({'deleted': user_id})
+@api.router.add_get('/posts')
+async def list_posts(request):
+    return web.json_response([{'id': 1}])
 
-# Маршрут для любого HTTP-метода
-@routes.route('*', '/debug')
-async def debug(request: web.Request) -> web.Response:
-    return web.Response(text=f'Метод: {request.method}')
+# Модуль администрирования:
+admin = web.Application()
 
+@admin.router.add_get('/dashboard')
+async def dashboard(request):
+    return web.Response(text='Admin Dashboard')
+
+# Главное приложение:
 app = web.Application()
-app.add_routes(routes)
-web.run_app(app)`
+app.add_subapp('/api/v1', api)    # /api/v1/users, /api/v1/posts
+app.add_subapp('/admin', admin)   # /admin/dashboard
+
+web.run_app(app)`,
   },
   {
-    name: 'aiohttp.web.view()',
-    description: 'Декоратор и функция из web.RouteTableDef для привязки URL-пути к классу-обработчику, унаследованному от web.View. Позволяет организовать обработку разных HTTP-методов одного маршрута в виде методов одного класса (get, post, put и т.д.).',
-    syntax: 'web.view(path, handler, **kwargs)',
+    name: 'web.Application.cleanup',
+    description:
+      'Корутина класса Application. Выполняет очистку ресурсов приложения: вызывает все обработчики сигнала on_cleanup в обратном порядке (LIFO). Вызывается автоматически при остановке сервера через web.run_app(). Используется для закрытия подключений к базам данных, освобождения кэша и других ресурсов.',
+    syntax: 'await app.cleanup()',
+    arguments: [],
+    example: `from aiohttp import web
+import asyncio
+
+async def on_startup(app):
+    # Инициализация ресурсов:
+    app['db'] = await create_db_pool()
+    app['redis'] = await create_redis()
+    print('Ресурсы инициализированы')
+
+async def on_cleanup(app):
+    # Освобождение ресурсов:
+    await app['db'].close()
+    await app['redis'].close()
+    print('Ресурсы освобождены')
+
+app = web.Application()
+app.on_startup.append(on_startup)
+app.on_cleanup.append(on_cleanup)
+
+# cleanup() вызывается автоматически при остановке web.run_app()
+# Ручной вызов (например, в тестах):
+async def test():
+    await app.startup()
+    # ... тесты ...
+    await app.shutdown()
+    await app.cleanup()   # Вызывает on_cleanup обработчики`,
+  },
+  {
+    name: 'web.Application.on_cleanup',
+    description:
+      'Сигнал класса Application. Список корутин-обработчиков, вызываемых при очистке приложения (после shutdown). Обработчики выполняются в обратном порядке добавления (LIFO). Используется для освобождения ресурсов: закрытия соединений с БД, отключения от брокеров сообщений и т.д.',
+    syntax: 'app.on_cleanup.append(handler)',
     arguments: [
-      {
-        name: 'path',
-        description: 'URL-шаблон маршрута, который будет обслуживаться классом-обработчиком.'
-      },
-      {
-        name: 'handler',
-        description: 'Класс, унаследованный от web.View. Методы класса get(), post(), put() и т.д. обрабатывают соответствующие HTTP-методы.'
-      },
-      {
-        name: '**kwargs',
-        description: 'Дополнительные параметры маршрута, например name для именования.'
-      }
+      { name: 'handler', description: 'Асинхронная функция async def handler(app) → None. Получает объект Application как аргумент.' },
+    ],
+    example: `from aiohttp import web
+import aiopg
+
+async def init_db(app):
+    app['db'] = await aiopg.create_pool(
+        'dbname=mydb user=postgres password=secret'
+    )
+
+async def close_db(app):
+    app['db'].close()
+    await app['db'].wait_closed()
+    print('БД отключена')
+
+async def close_cache(app):
+    await app['cache'].close()
+    print('Кэш очищен')
+
+app = web.Application()
+app.on_startup.append(init_db)
+
+# on_cleanup — порядок LIFO (последний добавленный — первый выполняется):
+app.on_cleanup.append(close_db)
+app.on_cleanup.append(close_cache)
+# При остановке: сначала close_cache, затем close_db
+
+web.run_app(app)`,
+  },
+  {
+    name: 'web.Application.on_response_prepare',
+    description:
+      'Сигнал класса Application. Список корутин-обработчиков, вызываемых перед отправкой каждого HTTP-ответа. Позволяет модифицировать заголовки ответа на уровне приложения: добавлять CORS-заголовки, заголовки безопасности, настраивать кэширование.',
+    syntax: 'app.on_response_prepare.append(handler)',
+    arguments: [
+      { name: 'handler', description: 'Асинхронная функция async def handler(request, response) → None. Может изменять объект response перед отправкой.' },
     ],
     example: `from aiohttp import web
 
-class UserView(web.View):
-    async def get(self) -> web.Response:
-        user_id = self.request.match_info['id']
-        return web.json_response({'id': user_id, 'name': 'Алиса'})
+async def add_security_headers(request, response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
 
-    async def put(self) -> web.Response:
-        user_id = self.request.match_info['id']
-        data = await self.request.json()
-        return web.json_response({'id': user_id, 'updated': data})
+async def add_cors_headers(request, response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE'
 
-    async def delete(self) -> web.Response:
-        user_id = self.request.match_info['id']
-        return web.json_response({'deleted': user_id})
-
-routes = web.RouteTableDef()
-routes.view('/users/{id}', UserView)
+async def index(request):
+    return web.Response(text='Hello!')
 
 app = web.Application()
-app.add_routes(routes)
-web.run_app(app)`
+# Добавляем заголовки ко всем ответам автоматически:
+app.on_response_prepare.append(add_security_headers)
+app.on_response_prepare.append(add_cors_headers)
+app.router.add_get('/', index)
+
+web.run_app(app)`,
   },
   {
-    name: 'aiohttp.web.static()',
-    description: 'Функция для регистрации маршрута раздачи статических файлов (HTML, CSS, JS, изображения и т.д.) из указанной директории. Все файлы внутри директории становятся доступны по URL с заданным префиксом. Поддерживает кэширование, сжатие и заголовок If-Modified-Since.',
-    syntax: 'web.static(prefix, path, **kwargs)',
+    name: 'web.Application.on_shutdown',
+    description:
+      'Сигнал класса Application. Список корутин-обработчиков, вызываемых при получении сигнала остановки сервера (до on_cleanup). Используется для мягкого завершения: оповещения клиентов WebSocket, завершения текущих задач, сохранения состояния. Вызывается до закрытия всех соединений.',
+    syntax: 'app.on_shutdown.append(handler)',
     arguments: [
-      {
-        name: 'prefix',
-        description: 'URL-префикс, по которому будут доступны статические файлы. Например, "/static" сделает файл style.css доступным по адресу /static/style.css.'
-      },
-      {
-        name: 'path',
-        description: 'Путь к директории на файловой системе, из которой будут раздаваться файлы. Может быть строкой или объектом pathlib.Path.'
-      },
-      {
-        name: '**kwargs',
-        description: 'Дополнительные параметры: show_index (bool) — показывать листинг директории; follow_symlinks (bool) — следовать символическим ссылкам; append_version (bool) — добавлять хэш версии к URL.'
-      }
+      { name: 'handler', description: 'Асинхронная функция async def handler(app) → None.' },
     ],
     example: `from aiohttp import web
-from pathlib import Path
 
-BASE_DIR = Path(__file__).parent
+# Хранилище активных WebSocket-соединений:
+websockets = set()
 
-async def index(request: web.Request) -> web.Response:
-    return web.FileResponse(BASE_DIR / 'public' / 'index.html')
+async def ws_handler(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    websockets.add(ws)
+    try:
+        async for msg in ws:
+            await ws.send_str(f'Echo: {msg.data}')
+    finally:
+        websockets.discard(ws)
+    return ws
+
+async def on_shutdown(app):
+    # Закрываем все WebSocket перед остановкой:
+    for ws in set(websockets):
+        await ws.close(code=1001, message=b'Server shutdown')
+    print(f'Закрыто {len(websockets)} WS-соединений')
+
+app = web.Application()
+app.router.add_get('/ws', ws_handler)
+app.on_shutdown.append(on_shutdown)
+
+web.run_app(app)`,
+  },
+  {
+    name: 'web.Application.on_startup',
+    description:
+      'Сигнал класса Application. Список корутин-обработчиков, вызываемых при запуске приложения (до начала обработки запросов). Используется для инициализации ресурсов: создания пулов соединений с БД, подключения к Redis, запуска фоновых задач.',
+    syntax: 'app.on_startup.append(handler)',
+    arguments: [
+      { name: 'handler', description: 'Асинхронная функция async def handler(app) → None. Выполняется один раз при старте.' },
+    ],
+    example: `from aiohttp import web
+import aioredis
+import asyncpg
+
+async def init_db(app):
+    app['db'] = await asyncpg.create_pool(
+        host='localhost', database='mydb',
+        user='postgres', password='secret',
+        min_size=5, max_size=20,
+    )
+    print('Пул БД создан')
+
+async def init_redis(app):
+    app['redis'] = await aioredis.create_redis_pool('redis://localhost')
+    print('Redis подключён')
+
+async def start_background_tasks(app):
+    app['bg_task'] = asyncio.create_task(periodic_cleanup())
+
+app = web.Application()
+app.on_startup.append(init_db)
+app.on_startup.append(init_redis)
+app.on_startup.append(start_background_tasks)
+
+app.on_cleanup.append(lambda app: app['db'].close())
+app.on_cleanup.append(lambda app: app['redis'].close())
+
+web.run_app(app)`,
+  },
+  {
+    name: 'web.Application.router',
+    description:
+      'Атрибут класса Application. Объект UrlDispatcher — маршрутизатор приложения. Содержит таблицу URL-маршрутов и сопоставляет входящие запросы с обработчиками. Предоставляет методы add_get(), add_post(), add_route(), add_static() и другие для регистрации маршрутов.',
+    syntax: 'app.router',
+    arguments: [],
+    example: `from aiohttp import web
+
+async def index(request): return web.Response(text='Главная')
+async def about(request): return web.Response(text='О нас')
+async def get_user(request): return web.json_response({'id': request.match_info['id']})
+async def create_user(request): return web.json_response({}, status=201)
+async def upload(request): return web.Response(text='OK')
 
 app = web.Application()
 
-# Раздаём файлы из папки 'public' по префиксу '/static'
-app.router.add_static('/static', BASE_DIR / 'public' / 'static')
+# Регистрация маршрутов:
+app.router.add_get('/', index)
+app.router.add_get('/about', about)
+app.router.add_get('/users/{id}', get_user)
+app.router.add_post('/users', create_user)
+app.router.add_route('*', '/upload', upload)   # Любой метод
+
+# Статические файлы:
+app.router.add_static('/static', path='./static', name='static')
+
+# Просмотр маршрутов:
+for resource in app.router.resources():
+    print(resource.canonical)
+
+web.run_app(app)`,
+  },
+  {
+    name: 'web.Application.shutdown',
+    description:
+      'Корутина класса Application. Инициирует мягкую остановку приложения: вызывает все обработчики сигнала on_shutdown. Вызывается автоматически при получении SIGINT/SIGTERM в web.run_app(). При ручном управлении жизненным циклом вызывается до cleanup().',
+    syntax: 'await app.shutdown()',
+    arguments: [],
+    example: `from aiohttp import web
+import asyncio
+
+async def on_shutdown(app):
+    print('Приложение останавливается...')
+    # Завершение текущих задач, оповещение клиентов и т.д.
+
+app = web.Application()
+app.on_shutdown.append(on_shutdown)
+
+# Автоматический вызов в web.run_app():
+# web.run_app(app)  ← при Ctrl+C вызывает shutdown() затем cleanup()
+
+# Ручное управление (например, в тестах):
+async def lifecycle():
+    runner = web.AppRunner(app)
+    await runner.setup()   # Вызывает on_startup
+
+    site = web.TCPSite(runner, 'localhost', 8080)
+    await site.start()
+    print('Сервер запущен')
+
+    await asyncio.sleep(10)   # Работаем
+
+    await runner.cleanup()    # Вызывает on_shutdown + on_cleanup
+    print('Сервер остановлен')
+
+asyncio.run(lifecycle())`,
+  },
+  {
+    name: 'web.Application.startup',
+    description:
+      'Корутина класса Application. Запускает приложение: вызывает все обработчики сигнала on_startup в порядке добавления. Вызывается автоматически при старте сервера в web.run_app(). При ручном управлении через AppRunner вызывается в runner.setup().',
+    syntax: 'await app.startup()',
+    arguments: [],
+    example: `from aiohttp import web
+import asyncio
+
+async def init_resources(app):
+    app['initialized'] = True
+    print('Ресурсы инициализированы')
+
+app = web.Application()
+app.on_startup.append(init_resources)
+
+# Ручной запуск (например, в тестах):
+async def test_app():
+    await app.startup()   # Вызывает on_startup обработчики
+    print(app['initialized'])   # True
+
+    # ... тесты ...
+
+    await app.shutdown()
+    await app.cleanup()
+
+# Стандартный запуск (startup() вызывается автоматически):
+# web.run_app(app)
+
+# Через AppRunner (рекомендуется для тестов):
+async def run_with_runner():
+    runner = web.AppRunner(app)
+    await runner.setup()   # ← вызывает app.startup() внутри
+    site = web.TCPSite(runner, 'localhost', 8080)
+    await site.start()`,
+  },
+  {
+    name: 'web.Request.method',
+    description:
+      'Атрибут объекта web.Request серверной части aiohttp. Строка с HTTP-методом входящего запроса в верхнем регистре: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS". Используется в обработчиках для различения типов запросов при обработке одного маршрута несколькими методами.',
+    syntax: 'request.method',
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handle(request: web.Request) -> web.Response:
+    print(request.method)   # 'GET', 'POST', и т.д.
+
+    if request.method == 'GET':
+        return web.json_response({'items': []})
+
+    elif request.method == 'POST':
+        data = await request.json()
+        return web.json_response(data, status=201)
+
+    return web.Response(status=405)   # Method Not Allowed
+
+# Регистрация для нескольких методов:
+app = web.Application()
+app.router.add_route('GET', '/items', handle)
+app.router.add_route('POST', '/items', handle)
 
 # Или через RouteTableDef:
 routes = web.RouteTableDef()
-routes.static('/assets', BASE_DIR / 'assets')
 
-app.router.add_get('/', index)
-app.add_routes(routes)
+@routes.view('/items')
+class ItemsView(web.View):
+    async def get(self):
+        return web.json_response([])
 
-# GET /static/css/style.css -> файл public/static/css/style.css
-# GET /static/js/app.js     -> файл public/static/js/app.js
-
-web.run_app(app)`
-  },
-  {
-    name: 'asyncio.run()',
-    description: 'Запускает корутину верхнего уровня, создаёт новый event loop, выполняет корутину до завершения и закрывает loop. Является главной точкой входа в асинхронную программу. Нельзя вызывать внутри уже работающего event loop.',
-    syntax: 'asyncio.run(coro, *, debug=None, loop_factory=None)',
-    arguments: [
-      {
-        name: 'coro',
-        description: 'Корутина — объект, возвращаемый async-функцией. Будет выполнена как точка входа в программу.'
-      },
-      {
-        name: 'debug',
-        description: 'Если True — включает режим отладки event loop (подробные предупреждения). None — использует переменную окружения PYTHONASYNCIODEBUG.'
-      },
-      {
-        name: 'loop_factory',
-        description: 'Необязательный callable для создания event loop. По умолчанию None — используется asyncio.DefaultEventLoopPolicy.'
-      }
-    ],
-    example: `import asyncio
-
-async def fetch_data(name: str) -> str:
-    print(f'Начало: {name}')
-    await asyncio.sleep(1)
-    return f'Данные от {name}'
-
-async def main():
-    result = await fetch_data('сервер')
-    print(result)
-
-# Запуск программы
-asyncio.run(main())
-
-# С режимом отладки
-asyncio.run(main(), debug=True)`
-  },
-  {
-    name: 'asyncio.create_task()',
-    description: 'Оборачивает корутину в объект Task и планирует её выполнение в текущем event loop. Task запускается конкурентно с другими задачами. Возвращает объект asyncio.Task, который можно отменить или ожидать.',
-    syntax: 'asyncio.create_task(coro, *, name=None, context=None)',
-    arguments: [
-      {
-        name: 'coro',
-        description: 'Корутина, которую нужно обернуть в Task и запустить конкурентно.'
-      },
-      {
-        name: 'name',
-        description: 'Строковое имя задачи. Отображается в отладочной информации и repr(task). По умолчанию None.'
-      },
-      {
-        name: 'context',
-        description: 'Контекст contextvars.Context для выполнения задачи. По умолчанию None — копирует текущий контекст.'
-      }
-    ],
-    example: `import asyncio
-
-async def worker(n: int) -> int:
-    await asyncio.sleep(n)
-    print(f'Задача {n} завершена')
-    return n * 2
-
-async def main():
-    # Создаём задачи — они запускаются немедленно
-    task1 = asyncio.create_task(worker(1), name='task-1')
-    task2 = asyncio.create_task(worker(2), name='task-2')
-
-    print(f'Имя: {task1.get_name()}')  # task-1
-
-    # Ожидаем оба результата
-    result1 = await task1
-    result2 = await task2
-    print(result1, result2)  # 2 4
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.gather()',
-    description: 'Запускает несколько корутин или задач конкурентно и ожидает завершения всех. Возвращает список результатов в том же порядке, что и входные awaitable-объекты. Если один из них вызывает исключение — оно распространяется, если только return_exceptions=True.',
-    syntax: 'asyncio.gather(*aws, return_exceptions=False)',
-    arguments: [
-      {
-        name: '*aws',
-        description: 'Произвольное количество корутин, Task или Future. Каждая корутина автоматически оборачивается в Task.'
-      },
-      {
-        name: 'return_exceptions',
-        description: 'Если False (по умолчанию) — первое исключение немедленно передаётся ожидающей корутине. Если True — исключения возвращаются как результаты в списке, не прерывая остальные задачи.'
-      }
-    ],
-    example: `import asyncio
-
-async def fetch(url: str, delay: float) -> str:
-    await asyncio.sleep(delay)
-    return f'Ответ от {url}'
-
-async def main():
-    # Все три запроса выполняются конкурентно
-    results = await asyncio.gather(
-        fetch('api.example.com', 1),
-        fetch('cdn.example.com', 0.5),
-        fetch('db.example.com', 2),
-    )
-    print(results)
-    # ['Ответ от api.example.com', 'Ответ от cdn.example.com', 'Ответ от db.example.com']
-
-    # С обработкой ошибок
-    async def fail(): raise ValueError('ошибка')
-    results = await asyncio.gather(fetch('ok.com', 0.1), fail(), return_exceptions=True)
-    print(results)  # ['Ответ от ok.com', ValueError('ошибка')]
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.sleep()',
-    description: 'Приостанавливает выполнение текущей корутины на заданное количество секунд, передавая управление event loop. Позволяет другим задачам выполняться в это время. При delay=0 уступает управление без реальной задержки.',
-    syntax: 'await asyncio.sleep(delay, result=None)',
-    arguments: [
-      {
-        name: 'delay',
-        description: 'Время ожидания в секундах. Может быть дробным числом. При значении 0 — однократная передача управления event loop.'
-      },
-      {
-        name: 'result',
-        description: 'Значение, которое вернёт sleep() после ожидания. По умолчанию None.'
-      }
-    ],
-    example: `import asyncio
-
-async def task(name: str, delay: float):
-    print(f'{name}: начало')
-    value = await asyncio.sleep(delay, result=f'{name} готово')
-    print(value)
-    return value
-
-async def main():
-    # Конкурентное выполнение с разными задержками
-    results = await asyncio.gather(
-        task('A', 1.0),
-        task('B', 0.5),
-        task('C', 1.5),
-    )
-    print(results)
-    # B завершится первым, затем A, затем C
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.wait()',
-    description: 'Ожидает завершения набора задач или future с возможностью задать таймаут и условие остановки. В отличие от gather(), возвращает два множества: done (завершённые) и pending (ещё выполняющиеся задачи). Не отменяет pending-задачи автоматически.',
-    syntax: 'await asyncio.wait(aws, *, timeout=None, return_when=asyncio.ALL_COMPLETED)',
-    arguments: [
-      {
-        name: 'aws',
-        description: 'Множество или список корутин, Task или Future для ожидания.'
-      },
-      {
-        name: 'timeout',
-        description: 'Таймаут в секундах. По истечении возвращает управление, не отменяя pending-задачи. None — ждать до завершения условия return_when.'
-      },
-      {
-        name: 'return_when',
-        description: 'Условие возврата: ALL_COMPLETED (все завершены), FIRST_COMPLETED (первая завершилась), FIRST_EXCEPTION (первое исключение).'
-      }
-    ],
-    example: `import asyncio
-
-async def job(n: int) -> int:
-    await asyncio.sleep(n)
-    return n
-
-async def main():
-    tasks = {asyncio.create_task(job(i)) for i in [1, 2, 3]}
-
-    # Ждём первую завершившуюся задачу
-    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-
-    print(f'Готово: {len(done)}, ожидают: {len(pending)}')
-    for t in done:
-        print('Результат:', t.result())
-
-    # Отменяем оставшиеся
-    for t in pending:
-        t.cancel()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.wait_for()',
-    description: 'Ожидает завершения корутины или задачи с жёстким таймаутом. Если таймаут истёк — автоматически отменяет задачу и выбрасывает asyncio.TimeoutError. Подходит когда нужно гарантировать максимальное время выполнения операции.',
-    syntax: 'await asyncio.wait_for(aw, timeout)',
-    arguments: [
-      {
-        name: 'aw',
-        description: 'Корутина или Task, которую нужно выполнить с ограничением по времени.'
-      },
-      {
-        name: 'timeout',
-        description: 'Максимальное время ожидания в секундах. Если None — ждёт без ограничений (эквивалентно простому await).'
-      }
-    ],
-    example: `import asyncio
-
-async def slow_operation() -> str:
-    await asyncio.sleep(10)
-    return 'готово'
-
-async def main():
-    # Вариант 1: поймать TimeoutError
-    try:
-        result = await asyncio.wait_for(slow_operation(), timeout=2.0)
-        print(result)
-    except asyncio.TimeoutError:
-        print('Операция превысила таймаут 2 секунды')
-
-    # Вариант 2: без таймаута
-    result = await asyncio.wait_for(slow_operation(), timeout=None)
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.as_completed()',
-    description: 'Возвращает итератор корутин, каждая из которых завершается по мере готовности соответствующей задачи из входного списка. Позволяет обрабатывать результаты сразу по мере их появления, не дожидаясь завершения всех задач.',
-    syntax: 'asyncio.as_completed(aws, *, timeout=None)',
-    arguments: [
-      {
-        name: 'aws',
-        description: 'Список или множество корутин, Task или Future.'
-      },
-      {
-        name: 'timeout',
-        description: 'Общий таймаут в секундах для всего набора задач. При истечении выбрасывает asyncio.TimeoutError.'
-      }
-    ],
-    example: `import asyncio
-
-async def fetch(url: str, delay: float) -> str:
-    await asyncio.sleep(delay)
-    return f'Данные от {url}'
-
-async def main():
-    aws = [
-        fetch('fast.com', 0.5),
-        fetch('slow.com', 2.0),
-        fetch('medium.com', 1.0),
-    ]
-
-    # Обрабатываем результаты по мере готовности
-    for coro in asyncio.as_completed(aws):
-        result = await coro
-        print(f'Получено: {result}')
-    # Порядок вывода: fast.com -> medium.com -> slow.com
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.to_thread()',
-    description: 'Запускает синхронную (блокирующую) функцию в отдельном потоке из пула потоков, не блокируя event loop. Используется для выполнения CPU-bound или I/O-bound синхронного кода совместно с асинхронным.',
-    syntax: 'await asyncio.to_thread(func, /, *args, **kwargs)',
-    arguments: [
-      {
-        name: 'func',
-        description: 'Синхронная функция (callable), которую нужно выполнить в отдельном потоке.'
-      },
-      {
-        name: '*args',
-        description: 'Позиционные аргументы, передаваемые в func.'
-      },
-      {
-        name: '**kwargs',
-        description: 'Именованные аргументы, передаваемые в func.'
-      }
-    ],
-    example: `import asyncio
-import time
-import requests  # синхронная библиотека
-
-def blocking_request(url: str) -> str:
-    response = requests.get(url)
-    return response.text
-
-def cpu_heavy(n: int) -> int:
-    time.sleep(2)  # имитация тяжёлых вычислений
-    return n ** 2
-
-async def main():
-    # Выполняем блокирующий запрос без блокировки event loop
-    html = await asyncio.to_thread(blocking_request, 'https://example.com')
-    print(html[:100])
-
-    # CPU-задача в потоке
-    result = await asyncio.to_thread(cpu_heavy, 42)
-    print(result)  # 1764
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.run_coroutine_threadsafe()',
-    description: 'Потокобезопасный способ запустить корутину из обычного (не async) потока в уже работающем event loop. Возвращает объект concurrent.futures.Future. Используется когда event loop работает в одном потоке, а вызов происходит из другого.',
-    syntax: 'asyncio.run_coroutine_threadsafe(coro, loop)',
-    arguments: [
-      {
-        name: 'coro',
-        description: 'Корутина, которую нужно запланировать на выполнение в event loop.'
-      },
-      {
-        name: 'loop',
-        description: 'Работающий event loop, в котором будет выполнена корутина. Получается через asyncio.get_event_loop() или хранится как ссылка.'
-      }
-    ],
-    example: `import asyncio
-import threading
-
-async def async_task(value: int) -> int:
-    await asyncio.sleep(1)
-    return value * 2
-
-def run_loop(loop: asyncio.AbstractEventLoop):
-    loop.run_forever()
-
-loop = asyncio.new_event_loop()
-t = threading.Thread(target=run_loop, args=(loop,), daemon=True)
-t.start()
-
-# Из обычного потока отправляем задачу в async loop
-future = asyncio.run_coroutine_threadsafe(async_task(21), loop)
-
-# Блокирующее ожидание результата
-result = future.result(timeout=5)
-print(result)  # 42
-
-loop.call_soon_threadsafe(loop.stop)`
-  },
-  {
-    name: 'asyncio.current_task()',
-    description: 'Возвращает объект Task, который выполняется в данный момент в текущем event loop. Если вызов происходит вне контекста выполнения задачи — возвращает None. Полезно для получения метаданных о текущей задаче (имя, контекст).',
-    syntax: 'asyncio.current_task(loop=None)',
-    arguments: [
-      {
-        name: 'loop',
-        description: 'Устаревший параметр (deprecated с Python 3.10). Ранее позволял указать конкретный event loop. Не рекомендуется использовать.'
-      }
-    ],
-    example: `import asyncio
-
-async def worker():
-    task = asyncio.current_task()
-    print(f'Текущая задача: {task.get_name()}')
-    print(f'Это task: {isinstance(task, asyncio.Task)}')
-    await asyncio.sleep(0.1)
-    return task.get_name()
-
-async def main():
-    t1 = asyncio.create_task(worker(), name='worker-1')
-    t2 = asyncio.create_task(worker(), name='worker-2')
-    results = await asyncio.gather(t1, t2)
-    print(results)  # ['worker-1', 'worker-2']
-
-    # Вне задачи — current_task() возвращает Task main
-    print(asyncio.current_task().get_name())  # Task-1
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.all_tasks()',
-    description: 'Возвращает множество всех активных (незавершённых) объектов Task в текущем event loop. Включает задачи, которые ожидают выполнения, выполняются или были отменены, но ещё не завершились. Полезно для мониторинга и graceful shutdown.',
-    syntax: 'asyncio.all_tasks(loop=None)',
-    arguments: [
-      {
-        name: 'loop',
-        description: 'Устаревший параметр (deprecated с Python 3.10). Раньше позволял указать event loop. Не рекомендуется использовать.'
-      }
-    ],
-    example: `import asyncio
-
-async def long_task(name: str, delay: float):
-    await asyncio.sleep(delay)
-    return name
-
-async def main():
-    tasks = [
-        asyncio.create_task(long_task('A', 1), name='task-A'),
-        asyncio.create_task(long_task('B', 2), name='task-B'),
-        asyncio.create_task(long_task('C', 3), name='task-C'),
-    ]
-
-    await asyncio.sleep(0.1)  # даём задачам запуститься
-
-    all_running = asyncio.all_tasks()
-    print(f'Активных задач: {len(all_running)}')
-    for t in all_running:
-        print(f'  - {t.get_name()}')
-
-    # Graceful shutdown: отменить все
-    for t in asyncio.all_tasks():
-        t.cancel()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.shield()',
-    description: 'Защищает корутину или задачу от внешней отмены. Если ожидающая задача будет отменена — внутренняя (защищённая) задача продолжит выполняться. Полезно для критических операций (запись в БД, финансовые транзакции), которые нельзя прерывать.',
-    syntax: 'await asyncio.shield(aw)',
-    arguments: [
-      {
-        name: 'aw',
-        description: 'Корутина, Task или Future, которую нужно защитить от отмены.'
-      }
-    ],
-    example: `import asyncio
-
-async def critical_write(data: str) -> str:
-    print('Начало записи...')
-    await asyncio.sleep(2)  # имитация долгой записи
-    print('Запись завершена!')
-    return f'Сохранено: {data}'
-
-async def main():
-    task = asyncio.create_task(critical_write('важные данные'))
-
-    try:
-        # shield защищает critical_write от отмены
-        result = await asyncio.wait_for(asyncio.shield(task), timeout=1.0)
-    except asyncio.TimeoutError:
-        print('Таймаут wait_for, но задача продолжает работать')
-
-    # Ждём завершения защищённой задачи
-    result = await task
-    print(result)
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.timeout()',
-    description: 'Контекстный менеджер для задания таймаута на блок кода (Python 3.11+). При превышении времени ожидания выбрасывает asyncio.TimeoutError. В отличие от wait_for() позволяет ограничивать по времени произвольные блоки кода, содержащие несколько await.',
-    syntax: 'async with asyncio.timeout(delay)',
-    arguments: [
-      {
-        name: 'delay',
-        description: 'Таймаут в секундах от текущего момента. None — без таймаута. Может быть изменён внутри блока через метод reschedule().'
-      }
-    ],
-    example: `import asyncio
-
-async def step(name: str, delay: float):
-    await asyncio.sleep(delay)
-    print(f'{name} выполнен')
-
-async def main():
-    try:
-        async with asyncio.timeout(3.0):
-            await step('Шаг 1', 1.0)
-            await step('Шаг 2', 1.0)
-            await step('Шаг 3', 1.5)  # суммарно > 3с -> TimeoutError
-    except asyncio.TimeoutError:
-        print('Блок превысил 3 секунды')
-
-    # Изменение таймаута изнутри блока
-    async with asyncio.timeout(5.0) as cm:
-        await asyncio.sleep(1)
-        cm.reschedule(asyncio.get_event_loop().time() + 10)
-        await asyncio.sleep(2)
-        print('Успешно завершено')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.timeout_at()',
-    description: 'Контекстный менеджер для задания таймаута в виде абсолютного момента времени (Python 3.11+). Принимает момент в единицах event loop (asyncio.get_event_loop().time()). Удобен когда таймаут нужно вычислить заранее или разделить между несколькими блоками.',
-    syntax: 'async with asyncio.timeout_at(when)',
-    arguments: [
-      {
-        name: 'when',
-        description: 'Абсолютный момент дедлайна в секундах (float), полученный из loop.time(). None — без таймаута.'
-      }
-    ],
-    example: `import asyncio
-
-async def fetch(name: str, delay: float) -> str:
-    await asyncio.sleep(delay)
-    return f'Данные: {name}'
-
-async def main():
-    loop = asyncio.get_event_loop()
-
-    # Дедлайн — 5 секунд от текущего момента
-    deadline = loop.time() + 5.0
-
-    try:
-        async with asyncio.timeout_at(deadline):
-            r1 = await fetch('источник-1', 1.5)
-            print(r1)
-            r2 = await fetch('источник-2', 2.0)
-            print(r2)
-            r3 = await fetch('источник-3', 2.0)  # суммарно > 5с
-            print(r3)
-    except asyncio.TimeoutError:
-        remaining = deadline - loop.time()
-        print(f'Дедлайн истёк. Осталось: {remaining:.2f}с (отрицательно)')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Task.cancel()',
-    description: 'Запрашивает отмену задачи. В ближайшей точке await внутри задачи будет выброшено исключение asyncio.CancelledError. Задача может перехватить его и выполнить очистку ресурсов, но должна либо повторно выбросить его, либо завершиться. Возвращает True если отмена запрошена успешно, False если задача уже завершена.',
-    syntax: 'task.cancel(msg=None)',
-    arguments: [
-      {
-        name: 'msg',
-        description: 'Необязательное сообщение, которое будет передано в CancelledError. Доступно через exception.args[0]. По умолчанию None.'
-      }
-    ],
-    example: `import asyncio
-
-async def long_task():
-    try:
-        print('Начало работы')
-        await asyncio.sleep(10)
-        print('Эта строка не будет напечатана')
-    except asyncio.CancelledError:
-        print('Задача отменена, выполняем очистку...')
-        raise  # обязательно перебросить
-
-async def main():
-    task = asyncio.create_task(long_task())
-    await asyncio.sleep(1)
-
-    cancelled = task.cancel(msg='Больше не нужно')
-    print(f'Отмена запрошена: {cancelled}')  # True
-
-    try:
-        await task
-    except asyncio.CancelledError:
-        print('Задача успешно отменена')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Task.cancelled()',
-    description: 'Возвращает True, если задача была отменена (метод cancel() был вызван и задача завершилась с CancelledError). Возвращает False в любом другом случае — задача ещё выполняется, завершилась успешно или с другим исключением.',
-    syntax: 'task.cancelled()',
-    arguments: [],
-    example: `import asyncio
-
-async def cancellable():
-    await asyncio.sleep(5)
-
-async def main():
-    task = asyncio.create_task(cancellable())
-    await asyncio.sleep(0.1)
-
-    print(task.cancelled())  # False — ещё выполняется
-
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-    print(task.cancelled())  # True — была отменена
-    print(task.done())       # True — завершена (в том числе отменой)
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Task.done()',
-    description: 'Возвращает True, если задача завершена — успешно, с исключением или отменой. Возвращает False, если задача ещё ожидает выполнения или выполняется. Используется для проверки статуса без блокирующего ожидания.',
-    syntax: 'task.done()',
-    arguments: [],
-    example: `import asyncio
-
-async def quick():
-    await asyncio.sleep(0.1)
-    return 42
-
-async def main():
-    task = asyncio.create_task(quick())
-
-    print(task.done())  # False — ещё не завершена
-
-    await asyncio.sleep(0.2)
-
-    print(task.done())    # True — завершена
-    print(task.result())  # 42
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Task.result()',
-    description: 'Возвращает результат выполнения задачи. Если задача ещё не завершена — выбрасывает asyncio.InvalidStateError. Если задача завершилась с исключением — повторно выбрасывает это исключение. Если задача отменена — выбрасывает asyncio.CancelledError.',
-    syntax: 'task.result()',
-    arguments: [],
-    example: `import asyncio
-
-async def compute(x: int) -> int:
-    await asyncio.sleep(0.1)
-    if x < 0:
-        raise ValueError('Отрицательное число')
-    return x ** 2
-
-async def main():
-    # Успешный результат
-    task = asyncio.create_task(compute(5))
-    await task
-    print(task.result())  # 25
-
-    # Задача с исключением
-    task2 = asyncio.create_task(compute(-1))
-    try:
-        await task2
-    except ValueError:
-        pass
-    try:
-        task2.result()  # повторно выбросит ValueError
-    except ValueError as e:
-        print(f'Ошибка: {e}')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Task.exception()',
-    description: 'Возвращает исключение, с которым завершилась задача, или None если задача завершилась успешно. Если задача ещё не завершена — выбрасывает asyncio.InvalidStateError. Если задача отменена — выбрасывает asyncio.CancelledError.',
-    syntax: 'task.exception()',
-    arguments: [],
-    example: `import asyncio
-
-async def risky(fail: bool):
-    await asyncio.sleep(0.1)
-    if fail:
-        raise RuntimeError('Что-то пошло не так')
-    return 'всё хорошо'
-
-async def main():
-    task_ok = asyncio.create_task(risky(False))
-    task_err = asyncio.create_task(risky(True))
-
-    await asyncio.gather(task_ok, task_err, return_exceptions=True)
-
-    print(task_ok.exception())   # None — завершилась успешно
-    exc = task_err.exception()
-    print(type(exc).__name__)    # RuntimeError
-    print(str(exc))              # Что-то пошло не так
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Task.add_done_callback()',
-    description: 'Регистрирует функцию обратного вызова (callback), которая будет вызвана при завершении задачи (успешно, с ошибкой или при отмене). Callback получает объект Task в качестве единственного аргумента. Можно добавить несколько callbacks.',
-    syntax: 'task.add_done_callback(callback, *, context=None)',
-    arguments: [
-      {
-        name: 'callback',
-        description: 'Callable, принимающий один аргумент — завершённый объект Task/Future. Вызывается в потоке event loop.'
-      },
-      {
-        name: 'context',
-        description: 'Контекст contextvars.Context для выполнения callback. По умолчанию None — используется текущий контекст.'
-      }
-    ],
-    example: `import asyncio
-
-def on_done(task: asyncio.Task):
-    if task.cancelled():
-        print('Задача отменена')
-    elif task.exception():
-        print(f'Ошибка: {task.exception()}')
-    else:
-        print(f'Готово, результат: {task.result()}')
-
-async def worker() -> str:
-    await asyncio.sleep(0.5)
-    return 'успех'
-
-async def main():
-    task = asyncio.create_task(worker())
-    task.add_done_callback(on_done)
-    await task
-    # on_done вызывается автоматически после завершения
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Task.remove_done_callback()',
-    description: 'Удаляет ранее зарегистрированный callback из списка обратных вызовов задачи. Возвращает количество удалённых экземпляров (один и тот же callback может быть добавлен несколько раз). Полезно для отмены подписки до завершения задачи.',
-    syntax: 'task.remove_done_callback(callback)',
-    arguments: [
-      {
-        name: 'callback',
-        description: 'Функция обратного вызова, ранее добавленная через add_done_callback(), которую нужно удалить.'
-      }
-    ],
-    example: `import asyncio
-
-def on_done(task: asyncio.Task):
-    print('Callback вызван')
-
-async def worker():
-    await asyncio.sleep(1)
-    return 42
-
-async def main():
-    task = asyncio.create_task(worker())
-    task.add_done_callback(on_done)
-
-    # Передумали — убираем callback до завершения
-    removed = task.remove_done_callback(on_done)
-    print(f'Удалено callbacks: {removed}')  # 1
-
-    await task
-    # on_done НЕ будет вызван
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Task.get_stack()',
-    description: 'Возвращает список объектов фреймов (frame) стека вызовов задачи. Если задача выполняется — возвращает текущий стек. Если задача ожидает future — возвращает стек до точки ожидания. Полезно для отладки зависших задач.',
-    syntax: 'task.get_stack(*, limit=None)',
-    arguments: [
-      {
-        name: 'limit',
-        description: 'Максимальное количество фреймов стека. None — возвращает весь стек. Фреймы упорядочены от самого внешнего к самому внутреннему.'
-      }
-    ],
-    example: `import asyncio
-
-async def inner():
-    await asyncio.sleep(10)  # зависает здесь
-
-async def outer():
-    await inner()
-
-async def main():
-    task = asyncio.create_task(outer())
-    await asyncio.sleep(0.1)  # даём задаче запуститься
-
-    frames = task.get_stack()
-    print(f'Глубина стека: {len(frames)}')
-    for frame in frames:
-        print(f'  {frame.f_code.co_filename}:{frame.f_lineno} в {frame.f_code.co_name}')
-
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Task.print_stack()',
-    description: 'Выводит стек вызовов задачи в текстовом виде (аналогично traceback). Удобная обёртка над get_stack() для быстрой отладки. По умолчанию выводит в stderr.',
-    syntax: 'task.print_stack(*, limit=None, file=None)',
-    arguments: [
-      {
-        name: 'limit',
-        description: 'Максимальное количество фреймов для вывода. None — весь стек.'
-      },
-      {
-        name: 'file',
-        description: 'Файловый объект для вывода. По умолчанию None — вывод в sys.stderr.'
-      }
-    ],
-    example: `import asyncio
-import sys
-
-async def waiting_task():
-    await asyncio.sleep(100)
-
-async def main():
-    task = asyncio.create_task(waiting_task(), name='my-task')
-    await asyncio.sleep(0.1)
-
-    print('=== Стек задачи ===')
-    task.print_stack(file=sys.stdout)  # вывод в stdout вместо stderr
-
-    # Вывод только 2 последних фрейма
-    task.print_stack(limit=2)
-
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Task.set_name()',
-    description: 'Устанавливает имя задачи. Имя отображается в repr(task) и в отладочных сообщениях event loop. Может быть изменено в любой момент жизни задачи. Полезно для идентификации задач при логировании и мониторинге.',
-    syntax: 'task.set_name(value)',
-    arguments: [
-      {
-        name: 'value',
-        description: 'Новое имя задачи в виде строки. Будет преобразовано через str(value), если передан не строковый тип.'
-      }
-    ],
-    example: `import asyncio
-
-async def worker(user_id: int):
-    task = asyncio.current_task()
-    task.set_name(f'worker-user-{user_id}')
-
-    await asyncio.sleep(1)
-    print(f'Задача {task.get_name()} завершена')
-
-async def main():
-    tasks = [asyncio.create_task(worker(i)) for i in range(1, 4)]
-
-    await asyncio.sleep(0.1)
-    for t in tasks:
-        print(t.get_name())  # worker-user-1, worker-user-2, worker-user-3
-
-    await asyncio.gather(*tasks)
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Task.get_name()',
-    description: 'Возвращает имя задачи в виде строки. Если имя не было задано явно через set_name() или create_task(name=...), возвращает автоматически сгенерированное имя вида "Task-N".',
-    syntax: 'task.get_name()',
-    arguments: [],
-    example: `import asyncio
-
-async def job():
-    await asyncio.sleep(0.1)
-
-async def main():
-    # Автоматическое имя
-    t1 = asyncio.create_task(job())
-    print(t1.get_name())  # Task-1 (или Task-2 и т.д.)
-
-    # Явное имя
-    t2 = asyncio.create_task(job(), name='data-fetcher')
-    print(t2.get_name())  # data-fetcher
-
-    # Переименование
-    t2.set_name('renamed-task')
-    print(t2.get_name())  # renamed-task
-
-    await asyncio.gather(t1, t2)
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Future.set_result()',
-    description: 'Устанавливает результат Future и переводит его в состояние "завершён". После этого все корутины, ожидающие данный Future через await, получат этот результат. Если Future уже имеет результат или исключение — выбрасывает asyncio.InvalidStateError.',
-    syntax: 'future.set_result(result)',
-    arguments: [
-      {
-        name: 'result',
-        description: 'Произвольное значение, которое будет возвращено при await future. Может быть любым объектом Python, включая None.'
-      }
-    ],
-    example: `import asyncio
-
-async def waiter(future: asyncio.Future):
-    print('Ожидаем результат...')
-    result = await future
-    print(f'Получен результат: {result}')
-
-async def setter(future: asyncio.Future):
-    await asyncio.sleep(1)
-    future.set_result({'status': 'ok', 'data': [1, 2, 3]})
-
-async def main():
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-
-    await asyncio.gather(
-        waiter(future),
-        setter(future),
-    )
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Future.set_exception()',
-    description: 'Устанавливает исключение для Future и переводит его в состояние "завершён с ошибкой". Все корутины, ожидающие этот Future через await, получат данное исключение. Если Future уже завершён — выбрасывает asyncio.InvalidStateError. Нельзя передавать asyncio.CancelledError.',
-    syntax: 'future.set_exception(exception)',
-    arguments: [
-      {
-        name: 'exception',
-        description: 'Экземпляр или класс исключения (BaseException). При передаче класса он будет инстанциирован без аргументов. asyncio.CancelledError передавать нельзя.'
-      }
-    ],
-    example: `import asyncio
-
-async def consumer(future: asyncio.Future):
-    try:
-        result = await future
-        print(f'Результат: {result}')
-    except ValueError as e:
-        print(f'Поймано исключение: {e}')
-
-async def producer(future: asyncio.Future):
-    await asyncio.sleep(0.5)
-    # Сообщаем об ошибке через Future
-    future.set_exception(ValueError('Данные повреждены'))
-
-async def main():
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-
-    await asyncio.gather(
-        consumer(future),
-        producer(future),
-    )
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Queue.empty()',
-    description: 'Возвращает True, если очередь пуста (не содержит ни одного элемента), и False в противном случае. Является неблокирующей проверкой состояния — не ожидает появления элементов.',
-    syntax: 'queue.empty()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    queue = asyncio.Queue()
-
-    print(queue.empty())  # True — очередь пуста
-
-    await queue.put('задача')
-    print(queue.empty())  # False — есть элемент
-
-    await queue.get()
-    print(queue.empty())  # True — снова пуста
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Queue.full()',
-    description: 'Возвращает True, если очередь заполнена (количество элементов достигло maxsize), и False в противном случае. Для очереди без ограничения (maxsize=0) всегда возвращает False.',
-    syntax: 'queue.full()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    queue = asyncio.Queue(maxsize=2)
-
-    print(queue.full())  # False
-
-    await queue.put('а')
-    await queue.put('б')
-    print(queue.full())  # True — заполнена
-
-    await queue.get()
-    print(queue.full())  # False — освободилось место
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Queue.get()',
-    description: 'Корутина, извлекающая и возвращающая элемент из начала очереди. Если очередь пуста — ожидает до появления элемента. Для использования без ожидания см. get_nowait().',
-    syntax: 'await queue.get()',
-    arguments: [],
-    example: `import asyncio
-
-async def producer(queue: asyncio.Queue):
-    for i in range(3):
-        await asyncio.sleep(0.5)
-        await queue.put(f'задача-{i}')
-        print(f'Добавлено: задача-{i}')
-
-async def consumer(queue: asyncio.Queue):
-    while True:
-        item = await queue.get()  # ждёт, если очередь пуста
-        print(f'Обработано: {item}')
-        queue.task_done()
-
-async def main():
-    queue = asyncio.Queue()
-    asyncio.create_task(consumer(queue))
-    await producer(queue)
-    await queue.join()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Queue.get_nowait()',
-    description: 'Немедленно извлекает и возвращает элемент из очереди без ожидания. Если очередь пуста — выбрасывает asyncio.QueueEmpty. Используется когда нужна неблокирующая проверка наличия элементов.',
-    syntax: 'queue.get_nowait()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    queue = asyncio.Queue()
-    await queue.put('данные')
-
-    # Успешное получение
-    item = queue.get_nowait()
-    print(item)  # данные
-
-    # Очередь пуста — исключение
-    try:
-        queue.get_nowait()
-    except asyncio.QueueEmpty:
-        print('Очередь пуста')
-
-    # Типичный паттерн: опустошить очередь без блокировки
-    await queue.put('а')
-    await queue.put('б')
-    items = []
-    while not queue.empty():
-        items.append(queue.get_nowait())
-    print(items)  # ['а', 'б']
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Queue.join()',
-    description: 'Корутина, которая блокирует выполнение до тех пор, пока все элементы, когда-либо помещённые в очередь, не будут обработаны (для каждого вызова get() должен быть вызван task_done()). Используется для ожидания завершения всей работы воркеров.',
-    syntax: 'await queue.join()',
-    arguments: [],
-    example: `import asyncio
-
-async def worker(name: str, queue: asyncio.Queue):
-    while True:
-        item = await queue.get()
-        print(f'{name} обрабатывает: {item}')
-        await asyncio.sleep(0.3)  # имитация работы
-        queue.task_done()         # сигнал о завершении
-
-async def main():
-    queue = asyncio.Queue()
-
-    # Заполняем очередь задачами
-    for i in range(5):
-        await queue.put(f'задача-{i}')
-
-    # Запускаем двух воркеров
-    workers = [asyncio.create_task(worker(f'w{i}', queue)) for i in range(2)]
-
-    # Ждём обработки всех задач
-    await queue.join()
-    print('Все задачи выполнены!')
-
-    for w in workers:
-        w.cancel()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Queue.put()',
-    description: 'Корутина, добавляющая элемент в конец очереди. Если очередь заполнена (maxsize > 0) — ожидает, пока не освободится место. Для добавления без ожидания см. put_nowait().',
-    syntax: 'await queue.put(item)',
-    arguments: [
-      {
-        name: 'item',
-        description: 'Произвольный объект Python, который нужно поместить в очередь.'
-      }
-    ],
-    example: `import asyncio
-
-async def main():
-    queue = asyncio.Queue(maxsize=2)
-
-    await queue.put('первый')
-    await queue.put('второй')
-    print(queue.full())  # True
-
-    # Создаём задачу, которая ждёт места в очереди
-    put_task = asyncio.create_task(queue.put('третий'))
-
-    # Освобождаем место
-    await queue.get()
-    await put_task  # теперь третий элемент добавлен
-
-    print(queue.qsize())  # 2
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Queue.put_nowait()',
-    description: 'Немедленно добавляет элемент в очередь без ожидания. Если очередь заполнена — выбрасывает asyncio.QueueFull. Используется когда добавление должно быть моментальным или когда переполнение является ожидаемой ситуацией.',
-    syntax: 'queue.put_nowait(item)',
-    arguments: [
-      {
-        name: 'item',
-        description: 'Произвольный объект Python, который нужно поместить в очередь.'
-      }
-    ],
-    example: `import asyncio
-
-async def main():
-    queue = asyncio.Queue(maxsize=2)
-
-    queue.put_nowait('а')
-    queue.put_nowait('б')
-    print(queue.qsize())  # 2
-
-    # Очередь полна — исключение
-    try:
-        queue.put_nowait('в')
-    except asyncio.QueueFull:
-        print('Очередь переполнена, элемент не добавлен')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Queue.qsize()',
-    description: 'Возвращает текущее количество элементов в очереди в виде целого числа. Является мгновенным снимком состояния — значение может измениться сразу после вызова при конкурентном доступе.',
-    syntax: 'queue.qsize()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    queue = asyncio.Queue()
-
-    print(queue.qsize())  # 0
-
-    await queue.put('а')
-    await queue.put('б')
-    await queue.put('в')
-    print(queue.qsize())  # 3
-
-    await queue.get()
-    print(queue.qsize())  # 2
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Queue.task_done()',
-    description: 'Сигнализирует очереди, что элемент, полученный через get(), был полностью обработан. Уменьшает внутренний счётчик незавершённых задач. Когда счётчик достигает нуля — разблокирует все корутины, ожидающие в queue.join(). Вызов task_done() без предшествующего get() выбрасывает ValueError.',
-    syntax: 'queue.task_done()',
-    arguments: [],
-    example: `import asyncio
-
-async def worker(queue: asyncio.Queue):
-    while True:
-        item = await queue.get()
-        try:
-            print(f'Обрабатываем: {item}')
-            await asyncio.sleep(0.2)  # основная работа
-        finally:
-            # Вызываем даже при ошибке, чтобы join() не завис
-            queue.task_done()
-
-async def main():
-    queue = asyncio.Queue()
-    for item in ['запрос-1', 'запрос-2', 'запрос-3']:
-        await queue.put(item)
-
-    task = asyncio.create_task(worker(queue))
-
-    await queue.join()  # ждёт трёх вызовов task_done()
-    print('Все задачи завершены')
-    task.cancel()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Queue.maxsize',
-    description: 'Атрибут, хранящий максимально допустимое количество элементов в очереди. Значение 0 (по умолчанию) означает отсутствие ограничения — очередь может расти неограниченно. Задаётся при создании очереди и не изменяется в процессе работы.',
-    syntax: 'queue.maxsize',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    # Очередь без ограничения
-    q1 = asyncio.Queue()
-    print(q1.maxsize)   # 0
-    print(q1.full())    # False (всегда)
-
-    # Очередь с ограничением
-    q2 = asyncio.Queue(maxsize=5)
-    print(q2.maxsize)   # 5
-
-    for i in range(5):
-        await q2.put(i)
-    print(q2.full())    # True
-
-    # Другие типы очередей также поддерживают maxsize
-    lifo = asyncio.LifoQueue(maxsize=10)
-    prio = asyncio.PriorityQueue(maxsize=3)
-    print(lifo.maxsize, prio.maxsize)  # 10 3
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Lock.acquire()',
-    description: 'Корутина, захватывающая блокировку. Если блокировка уже захвачена другой задачей — ожидает её освобождения. После успешного захвата возвращает True. Рекомендуется использовать через контекстный менеджер async with вместо явного вызова.',
-    syntax: 'await lock.acquire()',
-    arguments: [],
-    example: `import asyncio
-
-async def safe_update(lock: asyncio.Lock, shared: list, value: int):
-    await lock.acquire()
-    try:
-        # Критическая секция — только одна задача одновременно
-        shared.append(value)
-        await asyncio.sleep(0.1)  # имитация работы
-        print(f'Добавлено: {value}, список: {shared}')
-    finally:
-        lock.release()
-
-async def main():
-    lock = asyncio.Lock()
-    data: list = []
-    await asyncio.gather(
-        safe_update(lock, data, 1),
-        safe_update(lock, data, 2),
-        safe_update(lock, data, 3),
-    )
-    print('Итог:', data)
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Lock.release()',
-    description: 'Освобождает захваченную блокировку, позволяя другим задачам её захватить. Если блокировка не была захвачена — выбрасывает RuntimeError. При использовании async with вызывается автоматически.',
-    syntax: 'lock.release()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    lock = asyncio.Lock()
-
-    await lock.acquire()
-    print('Блокировка захвачена')
-    print(lock.locked())  # True
-
-    lock.release()
-    print('Блокировка освобождена')
-    print(lock.locked())  # False
-
-    # Предпочтительный способ — контекстный менеджер:
-    async with lock:
-        print('Захвачено через with')
-    # release() вызван автоматически
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Lock.locked()',
-    description: 'Возвращает True, если блокировка в данный момент захвачена какой-либо задачей, и False, если блокировка свободна. Является мгновенной проверкой без ожидания.',
-    syntax: 'lock.locked()',
-    arguments: [],
-    example: `import asyncio
-
-async def holder(lock: asyncio.Lock):
-    async with lock:
-        await asyncio.sleep(1)
-
-async def main():
-    lock = asyncio.Lock()
-    print(lock.locked())  # False
-
-    task = asyncio.create_task(holder(lock))
-    await asyncio.sleep(0.1)
-    print(lock.locked())  # True — захвата в holder()
-
-    await task
-    print(lock.locked())  # False — освобождена
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Event.set()',
-    description: 'Устанавливает внутренний флаг события в True и немедленно пробуждает все корутины, ожидающие в wait(). После вызова set() все последующие вызовы wait() возвращаются без ожидания до тех пор, пока не будет вызван clear().',
-    syntax: 'event.set()',
-    arguments: [],
-    example: `import asyncio
-
-async def waiter(event: asyncio.Event, name: str):
-    print(f'{name}: жду сигнала...')
-    await event.wait()
-    print(f'{name}: сигнал получен!')
-
-async def main():
-    event = asyncio.Event()
-
-    tasks = [asyncio.create_task(waiter(event, f'w{i}')) for i in range(3)]
-    await asyncio.sleep(0.5)
-
-    print('Отправляем сигнал всем...')
-    event.set()  # пробуждает сразу все три задачи
-
-    await asyncio.gather(*tasks)
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Event.clear()',
-    description: 'Сбрасывает внутренний флаг события в False. После вызова clear() корутины, вызывающие wait(), снова будут ожидать до следующего set(). Используется для повторного использования события как сигнала.',
-    syntax: 'event.clear()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    event = asyncio.Event()
-
-    event.set()
-    print(event.is_set())  # True
-
-    event.clear()
-    print(event.is_set())  # False
-
-    # Теперь wait() будет снова ожидать
-    async def wait_and_print():
-        await event.wait()
-        print('Дождались повторного set()')
-
-    task = asyncio.create_task(wait_and_print())
-    await asyncio.sleep(0.2)
-    event.set()  # повторный сигнал
-    await task
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Event.wait()',
-    description: 'Корутина, блокирующая выполнение до тех пор, пока внутренний флаг события не станет True (через set()). Если флаг уже установлен — возвращается немедленно. Возвращает True после ожидания.',
-    syntax: 'await event.wait()',
-    arguments: [],
-    example: `import asyncio
-
-async def data_processor(ready: asyncio.Event, data: list):
-    print('Процессор: жду данных...')
-    await ready.wait()
-    print(f'Процессор: обрабатываю {len(data)} элементов')
-    return sum(data)
-
-async def data_loader(ready: asyncio.Event, data: list):
-    print('Загрузчик: загружаю данные...')
-    await asyncio.sleep(1)
-    data.extend([1, 2, 3, 4, 5])
-    print('Загрузчик: данные готовы!')
-    ready.set()
-
-async def main():
-    ready = asyncio.Event()
-    data: list = []
-    result, _ = await asyncio.gather(
-        data_processor(ready, data),
-        data_loader(ready, data),
-    )
-    print(f'Результат: {result}')  # 15
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Event.is_set()',
-    description: 'Возвращает True, если флаг события установлен (был вызван set()), и False, если флаг сброшен. Является мгновенной неблокирующей проверкой, в отличие от wait().',
-    syntax: 'event.is_set()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    event = asyncio.Event()
-
-    print(event.is_set())  # False
-
-    event.set()
-    print(event.is_set())  # True
-
-    event.clear()
-    print(event.is_set())  # False
-
-    # Условная логика без блокировки
-    if not event.is_set():
-        print('Событие ещё не произошло, запускаем инициализацию')
-        await asyncio.sleep(0.1)
-        event.set()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Semaphore.acquire()',
-    description: 'Корутина, уменьшающая счётчик семафора на 1. Если счётчик равен 0 — ожидает, пока другая задача не вызовет release(). Используется для ограничения количества задач, одновременно выполняющих ресурсоёмкую операцию.',
-    syntax: 'await semaphore.acquire()',
-    arguments: [],
-    example: `import asyncio
-
-async def fetch(sem: asyncio.Semaphore, url: str) -> str:
-    async with sem:  # acquire() + release() автоматически
-        print(f'Запрос к {url}')
-        await asyncio.sleep(0.5)  # имитация HTTP-запроса
-        return f'Данные от {url}'
-
-async def main():
-    # Не более 3 одновременных запросов
-    sem = asyncio.Semaphore(3)
-    urls = [f'https://api.example.com/item/{i}' for i in range(8)]
-    results = await asyncio.gather(*[fetch(sem, url) for url in urls])
-    print(f'Получено {len(results)} ответов')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Semaphore.release()',
-    description: 'Увеличивает счётчик семафора на 1 и пробуждает одну из ожидающих задач (если есть). Для BoundedSemaphore выбрасывает ValueError при попытке превысить начальное значение счётчика.',
-    syntax: 'semaphore.release()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    sem = asyncio.Semaphore(2)
-
-    await sem.acquire()
-    await sem.acquire()
-    print('Захвачено 2 слота')
-    print(sem.locked())  # True — счётчик равен 0
-
-    sem.release()
-    print('Освобождён 1 слот')
-    print(sem.locked())  # False — счётчик стал 1
-
-    sem.release()
-    print('Освобождён 2-й слот, счётчик вернулся к 2')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Semaphore.locked()',
-    description: 'Возвращает True, если счётчик семафора равен нулю (все слоты заняты) и любой вызов acquire() будет заблокирован. Возвращает False, если есть свободные слоты.',
-    syntax: 'semaphore.locked()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    sem = asyncio.Semaphore(2)
-
-    print(sem.locked())  # False — оба слота свободны
-
-    await sem.acquire()
-    print(sem.locked())  # False — остался 1 свободный слот
-
-    await sem.acquire()
-    print(sem.locked())  # True — слотов нет
-
-    sem.release()
-    print(sem.locked())  # False — появился 1 слот
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Condition.acquire()',
-    description: 'Корутина, захватывающая внутреннюю блокировку условной переменной. Должна быть захвачена перед вызовом wait(), notify() или notify_all(). Рекомендуется использовать через async with вместо явного вызова.',
-    syntax: 'await condition.acquire()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    cond = asyncio.Condition()
-
-    # Явный захват
-    await cond.acquire()
-    try:
-        print('Блокировка захвачена')
-        cond.notify_all()
-    finally:
-        cond.release()
-
-    # Предпочтительный способ:
-    async with cond:
-        print('Захвачено через async with')
-        cond.notify_all()
-    # release() вызывается автоматически
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Condition.release()',
-    description: 'Освобождает внутреннюю блокировку условной переменной. Должна вызываться после acquire() для разблокировки других задач. При использовании async with вызывается автоматически.',
-    syntax: 'condition.release()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    cond = asyncio.Condition()
-
-    await cond.acquire()
-    print('Захвачено')
-    await asyncio.sleep(0.1)
-    cond.release()
-    print('Освобождено')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Condition.notify()',
-    description: 'Пробуждает одну (или n) задач, ожидающих в condition.wait(). Должна вызываться при захваченной блокировке. Пробуждённая задача не начнёт выполнение до тех пор, пока вызывающая задача не освободит блокировку.',
-    syntax: 'condition.notify(n=1)',
-    arguments: [
-      {
-        name: 'n',
-        description: 'Количество задач, которые нужно пробудить. По умолчанию 1. Если ожидающих задач меньше n — пробуждаются все.'
-      }
-    ],
-    example: `import asyncio
-
-async def worker(cond: asyncio.Condition, name: str):
-    async with cond:
-        print(f'{name}: жду уведомления')
-        await cond.wait()
-        print(f'{name}: получил уведомление!')
-
-async def notifier(cond: asyncio.Condition):
-    await asyncio.sleep(0.5)
-    async with cond:
-        print('Уведомляем одну задачу')
-        cond.notify(1)
-    await asyncio.sleep(0.5)
-    async with cond:
-        print('Уведомляем ещё одну')
-        cond.notify(1)
-
-async def main():
-    cond = asyncio.Condition()
-    await asyncio.gather(
-        worker(cond, 'w1'),
-        worker(cond, 'w2'),
-        notifier(cond),
-    )
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Condition.notify_all()',
-    description: 'Пробуждает все задачи, ожидающие в condition.wait(). Аналогично notify(n), где n — количество всех ожидающих задач. Используется когда изменение состояния актуально для всех ожидающих.',
-    syntax: 'condition.notify_all()',
-    arguments: [],
-    example: `import asyncio
-
-async def subscriber(cond: asyncio.Condition, name: str):
-    async with cond:
-        await cond.wait()
-        print(f'{name}: событие получено!')
-
-async def broadcaster(cond: asyncio.Condition):
-    await asyncio.sleep(0.5)
-    async with cond:
-        print('Рассылаем всем подписчикам...')
-        cond.notify_all()  # пробуждает все три задачи разом
-
-async def main():
-    cond = asyncio.Condition()
-    await asyncio.gather(
-        subscriber(cond, 'sub-А'),
-        subscriber(cond, 'sub-Б'),
-        subscriber(cond, 'sub-В'),
-        broadcaster(cond),
-    )
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.Condition.wait()',
-    description: 'Корутина, освобождающая внутреннюю блокировку и ожидающая уведомления от notify() или notify_all(). После получения уведомления повторно захватывает блокировку перед возвратом. Должна вызываться при захваченной блокировке (внутри async with cond).',
-    syntax: 'await condition.wait()',
-    arguments: [],
-    example: `import asyncio
-
-shared_data: list = []
-
-async def consumer(cond: asyncio.Condition):
-    async with cond:
-        # Ждём, пока данные не появятся
-        await cond.wait_for(lambda: len(shared_data) > 0)
-        print(f'Обрабатываю данные: {shared_data}')
-
-async def producer(cond: asyncio.Condition):
-    await asyncio.sleep(0.5)
-    async with cond:
-        shared_data.extend([10, 20, 30])
-        print('Данные добавлены, уведомляем')
-        cond.notify_all()
-
-async def main():
-    cond = asyncio.Condition()
-    await asyncio.gather(consumer(cond), producer(cond))
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.open_connection()',
-    description: 'Корутина, устанавливающая TCP-соединение с указанным хостом и портом. Возвращает пару (StreamReader, StreamWriter) для чтения и записи данных. Является высокоуровневой оберткой над низкоуровневым API event loop.',
-    syntax: 'await asyncio.open_connection(host=None, port=None, *, ssl=None, limit=65536, **kwds)',
-    arguments: [
-      {
-        name: 'host',
-        description: 'Хост для подключения: строка с IP-адресом или доменным именем.'
-      },
-      {
-        name: 'port',
-        description: 'Порт для подключения в виде целого числа.'
-      },
-      {
-        name: 'ssl',
-        description: 'Настройки SSL: объект ssl.SSLContext, True (использовать стандартный контекст) или None (без SSL).'
-      },
-      {
-        name: 'limit',
-        description: 'Максимальный размер внутреннего буфера StreamReader в байтах. По умолчанию 65536 (64 КБ).'
-      }
-    ],
-    example: `import asyncio
-
-async def tcp_client():
-    reader, writer = await asyncio.open_connection('example.com', 80)
-
-    # Отправляем HTTP-запрос
-    request = 'GET / HTTP/1.0\\r\\nHost: example.com\\r\\n\\r\\n'
-    writer.write(request.encode())
-    await writer.drain()
-
-    # Читаем ответ
-    data = await reader.read(1024)
-    print(data.decode())
-
-    writer.close()
-    await writer.wait_closed()
-
-asyncio.run(tcp_client())`
-  },
-  {
-    name: 'asyncio.start_server()',
-    description: 'Корутина, создающая TCP-сервер. При каждом новом подключении вызывает callback-функцию с парой (StreamReader, StreamWriter). Возвращает объект asyncio.Server, который можно использовать как контекстный менеджер.',
-    syntax: 'await asyncio.start_server(client_connected_cb, host=None, port=None, *, ssl=None, limit=65536, **kwds)',
-    arguments: [
-      {
-        name: 'client_connected_cb',
-        description: 'Корутина или обычная функция, вызываемая при новом подключении. Получает аргументы (reader: StreamReader, writer: StreamWriter).'
-      },
-      {
-        name: 'host',
-        description: 'Хост для прослушивания. None или пустая строка — слушать на всех интерфейсах.'
-      },
-      {
-        name: 'port',
-        description: 'Порт для прослушивания.'
-      },
-      {
-        name: 'ssl',
-        description: 'Настройки SSL для TLS-сервера. Объект ssl.SSLContext или None.'
-      }
-    ],
-    example: `import asyncio
-
-async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    addr = writer.get_extra_info('peername')
-    print(f'Подключение от {addr}')
-
-    data = await reader.readline()
-    message = data.decode().strip()
-    print(f'Получено: {message}')
-
-    writer.write(f'Эхо: {message}\\n'.encode())
-    await writer.drain()
-
-    writer.close()
-    await writer.wait_closed()
-
-async def main():
-    server = await asyncio.start_server(handle_client, '127.0.0.1', 8888)
-    async with server:
-        print('Сервер запущен на порту 8888')
-        await server.serve_forever()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.StreamReader.read()',
-    description: 'Корутина, читающая до n байт из потока. Если n=-1 — читает данные до достижения EOF. Возвращает bytes. Если соединение закрыто и буфер пуст — возвращает пустые bytes b"".',
-    syntax: 'await reader.read(n=-1)',
-    arguments: [
-      {
-        name: 'n',
-        description: 'Максимальное количество байт для чтения. -1 означает читать до EOF. Может вернуть меньше байт, чем запрошено, если данных ещё нет.'
-      }
-    ],
-    example: `import asyncio
-
-async def client():
-    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
-
-    # Читать порцию данных (до 1024 байт)
-    chunk = await reader.read(1024)
-    print(f'Получено {len(chunk)} байт: {chunk[:50]}')
-
-    # Читать всё до закрытия соединения
-    writer.write(b'START\\n')
-    await writer.drain()
-    all_data = await reader.read(-1)
-    print(f'Всего получено: {len(all_data)} байт')
-
-    writer.close()
-    await writer.wait_closed()
-
-asyncio.run(client())`
-  },
-  {
-    name: 'asyncio.StreamReader.readline()',
-    description: 'Корутина, читающая одну строку из потока до символа новой строки "\\n" включительно. Возвращает bytes с символом "\\n" в конце. Если EOF достигнут до "\\n" — возвращает неполную строку.',
-    syntax: 'await reader.readline()',
-    arguments: [],
-    example: `import asyncio
-
-async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    while True:
-        line = await reader.readline()
-        if not line:
-            break  # EOF
-
-        decoded = line.decode().strip()
-        print(f'Строка: {decoded}')
-
-        if decoded == 'quit':
-            break
-
-        writer.write(f'OK: {decoded}\\n'.encode())
-        await writer.drain()
-
-    writer.close()
-
-async def main():
-    server = await asyncio.start_server(handle, '127.0.0.1', 8888)
-    async with server:
-        await server.serve_forever()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.StreamReader.readexactly()',
-    description: 'Корутина, читающая ровно n байт из потока. Ждёт, пока не будет получено точно n байт. Если соединение закрыто раньше — выбрасывает asyncio.IncompleteReadError с частично прочитанными данными в атрибуте partial.',
-    syntax: 'await reader.readexactly(n)',
-    arguments: [
-      {
-        name: 'n',
-        description: 'Точное количество байт для чтения. Должно быть неотрицательным целым числом.'
-      }
-    ],
-    example: `import asyncio
-
-async def read_protocol(reader: asyncio.StreamReader):
-    try:
-        # Читаем заголовок фиксированного размера (4 байта — длина тела)
-        header = await reader.readexactly(4)
-        body_length = int.from_bytes(header, 'big')
-        print(f'Ожидаем тело размером {body_length} байт')
-
-        # Читаем тело ровно нужного размера
-        body = await reader.readexactly(body_length)
-        return body.decode()
-
-    except asyncio.IncompleteReadError as e:
-        print(f'Соединение разорвано, получено {len(e.partial)} байт')
-        return None
-
-asyncio.run(read_protocol(...))`
-  },
-  {
-    name: 'asyncio.StreamReader.readuntil()',
-    description: 'Корутина, читающая данные из потока до тех пор, пока не встретится заданный разделитель. Возвращает bytes, включая сам разделитель. Выбрасывает asyncio.LimitOverrunError, если разделитель не найден в пределах буфера.',
-    syntax: 'await reader.readuntil(separator=b\'\\n\')',
-    arguments: [
-      {
-        name: 'separator',
-        description: 'Байтовая последовательность-разделитель, при обнаружении которой чтение останавливается. По умолчанию b"\\n".'
-      }
-    ],
-    example: `import asyncio
-
-async def client():
-    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
-
-    # Читать до символа новой строки (аналог readline)
-    line = await reader.readuntil(b'\\n')
-    print(line.decode().strip())
-
-    # Читать до кастомного разделителя
-    data = await reader.readuntil(b'END\\r\\n')
-    print(f'Блок данных: {data[:-5].decode()}')  # убираем разделитель
-
-    writer.close()
-    await writer.wait_closed()
-
-asyncio.run(client())`
-  },
-  {
-    name: 'asyncio.StreamReader.at_eof()',
-    description: 'Возвращает True, если буфер StreamReader пуст и соединение закрыто на стороне отправителя (получен сигнал EOF). Используется для проверки завершения потока без блокирующего чтения.',
-    syntax: 'reader.at_eof()',
-    arguments: [],
-    example: `import asyncio
-
-async def drain_stream(reader: asyncio.StreamReader) -> list:
-    lines = []
-    while not reader.at_eof():
-        try:
-            line = await asyncio.wait_for(reader.readline(), timeout=1.0)
-            if line:
-                lines.append(line.decode().strip())
-        except asyncio.TimeoutError:
-            break
-    return lines
-
-async def main():
-    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
-    result = await drain_stream(reader)
-    print(f'Получено {len(result)} строк')
-    writer.close()
-    await writer.wait_closed()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.StreamWriter.write()',
-    description: 'Помещает данные в буфер отправки. Не является корутиной — возвращает управление немедленно. Данные не гарантированно отправлены до вызова drain(). После write() необходимо вызвать await writer.drain() для фактической отправки.',
-    syntax: 'writer.write(data)',
-    arguments: [
-      {
-        name: 'data',
-        description: 'Байтовые данные для записи в поток. Тип bytes или bytearray.'
-      }
-    ],
-    example: `import asyncio
-
-async def client():
-    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
-
-    # Запись данных в буфер
-    writer.write(b'Привет, сервер!\\n')
-
-    # Обязательно drain() для фактической отправки
-    await writer.drain()
-
-    # Можно несколько write() перед одним drain()
-    writer.write(b'Строка 1\\n')
-    writer.write(b'Строка 2\\n')
-    writer.write(b'Строка 3\\n')
-    await writer.drain()
-
-    writer.close()
-    await writer.wait_closed()
-
-asyncio.run(client())`
-  },
-  {
-    name: 'asyncio.StreamWriter.writelines()',
-    description: 'Записывает последовательность байтовых объектов в буфер отправки. Эквивалентно последовательному вызову write() для каждого элемента. Не является корутиной. После вызова необходимо await writer.drain().',
-    syntax: 'writer.writelines(data)',
-    arguments: [
-      {
-        name: 'data',
-        description: 'Итерируемый объект, содержащий байтовые данные (bytes или bytearray). Например, список строк, предварительно закодированных в bytes.'
-      }
-    ],
-    example: `import asyncio
-
-async def client():
-    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
-
-    lines = [
-        b'USER guest\\r\\n',
-        b'PASS secret\\r\\n',
-        b'LIST\\r\\n',
-    ]
-    writer.writelines(lines)
-    await writer.drain()
-
-    response = await reader.read(4096)
-    print(response.decode())
-
-    writer.close()
-    await writer.wait_closed()
-
-asyncio.run(client())`
-  },
-  {
-    name: 'asyncio.StreamWriter.drain()',
-    description: 'Корутина, ожидающая опустошения буфера отправки. Позволяет event loop отправить накопленные данные и предотвращает переполнение буфера при интенсивной записи. Необходимо вызывать после write() и writelines().',
-    syntax: 'await writer.drain()',
-    arguments: [],
-    example: `import asyncio
-
-async def send_large_data(writer: asyncio.StreamWriter, data: bytes):
-    chunk_size = 64 * 1024  # 64 КБ за раз
-
-    for i in range(0, len(data), chunk_size):
-        chunk = data[i:i + chunk_size]
-        writer.write(chunk)
-        await writer.drain()  # ждём отправки перед следующим чанком
-        print(f'Отправлено {min(i + chunk_size, len(data))}/{len(data)} байт')
-
-async def main():
-    _, writer = await asyncio.open_connection('127.0.0.1', 8888)
-    await send_large_data(writer, b'X' * (1024 * 1024))  # 1 МБ
-    writer.close()
-    await writer.wait_closed()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.StreamWriter.close()',
-    description: 'Инициирует закрытие транспортного соединения. Не является корутиной и не ждёт фактического закрытия — для ожидания следует вызвать await writer.wait_closed(). После вызова запись в поток становится невозможной.',
-    syntax: 'writer.close()',
-    arguments: [],
-    example: `import asyncio
-
-async def client():
-    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
-
-    writer.write(b'QUIT\\n')
-    await writer.drain()
-
-    # Инициируем закрытие
-    writer.close()
-
-    # Ждём фактического закрытия сокета
-    await writer.wait_closed()
-    print('Соединение закрыто')
-    print(writer.is_closing())  # True
-
-asyncio.run(client())`
-  },
-  {
-    name: 'asyncio.StreamWriter.is_closing()',
-    description: 'Возвращает True, если транспортное соединение закрыто или находится в процессе закрытия (был вызван close()). Позволяет проверить состояние соединения без блокирующего ожидания.',
-    syntax: 'writer.is_closing()',
-    arguments: [],
-    example: `import asyncio
-
-async def safe_write(writer: asyncio.StreamWriter, data: bytes):
-    if writer.is_closing():
-        print('Соединение закрывается, запись невозможна')
-        return
-
-    writer.write(data)
-    await writer.drain()
-
-async def main():
-    _, writer = await asyncio.open_connection('127.0.0.1', 8888)
-
-    print(writer.is_closing())  # False
-
-    await safe_write(writer, b'данные\\n')
-
-    writer.close()
-    print(writer.is_closing())  # True
-
-    await safe_write(writer, b'это не отправится')
-    await writer.wait_closed()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.StreamWriter.wait_closed()',
-    description: 'Корутина, ожидающая фактического закрытия соединения после вызова close(). Должна вызываться совместно с close() для корректного завершения соединения и освобождения ресурсов.',
-    syntax: 'await writer.wait_closed()',
-    arguments: [],
-    example: `import asyncio
-
-async def client():
-    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
-
-    writer.write(b'Последнее сообщение\\n')
-    await writer.drain()
-
-    # Корректная последовательность закрытия:
-    writer.close()           # 1. инициируем закрытие
-    await writer.wait_closed()  # 2. ждём завершения
-
-    print('Соединение полностью закрыто')
-
-asyncio.run(client())`
-  },
-  {
-    name: 'asyncio.StreamWriter.get_extra_info()',
-    description: 'Возвращает дополнительную информацию о транспортном соединении по имени атрибута. Позволяет получить IP-адрес и порт удалённой стороны, SSL-объект, название шифра и другие низкоуровневые детали соединения.',
-    syntax: 'writer.get_extra_info(name, default=None)',
-    arguments: [
-      {
-        name: 'name',
-        description: 'Строковое имя атрибута: "peername" (адрес удалённой стороны), "sockname" (локальный адрес), "socket" (объект сокета), "ssl_object" (SSL-объект), "cipher" (шифр SSL) и др.'
-      },
-      {
-        name: 'default',
-        description: 'Значение по умолчанию, возвращаемое если атрибут с указанным именем не найден. По умолчанию None.'
-      }
-    ],
-    example: `import asyncio
-
-async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    # Адрес клиента (host, port)
-    peername = writer.get_extra_info('peername')
-    print(f'Клиент: {peername[0]}:{peername[1]}')
-
-    # Локальный адрес сервера
-    sockname = writer.get_extra_info('sockname')
-    print(f'Сервер: {sockname}')
-
-    # Объект сокета (для низкоуровневых операций)
-    sock = writer.get_extra_info('socket')
-    print(f'Тип сокета: {sock.type}')
-
-    # Для SSL-соединений:
-    ssl_obj = writer.get_extra_info('ssl_object')
-    if ssl_obj:
-        print(f'Шифр: {ssl_obj.cipher()}')
-
-    writer.close()
-    await writer.wait_closed()
-
-asyncio.run(asyncio.start_server(handle, '127.0.0.1', 8888))`
-  },
-  {
-    name: 'asyncio.loop.run_until_complete()',
-    description: 'Запускает event loop и блокирует выполнение до завершения переданной корутины или Future. Возвращает результат корутины. Если loop уже запущен — выбрасывает RuntimeError. Является основным способом запуска asyncio-кода в синхронном контексте (низкоуровневая альтернатива asyncio.run()).',
-    syntax: 'loop.run_until_complete(future)',
-    arguments: [
-      {
-        name: 'future',
-        description: 'Корутина, Task или Future для выполнения. Если передана корутина — автоматически оборачивается в Task.'
-      }
-    ],
-    example: `import asyncio
-
-async def compute(x: int, y: int) -> int:
-    await asyncio.sleep(0.1)
-    return x + y
-
-# Низкоуровневый способ (устаревший, предпочитайте asyncio.run())
-loop = asyncio.new_event_loop()
-try:
-    result = loop.run_until_complete(compute(3, 4))
-    print(f'Результат: {result}')  # 7
-finally:
-    loop.close()
-
-# Современный эквивалент:
-# result = asyncio.run(compute(3, 4))`
-  },
-  {
-    name: 'asyncio.loop.run_forever()',
-    description: 'Запускает event loop в бесконечном цикле до вызова loop.stop(). Используется для серверных приложений, которые должны работать непрерывно. Блокирует выполнение до остановки loop.',
-    syntax: 'loop.run_forever()',
-    arguments: [],
-    example: `import asyncio
-import signal
-
-def shutdown(loop: asyncio.AbstractEventLoop):
-    print('Остановка...')
-    loop.stop()
-
-async def periodic_task():
-    while True:
-        print('Тик')
-        await asyncio.sleep(1)
-
-loop = asyncio.new_event_loop()
-
-# Регистрируем сигнал остановки
-loop.add_signal_handler(signal.SIGINT, lambda: shutdown(loop))
-
-# Планируем задачу
-loop.create_task(periodic_task())
-
-try:
-    print('Запуск loop навсегда...')
-    loop.run_forever()
-finally:
-    loop.close()
-    print('Loop закрыт')`
-  },
-  {
-    name: 'asyncio.loop.stop()',
-    description: 'Планирует остановку event loop. Loop завершит текущую итерацию и вернёт управление из run_forever() или run_until_complete(). Может вызываться из обратного вызова или из другого потока.',
-    syntax: 'loop.stop()',
-    arguments: [],
-    example: `import asyncio
-
-async def main_task(loop: asyncio.AbstractEventLoop):
-    print('Задача запущена')
-    await asyncio.sleep(2)
-    print('Задача завершена, останавливаем loop')
-    loop.stop()
-
-loop = asyncio.new_event_loop()
-loop.create_task(main_task(loop))
-loop.run_forever()
-loop.close()
-print('Программа завершена')`
-  },
-  {
-    name: 'asyncio.loop.is_running()',
-    description: 'Возвращает True, если event loop в данный момент выполняется (запущен через run_forever() или run_until_complete()). Используется для проверки состояния loop перед запуском корутин или планированием задач.',
-    syntax: 'loop.is_running()',
-    arguments: [],
-    example: `import asyncio
-
-async def check_state():
-    loop = asyncio.get_event_loop()
-    print(f'Запущен: {loop.is_running()}')   # True — внутри корутины
-    print(f'Закрыт: {loop.is_closed()}')     # False
-
-loop = asyncio.new_event_loop()
-print(f'До запуска: {loop.is_running()}')    # False
-
-loop.run_until_complete(check_state())
-
-print(f'После: {loop.is_running()}')        # False
-loop.close()`
-  },
-  {
-    name: 'asyncio.loop.is_closed()',
-    description: 'Возвращает True, если event loop был закрыт вызовом loop.close(). Закрытый loop не может быть снова запущен. Используется для проверки перед попыткой запустить или использовать loop.',
-    syntax: 'loop.is_closed()',
-    arguments: [],
-    example: `import asyncio
-
-loop = asyncio.new_event_loop()
-print(loop.is_closed())   # False
-
-loop.run_until_complete(asyncio.sleep(0))
-print(loop.is_closed())   # False — loop завершил задачу, но не закрыт
-
-loop.close()
-print(loop.is_closed())   # True
-
-# Попытка использовать закрытый loop вызовет RuntimeError:
-try:
-    loop.run_until_complete(asyncio.sleep(0))
-except RuntimeError as e:
-    print(f'Ошибка: {e}')`
-  },
-  {
-    name: 'asyncio.loop.close()',
-    description: 'Закрывает event loop и освобождает все связанные ресурсы. После закрытия loop нельзя запустить снова. Не отменяет текущие задачи — их следует отменить до закрытия. Должен вызываться при завершении работы приложения.',
-    syntax: 'loop.close()',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    await asyncio.sleep(0.1)
-    print('Работа завершена')
-
-loop = asyncio.new_event_loop()
-try:
-    loop.run_until_complete(main())
-finally:
-    # Корректное завершение: сначала отменяем незавершённые задачи
-    pending = asyncio.all_tasks(loop)
-    for task in pending:
-        task.cancel()
-    if pending:
-        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-
-    loop.close()
-    print(f'Loop закрыт: {loop.is_closed()}')  # True`
-  },
-  {
-    name: 'asyncio.loop.create_future()',
-    description: 'Создаёт и возвращает объект asyncio.Future, привязанный к данному event loop. Future — это низкоуровневый примитив, представляющий результат, который будет доступен в будущем. Является предпочтительным способом создания Future по сравнению с прямым вызовом конструктора.',
-    syntax: 'loop.create_future()',
-    arguments: [],
-    example: `import asyncio
-
-async def set_result(future: asyncio.Future, value: int):
-    await asyncio.sleep(0.5)
-    future.set_result(value)
-    print(f'Результат установлен: {value}')
-
-async def main():
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-
-    asyncio.create_task(set_result(future, 42))
-
-    # Ожидаем результат Future
-    result = await future
-    print(f'Получен результат: {result}')  # 42
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.loop.create_task()',
-    description: 'Создаёт asyncio.Task из корутины и планирует её выполнение в event loop. Задача начинает выполняться при следующей итерации loop. Аналогична asyncio.create_task(), но вызывается напрямую на объекте loop.',
-    syntax: 'loop.create_task(coro, *, name=None, context=None)',
-    arguments: [
-      {
-        name: 'coro',
-        description: 'Корутина для выполнения в виде Task.'
-      },
-      {
-        name: 'name',
-        description: 'Необязательное имя задачи для отладки. Доступно через task.get_name().'
-      },
-      {
-        name: 'context',
-        description: 'Объект contextvars.Context для выполнения задачи. Если None — копируется текущий контекст.'
-      }
-    ],
-    example: `import asyncio
-
-async def background_job(name: str, delay: float):
-    await asyncio.sleep(delay)
-    print(f'Задача {name} завершена')
-
-async def main():
-    loop = asyncio.get_event_loop()
-
-    t1 = loop.create_task(background_job('А', 1.0), name='job-A')
-    t2 = loop.create_task(background_job('Б', 0.5), name='job-B')
-
-    print(f'Задача: {t1.get_name()}')  # job-A
-    await asyncio.gather(t1, t2)
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.loop.call_soon()',
-    description: 'Планирует вызов callback-функции в следующей итерации event loop. Не является корутиной — callback вызывается синхронно, без await. Возвращает объект asyncio.Handle, позволяющий отменить запланированный вызов.',
-    syntax: 'loop.call_soon(callback, *args, context=None)',
-    arguments: [
-      {
-        name: 'callback',
-        description: 'Обычная (не async) функция для вызова.'
-      },
-      {
-        name: '*args',
-        description: 'Позиционные аргументы, передаваемые в callback при вызове.'
-      },
-      {
-        name: 'context',
-        description: 'Объект contextvars.Context для выполнения callback. Если None — используется текущий контекст.'
-      }
-    ],
-    example: `import asyncio
-
-def on_event(message: str, count: int):
-    print(f'Событие #{count}: {message}')
-
-async def main():
-    loop = asyncio.get_event_loop()
-
-    # Планируем вызовы на следующую итерацию loop
-    loop.call_soon(on_event, 'первый', 1)
-    loop.call_soon(on_event, 'второй', 2)
-
-    handle = loop.call_soon(on_event, 'третий', 3)
-    handle.cancel()  # отменяем третий вызов
-
-    await asyncio.sleep(0)  # даём loop выполнить запланированные вызовы
-
-asyncio.run(main())
-# Событие #1: первый
-# Событие #2: второй`
-  },
-  {
-    name: 'asyncio.loop.call_later()',
-    description: 'Планирует вызов callback-функции через указанное количество секунд. Возвращает asyncio.TimerHandle для возможной отмены. Использует относительное время (задержку), в отличие от call_at(), который использует абсолютное время.',
-    syntax: 'loop.call_later(delay, callback, *args, context=None)',
-    arguments: [
-      {
-        name: 'delay',
-        description: 'Задержка в секундах (число с плавающей точкой) до вызова callback.'
-      },
-      {
-        name: 'callback',
-        description: 'Обычная (не async) функция для вызова после истечения задержки.'
-      },
-      {
-        name: '*args',
-        description: 'Позиционные аргументы, передаваемые в callback.'
-      }
-    ],
-    example: `import asyncio
-
-def reminder(text: str):
-    print(f'Напоминание: {text}')
-
-async def main():
-    loop = asyncio.get_event_loop()
-
-    loop.call_later(1.0, reminder, 'через 1 секунду')
-    loop.call_later(2.0, reminder, 'через 2 секунды')
-
-    handle = loop.call_later(3.0, reminder, 'через 3 секунды')
-    handle.cancel()  # отменяем третье напоминание
-
-    await asyncio.sleep(2.5)  # ждём выполнения первых двух
-
-asyncio.run(main())
-# Напоминание: через 1 секунду
-# Напоминание: через 2 секунды`
-  },
-  {
-    name: 'asyncio.loop.call_at()',
-    description: 'Планирует вызов callback-функции в указанный абсолютный момент времени по внутренним часам event loop (loop.time()). Возвращает asyncio.TimerHandle. Используется когда нужна точная привязка к абсолютному времени loop, а не относительная задержка.',
-    syntax: 'loop.call_at(when, callback, *args, context=None)',
-    arguments: [
-      {
-        name: 'when',
-        description: 'Абсолютное время вызова в единицах loop.time(). Если указанный момент уже прошёл — callback будет вызван немедленно.'
-      },
-      {
-        name: 'callback',
-        description: 'Обычная (не async) функция для вызова в указанный момент.'
-      },
-      {
-        name: '*args',
-        description: 'Позиционные аргументы, передаваемые в callback.'
-      }
-    ],
-    example: `import asyncio
-
-def tick(label: str):
-    print(f'Тик: {label}')
-
-async def main():
-    loop = asyncio.get_event_loop()
-    now = loop.time()
-
-    # Планируем по абсолютному времени
-    loop.call_at(now + 1.0, tick, 'T+1с')
-    loop.call_at(now + 2.0, tick, 'T+2с')
-    loop.call_at(now + 1.5, tick, 'T+1.5с')
-
-    await asyncio.sleep(2.5)
-
-asyncio.run(main())
-# Тик: T+1с
-# Тик: T+1.5с
-# Тик: T+2с`
-  },
-  {
-    name: 'asyncio.loop.time()',
-    description: 'Возвращает текущее время по внутренним монотонным часам event loop в виде числа с плавающей точкой (секунды). Монотонные часы гарантируют, что время всегда увеличивается, даже при изменении системных часов. Используется совместно с call_at() для планирования задач.',
-    syntax: 'loop.time()',
-    arguments: [],
-    example: `import asyncio
-
-async def measure_time():
-    loop = asyncio.get_event_loop()
-
-    start = loop.time()
-    print(f'Начало: {start:.4f}')
-
-    await asyncio.sleep(0.5)
-
-    elapsed = loop.time() - start
-    print(f'Прошло: {elapsed:.4f} сек')  # ~0.5
-
-    # Планируем вызов через 1 секунду от текущего момента
-    loop.call_at(loop.time() + 1.0, print, 'Запланированный вызов')
-
-    await asyncio.sleep(1.1)
-
-asyncio.run(measure_time())`
-  },
-  {
-    name: 'asyncio.loop.create_connection()',
-    description: 'Корутина, устанавливающая исходящее TCP-соединение и возвращающая пару (transport, protocol). Является низкоуровневым API — требует реализации класса протокола (asyncio.Protocol). Для большинства задач предпочтительнее использовать высокоуровневый asyncio.open_connection().',
-    syntax: 'await loop.create_connection(protocol_factory, host=None, port=None, *, ssl=None, sock=None, **kwds)',
-    arguments: [
-      {
-        name: 'protocol_factory',
-        description: 'Вызываемый объект без аргументов, возвращающий экземпляр asyncio.Protocol. Вызывается при установке соединения.'
-      },
-      {
-        name: 'host',
-        description: 'Хост для подключения: IP-адрес или доменное имя.'
-      },
-      {
-        name: 'port',
-        description: 'Порт для подключения.'
-      },
-      {
-        name: 'ssl',
-        description: 'Объект ssl.SSLContext для TLS-соединения, True для стандартного контекста, или None для незащищённого соединения.'
-      }
-    ],
-    example: `import asyncio
-
-class EchoClientProtocol(asyncio.Protocol):
-    def __init__(self, message: str, on_con_lost):
-        self.message = message
-        self.on_con_lost = on_con_lost
-
-    def connection_made(self, transport):
-        transport.write(self.message.encode())
-        print(f'Отправлено: {self.message}')
-
-    def data_received(self, data: bytes):
-        print(f'Получено: {data.decode()}')
-
-    def connection_lost(self, exc):
-        self.on_con_lost.set_result(True)
-
-async def main():
-    loop = asyncio.get_event_loop()
-    on_con_lost = loop.create_future()
-
-    transport, protocol = await loop.create_connection(
-        lambda: EchoClientProtocol('Привет!', on_con_lost),
-        '127.0.0.1', 8888
-    )
-    await on_con_lost
-    transport.close()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.loop.create_server()',
-    description: 'Корутина, создающая TCP-сервер и возвращающая объект asyncio.Server. Является низкоуровневым API — требует реализации класса протокола. Для большинства задач предпочтительнее использовать высокоуровневый asyncio.start_server().',
-    syntax: 'await loop.create_server(protocol_factory, host=None, port=None, *, ssl=None, reuse_address=None, reuse_port=None, **kwds)',
-    arguments: [
-      {
-        name: 'protocol_factory',
-        description: 'Вызываемый объект без аргументов, возвращающий экземпляр asyncio.Protocol. Вызывается при каждом новом подключении.'
-      },
-      {
-        name: 'host',
-        description: 'Хост для прослушивания. None — слушать на всех интерфейсах.'
-      },
-      {
-        name: 'port',
-        description: 'Порт для прослушивания.'
-      },
-      {
-        name: 'reuse_port',
-        description: 'Если True — несколько процессов могут слушать на одном порту (SO_REUSEPORT). Полезно для балансировки нагрузки.'
-      }
-    ],
-    example: `import asyncio
-
-class EchoServerProtocol(asyncio.Protocol):
-    def connection_made(self, transport):
-        peername = transport.get_extra_info('peername')
-        print(f'Подключение от {peername}')
-        self.transport = transport
-
-    def data_received(self, data: bytes):
-        message = data.decode()
-        print(f'Получено: {message}')
-        self.transport.write(data)  # эхо
-
-    def connection_lost(self, exc):
-        print('Соединение закрыто')
-
-async def main():
-    loop = asyncio.get_event_loop()
-    server = await loop.create_server(
-        EchoServerProtocol,
-        '127.0.0.1', 8888
-    )
-    async with server:
-        print('Сервер запущен')
-        await server.serve_forever()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.loop.getaddrinfo()',
-    description: 'Корутина, выполняющая асинхронное DNS-разрешение имени хоста. Возвращает список кортежей с информацией об адресах (family, type, proto, canonname, sockaddr). Является асинхронной оберткой над socket.getaddrinfo().',
-    syntax: 'await loop.getaddrinfo(host, port, *, family=0, type=0, proto=0, flags=0)',
-    arguments: [
-      {
-        name: 'host',
-        description: 'Имя хоста или IP-адрес для разрешения.'
-      },
-      {
-        name: 'port',
-        description: 'Номер порта или имя сервиса (например, "http", "ftp").'
-      },
-      {
-        name: 'family',
-        description: 'Семейство адресов: socket.AF_INET (IPv4), socket.AF_INET6 (IPv6) или 0 (любое).'
-      },
-      {
-        name: 'type',
-        description: 'Тип сокета: socket.SOCK_STREAM (TCP), socket.SOCK_DGRAM (UDP) или 0 (любой).'
-      }
-    ],
-    example: `import asyncio
-import socket
-
-async def resolve(hostname: str, port: int):
-    loop = asyncio.get_event_loop()
-
-    infos = await loop.getaddrinfo(
-        hostname, port,
-        family=socket.AF_UNSPEC,
-        type=socket.SOCK_STREAM,
-    )
-
-    for family, type_, proto, canonname, sockaddr in infos:
-        fam_name = 'IPv4' if family == socket.AF_INET else 'IPv6'
-        print(f'{fam_name}: {sockaddr[0]}:{sockaddr[1]}')
-
-asyncio.run(resolve('example.com', 80))`
-  },
-  {
-    name: 'asyncio.loop.getnameinfo()',
-    description: 'Корутина, выполняющая обратное DNS-разрешение: преобразует числовой адрес сокета в имя хоста и имя сервиса. Возвращает кортеж (hostname, service). Является асинхронной оберткой над socket.getnameinfo().',
-    syntax: 'await loop.getnameinfo(sockaddr, flags=0)',
-    arguments: [
-      {
-        name: 'sockaddr',
-        description: 'Кортеж (host, port) для IPv4 или (host, port, flowinfo, scope_id) для IPv6.'
-      },
-      {
-        name: 'flags',
-        description: 'Флаги из модуля socket (например, socket.NI_NUMERICHOST, socket.NI_NAMEREQD), управляющие поведением разрешения.'
-      }
-    ],
-    example: `import asyncio
-import socket
-
-async def reverse_lookup(ip: str, port: int):
-    loop = asyncio.get_event_loop()
-
-    try:
-        hostname, service = await loop.getnameinfo(
-            (ip, port),
-            socket.NI_NUMERICSERV  # вернуть порт как число, не как имя
-        )
-        print(f'IP: {ip} → Хост: {hostname}')
-        print(f'Порт: {port} → Сервис: {service}')
-    except socket.gaierror as e:
-        print(f'Ошибка разрешения: {e}')
-
-asyncio.run(reverse_lookup('8.8.8.8', 53))`
-  },
-  {
-    name: 'asyncio.loop.add_reader()',
-    description: 'Регистрирует callback для вызова, когда файловый дескриптор fd становится доступен для чтения. Является низкоуровневым способом интеграции обычных сокетов или файлов с event loop без использования async/await.',
-    syntax: 'loop.add_reader(fd, callback, *args)',
-    arguments: [
-      {
-        name: 'fd',
-        description: 'Файловый дескриптор (целое число) или объект с методом fileno(), например socket.socket.'
-      },
-      {
-        name: 'callback',
-        description: 'Обычная (не async) функция, вызываемая когда fd готов к чтению.'
-      },
-      {
-        name: '*args',
-        description: 'Позиционные аргументы, передаваемые в callback при вызове.'
-      }
-    ],
-    example: `import asyncio
-import socket
-
-def on_readable(sock: socket.socket, future: asyncio.Future):
-    data = sock.recv(1024)
-    if not future.done():
-        future.set_result(data)
-
-async def read_from_socket(sock: socket.socket) -> bytes:
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-
-    loop.add_reader(sock.fileno(), on_readable, sock, future)
-    try:
-        return await future
-    finally:
-        loop.remove_reader(sock.fileno())
-
-async def main():
-    # Создаём обычный неблокирующий сокет
-    sock = socket.socket()
-    sock.setblocking(False)
-    sock.connect_ex(('127.0.0.1', 8888))
-
-    data = await read_from_socket(sock)
-    print(f'Получено: {data.decode()}')
-    sock.close()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.loop.remove_reader()',
-    description: 'Отменяет регистрацию callback для чтения с файлового дескриптора, ранее зарегистрированного через add_reader(). Возвращает True, если callback был успешно удалён, и False если дескриптор не был зарегистрирован.',
-    syntax: 'loop.remove_reader(fd)',
-    arguments: [
-      {
-        name: 'fd',
-        description: 'Файловый дескриптор (целое число) или объект с методом fileno(), регистрация которого должна быть отменена.'
-      }
-    ],
-    example: `import asyncio
-import socket
-
-async def main():
-    loop = asyncio.get_event_loop()
-    sock = socket.socket()
-    sock.setblocking(False)
-    fd = sock.fileno()
-
-    def on_data():
-        print('Данные доступны')
-
-    loop.add_reader(fd, on_data)
-    print('Обработчик зарегистрирован')
-
-    await asyncio.sleep(0.1)
-
-    removed = loop.remove_reader(fd)
-    print(f'Обработчик удалён: {removed}')  # True
-
-    # Повторное удаление вернёт False
-    removed_again = loop.remove_reader(fd)
-    print(f'Повторное удаление: {removed_again}')  # False
-
-    sock.close()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.loop.add_writer()',
-    description: 'Регистрирует callback для вызова, когда файловый дескриптор fd становится доступен для записи. Используется для низкоуровневой неблокирующей записи в сокеты и другие файловые объекты без async/await.',
-    syntax: 'loop.add_writer(fd, callback, *args)',
-    arguments: [
-      {
-        name: 'fd',
-        description: 'Файловый дескриптор (целое число) или объект с методом fileno().'
-      },
-      {
-        name: 'callback',
-        description: 'Обычная (не async) функция, вызываемая когда fd готов к записи.'
-      },
-      {
-        name: '*args',
-        description: 'Позиционные аргументы, передаваемые в callback.'
-      }
-    ],
-    example: `import asyncio
-import socket
-
-def on_writable(sock: socket.socket, data: bytes, future: asyncio.Future, loop):
-    try:
-        sent = sock.send(data)
-        if not future.done():
-            future.set_result(sent)
-    except BlockingIOError:
-        pass  # ещё не готов, попробуем снова
-    finally:
-        loop.remove_writer(sock.fileno())
-
-async def send_to_socket(sock: socket.socket, data: bytes) -> int:
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-    loop.add_writer(sock.fileno(), on_writable, sock, data, future, loop)
-    return await future
-
-async def main():
-    sock = socket.socket()
-    sock.setblocking(False)
-    sock.connect_ex(('127.0.0.1', 8888))
-
-    sent = await send_to_socket(sock, b'Привет!\\n')
-    print(f'Отправлено {sent} байт')
-    sock.close()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.loop.remove_writer()',
-    description: 'Отменяет регистрацию callback для записи в файловый дескриптор, ранее зарегистрированного через add_writer(). Возвращает True при успешном удалении и False если дескриптор не был зарегистрирован.',
-    syntax: 'loop.remove_writer(fd)',
-    arguments: [
-      {
-        name: 'fd',
-        description: 'Файловый дескриптор (целое число) или объект с методом fileno(), регистрация которого должна быть отменена.'
-      }
-    ],
-    example: `import asyncio
-import socket
-
-async def main():
-    loop = asyncio.get_event_loop()
-    sock = socket.socket()
-    sock.setblocking(False)
-    fd = sock.fileno()
-
-    def on_write():
-        print('Готов к записи')
-
-    loop.add_writer(fd, on_write)
-    print('Обработчик записи зарегистрирован')
-
-    await asyncio.sleep(0.1)
-
-    removed = loop.remove_writer(fd)
-    print(f'Удалён: {removed}')        # True
-
-    removed_again = loop.remove_writer(fd)
-    print(f'Повторно: {removed_again}') # False
-
-    sock.close()
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.CancelledError',
-    description: 'Исключение, выбрасываемое в корутине или Task при отмене через task.cancel(). Наследуется от BaseException (не Exception), поэтому не перехватывается голым except Exception. Может быть поймано для выполнения очистки ресурсов, но должно быть повторно поднято или корутина должна завершиться.',
-    syntax: 'raise asyncio.CancelledError',
-    arguments: [],
-    example: `import asyncio
-
-async def cancellable_task():
-    try:
-        print('Задача запущена')
-        await asyncio.sleep(10)  # долгая операция
-        print('Задача завершена')
-    except asyncio.CancelledError:
-        print('Задача отменена! Выполняем очистку...')
-        # Освобождаем ресурсы, закрываем соединения...
-        raise  # обязательно повторно поднимаем
-
-async def main():
-    task = asyncio.create_task(cancellable_task())
-    await asyncio.sleep(0.5)
-
-    print('Отменяем задачу...')
-    task.cancel()
-
-    try:
-        await task
-    except asyncio.CancelledError:
-        print(f'Задача отменена: {task.cancelled()}')  # True
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.InvalidStateError',
-    description: 'Исключение, выбрасываемое при попытке выполнить недопустимую операцию над объектом Future или Task в его текущем состоянии. Например: вызов set_result() на уже завершённой Future, или вызов result() на ещё не завершённой Future.',
-    syntax: 'raise asyncio.InvalidStateError',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    loop = asyncio.get_event_loop()
-    future = loop.create_future()
-
-    # Корректная установка результата
-    future.set_result(42)
-    print(f'Результат: {future.result()}')  # 42
-
-    # Попытка установить результат повторно — ошибка
-    try:
-        future.set_result(99)
-    except asyncio.InvalidStateError as e:
-        print(f'InvalidStateError: {e}')
-
-    # Попытка получить результат незавершённой Future
-    pending = loop.create_future()
-    try:
-        pending.result()
-    except asyncio.InvalidStateError as e:
-        print(f'Future ещё не завершена: {e}')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.TimeoutError',
-    description: 'Исключение, выбрасываемое при истечении тайм-аута в asyncio.wait_for() или asyncio.timeout(). Наследуется от TimeoutError (встроенного). Сигнализирует о том, что операция не завершилась в отведённое время.',
-    syntax: 'raise asyncio.TimeoutError',
-    arguments: [],
-    example: `import asyncio
-
-async def slow_operation() -> str:
-    await asyncio.sleep(5)
-    return 'результат'
-
-async def main():
-    # С wait_for
-    try:
-        result = await asyncio.wait_for(slow_operation(), timeout=1.0)
-    except asyncio.TimeoutError:
-        print('wait_for: тайм-аут истёк')
-
-    # С asyncio.timeout (Python 3.11+)
-    try:
-        async with asyncio.timeout(1.0):
-            result = await slow_operation()
-    except asyncio.TimeoutError:
-        print('timeout: тайм-аут истёк')
-
-    # Проверка типа — совместимость с TimeoutError
-    err = asyncio.TimeoutError()
-    print(isinstance(err, TimeoutError))  # True
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.IncompleteReadError',
-    description: 'Исключение, выбрасываемое StreamReader.readexactly(), когда соединение закрыто раньше, чем было прочитано запрошенное количество байт. Содержит атрибут partial с байтами, которые были прочитаны до закрытия соединения.',
-    syntax: 'asyncio.IncompleteReadError(partial, expected)',
-    arguments: [
-      {
-        name: 'partial',
-        description: 'Атрибут bytes, содержащий частично прочитанные данные до момента закрытия соединения.'
-      },
-      {
-        name: 'expected',
-        description: 'Атрибут int или None — ожидаемое количество байт, которое не удалось прочитать.'
-      }
-    ],
-    example: `import asyncio
-
-async def read_fixed_block(reader: asyncio.StreamReader, size: int):
-    try:
-        data = await reader.readexactly(size)
-        return data
-    except asyncio.IncompleteReadError as e:
-        print(f'Ожидалось {e.expected} байт')
-        print(f'Получено только {len(e.partial)} байт: {e.partial}')
-        # Решаем, что делать с частичными данными
-        if len(e.partial) > 0:
-            return e.partial  # используем что есть
-        return b''
-
-async def main():
-    # Имитируем обрыв соединения
-    reader = asyncio.StreamReader()
-    reader.feed_data(b'Hello')  # только 5 байт
-    reader.feed_eof()           # соединение закрыто
-
-    result = await read_fixed_block(reader, 100)
-    print(f'Итог: {result}')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.LimitOverrunError',
-    description: 'Исключение, выбрасываемое StreamReader.readuntil(), когда размер накопленных в буфере данных превышает установленный лимит (параметр limit в open_connection/start_server) без обнаружения разделителя. Атрибут consumed содержит количество байт, находящихся в буфере.',
-    syntax: 'asyncio.LimitOverrunError(message, consumed)',
-    arguments: [
-      {
-        name: 'message',
-        description: 'Строка с описанием ошибки.'
-      },
-      {
-        name: 'consumed',
-        description: 'Атрибут int — количество байт в буфере на момент возникновения ошибки.'
-      }
-    ],
-    example: `import asyncio
-
-async def safe_readline(reader: asyncio.StreamReader) -> bytes | None:
-    try:
-        line = await reader.readuntil(b'\\n')
-        return line
-    except asyncio.LimitOverrunError as e:
-        print(f'Строка слишком длинная: {e.consumed} байт в буфере')
-        # Сбрасываем буфер — читаем и отбрасываем данные
-        await reader.read(e.consumed)
-        return None
-
-async def main():
-    # Лимит буфера — 10 байт
-    reader = asyncio.StreamReader(limit=10)
-    reader.feed_data(b'Эта строка намного длиннее лимита буфера!')
-    reader.feed_eof()
-
-    result = await safe_readline(reader)
-    if result is None:
-        print('Строка отброшена из-за превышения лимита')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.QueueEmpty',
-    description: 'Исключение, выбрасываемое asyncio.Queue.get_nowait(), когда очередь пуста в момент вызова. Является неблокирующей альтернативой await queue.get() — вместо ожидания немедленно сигнализирует об отсутствии элементов.',
-    syntax: 'asyncio.QueueEmpty',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    queue: asyncio.Queue[int] = asyncio.Queue()
-
-    # Добавляем один элемент
-    await queue.put(42)
-
-    # Успешное получение
-    item = queue.get_nowait()
-    print(f'Получено: {item}')  # 42
-
-    # Попытка получить из пустой очереди
-    try:
-        item = queue.get_nowait()
-    except asyncio.QueueEmpty:
-        print('QueueEmpty: очередь пуста')
-
-    # Безопасный паттерн — проверка перед get_nowait
-    if not queue.empty():
-        item = queue.get_nowait()
-    else:
-        print('Очередь пуста, пропускаем')
-
-asyncio.run(main())`
-  },
-  {
-    name: 'asyncio.QueueFull',
-    description: 'Исключение, выбрасываемое asyncio.Queue.put_nowait(), когда очередь заполнена (достигнут maxsize) в момент вызова. Является неблокирующей альтернативой await queue.put() — вместо ожидания немедленно сигнализирует о переполнении.',
-    syntax: 'asyncio.QueueFull',
-    arguments: [],
-    example: `import asyncio
-
-async def main():
-    # Очередь максимум на 2 элемента
-    queue: asyncio.Queue[str] = asyncio.Queue(maxsize=2)
-
-    queue.put_nowait('первый')
-    queue.put_nowait('второй')
-    print(f'Размер: {queue.qsize()}')  # 2
-
-    # Попытка добавить в заполненную очередь
-    try:
-        queue.put_nowait('третий')
-    except asyncio.QueueFull:
-        print('QueueFull: очередь заполнена')
-
-    # Безопасный паттерн — проверка перед put_nowait
-    if not queue.full():
-        queue.put_nowait('элемент')
-    else:
-        print('Нет места, используем await put() или отбрасываем')
-
-asyncio.run(main())`
+    async def post(self):
+        data = await self.request.json()
+        return web.json_response(data, status=201)`,
   },
-  
 ];
