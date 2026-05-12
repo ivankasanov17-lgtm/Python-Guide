@@ -20327,4 +20327,3219 @@ async def main():
 
 asyncio.run(main())`,
   },
+  {
+    name: "__init_subclass__(cls)",
+    category: "Классы и метаклассы",
+    description:
+      "Хук, вызываемый автоматически при создании подкласса. Позволяет родительскому классу реагировать на наследование — регистрировать подклассы, проверять параметры, применять декораторы и т.д. Принимает именованные аргументы, переданные при объявлении класса через ключевые слова.",
+    syntax:
+      "def __init_subclass__(cls, **kwargs):\n    super().__init_subclass__(**kwargs)",
+    arguments: [
+      {
+        name: "cls",
+        description: "Создаваемый подкласс (не экземпляр, а сам класс).",
+      },
+      {
+        name: "**kwargs",
+        description:
+          "Именованные аргументы, указанные в строке class MyChild(Parent, key=value).",
+      },
+    ],
+    example: `class PluginBase:
+    _registry = {}
+
+    def __init_subclass__(cls, plugin_name=None, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if plugin_name:
+            PluginBase._registry[plugin_name] = cls
+        print(f"Зарегистрирован подкласс: {cls.__name__}")
+
+class AudioPlugin(PluginBase, plugin_name='audio'):
+    pass
+# Зарегистрирован подкласс: AudioPlugin
+
+class VideoPlugin(PluginBase, plugin_name='video'):
+    pass
+# Зарегистрирован подкласс: VideoPlugin
+
+print(PluginBase._registry)
+# {'audio': <class 'AudioPlugin'>, 'video': <class 'VideoPlugin'>}`,
+  },
+  {
+    name: "__class_getitem__(cls, item)",
+    category: "Классы и метаклассы",
+    description:
+      "Позволяет использовать синтаксис обобщённых типов Class[param] без метакласса. Вызывается при обращении к классу через квадратные скобки (например, list[int], Optional[str]). Используется для создания дженерик-классов, совместимых с системой аннотаций типов.",
+    syntax:
+      "def __class_getitem__(cls, item):\n    return GenericAlias(cls, item)",
+    arguments: [
+      {
+        name: "cls",
+        description: "Класс, к которому применяется оператор [].",
+      },
+      {
+        name: "item",
+        description:
+          "Аргумент типа, переданный в квадратных скобках (может быть кортежем для нескольких параметров).",
+      },
+    ],
+    example: `class Stack:
+    def __init__(self):
+        self._items = []
+
+    def __class_getitem__(cls, item):
+        return f"{cls.__name__}[{item.__name__}]"
+
+    def push(self, item):
+        self._items.append(item)
+
+print(Stack[int])     # Stack[int]
+print(Stack[str])     # Stack[str]
+
+# Стандартные примеры из Python:
+print(list[int])      # list[int]
+print(dict[str, int]) # dict[str, int]`,
+  },
+  {
+    name: "__mro_entries__(self, bases)",
+    category: "Классы и метаклассы",
+    description:
+      "Вызывается при использовании объекта в списке базовых классов нового класса. Позволяет объектам, не являющимся классами, участвовать в наследовании — возвращая кортеж реальных базовых классов, которые должны быть подставлены вместо данного объекта в MRO.",
+    syntax: "def __mro_entries__(self, bases):\n    return (RealBaseClass,)",
+    arguments: [
+      {
+        name: "bases",
+        description:
+          "Полный кортеж баз, переданных при объявлении нового класса (контекст для принятия решения).",
+      },
+    ],
+    example: `class ClassDecorator:
+    def __init__(self, mixin_cls):
+        self.mixin_cls = mixin_cls
+
+    def __mro_entries__(self, bases):
+        return (self.mixin_cls,)
+
+class LogMixin:
+    def log(self, msg):
+        print(f"[LOG] {msg}")
+
+log_decorator = ClassDecorator(LogMixin)
+
+class MyService(log_decorator):
+    def run(self):
+        self.log("Сервис запущен")
+
+svc = MyService()
+svc.run()  # [LOG] Сервис запущен
+print(MyService.__mro__)
+# (<class 'MyService'>, <class 'LogMixin'>, <class 'object'>)`,
+  },
+  {
+    name: "__instancecheck__(self, instance)",
+    category: "Классы и метаклассы",
+    description:
+      "Определяет поведение функции isinstance(obj, cls). Метод вызывается на метаклассе — позволяет создавать виртуальные подклассы и нестандартную проверку принадлежности к типу. Используется в ABC (Abstract Base Classes) для регистрации внешних классов.",
+    syntax:
+      "class Meta(type):\n    def __instancecheck__(cls, instance):\n        return bool(...)",
+    arguments: [
+      {
+        name: "self",
+        description:
+          "Класс (второй аргумент isinstance()), у чьего метакласса вызывается метод.",
+      },
+      {
+        name: "instance",
+        description: "Объект, принадлежность которого к классу проверяется.",
+      },
+    ],
+    example: `class NumberMeta(type):
+    def __instancecheck__(cls, instance):
+        try:
+            float(instance)
+            return True
+        except (TypeError, ValueError):
+            return False
+
+class Number(metaclass=NumberMeta):
+    pass
+
+print(isinstance(42, Number))       # True
+print(isinstance(3.14, Number))     # True
+print(isinstance("2.5", Number))    # True  (строка-число!)
+print(isinstance("hello", Number))  # False
+print(isinstance([1, 2], Number))   # False`,
+  },
+  {
+    name: "__subclasscheck__(self, subclass)",
+    category: "Классы и метаклассы",
+    description:
+      "Определяет поведение функции issubclass(cls, parent). Вызывается на метаклассе родительского класса. Позволяет переопределить логику проверки иерархии классов — например, считать класс подклассом при наличии определённых методов (структурная типизация).",
+    syntax:
+      "class Meta(type):\n    def __subclasscheck__(cls, subclass):\n        return bool(...)",
+    arguments: [
+      {
+        name: "self",
+        description:
+          "Родительский класс (второй аргумент issubclass()), у чьего метакласса вызывается метод.",
+      },
+      {
+        name: "subclass",
+        description: "Класс, проверяемый на принадлежность к иерархии.",
+      },
+    ],
+    example: `class InterfaceMeta(type):
+    def __subclasscheck__(cls, subclass):
+        required = getattr(cls, '_required_methods', [])
+        return all(callable(getattr(subclass, m, None)) for m in required)
+
+class Drawable(metaclass=InterfaceMeta):
+    _required_methods = ['draw', 'resize']
+
+class Circle:
+    def draw(self): pass
+    def resize(self): pass
+
+class Square:
+    def draw(self): pass  # resize отсутствует!
+
+print(issubclass(Circle, Drawable))  # True
+print(issubclass(Square, Drawable))  # False`,
+  },
+  {
+    name: "__getstate__(self)",
+    category: "Сериализация",
+    description:
+      "Вызывается при сериализации объекта через pickle. Должен вернуть словарь (или любой picklable объект), представляющий состояние объекта. Используется для исключения непикуемых атрибутов (сокетов, файловых дескрипторов) или для уменьшения размера сериализованных данных.",
+    syntax: "def __getstate__(self):\n    return {...}",
+    arguments: [],
+    example: `import pickle
+
+class DatabaseConnection:
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self._connection = None  # непикуемый объект
+
+    def connect(self):
+        self._connection = f"conn://{self.host}:{self.port}"
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['_connection'] = None  # убираем непикуемое
+        return state
+
+conn = DatabaseConnection('localhost', 5432)
+conn.connect()
+print(conn._connection)  # conn://localhost:5432
+
+restored = pickle.loads(pickle.dumps(conn))
+print(restored._connection)  # None
+print(restored.host)         # localhost`,
+  },
+  {
+    name: "__setstate__(self, state)",
+    category: "Сериализация",
+    description:
+      "Вызывается при десериализации объекта через pickle. Получает состояние, возвращённое __getstate__, и должен восстановить объект. Если определён __getstate__, как правило нужно определить и __setstate__ для правильного восстановления.",
+    syntax: "def __setstate__(self, state):\n    self.__dict__.update(state)",
+    arguments: [
+      {
+        name: "state",
+        description:
+          "Объект состояния, возвращённый __getstate__ при сериализации.",
+      },
+    ],
+    example: `import pickle
+
+class CachedData:
+    def __init__(self, data):
+        self.data = data
+        self._cache = {}
+
+    def __getstate__(self):
+        return {'data': self.data}  # кэш не сохраняем
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._cache = {}  # пересоздаём кэш как пустой
+        print("Объект восстановлен, кэш сброшен")
+
+    def get(self, key):
+        if key not in self._cache:
+            self._cache[key] = self.data.get(key)
+        return self._cache[key]
+
+obj = CachedData({'a': 1, 'b': 2})
+obj.get('a')
+
+restored = pickle.loads(pickle.dumps(obj))
+# Объект восстановлен, кэш сброшен
+print(restored._cache)  # {}`,
+  },
+  {
+    name: "__reduce__(self)",
+    category: "Сериализация",
+    description:
+      "Определяет, как объект сериализуется через pickle. Должен вернуть кортеж (callable, args) или кортеж из 2–6 элементов, описывающих способ воссоздания объекта. Используется для поддержки сериализации объектов с нестандартной инициализацией.",
+    syntax: "def __reduce__(self):\n    return (cls, (arg1, arg2))",
+    arguments: [],
+    example: `import pickle
+
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def __reduce__(self):
+        # Возвращаем (конструктор, аргументы_конструктора)
+        return (Point, (self.x, self.y))
+
+    def __repr__(self):
+        return f"Point({self.x}, {self.y})"
+
+p = Point(3, 7)
+restored = pickle.loads(pickle.dumps(p))
+
+print(restored)   # Point(3, 7)
+print(restored.x) # 3
+print(restored.y) # 7
+
+# Полная форма кортежа:
+# (callable, args, state, list_items, dict_items, state_setter)`,
+  },
+  {
+    name: "__reduce_ex__(self, protocol)",
+    category: "Сериализация",
+    description:
+      "Расширенная версия __reduce__ с доступом к версии протокола pickle. Вызывается вместо __reduce__, если оба определены. Позволяет возвращать разные представления объекта в зависимости от версии протокола (0–5). По умолчанию делегирует к __reduce__.",
+    syntax: "def __reduce_ex__(self, protocol):\n    return (cls, (args,))",
+    arguments: [
+      {
+        name: "protocol",
+        description:
+          "Версия протокола pickle (0–5). Более высокие версии эффективнее, но несовместимы со старыми Python.",
+      },
+    ],
+    example: `import pickle
+
+class VersionedObject:
+    def __init__(self, data):
+        self.data = data
+
+    def __reduce_ex__(self, protocol):
+        print(f"Сериализация с протоколом {protocol}")
+        if protocol >= 4:
+            return (self.__class__, (self.data,))
+        else:
+            return (self.__class__, ({'data': self.data},))
+
+    def __repr__(self):
+        return f"VersionedObject({self.data!r})"
+
+obj = VersionedObject([1, 2, 3])
+
+pickle.dumps(obj, protocol=2)  # Сериализация с протоколом 2
+pickle.dumps(obj, protocol=5)  # Сериализация с протоколом 5`,
+  },
+  {
+    name: "__match_args__",
+    category: "Структурное сопоставление (match)",
+    description:
+      "Атрибут класса — кортеж строк с именами атрибутов, используемых при позиционном сопоставлении в операторе match/case. Определяет порядок, в котором позиционные аргументы паттерна сопоставляются с атрибутами объекта. Автоматически создаётся в датаклассах.",
+    syntax: 'class MyClass:\n    __match_args__ = ("attr1", "attr2")',
+    arguments: [],
+    example: `class Point:
+    __match_args__ = ('x', 'y')
+
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+def describe(point):
+    match point:
+        case Point(0, 0):
+            return "Начало координат"
+        case Point(x, 0):
+            return f"На оси X: x={x}"
+        case Point(0, y):
+            return f"На оси Y: y={y}"
+        case Point(x, y):
+            return f"Точка ({x}, {y})"
+
+print(describe(Point(0, 0)))  # Начало координат
+print(describe(Point(5, 0)))  # На оси X: x=5
+print(describe(Point(0, 3)))  # На оси Y: y=3
+print(describe(Point(2, 4)))  # Точка (2, 4)
+
+# В датаклассах создаётся автоматически:
+from dataclasses import dataclass
+
+@dataclass
+class Color:
+    r: int
+    g: int
+    b: int
+# Color.__match_args__ == ('r', 'g', 'b')`,
+  },
+  {
+    name: "array.append(x)",
+    category: "array",
+    description:
+      "Добавляет новый элемент x в конец массива. Тип элемента должен совпадать с типом массива — иначе возникает TypeError. Аналогично list.append(), но работает только с однотипными данными, заданными при создании массива.",
+    syntax: "array.append(x)",
+    arguments: [
+      {
+        name: "x",
+        description:
+          "Элемент, добавляемый в конец массива. Должен соответствовать типу массива (typecode).",
+      },
+    ],
+    example: `import array
+
+arr = array.array('i', [1, 2, 3])  # массив целых чисел
+arr.append(4)
+print(arr)  # array('i', [1, 2, 3, 4])
+
+arr.append(5)
+print(arr)  # array('i', [1, 2, 3, 4, 5])
+
+# TypeError при несовпадении типа:
+# arr.append(3.14)  # ошибка — массив хранит только int`,
+  },
+  {
+    name: "array.buffer_info()",
+    category: "array",
+    description:
+      "Возвращает кортеж (address, length) — адрес начала внутреннего буфера данных в памяти и количество элементов в массиве. Используется для низкоуровневой работы с памятью, передачи массива в C-расширения или системные вызовы.",
+    syntax: "array.buffer_info()",
+    arguments: [],
+    example: `import array
+
+arr = array.array('i', [10, 20, 30, 40])
+addr, length = arr.buffer_info()
+
+print(f"Адрес в памяти: {addr}")   # например: 140234567890
+print(f"Количество элементов: {length}")  # 4
+
+# Размер в байтах = length * itemsize
+print(f"Размер буфера: {length * arr.itemsize} байт")  # 16 байт (4 * 4)`,
+  },
+  {
+    name: "array.byteswap()",
+    category: "array",
+    description:
+      "Меняет порядок байт у каждого элемента массива на обратный (big-endian ↔ little-endian). Используется при обмене бинарными данными между системами с разным порядком байт. Работает только с массивами числовых типов.",
+    syntax: "array.byteswap()",
+    arguments: [],
+    example: `import array
+
+arr = array.array('i', [1, 256, 65536])
+print(arr)  # array('i', [1, 256, 65536])
+
+arr.byteswap()
+print(arr)  # байты каждого элемента перевёрнуты
+# array('i', [16777216, 65536, 256])
+
+# Двойной вызов возвращает исходный порядок:
+arr.byteswap()
+print(arr)  # array('i', [1, 256, 65536])`,
+  },
+  {
+    name: "array.count(x)",
+    category: "array",
+    description:
+      "Возвращает количество вхождений элемента x в массиве. Аналогично list.count(). Сравнение выполняется по значению с учётом типа массива.",
+    syntax: "array.count(x)",
+    arguments: [
+      {
+        name: "x",
+        description: "Элемент, количество вхождений которого нужно найти.",
+      },
+    ],
+    example: `import array
+
+arr = array.array('i', [1, 2, 3, 2, 4, 2, 5])
+print(arr.count(2))  # 3
+print(arr.count(1))  # 1
+print(arr.count(9))  # 0
+
+# С числами с плавающей точкой:
+farr = array.array('f', [1.5, 2.5, 1.5, 3.5])
+print(farr.count(1.5))  # 2`,
+  },
+  {
+    name: "array.extend(iterable)",
+    category: "array",
+    description:
+      "Добавляет все элементы итерируемого объекта в конец массива. Итерируемый объект должен содержать элементы подходящего типа. Аналог list.extend(), но с контролем типов.",
+    syntax: "array.extend(iterable)",
+    arguments: [
+      {
+        name: "iterable",
+        description:
+          "Итерируемый объект (список, кортеж, другой array и т.д.) с элементами совместимого типа.",
+      },
+    ],
+    example: `import array
+
+arr = array.array('i', [1, 2, 3])
+
+# Расширение списком
+arr.extend([4, 5, 6])
+print(arr)  # array('i', [1, 2, 3, 4, 5, 6])
+
+# Расширение другим массивом
+arr2 = array.array('i', [7, 8, 9])
+arr.extend(arr2)
+print(arr)  # array('i', [1, 2, 3, 4, 5, 6, 7, 8, 9])
+
+# Расширение генератором
+arr.extend(x * 2 for x in range(3))
+print(arr)  # ... 0, 2, 4 в конце`,
+  },
+  {
+    name: "array.frombytes(s)",
+    category: "array",
+    description:
+      "Добавляет элементы из байтовой строки s в конец массива. Байты интерпретируются как элементы нужного типа согласно typecode массива. Длина s должна быть кратна itemsize массива.",
+    syntax: "array.frombytes(s)",
+    arguments: [
+      {
+        name: "s",
+        description:
+          "Байтовая строка (bytes или bytes-like object), из которой читаются данные.",
+      },
+    ],
+    example: `import array
+
+arr = array.array('i')  # пустой массив целых чисел
+
+# 4 байта = один int (little-endian)
+arr.frombytes(b'\\x01\\x00\\x00\\x00')
+print(arr)  # array('i', [1])
+
+# Несколько элементов сразу
+arr.frombytes(b'\\x02\\x00\\x00\\x00\\x03\\x00\\x00\\x00')
+print(arr)  # array('i', [1, 2, 3])
+
+# Обратная операция:
+data = arr.tobytes()
+print(data)  # байтовое представление массива`,
+  },
+  {
+    name: "array.fromfile(f, n)",
+    category: "array",
+    description:
+      'Читает ровно n элементов из файлового объекта f и добавляет их в конец массива. Читает двоичные данные — файл должен быть открыт в режиме "rb". Если данных недостаточно, возникает EOFError, но уже прочитанные элементы остаются в массиве.',
+    syntax: "array.fromfile(f, n)",
+    arguments: [
+      {
+        name: "f",
+        description: 'Файловый объект, открытый в бинарном режиме ("rb").',
+      },
+      { name: "n", description: "Количество элементов для чтения." },
+    ],
+    example: `import array
+
+# Запись массива в файл
+arr = array.array('i', [10, 20, 30, 40, 50])
+with open('data.bin', 'wb') as f:
+    arr.tofile(f)
+
+# Чтение обратно
+arr2 = array.array('i')
+with open('data.bin', 'rb') as f:
+    arr2.fromfile(f, 3)  # читаем только 3 элемента
+
+print(arr2)  # array('i', [10, 20, 30])`,
+  },
+  {
+    name: "array.fromlist(list)",
+    category: "array",
+    description:
+      "Добавляет все элементы списка в конец массива. Аналогично extend(), но принимает только список. Если хотя бы один элемент имеет несовместимый тип — возникает TypeError и массив не изменяется (атомарная операция).",
+    syntax: "array.fromlist(list)",
+    arguments: [
+      {
+        name: "list",
+        description: "Список элементов совместимого с массивом типа.",
+      },
+    ],
+    example: `import array
+
+arr = array.array('i', [1, 2, 3])
+arr.fromlist([4, 5, 6])
+print(arr)  # array('i', [1, 2, 3, 4, 5, 6])
+
+# Атомарность: если в списке есть невалидный элемент,
+# массив остаётся неизменным:
+try:
+    arr.fromlist([7, 8, 'плохой'])  # TypeError
+except TypeError:
+    pass
+print(arr)  # array('i', [1, 2, 3, 4, 5, 6]) — не изменился`,
+  },
+  {
+    name: "array.fromunicode(s)",
+    category: "array",
+    description:
+      'Добавляет символы строки Unicode в конец массива. Метод применим только к массивам с typecode "u" (Unicode-символы). В Python 3.3+ тип "u" устарел — вместо него рекомендуется использовать str.',
+    syntax: "array.fromunicode(s)",
+    arguments: [
+      {
+        name: "s",
+        description: "Строка Unicode, символы которой добавляются в массив.",
+      },
+    ],
+    example: `import array
+
+# Массив Unicode-символов (typecode 'u' — устаревший)
+arr = array.array('u', 'Hello')
+arr.fromunicode(', World')
+print(arr.tounicode())  # Hello, World
+
+# Современная альтернатива — использовать str напрямую:
+text = 'Hello'
+text += ', World'
+print(text)  # Hello, World`,
+  },
+  {
+    name: "array.index(x[, start[, stop]])",
+    category: "array",
+    description:
+      "Возвращает индекс первого вхождения элемента x в массиве. Если элемент не найден — возникает ValueError. Необязательные параметры start и stop ограничивают диапазон поиска (как в list.index()).",
+    syntax: "array.index(x[, start[, stop]])",
+    arguments: [
+      { name: "x", description: "Искомый элемент." },
+      {
+        name: "start",
+        description:
+          "Начальный индекс диапазона поиска (включительно). По умолчанию 0.",
+      },
+      {
+        name: "stop",
+        description:
+          "Конечный индекс диапазона поиска (не включается). По умолчанию конец массива.",
+      },
+    ],
+    example: `import array
+
+arr = array.array('i', [10, 20, 30, 20, 40, 20])
+
+print(arr.index(20))      # 1 — первое вхождение
+print(arr.index(20, 2))   # 3 — поиск начиная с индекса 2
+print(arr.index(20, 4))   # 5 — поиск начиная с индекса 4
+
+try:
+    arr.index(99)
+except ValueError as e:
+    print(e)  # array.index(x): x not in array`,
+  },
+  {
+    name: "array.insert(i, x)",
+    category: "array",
+    description:
+      "Вставляет элемент x перед элементом с индексом i. Отрицательные индексы отсчитываются с конца. Если i больше длины массива — элемент добавляется в конец. Сдвигает все элементы правее позиции вставки.",
+    syntax: "array.insert(i, x)",
+    arguments: [
+      {
+        name: "i",
+        description:
+          "Индекс позиции, перед которой вставляется элемент. Допускаются отрицательные значения.",
+      },
+      {
+        name: "x",
+        description: "Вставляемый элемент совместимого с массивом типа.",
+      },
+    ],
+    example: `import array
+
+arr = array.array('i', [1, 2, 3, 4, 5])
+
+arr.insert(2, 99)    # вставляем 99 перед индексом 2
+print(arr)  # array('i', [1, 2, 99, 3, 4, 5])
+
+arr.insert(0, 0)     # вставка в начало
+print(arr)  # array('i', [0, 1, 2, 99, 3, 4, 5])
+
+arr.insert(-1, 88)   # перед последним элементом
+print(arr)  # array('i', [0, 1, 2, 99, 3, 4, 88, 5])`,
+  },
+  {
+    name: "array.pop([i])",
+    category: "array",
+    description:
+      "Удаляет и возвращает элемент с индексом i. По умолчанию удаляет последний элемент (i = -1). Отрицательные индексы отсчитываются с конца. Если массив пуст или индекс выходит за границы — возникает IndexError.",
+    syntax: "array.pop([i])",
+    arguments: [
+      {
+        name: "i",
+        description:
+          "Индекс удаляемого элемента. По умолчанию -1 (последний элемент). Допускаются отрицательные значения.",
+      },
+    ],
+    example: `import array
+
+arr = array.array('i', [10, 20, 30, 40, 50])
+
+last = arr.pop()       # удаляем последний
+print(last)  # 50
+print(arr)   # array('i', [10, 20, 30, 40])
+
+first = arr.pop(0)     # удаляем первый
+print(first)  # 10
+print(arr)    # array('i', [20, 30, 40])
+
+middle = arr.pop(1)    # удаляем по индексу
+print(middle)  # 30
+print(arr)     # array('i', [20, 40])`,
+  },
+  {
+    name: "array.remove(x)",
+    category: "array",
+    description:
+      "Удаляет первое вхождение элемента x из массива. Если элемент не найден — возникает ValueError. В отличие от pop(), не возвращает удалённый элемент и принимает значение, а не индекс.",
+    syntax: "array.remove(x)",
+    arguments: [
+      {
+        name: "x",
+        description:
+          "Значение элемента, который нужно удалить (первое вхождение).",
+      },
+    ],
+    example: `import array
+
+arr = array.array('i', [1, 2, 3, 2, 4, 2])
+
+arr.remove(2)    # удаляем первое вхождение 2
+print(arr)  # array('i', [1, 3, 2, 4, 2])
+
+arr.remove(2)    # снова — удаляем следующее вхождение
+print(arr)  # array('i', [1, 3, 4, 2])
+
+try:
+    arr.remove(99)
+except ValueError as e:
+    print(e)  # array.remove(x): x not in array`,
+  },
+  {
+    name: "array.reverse()",
+    category: "array",
+    description:
+      "Переворачивает порядок элементов массива на месте (in-place). Изменяет сам массив и возвращает None. Аналогично list.reverse() — не создаёт новый объект.",
+    syntax: "array.reverse()",
+    arguments: [],
+    example: `import array
+
+arr = array.array('i', [1, 2, 3, 4, 5])
+arr.reverse()
+print(arr)  # array('i', [5, 4, 3, 2, 1])
+
+# С числами с плавающей точкой:
+farr = array.array('f', [1.1, 2.2, 3.3])
+farr.reverse()
+print(farr)  # array('f', [3.3, 2.2, 1.1])
+
+# Возвращает None:
+result = arr.reverse()
+print(result)  # None`,
+  },
+  {
+    name: "array.tobytes()",
+    category: "array",
+    description:
+      "Возвращает байтовое представление массива в виде объекта bytes. Каждый элемент кодируется согласно typecode и порядку байт платформы. Обратная операция — frombytes(). Используется для сохранения, передачи по сети или работы с бинарными протоколами.",
+    syntax: "array.tobytes()",
+    arguments: [],
+    example: `import array
+
+arr = array.array('i', [1, 2, 3])
+data = arr.tobytes()
+print(data)   # b'\\x01\\x00\\x00\\x00\\x02\\x00\\x00\\x00\\x03\\x00\\x00\\x00'
+print(type(data))  # <class 'bytes'>
+
+# Размер = количество элементов × itemsize
+print(len(data))  # 12  (3 элемента × 4 байта)
+
+# Восстановление массива из байтов:
+arr2 = array.array('i')
+arr2.frombytes(data)
+print(arr2)  # array('i', [1, 2, 3])`,
+  },
+  {
+    name: "array.tofile(f)",
+    category: "array",
+    description:
+      'Записывает все элементы массива в файловый объект f в бинарном формате. Файл должен быть открыт в режиме "wb". Обратная операция — fromfile(). Эффективнее, чем запись каждого элемента по отдельности.',
+    syntax: "array.tofile(f)",
+    arguments: [
+      {
+        name: "f",
+        description: 'Файловый объект, открытый в бинарном режиме ("wb").',
+      },
+    ],
+    example: `import array
+
+arr = array.array('d', [1.5, 2.5, 3.5, 4.5])
+
+# Запись в файл
+with open('numbers.bin', 'wb') as f:
+    arr.tofile(f)
+
+# Чтение обратно
+arr2 = array.array('d')
+with open('numbers.bin', 'rb') as f:
+    arr2.fromfile(f, 4)  # читаем 4 элемента
+
+print(arr2)  # array('d', [1.5, 2.5, 3.5, 4.5])
+print(arr == arr2)  # True`,
+  },
+  {
+    name: "array.tolist()",
+    category: "array",
+    description:
+      "Преобразует массив в обычный список Python. Элементы преобразуются в соответствующие типы Python (int, float и т.д.). Обратная операция — fromlist(). Используется, когда нужна гибкость list вместо строготипизированного array.",
+    syntax: "array.tolist()",
+    arguments: [],
+    example: `import array
+
+arr = array.array('i', [10, 20, 30, 40])
+lst = arr.tolist()
+
+print(lst)        # [10, 20, 30, 40]
+print(type(lst))  # <class 'list'>
+print(type(lst[0]))  # <class 'int'>
+
+# С float:
+farr = array.array('f', [1.1, 2.2, 3.3])
+flst = farr.tolist()
+print(flst)  # [1.100000023841858, 2.200000047683716, 3.299999952316284]
+# Небольшая погрешность из-за float32 → float64`,
+  },
+  {
+    name: "array.tounicode()",
+    category: "array",
+    description:
+      'Преобразует массив Unicode-символов (typecode "u") в строку Python. Применим только к массивам с typecode "u". В Python 3.3+ тип "u" устарел — рекомендуется использовать str напрямую. Обратная операция — fromunicode().',
+    syntax: "array.tounicode()",
+    arguments: [],
+    example: `import array
+
+arr = array.array('u', 'Привет')
+arr.fromunicode(', мир!')
+
+text = arr.tounicode()
+print(text)        # Привет, мир!
+print(type(text))  # <class 'str'>
+
+# Современная альтернатива (без устаревшего 'u'):
+words = ['Привет', ', мир!']
+text = ''.join(words)
+print(text)  # Привет, мир!`,
+  },
+  {
+    name: "array.typecode",
+    category: "array",
+    description:
+      'Атрибут (не метод) — односимвольная строка, указывающая тип элементов массива. Задаётся при создании и неизменен. Возможные значения: "b" (int8), "B" (uint8), "i" (int32), "I" (uint32), "f" (float32), "d" (float64) и другие.',
+    syntax: "array.typecode",
+    arguments: [],
+    example: `import array
+
+arr_int = array.array('i', [1, 2, 3])
+arr_float = array.array('d', [1.0, 2.0])
+arr_byte = array.array('b', [10, 20, 30])
+
+print(arr_int.typecode)    # 'i'  — знаковый int (32 бит)
+print(arr_float.typecode)  # 'd'  — double (64 бит)
+print(arr_byte.typecode)   # 'b'  — знаковый byte (8 бит)
+
+# Все доступные typecode:
+# 'b','B' — signed/unsigned char
+# 'h','H' — signed/unsigned short
+# 'i','I' — signed/unsigned int
+# 'l','L' — signed/unsigned long
+# 'f'     — float
+# 'd'     — double`,
+  },
+  {
+    name: "array.itemsize",
+    category: "array",
+    description:
+      "Атрибут (не метод) — размер одного элемента массива в байтах. Зависит от typecode и платформы. Позволяет вычислить общий размер массива в памяти: itemsize × len(array). Полезен при низкоуровневой работе с бинарными данными.",
+    syntax: "array.itemsize",
+    arguments: [],
+    example: `import array
+
+arr_b = array.array('b', [1, 2, 3])  # 1 байт на элемент
+arr_i = array.array('i', [1, 2, 3])  # 4 байта на элемент
+arr_d = array.array('d', [1.0, 2.0]) # 8 байт на элемент
+
+print(arr_b.itemsize)  # 1
+print(arr_i.itemsize)  # 4
+print(arr_d.itemsize)  # 8
+
+# Общий размер в байтах:
+print(len(arr_i) * arr_i.itemsize)  # 12  (3 × 4)
+
+# Сравнение с bytes:
+data = arr_i.tobytes()
+print(len(data))  # 12 — совпадает`,
+  },
+  {
+    name: "queue.qsize()",
+    category: "queue",
+    description:
+      "Возвращает приблизительное количество элементов в очереди. Результат не гарантированно точен в многопоточной среде — между вызовом qsize() и следующей операцией другой поток может добавить или извлечь элементы. Применим ко всем классам: Queue, LifoQueue, PriorityQueue, SimpleQueue.",
+    syntax: "queue.qsize()",
+    arguments: [],
+    example: `import queue
+
+q = queue.Queue()
+q.put('a')
+q.put('b')
+q.put('c')
+
+print(q.qsize())  # 3
+
+q.get()
+print(q.qsize())  # 2
+
+# В многопоточной среде результат приблизителен:
+# между qsize() и get() другой поток может изменить очередь`,
+  },
+  {
+    name: "queue.empty()",
+    category: "queue",
+    description:
+      "Возвращает True, если очередь пуста, иначе False. Как и qsize(), не гарантирует точность в многопоточном контексте. Не рекомендуется использовать для управления потоком — вместо этого используйте блокирующий get() или task_done()/join().",
+    syntax: "queue.empty()",
+    arguments: [],
+    example: `import queue
+
+q = queue.Queue()
+print(q.empty())  # True — очередь пуста
+
+q.put(1)
+print(q.empty())  # False
+
+q.get()
+print(q.empty())  # True
+
+# Антипаттерн в многопоточном коде:
+# if not q.empty():   # небезопасно!
+#     item = q.get()
+
+# Правильно — использовать блокирующий get():
+# item = q.get()  # ждёт, пока не появится элемент`,
+  },
+  {
+    name: "queue.full()",
+    category: "queue",
+    description:
+      "Возвращает True, если очередь заполнена (достигла maxsize), иначе False. Актуально только если очередь создана с ограниченным размером (maxsize > 0). Для неограниченных очередей (maxsize=0) всегда возвращает False.",
+    syntax: "queue.full()",
+    arguments: [],
+    example: `import queue
+
+# Очередь с ограничением на 3 элемента
+q = queue.Queue(maxsize=3)
+
+q.put(1)
+q.put(2)
+print(q.full())  # False
+
+q.put(3)
+print(q.full())  # True — заполнена
+
+# Неограниченная очередь:
+q2 = queue.Queue()
+for i in range(1000):
+    q2.put(i)
+print(q2.full())  # False — всегда`,
+  },
+  {
+    name: "queue.put(item, block=True, timeout=None)",
+    category: "queue",
+    description:
+      "Добавляет элемент item в очередь. Если очередь заполнена и block=True — ожидает освобождения места (до timeout секунд). При block=False или истечении timeout возбуждает queue.Full. Потокобезопасен.",
+    syntax: "queue.put(item, block=True, timeout=None)",
+    arguments: [
+      {
+        name: "item",
+        description:
+          "Элемент, добавляемый в очередь. Может быть любым объектом Python.",
+      },
+      {
+        name: "block",
+        description:
+          "Если True (по умолчанию) — блокирует поток при заполненной очереди. Если False — сразу вызывает queue.Full.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах. None — ждёт бесконечно. Используется только при block=True.",
+      },
+    ],
+    example: `import queue
+import threading
+
+q = queue.Queue(maxsize=2)
+
+# Обычная запись
+q.put('задача 1')
+q.put('задача 2')
+
+# Неблокирующая запись — вызывает Full если нет места
+try:
+    q.put('задача 3', block=False)
+except queue.Full:
+    print("Очередь заполнена!")
+
+# Запись с таймаутом
+try:
+    q.put('задача 3', timeout=1.0)
+except queue.Full:
+    print("Не удалось добавить за 1 секунду")`,
+  },
+  {
+    name: "queue.put_nowait(item)",
+    category: "queue",
+    description:
+      "Немедленно добавляет элемент в очередь без ожидания. Эквивалентно put(item, block=False). Если очередь заполнена — сразу возбуждает queue.Full. Удобен как более читаемая альтернатива put с block=False.",
+    syntax: "queue.put_nowait(item)",
+    arguments: [
+      { name: "item", description: "Элемент для добавления в очередь." },
+    ],
+    example: `import queue
+
+q = queue.Queue(maxsize=3)
+
+q.put_nowait('a')
+q.put_nowait('b')
+q.put_nowait('c')
+
+try:
+    q.put_nowait('d')  # очередь заполнена
+except queue.Full:
+    print("Очередь заполнена — элемент не добавлен")
+
+print(q.qsize())  # 3`,
+  },
+  {
+    name: "queue.get(block=True, timeout=None)",
+    category: "queue",
+    description:
+      "Извлекает и возвращает элемент из очереди. Если очередь пуста и block=True — ожидает появления элемента (до timeout секунд). При block=False или истечении timeout возбуждает queue.Empty. Потокобезопасен.",
+    syntax: "queue.get(block=True, timeout=None)",
+    arguments: [
+      {
+        name: "block",
+        description:
+          "Если True (по умолчанию) — блокирует поток, пока не появится элемент. Если False — сразу вызывает queue.Empty.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах. None — ждёт бесконечно. Используется только при block=True.",
+      },
+    ],
+    example: `import queue
+import threading
+
+q = queue.Queue()
+
+def producer():
+    import time
+    time.sleep(0.5)
+    q.put('результат')
+
+threading.Thread(target=producer).start()
+
+# Блокирует поток, пока producer не положит данные
+item = q.get()
+print(item)  # 'результат'
+
+# С таймаутом:
+try:
+    item = q.get(timeout=2.0)
+except queue.Empty:
+    print("Данные не появились за 2 секунды")`,
+  },
+  {
+    name: "queue.get_nowait()",
+    category: "queue",
+    description:
+      "Немедленно извлекает элемент из очереди без ожидания. Эквивалентно get(block=False). Если очередь пуста — сразу возбуждает queue.Empty. Удобен как читаемая альтернатива get с block=False.",
+    syntax: "queue.get_nowait()",
+    arguments: [],
+    example: `import queue
+
+q = queue.Queue()
+q.put(10)
+q.put(20)
+
+print(q.get_nowait())  # 10
+print(q.get_nowait())  # 20
+
+try:
+    q.get_nowait()  # очередь пуста
+except queue.Empty:
+    print("Очередь пуста — нечего извлекать")
+
+# Часто используется в цикле опроса очереди:
+while True:
+    try:
+        item = q.get_nowait()
+        print(f"Обработан: {item}")
+    except queue.Empty:
+        break`,
+  },
+  {
+    name: "queue.task_done()",
+    category: "queue",
+    description:
+      "Сигнализирует, что обработка ранее извлечённого элемента завершена. Должен вызываться после каждого get(). Используется совместно с join() для ожидания полной обработки всех задач. Вызов task_done() большее количество раз, чем get(), — ValueError.",
+    syntax: "queue.task_done()",
+    arguments: [],
+    example: `import queue
+import threading
+
+q = queue.Queue()
+
+def worker():
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        print(f"Обрабатываю: {item}")
+        q.task_done()  # сообщаем, что задача выполнена
+
+t = threading.Thread(target=worker)
+t.start()
+
+for task in ['задача 1', 'задача 2', 'задача 3']:
+    q.put(task)
+
+q.join()          # ждём завершения всех задач
+q.put(None)       # сигнал воркеру завершить работу
+t.join()
+print("Все задачи выполнены")`,
+  },
+  {
+    name: "queue.join()",
+    category: "queue",
+    description:
+      "Блокирует вызывающий поток до тех пор, пока все элементы в очереди не будут обработаны. Считает необработанные задачи: put() увеличивает счётчик, task_done() уменьшает. Когда счётчик достигает нуля — join() разблокируется.",
+    syntax: "queue.join()",
+    arguments: [],
+    example: `import queue
+import threading
+
+def worker(q):
+    while True:
+        item = q.get()
+        if item is None:
+            q.task_done()
+            break
+        # имитация работы
+        print(f"Выполнено: {item}")
+        q.task_done()
+
+q = queue.Queue()
+threads = [threading.Thread(target=worker, args=(q,)) for _ in range(3)]
+for t in threads:
+    t.start()
+
+# Отправляем задачи
+for i in range(9):
+    q.put(f"задача-{i}")
+
+q.join()  # ждём обработки всех 9 задач
+
+# Останавливаем воркеры
+for _ in threads:
+    q.put(None)
+for t in threads:
+    t.join()
+print("Пул завершил работу")`,
+  },
+  {
+    name: "queue.maxsize",
+    category: "queue",
+    description:
+      "Атрибут, задающий максимальное количество элементов в очереди. Устанавливается при создании очереди: Queue(maxsize=N). Значение 0 или отрицательное означает неограниченный размер. Доступен только для чтения после создания объекта.",
+    syntax: "q = queue.Queue(maxsize=N)\nq.maxsize",
+    arguments: [],
+    example: `import queue
+
+# Неограниченная очередь
+q1 = queue.Queue()
+print(q1.maxsize)  # 0 — неограниченно
+
+# Ограниченная очередь
+q2 = queue.Queue(maxsize=5)
+print(q2.maxsize)  # 5
+
+# То же для LifoQueue и PriorityQueue:
+lifo = queue.LifoQueue(maxsize=10)
+print(lifo.maxsize)  # 10
+
+prio = queue.PriorityQueue(maxsize=0)
+print(prio.maxsize)  # 0 — неограниченно
+
+# Проверка: будет ли put() блокировать?
+if q2.maxsize > 0:
+    print(f"Очередь ограничена: {q2.maxsize} элементов")`,
+  },
+  {
+    name: "simplequeue.qsize()",
+    category: "queue",
+    description:
+      "Возвращает приблизительное количество элементов в SimpleQueue. SimpleQueue — упрощённая, неограниченная и реэнтерабельная очередь без поддержки task_done() и join(). Результат qsize() не гарантированно точен в многопоточной среде.",
+    syntax: "simplequeue.qsize()",
+    arguments: [],
+    example: `import queue
+
+sq = queue.SimpleQueue()
+print(sq.qsize())  # 0
+
+sq.put('a')
+sq.put('b')
+sq.put('c')
+print(sq.qsize())  # 3
+
+sq.get()
+print(sq.qsize())  # 2
+
+# SimpleQueue не имеет maxsize — всегда неограничена`,
+  },
+  {
+    name: "simplequeue.empty()",
+    category: "queue",
+    description:
+      "Возвращает True, если SimpleQueue пуста, иначе False. Как и в обычной Queue, результат не гарантирован в многопоточной среде. SimpleQueue не поддерживает full() — у неё нет ограничения по размеру.",
+    syntax: "simplequeue.empty()",
+    arguments: [],
+    example: `import queue
+
+sq = queue.SimpleQueue()
+print(sq.empty())  # True
+
+sq.put(42)
+print(sq.empty())  # False
+
+sq.get()
+print(sq.empty())  # True
+
+# SimpleQueue — только empty(), нет full() и maxsize:
+# sq.full()    → AttributeError
+# sq.maxsize   → AttributeError`,
+  },
+  {
+    name: "simplequeue.put(item, block=True, timeout=None)",
+    category: "queue",
+    description:
+      "Добавляет элемент в SimpleQueue. Так как SimpleQueue неограниченна, метод никогда не блокируется — параметры block и timeout принимаются для совместимости с Queue, но игнорируются. Никогда не возбуждает queue.Full.",
+    syntax: "simplequeue.put(item, block=True, timeout=None)",
+    arguments: [
+      {
+        name: "item",
+        description:
+          "Элемент для добавления в очередь. Может быть любым объектом Python.",
+      },
+      {
+        name: "block",
+        description:
+          "Принимается для совместимости с Queue, но игнорируется — SimpleQueue всегда неограниченна.",
+      },
+      {
+        name: "timeout",
+        description: "Принимается для совместимости с Queue, но игнорируется.",
+      },
+    ],
+    example: `import queue
+import threading
+
+sq = queue.SimpleQueue()
+
+# put() никогда не блокируется
+for i in range(1000):
+    sq.put(i)  # не заблокируется — очередь неограничена
+
+print(sq.qsize())  # 1000
+
+# Использование в продюсер-консьюмер паттерне:
+def producer(q):
+    for item in range(5):
+        q.put(f"задача-{item}")
+    q.put(None)  # сигнал завершения
+
+threading.Thread(target=producer, args=(sq,)).start()`,
+  },
+  {
+    name: "simplequeue.put_nowait(item)",
+    category: "queue",
+    description:
+      "Немедленно добавляет элемент в SimpleQueue. Эквивалентно put(item). Поскольку SimpleQueue неограниченна, метод идентичен put() и никогда не возбуждает queue.Full. Существует для совместимости интерфейса с Queue.",
+    syntax: "simplequeue.put_nowait(item)",
+    arguments: [
+      { name: "item", description: "Элемент для добавления в очередь." },
+    ],
+    example: `import queue
+
+sq = queue.SimpleQueue()
+
+sq.put_nowait('первый')
+sq.put_nowait('второй')
+sq.put_nowait('третий')
+
+print(sq.qsize())  # 3
+
+# В отличие от Queue, queue.Full никогда не возникает:
+for i in range(10000):
+    sq.put_nowait(i)  # всегда успешно
+
+print(sq.qsize())  # 10003`,
+  },
+  {
+    name: "simplequeue.get(block=True, timeout=None)",
+    category: "queue",
+    description:
+      "Извлекает и возвращает элемент из SimpleQueue. Если очередь пуста и block=True — блокирует поток до появления элемента. При block=False или истечении timeout возбуждает queue.Empty. Потокобезопасен.",
+    syntax: "simplequeue.get(block=True, timeout=None)",
+    arguments: [
+      {
+        name: "block",
+        description:
+          "Если True (по умолчанию) — блокирует поток, пока не появится элемент. Если False — сразу возбуждает queue.Empty.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах при block=True. None — ждёт бесконечно.",
+      },
+    ],
+    example: `import queue
+import threading
+
+sq = queue.SimpleQueue()
+
+def consumer(q):
+    while True:
+        item = q.get()  # блокирует, пока нет элемента
+        if item is None:
+            break
+        print(f"Получен: {item}")
+
+threading.Thread(target=consumer, args=(sq,)).start()
+
+sq.put('данные 1')
+sq.put('данные 2')
+sq.put(None)  # сигнал остановки
+
+# С таймаутом:
+try:
+    val = sq.get(timeout=1.0)
+except queue.Empty:
+    print("Очередь пуста")`,
+  },
+  {
+    name: "simplequeue.get_nowait()",
+    category: "queue",
+    description:
+      "Немедленно извлекает элемент из SimpleQueue без ожидания. Эквивалентно get(block=False). Если очередь пуста — сразу возбуждает queue.Empty.",
+    syntax: "simplequeue.get_nowait()",
+    arguments: [],
+    example: `import queue
+
+sq = queue.SimpleQueue()
+sq.put(10)
+sq.put(20)
+sq.put(30)
+
+print(sq.get_nowait())  # 10
+print(sq.get_nowait())  # 20
+print(sq.get_nowait())  # 30
+
+try:
+    sq.get_nowait()  # очередь пуста
+except queue.Empty:
+    print("Нечего извлекать")
+
+# Полная обработка всего содержимого очереди:
+sq.put(1); sq.put(2); sq.put(3)
+results = []
+while not sq.empty():
+    results.append(sq.get_nowait())
+print(results)  # [1, 2, 3]`,
+  },
+  {
+    name: "queue.Empty",
+    category: "queue",
+    description:
+      "Исключение, возбуждаемое при попытке извлечь элемент из пустой очереди с block=False или по истечении timeout. Наследуется от Exception. Используется с get_nowait() и get(block=False) для обработки случая пустой очереди без блокировки.",
+    syntax: "except queue.Empty:\n    ...",
+    arguments: [],
+    example: `import queue
+
+q = queue.Queue()
+sq = queue.SimpleQueue()
+
+# Вариант 1: get_nowait()
+try:
+    item = q.get_nowait()
+except queue.Empty:
+    print("Очередь пуста")
+
+# Вариант 2: get с таймаутом
+q.put('задача')
+try:
+    item = q.get(timeout=0.5)
+    print(f"Получено: {item}")
+except queue.Empty:
+    print("Не дождались элемента")
+
+# Вариант 3: цикл опроса
+for _ in range(3):
+    q.put(i)
+
+while True:
+    try:
+        print(q.get_nowait())
+    except queue.Empty:
+        break  # очередь исчерпана`,
+  },
+  {
+    name: "queue.Full",
+    category: "queue",
+    description:
+      "Исключение, возбуждаемое при попытке добавить элемент в заполненную очередь с block=False или по истечении timeout. Наследуется от Exception. Актуально только для Queue и LifoQueue/PriorityQueue с заданным maxsize > 0. SimpleQueue никогда не возбуждает queue.Full.",
+    syntax: "except queue.Full:\n    ...",
+    arguments: [],
+    example: `import queue
+
+# Очередь с ограничением
+q = queue.Queue(maxsize=2)
+q.put('a')
+q.put('b')
+
+# Вариант 1: put_nowait()
+try:
+    q.put_nowait('c')
+except queue.Full:
+    print("Очередь заполнена — элемент отброшен")
+
+# Вариант 2: put с таймаутом
+try:
+    q.put('c', timeout=1.0)
+except queue.Full:
+    print("Не удалось добавить за 1 секунду")
+
+# Вариант 3: put с block=False
+try:
+    q.put('c', block=False)
+except queue.Full:
+    print("Нет места в очереди")`,
+  },
+  {
+    name: "multiprocessing.active_children()",
+    category: "multiprocessing",
+    description:
+      "Возвращает список всех активных дочерних процессов текущего процесса. Вызов этого метода автоматически завершает (join) все уже закончившие работу дочерние процессы. Полезен для мониторинга и управления пулом рабочих процессов.",
+    syntax: "multiprocessing.active_children()",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def worker(name, duration):
+    time.sleep(duration)
+    print(f"{name} завершён")
+
+if __name__ == '__main__':
+    processes = [
+        multiprocessing.Process(target=worker, args=(f"worker-{i}", i * 0.5))
+        for i in range(1, 4)
+    ]
+    for p in processes:
+        p.start()
+
+    time.sleep(0.7)
+    active = multiprocessing.active_children()
+    print(f"Активных процессов: {len(active)}")
+    for p in active:
+        print(f"  {p.name}, pid={p.pid}")`,
+  },
+  {
+    name: "multiprocessing.cpu_count()",
+    category: "multiprocessing",
+    description:
+      "Возвращает количество логических процессоров (CPU) в системе. Используется для определения оптимального числа рабочих процессов. Если количество определить невозможно — возбуждает NotImplementedError.",
+    syntax: "multiprocessing.cpu_count()",
+    arguments: [],
+    example: `import multiprocessing
+
+cpus = multiprocessing.cpu_count()
+print(f"Логических CPU: {cpus}")  # например: 8
+
+# Типичный паттерн — создать пул по числу CPU:
+with multiprocessing.Pool(processes=cpus) as pool:
+    results = pool.map(str, range(20))
+    print(results[:5])  # ['0', '1', '2', '3', '4']
+
+# Оставить один CPU для системы:
+workers = max(1, cpus - 1)
+print(f"Рабочих процессов: {workers}")`,
+  },
+  {
+    name: "multiprocessing.current_process()",
+    category: "multiprocessing",
+    description:
+      "Возвращает объект Process, соответствующий текущему выполняемому процессу. Аналог threading.current_thread() для процессов. Позволяет получить имя, PID и другие атрибуты текущего процесса изнутри него.",
+    syntax: "multiprocessing.current_process()",
+    arguments: [],
+    example: `import multiprocessing
+
+def show_info():
+    proc = multiprocessing.current_process()
+    print(f"Имя: {proc.name}")
+    print(f"PID: {proc.pid}")
+    print(f"Является ли daemon: {proc.daemon}")
+
+if __name__ == '__main__':
+    # В главном процессе:
+    main = multiprocessing.current_process()
+    print(f"Главный процесс: {main.name}")  # MainProcess
+
+    # В дочернем процессе:
+    p = multiprocessing.Process(target=show_info, name="Worker-1")
+    p.start()
+    p.join()`,
+  },
+  {
+    name: "multiprocessing.parent_process()",
+    category: "multiprocessing",
+    description:
+      "Возвращает объект Process, соответствующий родительскому процессу текущего дочернего процесса. В главном процессе возвращает None. Добавлено в Python 3.8. Позволяет дочернему процессу получить информацию о своём создателе.",
+    syntax: "multiprocessing.parent_process()",
+    arguments: [],
+    example: `import multiprocessing
+
+def child_task():
+    parent = multiprocessing.parent_process()
+    current = multiprocessing.current_process()
+    print(f"Я: {current.name} (pid={current.pid})")
+    print(f"Мой родитель: {parent.name} (pid={parent.pid})")
+
+if __name__ == '__main__':
+    main = multiprocessing.current_process()
+    print(f"Главный процесс: {main.name}, pid={main.pid}")
+
+    p = multiprocessing.Process(target=child_task, name="Child")
+    p.start()
+    p.join()
+
+    # В главном процессе parent_process() возвращает None:
+    print(multiprocessing.parent_process())  # None`,
+  },
+  {
+    name: "multiprocessing.freeze_support()",
+    category: "multiprocessing",
+    description:
+      'Добавляет поддержку создания дочерних процессов при упаковке программы в исполняемый файл с помощью PyInstaller, cx_Freeze и аналогов (только Windows). Должен вызываться сразу после if __name__ == "__main__":. На других платформах — no-op.',
+    syntax: 'if __name__ == "__main__":\n    multiprocessing.freeze_support()',
+    arguments: [],
+    example: `import multiprocessing
+
+def worker():
+    print("Рабочий процесс запущен")
+
+# Обязательный шаблон для Windows и заморозки:
+if __name__ == '__main__':
+    multiprocessing.freeze_support()  # должен быть первым!
+
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()
+    print("Готово")
+
+# Без freeze_support() замороженное приложение на Windows
+# будет бесконечно запускать новые процессы (fork bomb).
+# На Linux/macOS вызов безопасен, но ничего не делает.`,
+  },
+  {
+    name: "multiprocessing.get_all_start_methods()",
+    category: "multiprocessing",
+    description:
+      'Возвращает список всех методов запуска процессов, поддерживаемых на текущей платформе. Возможные значения: "spawn" (создание нового интерпретатора), "fork" (копирование родителя), "forkserver" (через сервер форков). Набор зависит от ОС.',
+    syntax: "multiprocessing.get_all_start_methods()",
+    arguments: [],
+    example: `import multiprocessing
+
+methods = multiprocessing.get_all_start_methods()
+print(methods)
+# Linux:   ['fork', 'spawn', 'forkserver']
+# macOS:   ['spawn', 'fork', 'forkserver']  (Python 3.8+: spawn по умолчанию)
+# Windows: ['spawn']
+
+# Текущий метод по умолчанию:
+print(multiprocessing.get_start_method())
+# Linux:   'fork'
+# macOS:   'spawn'
+# Windows: 'spawn'`,
+  },
+  {
+    name: "multiprocessing.get_context(method=None)",
+    category: "multiprocessing",
+    description:
+      "Возвращает объект контекста с тем же API, что и модуль multiprocessing, но использующий указанный метод запуска процессов. Позволяет явно выбрать метод без изменения глобального состояния. Предпочтительнее set_start_method() для библиотек.",
+    syntax: "multiprocessing.get_context(method=None)",
+    arguments: [
+      {
+        name: "method",
+        description:
+          'Метод запуска: "spawn", "fork" или "forkserver". None — метод по умолчанию для платформы.',
+      },
+    ],
+    example: `import multiprocessing
+
+def worker(q):
+    q.put("результат из spawn-процесса")
+
+if __name__ == '__main__':
+    # Явно используем spawn — безопасен на всех платформах
+    ctx = multiprocessing.get_context('spawn')
+
+    q = ctx.Queue()
+    p = ctx.Process(target=worker, args=(q,))
+    p.start()
+    p.join()
+
+    print(q.get())  # результат из spawn-процесса
+
+    # Для fork (только Linux):
+    fork_ctx = multiprocessing.get_context('fork')
+    p2 = fork_ctx.Process(target=worker, args=(q,))
+    p2.start()
+    p2.join()`,
+  },
+  {
+    name: "multiprocessing.get_start_method(allow_none=False)",
+    category: "multiprocessing",
+    description:
+      'Возвращает текущий метод запуска дочерних процессов. По умолчанию зависит от платформы: "fork" на Linux, "spawn" на Windows и macOS (Python 3.8+). Если метод не установлен явно и allow_none=True — возвращает None.',
+    syntax: "multiprocessing.get_start_method(allow_none=False)",
+    arguments: [
+      {
+        name: "allow_none",
+        description:
+          "Если True и метод не установлен явно — возвращает None вместо платформенного значения по умолчанию.",
+      },
+    ],
+    example: `import multiprocessing
+
+# Метод по умолчанию (зависит от платформы):
+print(multiprocessing.get_start_method())
+# 'fork'   — Linux
+# 'spawn'  — Windows, macOS
+
+# С allow_none=True — None если не задан явно:
+print(multiprocessing.get_start_method(allow_none=True))
+# None  — если set_start_method не вызывался
+
+# После явной установки:
+if __name__ == '__main__':
+    multiprocessing.set_start_method('spawn')
+    print(multiprocessing.get_start_method())  # 'spawn'`,
+  },
+  {
+    name: "multiprocessing.set_executable(executable)",
+    category: "multiprocessing",
+    description:
+      'Задаёт путь к исполняемому файлу Python, который будет использоваться для запуска дочерних процессов при методе "spawn". По умолчанию используется тот же интерпретатор, что и родительский. Применяется для виртуальных окружений или встроенных сред.',
+    syntax: "multiprocessing.set_executable(executable)",
+    arguments: [
+      {
+        name: "executable",
+        description:
+          'Путь к исполняемому файлу Python (например, "/usr/bin/python3.11").',
+      },
+    ],
+    example: `import multiprocessing
+import sys
+
+def worker():
+    print(f"Дочерний процесс: {sys.executable}")
+
+if __name__ == '__main__':
+    # Показываем текущий интерпретатор
+    print(f"Родительский: {sys.executable}")
+
+    # Задаём конкретный интерпретатор для дочерних процессов
+    multiprocessing.set_executable('/usr/bin/python3')
+
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()
+
+    # Полезно при работе с venv или conda:
+    # multiprocessing.set_executable(sys.executable)`,
+  },
+  {
+    name: "multiprocessing.set_start_method(method, force=False)",
+    category: "multiprocessing",
+    description:
+      'Устанавливает метод запуска дочерних процессов для всей программы. Должен вызываться только один раз в блоке if __name__ == "__main__". Повторный вызов без force=True возбуждает RuntimeError. Влияет на все последующие Process(), Pool() и т.д.',
+    syntax: "multiprocessing.set_start_method(method, force=False)",
+    arguments: [
+      {
+        name: "method",
+        description:
+          'Метод запуска: "spawn" (все платформы), "fork" (POSIX), "forkserver" (POSIX).',
+      },
+      {
+        name: "force",
+        description:
+          "Если True — позволяет переустановить метод повторно. Использовать осторожно.",
+      },
+    ],
+    example: `import multiprocessing
+
+def worker(n):
+    return n ** 2
+
+if __name__ == '__main__':
+    # Устанавливаем spawn — безопасен на всех платформах
+    multiprocessing.set_start_method('spawn')
+
+    with multiprocessing.Pool(4) as pool:
+        results = pool.map(worker, range(8))
+    print(results)  # [0, 1, 4, 9, 16, 25, 36, 49]
+
+    # Повторный вызов без force вызовет ошибку:
+    # multiprocessing.set_start_method('fork')  # RuntimeError!
+    multiprocessing.set_start_method('fork', force=True)  # OK`,
+  },
+  {
+    name: "multiprocessing.log_to_stderr(level=None)",
+    category: "multiprocessing",
+    description:
+      "Включает логирование модуля multiprocessing в stderr и возвращает настроенный логгер. Если level не задан — уровень логирования не изменяется. Удобен для отладки проблем с процессами — позволяет видеть события запуска, завершения и ошибок.",
+    syntax: "multiprocessing.log_to_stderr(level=None)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          "Уровень логирования (logging.DEBUG, logging.INFO и т.д.). Если None — уровень не изменяется.",
+      },
+    ],
+    example: `import multiprocessing
+import logging
+
+def worker():
+    print("Рабочий процесс выполняется")
+
+if __name__ == '__main__':
+    # Включаем логирование в stderr
+    logger = multiprocessing.log_to_stderr(level=logging.DEBUG)
+
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()
+    # В stderr будут сообщения вида:
+    # [DEBUG/Process-1] child process calling self.run()
+    # [DEBUG/Process-1] process shutting down
+    # [DEBUG/MainProcess] process no longer alive`,
+  },
+  {
+    name: "multiprocessing.get_logger()",
+    category: "multiprocessing",
+    description:
+      "Возвращает объект логгера, используемый модулем multiprocessing. Изначально у него нет обработчиков (handlers) — сообщения не выводятся. Для вывода в stderr используйте log_to_stderr(). Позволяет настроить логирование вручную.",
+    syntax: "multiprocessing.get_logger()",
+    arguments: [],
+    example: `import multiprocessing
+import logging
+
+# Получаем логгер модуля
+logger = multiprocessing.get_logger()
+
+# Добавляем свой обработчик
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(
+    '[%(levelname)s/%(processName)s] %(message)s'
+))
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+def worker():
+    log = multiprocessing.get_logger()
+    log.info("Рабочий процесс запущен")
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()`,
+  },
+  {
+    name: "multiprocessing.allow_connection_pickling()",
+    category: "multiprocessing",
+    description:
+      "Устанавливает поддержку сериализации (pickling) объектов соединений (Connection) из multiprocessing.connection. По умолчанию Connection нельзя передать через pickle — этот вызов разрешает передачу соединений между процессами через очереди или каналы.",
+    syntax: "multiprocessing.allow_connection_pickling()",
+    arguments: [],
+    example: `import multiprocessing
+import multiprocessing.connection
+
+# Разрешаем передачу Connection объектов через pickle
+multiprocessing.allow_connection_pickling()
+
+def send_data(conn):
+    conn.send("Привет от дочернего процесса!")
+    conn.close()
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe()
+
+    p = multiprocessing.Process(target=send_data, args=(child_conn,))
+    p.start()
+
+    msg = parent_conn.recv()
+    print(msg)  # Привет от дочернего процесса!
+
+    p.join()
+    parent_conn.close()`,
+  },
+  {
+    name: "Process.run()",
+    category: "multiprocessing",
+    description:
+      "Метод, содержащий код, выполняемый в дочернем процессе. По умолчанию вызывает функцию, переданную в аргументе target конструктора. Переопределяется при создании подкласса Process для определения логики процесса. Не вызывайте напрямую — используйте start().",
+    syntax: "process.run()",
+    arguments: [],
+    example: `import multiprocessing
+
+# Способ 1: передача target в конструктор
+def my_task(n):
+    print(f"Квадрат {n} = {n ** 2}")
+
+p = multiprocessing.Process(target=my_task, args=(5,))
+p.start()
+p.join()
+
+# Способ 2: переопределение run() в подклассе
+class MyProcess(multiprocessing.Process):
+    def __init__(self, value):
+        super().__init__()
+        self.value = value
+
+    def run(self):
+        print(f"Процесс {self.name}: значение = {self.value}")
+
+if __name__ == '__main__':
+    proc = MyProcess(42)
+    proc.start()
+    proc.join()`,
+  },
+  {
+    name: "Process.start()",
+    category: "multiprocessing",
+    description:
+      "Запускает процесс, вызывая run() в дочернем процессе. Должен вызываться не более одного раза для каждого объекта Process. Создаёт новый процесс ОС с помощью текущего метода запуска (spawn/fork/forkserver).",
+    syntax: "process.start()",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker(msg):
+    print(f"Дочерний процесс: {msg}")
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=worker, args=("Привет!",))
+
+    print(f"Запускаем процесс...")
+    p.start()     # создаёт и запускает дочерний процесс
+    print(f"PID дочернего: {p.pid}")
+
+    p.join()      # ждём завершения
+    print("Готово")
+
+    # start() можно вызвать только один раз:
+    # p.start()   # AssertionError — процесс уже запущен`,
+  },
+  {
+    name: "Process.terminate()",
+    category: "multiprocessing",
+    description:
+      "Посылает процессу сигнал SIGTERM (на Unix) или вызывает TerminateProcess() (на Windows), запрашивая его завершение. Процесс может не завершиться мгновенно — используйте join() после terminate() для ожидания. Дочерние процессы завершаемого не останавливаются автоматически.",
+    syntax: "process.terminate()",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def long_task():
+    print("Начинаю долгую задачу...")
+    time.sleep(60)  # имитация долгой работы
+    print("Задача завершена")
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=long_task)
+    p.start()
+
+    time.sleep(1)
+    print(f"Процесс жив: {p.is_alive()}")  # True
+
+    p.terminate()   # посылаем SIGTERM
+    p.join()        # ждём завершения
+
+    print(f"Процесс жив: {p.is_alive()}")  # False
+    print(f"Код завершения: {p.exitcode}")  # -15 (SIGTERM) на Unix`,
+  },
+  {
+    name: "Process.kill()",
+    category: "multiprocessing",
+    description:
+      "Посылает процессу сигнал SIGKILL (на Unix) или вызывает TerminateProcess() (на Windows). В отличие от terminate(), SIGKILL невозможно перехватить или проигнорировать — процесс гарантированно завершается немедленно. Добавлено в Python 3.7.",
+    syntax: "process.kill()",
+    arguments: [],
+    example: `import multiprocessing
+import signal
+import time
+
+def stubborn_task():
+    # Этот процесс игнорирует SIGTERM
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    print("Игнорирую SIGTERM, работаю дальше...")
+    time.sleep(60)
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=stubborn_task)
+    p.start()
+    time.sleep(0.5)
+
+    p.terminate()   # SIGTERM — будет проигнорирован
+    time.sleep(0.5)
+    print(f"После terminate: {p.is_alive()}")  # True
+
+    p.kill()        # SIGKILL — невозможно игнорировать
+    p.join()
+    print(f"После kill: {p.is_alive()}")  # False`,
+  },
+  {
+    name: "Process.close()",
+    category: "multiprocessing",
+    description:
+      "Освобождает ресурсы, связанные с объектом Process. После вызова большинство методов и атрибутов объекта становятся недоступными. Процесс должен быть завершён перед вызовом close(). Добавлено в Python 3.7. Рекомендуется использовать как контекстный менеджер (with).",
+    syntax: "process.close()",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker():
+    pass
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()
+    p.close()  # освобождаем ресурсы
+
+    # После close() атрибуты недоступны:
+    # p.pid  → ValueError: process object is closed
+
+    # Предпочтительный способ — контекстный менеджер:
+    with multiprocessing.Process(target=worker) as p:
+        p.start()
+    # close() вызывается автоматически при выходе из with`,
+  },
+  {
+    name: "Process.join([timeout])",
+    category: "multiprocessing",
+    description:
+      "Блокирует вызывающий поток до завершения процесса или истечения timeout секунд. Если timeout не задан — ждёт бесконечно. После join() используйте exitcode для проверки результата. Нельзя вызывать до start() или из самого процесса.",
+    syntax: "process.join(timeout=None)",
+    arguments: [
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах. None — ждёт до завершения процесса.",
+      },
+    ],
+    example: `import multiprocessing
+import time
+
+def slow_worker():
+    time.sleep(2)
+    print("Работа завершена")
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=slow_worker)
+    p.start()
+
+    # Ждём максимум 1 секунду
+    p.join(timeout=1)
+
+    if p.is_alive():
+        print("Процесс ещё работает — принудительно завершаем")
+        p.terminate()
+        p.join()  # ждём финального завершения
+    else:
+        print(f"Процесс завершился, код: {p.exitcode}")`,
+  },
+  {
+    name: "Process.is_alive()",
+    category: "multiprocessing",
+    description:
+      "Возвращает True, если процесс ещё выполняется, и False после его завершения. Может использоваться для опроса состояния процесса без блокировки. После завершения процесса автоматически освобождает связанные ресурсы.",
+    syntax: "process.is_alive()",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def worker():
+    time.sleep(1.5)
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=worker)
+    p.start()
+
+    # Опрос состояния в цикле без блокировки
+    while p.is_alive():
+        print("Процесс работает...")
+        time.sleep(0.5)
+
+    print(f"Процесс завершён, exitcode={p.exitcode}")
+    # Процесс работает...
+    # Процесс работает...
+    # Процесс работает...
+    # Процесс завершён, exitcode=0`,
+  },
+  {
+    name: "Process.name",
+    category: "multiprocessing",
+    description:
+      'Строковый атрибут — имя процесса. Задаётся при создании (Process(name="...")) или устанавливается вручную. Используется только для идентификации в логах и отладке — не влияет на поведение. По умолчанию генерируется автоматически: "Process-1", "Process-2" и т.д.',
+    syntax: "process.name",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker():
+    proc = multiprocessing.current_process()
+    print(f"Меня зовут: {proc.name}")
+
+if __name__ == '__main__':
+    # Имя по умолчанию
+    p1 = multiprocessing.Process(target=worker)
+    p1.start(); p1.join()  # Меня зовут: Process-1
+
+    # Явное задание имени
+    p2 = multiprocessing.Process(target=worker, name="DataProcessor")
+    p2.start(); p2.join()  # Меня зовут: DataProcessor
+
+    # Изменение имени после создания
+    p3 = multiprocessing.Process(target=worker)
+    p3.name = "CustomName"
+    p3.start(); p3.join()  # Меня зовут: CustomName`,
+  },
+  {
+    name: "Process.daemon",
+    category: "multiprocessing",
+    description:
+      "Булев атрибут, определяющий, является ли процесс демоном. Демон-процесс автоматически завершается при завершении родительского процесса. Должен быть установлен до вызова start(). Демон-процессы не могут порождать дочерние процессы.",
+    syntax: "process.daemon",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def background_monitor():
+    while True:
+        print("Мониторинг...")
+        time.sleep(0.3)
+
+def main_task():
+    print("Главная задача выполняется")
+    time.sleep(1)
+    print("Главная задача завершена")
+
+if __name__ == '__main__':
+    # Демон завершится автоматически вместе с main_task
+    monitor = multiprocessing.Process(target=background_monitor)
+    monitor.daemon = True   # устанавливаем до start()!
+    monitor.start()
+
+    worker = multiprocessing.Process(target=main_task)
+    worker.start()
+    worker.join()
+    # После завершения worker программа завершится,
+    # и monitor будет убит автоматически`,
+  },
+  {
+    name: "Process.pid",
+    category: "multiprocessing",
+    description:
+      "Атрибут — идентификатор процесса (PID) в операционной системе. Доступен только после вызова start(). До запуска равен None. Используется для взаимодействия с процессом через системные средства (kill, psutil и т.д.).",
+    syntax: "process.pid",
+    arguments: [],
+    example: `import multiprocessing
+import os
+
+def worker():
+    print(f"Мой PID: {os.getpid()}")
+    print(f"Родительский PID: {os.getppid()}")
+
+if __name__ == '__main__':
+    p = multiprocessing.Process(target=worker)
+
+    print(f"До start(): pid = {p.pid}")  # None
+
+    p.start()
+    print(f"После start(): pid = {p.pid}")  # например: 12345
+    p.join()
+
+    print(f"После join(): pid = {p.pid}")   # 12345 (сохраняется)
+
+    # PID главного процесса:
+    print(f"Главный процесс: {os.getpid()}")`,
+  },
+  {
+    name: "Process.exitcode",
+    category: "multiprocessing",
+    description:
+      "Атрибут — код завершения процесса. None если процесс ещё выполняется. 0 — успешное завершение. Положительное число — код ошибки. Отрицательное число — номер сигнала, которым был убит процесс (например, -15 для SIGTERM, -9 для SIGKILL).",
+    syntax: "process.exitcode",
+    arguments: [],
+    example: `import multiprocessing
+import sys
+
+def success_worker():
+    pass  # завершается с кодом 0
+
+def error_worker():
+    sys.exit(2)  # завершается с кодом 2
+
+def crash_worker():
+    raise RuntimeError("Ошибка!")  # exitcode = 1
+
+if __name__ == '__main__':
+    for func, label in [(success_worker, "успех"),
+                        (error_worker, "ошибка"),
+                        (crash_worker, "сбой")]:
+        p = multiprocessing.Process(target=func)
+        p.start()
+        p.join()
+        print(f"{label}: exitcode = {p.exitcode}")
+    # успех: exitcode = 0
+    # ошибка: exitcode = 2
+    # сбой: exitcode = 1`,
+  },
+  {
+    name: "Process.authkey",
+    category: "multiprocessing",
+    description:
+      "Байтовый атрибут — ключ аутентификации процесса. Используется для проверки подлинности при установке соединений между процессами через multiprocessing.connection. По умолчанию наследуется от родительского процесса (случайные байты, генерируемые os.urandom()).",
+    syntax: "process.authkey",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker():
+    proc = multiprocessing.current_process()
+    print(f"Ключ дочернего: {proc.authkey[:8]}...")  # первые 8 байт
+
+if __name__ == '__main__':
+    main = multiprocessing.current_process()
+    print(f"Ключ главного: {main.authkey[:8]}...")
+
+    p = multiprocessing.Process(target=worker)
+    p.start()
+    p.join()
+    # Ключи одинаковы — дочерний наследует от родителя
+
+    # Установка своего ключа аутентификации:
+    main.authkey = b'my-secret-key-32bytes-padded!!!!'
+    print(f"Новый ключ: {main.authkey}")`,
+  },
+  {
+    name: "Process.sentinel",
+    category: "multiprocessing",
+    description:
+      "Дескриптор файла (Unix) или дескриптор объекта (Windows), который становится готов к чтению при завершении процесса. Используется с select.select() или selectors для одновременного ожидания нескольких процессов без блокировки. Доступен только после start().",
+    syntax: "process.sentinel",
+    arguments: [],
+    example: `import multiprocessing
+import select
+import time
+
+def worker(delay):
+    time.sleep(delay)
+
+if __name__ == '__main__':
+    processes = [
+        multiprocessing.Process(target=worker, args=(i,))
+        for i in [1, 2, 3]
+    ]
+    for p in processes:
+        p.start()
+
+    sentinels = {p.sentinel: p for p in processes}
+
+    # Ждём завершения любого из процессов без блокировки
+    while sentinels:
+        ready, _, _ = select.select(sentinels.keys(), [], [], 0.5)
+        for fd in ready:
+            proc = sentinels.pop(fd)
+            proc.join()
+            print(f"{proc.name} завершён, exitcode={proc.exitcode}")`,
+  },
+  {
+    name: "Pool.apply(func[, args[, kwds]])",
+    category: "multiprocessing",
+    description:
+      "Вызывает функцию func с аргументами args и именованными аргументами kwds в одном из рабочих процессов пула и блокирует вызывающий процесс до получения результата. Аналог встроенной функции apply() — синхронный, выполняется в одном процессе за раз.",
+    syntax: "pool.apply(func[, args[, kwds]])",
+    arguments: [
+      {
+        name: "func",
+        description: "Вызываемая функция. Должна быть picklable.",
+      },
+      { name: "args", description: "Кортеж позиционных аргументов для func." },
+      { name: "kwds", description: "Словарь именованных аргументов для func." },
+    ],
+    example: `import multiprocessing
+
+def power(base, exp):
+    return base ** exp
+
+if __name__ == '__main__':
+    with multiprocessing.Pool(4) as pool:
+        # Синхронный вызов — блокирует до результата
+        result = pool.apply(power, args=(2, 10))
+        print(result)  # 1024
+
+        result = pool.apply(power, kwds={'base': 3, 'exp': 4})
+        print(result)  # 81
+
+    # Для параллельного выполнения используйте map() или apply_async()`,
+  },
+  {
+    name: "Pool.apply_async(func[, args[, kwds[, callback[, error_callback]]]])",
+    category: "multiprocessing",
+    description:
+      "Асинхронный вариант apply(). Отправляет задачу в пул и сразу возвращает объект AsyncResult, не блокируя вызывающий процесс. Callback вызывается в главном процессе при успешном завершении, error_callback — при исключении.",
+    syntax:
+      "pool.apply_async(func[, args[, kwds[, callback[, error_callback]]]])",
+    arguments: [
+      { name: "func", description: "Вызываемая функция." },
+      { name: "args", description: "Кортеж позиционных аргументов." },
+      { name: "kwds", description: "Словарь именованных аргументов." },
+      {
+        name: "callback",
+        description:
+          "Функция, вызываемая с результатом при успешном завершении.",
+      },
+      {
+        name: "error_callback",
+        description: "Функция, вызываемая с исключением при ошибке.",
+      },
+    ],
+    example: `import multiprocessing
+
+def square(n):
+    return n ** 2
+
+def on_result(result):
+    print(f"Готово: {result}")
+
+def on_error(e):
+    print(f"Ошибка: {e}")
+
+if __name__ == '__main__':
+    with multiprocessing.Pool(4) as pool:
+        # Запускаем несколько задач параллельно
+        results = [
+            pool.apply_async(square, args=(i,), callback=on_result)
+            for i in range(5)
+        ]
+        # Ждём все результаты
+        values = [r.get(timeout=5) for r in results]
+    print(values)  # [0, 1, 4, 9, 16]`,
+  },
+  {
+    name: "Pool.map(func, iterable[, chunksize])",
+    category: "multiprocessing",
+    description:
+      "Параллельный аналог встроенного map(). Применяет func к каждому элементу iterable, распределяя задачи по рабочим процессам пула. Блокирует до получения всех результатов. Возвращает список результатов в том же порядке, что и входные данные.",
+    syntax: "pool.map(func, iterable[, chunksize])",
+    arguments: [
+      {
+        name: "func",
+        description:
+          "Функция, применяемая к каждому элементу. Принимает один аргумент.",
+      },
+      {
+        name: "iterable",
+        description: "Итерируемый объект с входными данными.",
+      },
+      {
+        name: "chunksize",
+        description:
+          "Размер порций задач для передачи рабочим процессам. Большие значения снижают накладные расходы при обработке больших данных.",
+      },
+    ],
+    example: `import multiprocessing
+
+def square(n):
+    return n ** 2
+
+def is_even(n):
+    return n % 2 == 0
+
+if __name__ == '__main__':
+    data = range(10)
+
+    with multiprocessing.Pool() as pool:
+        squares = pool.map(square, data)
+        print(squares)  # [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]
+
+        evens = pool.map(is_even, data)
+        print(evens)  # [True, False, True, False, ...]
+
+        # chunksize для больших данных:
+        result = pool.map(square, range(10000), chunksize=500)`,
+  },
+  {
+    name: "Pool.map_async(func, iterable[, chunksize[, callback[, error_callback]]])",
+    category: "multiprocessing",
+    description:
+      "Асинхронный вариант map(). Возвращает объект AsyncResult немедленно, не ожидая завершения всех задач. Позволяет продолжать работу в главном процессе пока пул обрабатывает данные. Результаты доступны через .get().",
+    syntax:
+      "pool.map_async(func, iterable[, chunksize[, callback[, error_callback]]])",
+    arguments: [
+      { name: "func", description: "Функция, применяемая к каждому элементу." },
+      {
+        name: "iterable",
+        description: "Итерируемый объект с входными данными.",
+      },
+      { name: "chunksize", description: "Размер порций задач." },
+      {
+        name: "callback",
+        description:
+          "Вызывается со списком результатов при успешном завершении всех задач.",
+      },
+      {
+        name: "error_callback",
+        description: "Вызывается с исключением при ошибке в любой задаче.",
+      },
+    ],
+    example: `import multiprocessing
+import time
+
+def slow_square(n):
+    time.sleep(0.1)
+    return n ** 2
+
+if __name__ == '__main__':
+    with multiprocessing.Pool(4) as pool:
+        # Запускаем асинхронно и продолжаем работу
+        async_result = pool.map_async(slow_square, range(8))
+
+        print("Работаем пока пул считает...")
+        # ... другая работа ...
+
+        results = async_result.get(timeout=10)
+        print(results)  # [0, 1, 4, 9, 16, 25, 36, 49]`,
+  },
+  {
+    name: "Pool.imap(func, iterable[, chunksize])",
+    category: "multiprocessing",
+    description:
+      "Ленивый (lazy) вариант map() — возвращает итератор, выдающий результаты по одному по мере их готовности. Экономит память при обработке больших данных, так как не хранит все результаты в памяти одновременно. Результаты возвращаются в порядке входных данных.",
+    syntax: "pool.imap(func, iterable[, chunksize])",
+    arguments: [
+      { name: "func", description: "Функция, применяемая к каждому элементу." },
+      {
+        name: "iterable",
+        description: "Итерируемый объект с входными данными.",
+      },
+      {
+        name: "chunksize",
+        description:
+          "Размер порций. По умолчанию 1 — каждый элемент отправляется отдельно.",
+      },
+    ],
+    example: `import multiprocessing
+
+def process_line(line):
+    return line.strip().upper()
+
+if __name__ == '__main__':
+    lines = [f"строка {i}\n" for i in range(100)]
+
+    with multiprocessing.Pool(4) as pool:
+        # Обрабатываем результаты по мере готовности
+        for result in pool.imap(process_line, lines, chunksize=10):
+            print(result)  # СТРОКА 0, СТРОКА 1, ...
+
+        # В отличие от map() — не загружает всё в память сразу
+        # Идеален для обработки больших файлов построчно`,
+  },
+  {
+    name: "Pool.imap_unordered(func, iterable[, chunksize])",
+    category: "multiprocessing",
+    description:
+      "Аналог imap(), но результаты возвращаются в порядке завершения задач, а не в порядке входных данных. Быстрее imap() при неравномерном времени выполнения задач — результат быстрой задачи не ждёт медленной. Полезен когда порядок вывода неважен.",
+    syntax: "pool.imap_unordered(func, iterable[, chunksize])",
+    arguments: [
+      { name: "func", description: "Функция, применяемая к каждому элементу." },
+      {
+        name: "iterable",
+        description: "Итерируемый объект с входными данными.",
+      },
+      { name: "chunksize", description: "Размер порций задач." },
+    ],
+    example: `import multiprocessing
+import time
+import random
+
+def variable_task(n):
+    time.sleep(random.uniform(0, 0.5))  # разное время выполнения
+    return n ** 2
+
+if __name__ == '__main__':
+    with multiprocessing.Pool(4) as pool:
+        # Результаты приходят по мере готовности (не по порядку!)
+        for result in pool.imap_unordered(variable_task, range(8)):
+            print(result, end=' ')  # например: 25 0 9 1 49 16 4 36
+        print()
+
+        # Для сравнения — imap вернёт: 0 1 4 9 16 25 36 49 (по порядку)`,
+  },
+  {
+    name: "Pool.starmap(func, iterable[, chunksize])",
+    category: "multiprocessing",
+    description:
+      "Аналог map(), но каждый элемент iterable — это кортеж аргументов, которые распаковываются в func. Аналог itertools.starmap() с параллельным выполнением. Удобен когда функция принимает несколько аргументов.",
+    syntax: "pool.starmap(func, iterable[, chunksize])",
+    arguments: [
+      { name: "func", description: "Функция с несколькими аргументами." },
+      {
+        name: "iterable",
+        description: "Итерируемый объект кортежей аргументов.",
+      },
+      { name: "chunksize", description: "Размер порций задач." },
+    ],
+    example: `import multiprocessing
+
+def power(base, exp):
+    return base ** exp
+
+def add(a, b, c):
+    return a + b + c
+
+if __name__ == '__main__':
+    with multiprocessing.Pool(4) as pool:
+        # Каждый кортеж распаковывается как аргументы функции
+        pairs = [(2, 1), (2, 2), (2, 3), (2, 4), (2, 5)]
+        results = pool.starmap(power, pairs)
+        print(results)  # [2, 4, 8, 16, 32]
+
+        triples = [(1, 2, 3), (4, 5, 6), (7, 8, 9)]
+        sums = pool.starmap(add, triples)
+        print(sums)  # [6, 15, 24]`,
+  },
+  {
+    name: "Pool.starmap_async(func, iterable[, chunksize[, callback[, error_callback]]])",
+    category: "multiprocessing",
+    description:
+      "Асинхронный вариант starmap(). Распаковывает кортежи аргументов и выполняет задачи параллельно, не блокируя вызывающий процесс. Возвращает AsyncResult. Сочетает удобство starmap с неблокирующим поведением map_async.",
+    syntax:
+      "pool.starmap_async(func, iterable[, chunksize[, callback[, error_callback]]])",
+    arguments: [
+      { name: "func", description: "Функция с несколькими аргументами." },
+      {
+        name: "iterable",
+        description: "Итерируемый объект кортежей аргументов.",
+      },
+      { name: "chunksize", description: "Размер порций задач." },
+      {
+        name: "callback",
+        description:
+          "Вызывается со списком результатов при успешном завершении.",
+      },
+      {
+        name: "error_callback",
+        description: "Вызывается с исключением при ошибке.",
+      },
+    ],
+    example: `import multiprocessing
+
+def multiply(a, b):
+    return a * b
+
+def on_done(results):
+    print(f"Все результаты: {results}")
+
+if __name__ == '__main__':
+    pairs = [(1, 2), (3, 4), (5, 6), (7, 8)]
+
+    with multiprocessing.Pool(4) as pool:
+        async_result = pool.starmap_async(
+            multiply,
+            pairs,
+            callback=on_done
+        )
+        # Продолжаем работу пока пул считает...
+        results = async_result.get(timeout=5)
+        print(results)  # [2, 12, 30, 56]`,
+  },
+  {
+    name: "Pool.close()",
+    category: "multiprocessing",
+    description:
+      "Запрещает отправку новых задач в пул. Уже поставленные в очередь задачи будут выполнены до конца. После close() необходимо вызвать join() для ожидания завершения всех рабочих процессов. Используется в паре с join() при явном управлении пулом.",
+    syntax: "pool.close()",
+    arguments: [],
+    example: `import multiprocessing
+
+def square(n):
+    return n ** 2
+
+if __name__ == '__main__':
+    pool = multiprocessing.Pool(4)
+
+    results = [pool.apply_async(square, (i,)) for i in range(10)]
+
+    pool.close()   # больше задач не принимаем
+    pool.join()    # ждём завершения всех текущих задач
+
+    values = [r.get() for r in results]
+    print(values)  # [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]
+
+    # Предпочтительный способ — контекстный менеджер:
+    with multiprocessing.Pool(4) as pool:
+        values = pool.map(square, range(10))
+    # close() и join() вызываются автоматически`,
+  },
+  {
+    name: "Pool.terminate()",
+    category: "multiprocessing",
+    description:
+      "Немедленно останавливает все рабочие процессы пула, не ожидая завершения текущих задач. Используется при аварийном завершении работы или для отмены всех задач. При использовании пула как контекстного менеджера вызывается автоматически при исключении.",
+    syntax: "pool.terminate()",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def long_task(n):
+    time.sleep(10)
+    return n
+
+if __name__ == '__main__':
+    pool = multiprocessing.Pool(4)
+
+    # Запускаем долгие задачи
+    results = [pool.apply_async(long_task, (i,)) for i in range(8)]
+
+    time.sleep(1)
+    print("Отменяем все задачи!")
+    pool.terminate()  # немедленно убиваем все процессы
+    pool.join()
+
+    # При исключении в with-блоке terminate() вызывается автоматически:
+    try:
+        with multiprocessing.Pool(4) as pool:
+            pool.map(long_task, range(8))
+    except KeyboardInterrupt:
+        pass  # пул уже завершён`,
+  },
+  {
+    name: "Pool.join()",
+    category: "multiprocessing",
+    description:
+      "Блокирует вызывающий процесс до завершения всех рабочих процессов пула. Должен вызываться только после close() или terminate(). Гарантирует, что все ресурсы пула освобождены перед продолжением работы главного процесса.",
+    syntax: "pool.join()",
+    arguments: [],
+    example: `import multiprocessing
+
+def compute(n):
+    return sum(range(n))
+
+if __name__ == '__main__':
+    pool = multiprocessing.Pool(4)
+
+    # Отправляем задачи
+    async_results = [pool.apply_async(compute, (i * 1000,)) for i in range(8)]
+
+    # Закрываем пул для новых задач
+    pool.close()
+
+    # Блокируем до завершения всех задач
+    pool.join()
+
+    # Теперь можно безопасно читать результаты
+    results = [r.get() for r in async_results]
+    print(results[:3])  # [0, 499500, 1999000]
+
+    # С контекстным менеджером join() не нужен явно:
+    with multiprocessing.Pool(4) as pool:
+        result = pool.map(compute, range(8))`,
+  },
+  {
+    name: "Queue.qsize()",
+    category: "multiprocessing",
+    description:
+      "Возвращает приблизительное число элементов в очереди multiprocessing.Queue. Не доступен на macOS (возбуждает NotImplementedError). В многопроцессорной среде результат приблизителен — между вызовом и следующей операцией другой процесс может изменить очередь.",
+    syntax: "queue.qsize()",
+    arguments: [],
+    example: `import multiprocessing
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    q.put('a')
+    q.put('b')
+    q.put('c')
+
+    print(q.qsize())  # 3  (недоступно на macOS)
+
+    q.get()
+    print(q.qsize())  # 2
+
+    # На macOS:
+    # q.qsize()  → NotImplementedError`,
+  },
+  {
+    name: "Queue.empty()",
+    category: "multiprocessing",
+    description:
+      "Возвращает True если очередь multiprocessing.Queue пуста. Результат приблизителен — в многопроцессорной среде другой процесс может изменить очередь сразу после вызова. Не рекомендуется использовать для управления логикой — используйте блокирующий get().",
+    syntax: "queue.empty()",
+    arguments: [],
+    example: `import multiprocessing
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    print(q.empty())  # True
+
+    q.put(1)
+    print(q.empty())  # False
+
+    q.get()
+    print(q.empty())  # True
+
+    # Антипаттерн в многопроцессорном коде:
+    # if not q.empty():   # небезопасно!
+    #     item = q.get()
+    # Используйте блокирующий get() вместо empty()`,
+  },
+  {
+    name: "Queue.full()",
+    category: "multiprocessing",
+    description:
+      "Возвращает True если очередь multiprocessing.Queue заполнена (достигла maxsize). Для неограниченных очередей (maxsize=0) всегда возвращает False. Результат приблизителен в многопроцессорной среде.",
+    syntax: "queue.full()",
+    arguments: [],
+    example: `import multiprocessing
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue(maxsize=3)
+
+    q.put(1)
+    q.put(2)
+    print(q.full())  # False
+
+    q.put(3)
+    print(q.full())  # True
+
+    # Неограниченная очередь:
+    q2 = multiprocessing.Queue()
+    print(q2.full())  # False — всегда`,
+  },
+  {
+    name: "Queue.put(obj[, block[, timeout]])",
+    category: "multiprocessing",
+    description:
+      "Помещает объект obj в очередь multiprocessing.Queue. Если очередь заполнена и block=True — ждёт до timeout секунд. При block=False или истечении timeout возбуждает queue.Full. Потокобезопасен и процессобезопасен.",
+    syntax: "queue.put(obj[, block[, timeout]])",
+    arguments: [
+      {
+        name: "obj",
+        description: "Объект для помещения в очередь. Должен быть picklable.",
+      },
+      {
+        name: "block",
+        description:
+          "Если True (по умолчанию) — блокирует при заполненной очереди. Если False — сразу возбуждает queue.Full.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах при block=True. None — ждёт бесконечно.",
+      },
+    ],
+    example: `import multiprocessing
+
+def producer(q):
+    for item in range(5):
+        q.put(item)
+        print(f"Отправлено: {item}")
+
+def consumer(q):
+    for _ in range(5):
+        item = q.get()
+        print(f"Получено: {item}")
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue(maxsize=2)
+
+    p = multiprocessing.Process(target=producer, args=(q,))
+    c = multiprocessing.Process(target=consumer, args=(q,))
+
+    p.start(); c.start()
+    p.join(); c.join()`,
+  },
+  {
+    name: "Queue.put_nowait(obj)",
+    category: "multiprocessing",
+    description:
+      "Немедленно помещает объект в очередь без ожидания. Эквивалентно put(obj, block=False). Если очередь заполнена — сразу возбуждает queue.Full. Объект должен быть picklable — данные сериализуются для передачи между процессами.",
+    syntax: "queue.put_nowait(obj)",
+    arguments: [
+      { name: "obj", description: "Picklable объект для помещения в очередь." },
+    ],
+    example: `import multiprocessing
+import queue
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue(maxsize=3)
+
+    q.put_nowait('a')
+    q.put_nowait('b')
+    q.put_nowait('c')
+
+    try:
+        q.put_nowait('d')  # очередь заполнена
+    except queue.Full:
+        print("Очередь заполнена — элемент отброшен")
+
+    print(q.qsize())  # 3`,
+  },
+  {
+    name: "Queue.get([block[, timeout]])",
+    category: "multiprocessing",
+    description:
+      "Извлекает и возвращает объект из очереди multiprocessing.Queue. Если очередь пуста и block=True — ждёт до timeout секунд. При block=False или истечении timeout возбуждает queue.Empty. Данные десериализуются из pickle.",
+    syntax: "queue.get([block[, timeout]])",
+    arguments: [
+      {
+        name: "block",
+        description:
+          "Если True (по умолчанию) — блокирует, пока не появится элемент. Если False — сразу возбуждает queue.Empty.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах при block=True. None — ждёт бесконечно.",
+      },
+    ],
+    example: `import multiprocessing
+import queue
+
+def worker(q, result_q):
+    data = q.get()  # блокирует, пока нет данных
+    result = data ** 2
+    result_q.put(result)
+
+if __name__ == '__main__':
+    task_q = multiprocessing.Queue()
+    result_q = multiprocessing.Queue()
+
+    p = multiprocessing.Process(target=worker, args=(task_q, result_q))
+    p.start()
+
+    task_q.put(7)
+    result = result_q.get(timeout=5)
+    print(result)  # 49
+
+    p.join()`,
+  },
+  {
+    name: "Queue.get_nowait()",
+    category: "multiprocessing",
+    description:
+      "Немедленно извлекает объект из очереди без ожидания. Эквивалентно get(block=False). Если очередь пуста — сразу возбуждает queue.Empty. Используется для неблокирующего опроса очереди.",
+    syntax: "queue.get_nowait()",
+    arguments: [],
+    example: `import multiprocessing
+import queue
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    q.put(10)
+    q.put(20)
+
+    print(q.get_nowait())  # 10
+    print(q.get_nowait())  # 20
+
+    try:
+        q.get_nowait()  # очередь пуста
+    except queue.Empty:
+        print("Нечего извлекать")
+
+    # Опрос всего содержимого:
+    q.put(1); q.put(2); q.put(3)
+    items = []
+    while True:
+        try:
+            items.append(q.get_nowait())
+        except queue.Empty:
+            break
+    print(items)  # [1, 2, 3]`,
+  },
+  {
+    name: "Queue.close()",
+    category: "multiprocessing",
+    description:
+      "Сигнализирует, что текущий процесс больше не будет добавлять данные в очередь. Фоновый поток, отправляющий данные, будет корректно завершён после очистки буфера. Не блокирует — для ожидания полной отправки используйте join_thread().",
+    syntax: "queue.close()",
+    arguments: [],
+    example: `import multiprocessing
+
+def producer(q):
+    for i in range(5):
+        q.put(i)
+    q.close()       # сигнализируем об окончании записи
+    q.join_thread() # ждём отправки всех буферизованных данных
+
+def consumer(q):
+    for _ in range(5):
+        print(q.get())
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+
+    p = multiprocessing.Process(target=producer, args=(q,))
+    c = multiprocessing.Process(target=consumer, args=(q,))
+
+    p.start(); c.start()
+    p.join(); c.join()`,
+  },
+  {
+    name: "Queue.join_thread()",
+    category: "multiprocessing",
+    description:
+      "Ожидает завершения фонового потока очереди — убеждается, что все данные из буфера отправлены. Должен вызываться после close(). По умолчанию при завершении процесса join_thread() вызывается автоматически, если не был вызван cancel_join_thread().",
+    syntax: "queue.join_thread()",
+    arguments: [],
+    example: `import multiprocessing
+
+def safe_producer(q, data):
+    for item in data:
+        q.put(item)
+    # Гарантируем отправку всех данных перед завершением процесса
+    q.close()
+    q.join_thread()  # ждём полной отправки буфера
+    print("Все данные отправлены")
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    p = multiprocessing.Process(
+        target=safe_producer,
+        args=(q, list(range(100)))
+    )
+    p.start()
+    p.join()
+
+    # Читаем все данные
+    items = []
+    while not q.empty():
+        items.append(q.get())
+    print(f"Получено {len(items)} элементов")`,
+  },
+  {
+    name: "Queue.cancel_join_thread()",
+    category: "multiprocessing",
+    description:
+      "Отменяет автоматический вызов join_thread() при завершении процесса. Позволяет процессу завершиться немедленно, не дожидаясь отправки буферизованных данных. Данные в буфере могут быть потеряны. Используется только когда потеря данных допустима.",
+    syntax: "queue.cancel_join_thread()",
+    arguments: [],
+    example: `import multiprocessing
+
+def fast_exit_producer(q):
+    for i in range(1000):
+        q.put(i)
+    # Разрешаем процессу завершиться немедленно
+    # без ожидания отправки всех данных
+    q.cancel_join_thread()
+    print("Процесс завершается (данные могут быть потеряны)")
+
+if __name__ == '__main__':
+    q = multiprocessing.Queue()
+    p = multiprocessing.Process(target=fast_exit_producer, args=(q,))
+    p.start()
+    p.join()
+
+    # Некоторые элементы могут не дойти!
+    count = 0
+    while not q.empty():
+        q.get()
+        count += 1
+    print(f"Получено: {count} из 1000 (часть потеряна)")`,
+  },
+  {
+    name: "JoinableQueue.task_done()",
+    category: "multiprocessing",
+    description:
+      "Сигнализирует, что обработка ранее извлечённого элемента завершена. Работает аналогично queue.Queue.task_done() — уменьшает счётчик незавершённых задач. Должен вызываться после каждого get(). Вызов большее количество раз, чем get() — ValueError.",
+    syntax: "joinable_queue.task_done()",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker(q):
+    while True:
+        item = q.get()
+        if item is None:
+            q.task_done()
+            break
+        print(f"Обрабатываю: {item}")
+        # ... обработка задачи ...
+        q.task_done()  # сообщаем о завершении
+
+if __name__ == '__main__':
+    q = multiprocessing.JoinableQueue()
+
+    p = multiprocessing.Process(target=worker, args=(q,))
+    p.start()
+
+    for task in ['задача-1', 'задача-2', 'задача-3']:
+        q.put(task)
+
+    q.join()    # ждём task_done() для всех элементов
+    q.put(None) # сигнал воркеру остановиться
+    p.join()`,
+  },
+  {
+    name: "JoinableQueue.join()",
+    category: "multiprocessing",
+    description:
+      "Блокирует вызывающий процесс до тех пор, пока все элементы в JoinableQueue не будут обработаны (task_done() вызван для каждого). Аналог queue.Queue.join(), но для межпроцессного взаимодействия. Счётчик увеличивается при put() и уменьшается при task_done().",
+    syntax: "joinable_queue.join()",
+    arguments: [],
+    example: `import multiprocessing
+
+def batch_worker(q, results):
+    while True:
+        item = q.get()
+        if item is None:
+            q.task_done()
+            break
+        results.append(item ** 2)
+        q.task_done()
+
+if __name__ == '__main__':
+    q = multiprocessing.JoinableQueue()
+    manager = multiprocessing.Manager()
+    results = manager.list()
+
+    workers = [
+        multiprocessing.Process(target=batch_worker, args=(q, results))
+        for _ in range(4)
+    ]
+    for w in workers:
+        w.start()
+
+    for i in range(20):
+        q.put(i)
+
+    q.join()  # ждём обработки всех 20 задач
+    print(f"Обработано задач: {len(results)}")
+
+    for _ in workers:
+        q.put(None)
+    for w in workers:
+        w.join()`,
+  },
+  {
+    name: "Connection.send(obj)",
+    category: "multiprocessing",
+    description:
+      "Отправляет объект obj через соединение. Объект сериализуется через pickle перед отправкой — должен быть picklable. Принимающий конец читает данные через recv(). Используется с multiprocessing.Pipe() для двустороннего или одностороннего обмена между процессами.",
+    syntax: "connection.send(obj)",
+    arguments: [
+      {
+        name: "obj",
+        description: "Любой picklable объект Python для передачи через канал.",
+      },
+    ],
+    example: `import multiprocessing
+
+def child(conn):
+    data = conn.recv()
+    print(f"Дочерний получил: {data}")
+    conn.send(data * 2)  # отправляем результат обратно
+    conn.close()
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe()
+
+    p = multiprocessing.Process(target=child, args=(child_conn,))
+    p.start()
+
+    parent_conn.send({'number': 21, 'label': 'ответ'})
+    result = parent_conn.recv()
+    print(f"Родитель получил: {result}")
+    # {'number': 21, 'label': 'ответ', ...} * 2 не работает для dict
+    p.join()`,
+  },
+  {
+    name: "Connection.recv()",
+    category: "multiprocessing",
+    description:
+      "Получает объект, отправленный через send(). Блокирует вызывающий процесс до поступления данных. Десериализует объект из pickle. Если соединение закрыто и буфер пуст — возбуждает EOFError.",
+    syntax: "connection.recv()",
+    arguments: [],
+    example: `import multiprocessing
+import time
+
+def producer(conn):
+    for i in range(3):
+        time.sleep(0.3)
+        conn.send(f"сообщение-{i}")
+    conn.send(None)  # сигнал завершения
+    conn.close()
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+    # duplex=False — однонаправленный: child отправляет, parent получает
+
+    p = multiprocessing.Process(target=producer, args=(child_conn,))
+    p.start()
+
+    while True:
+        msg = parent_conn.recv()  # блокирует до прихода данных
+        if msg is None:
+            break
+        print(f"Получено: {msg}")
+
+    p.join()`,
+  },
+  {
+    name: "Connection.fileno()",
+    category: "multiprocessing",
+    description:
+      "Возвращает целочисленный файловый дескриптор (fd) соединения. Используется для низкоуровневой работы с select.select() или selectors — позволяет ожидать данные из нескольких соединений одновременно без блокировки.",
+    syntax: "connection.fileno()",
+    arguments: [],
+    example: `import multiprocessing
+import select
+
+def sender(conn, items):
+    for item in items:
+        conn.send(item)
+    conn.close()
+
+if __name__ == '__main__':
+    conns = []
+    processes = []
+    for i in range(3):
+        parent, child = multiprocessing.Pipe(duplex=False)
+        p = multiprocessing.Process(target=sender, args=(child, [i * 10, i * 20]))
+        p.start()
+        conns.append(parent)
+        processes.append(p)
+
+    fd_map = {c.fileno(): c for c in conns}
+
+    # Ожидаем данные из любого соединения:
+    readable, _, _ = select.select(fd_map.keys(), [], [], 2.0)
+    for fd in readable:
+        print(fd_map[fd].recv())`,
+  },
+  {
+    name: "Connection.close()",
+    category: "multiprocessing",
+    description:
+      "Закрывает соединение. После закрытия любой вызов send() или recv() возбуждает OSError. Если другой конец пытается recv() после закрытия — получает EOFError. Соединения закрываются автоматически при сборке мусора, но явный вызов предпочтителен.",
+    syntax: "connection.close()",
+    arguments: [],
+    example: `import multiprocessing
+
+def worker(conn):
+    result = conn.recv() ** 2
+    conn.send(result)
+    conn.close()  # явно закрываем свой конец
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe()
+
+    p = multiprocessing.Process(target=worker, args=(child_conn,))
+    p.start()
+
+    parent_conn.send(7)
+    print(parent_conn.recv())  # 49
+
+    parent_conn.close()  # закрываем родительский конец
+    p.join()
+
+    # Использование как контекстного менеджера:
+    with multiprocessing.Pipe()[0] as conn:
+        pass  # close() вызывается автоматически`,
+  },
+  {
+    name: "Connection.poll([timeout])",
+    category: "multiprocessing",
+    description:
+      "Проверяет, есть ли данные, доступные для чтения. Возвращает True если данные есть. Если timeout не задан — возвращает результат немедленно (неблокирующий). С timeout=None — блокирует до поступления данных. Позволяет избежать блокирующего recv().",
+    syntax: "connection.poll([timeout])",
+    arguments: [
+      {
+        name: "timeout",
+        description:
+          "Время ожидания в секундах. 0 или отсутствие — немедленная проверка. None — блокирует до появления данных.",
+      },
+    ],
+    example: `import multiprocessing
+import time
+
+def slow_sender(conn):
+    time.sleep(1.0)
+    conn.send("данные готовы")
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+
+    p = multiprocessing.Process(target=slow_sender, args=(child_conn,))
+    p.start()
+
+    # Неблокирующая проверка
+    print(parent_conn.poll())       # False — данных ещё нет
+    print(parent_conn.poll(0.5))    # False — 0.5 с недостаточно
+    print(parent_conn.poll(2.0))    # True  — данные появились
+
+    print(parent_conn.recv())  # данные готовы
+    p.join()`,
+  },
+  {
+    name: "Connection.send_bytes(buffer[, offset[, size]])",
+    category: "multiprocessing",
+    description:
+      "Отправляет сырые байты из буфера через соединение без сериализации pickle. Быстрее send() для бинарных данных — нет накладных расходов на pickle. Принимающий конец читает данные через recv_bytes() или recv_bytes_into().",
+    syntax: "connection.send_bytes(buffer[, offset[, size]])",
+    arguments: [
+      {
+        name: "buffer",
+        description:
+          "Bytes-like объект с данными для отправки (bytes, bytearray, memoryview).",
+      },
+      {
+        name: "offset",
+        description: "Начальная позиция в буфере. По умолчанию 0.",
+      },
+      {
+        name: "size",
+        description:
+          "Количество байт для отправки. По умолчанию — весь буфер начиная с offset.",
+      },
+    ],
+    example: `import multiprocessing
+import array
+
+def receiver(conn):
+    raw = conn.recv_bytes()
+    arr = array.array('i')
+    arr.frombytes(raw)
+    print(f"Получен массив: {arr.tolist()}")
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+
+    p = multiprocessing.Process(target=receiver, args=(child_conn,))
+    p.start()
+
+    # Отправляем бинарные данные напрямую
+    data = array.array('i', [1, 2, 3, 4, 5])
+    parent_conn.send_bytes(data.tobytes())
+
+    # Отправка части буфера:
+    buf = b'Hello, World!'
+    parent_conn.send_bytes(buf, offset=7, size=5)  # 'World'
+
+    p.join()`,
+  },
+  {
+    name: "Connection.recv_bytes([maxlength])",
+    category: "multiprocessing",
+    description:
+      "Получает сырые байты, отправленные через send_bytes(). Блокирует до поступления данных. Если полученное сообщение длиннее maxlength — возбуждает OSError и соединение становится непригодным. Возвращает объект bytes.",
+    syntax: "connection.recv_bytes([maxlength])",
+    arguments: [
+      {
+        name: "maxlength",
+        description:
+          "Максимально допустимый размер сообщения в байтах. Если сообщение длиннее — возбуждает OSError.",
+      },
+    ],
+    example: `import multiprocessing
+
+def image_sender(conn):
+    # Имитация отправки бинарных данных (изображение, файл и т.д.)
+    fake_image = bytes(range(256)) * 10  # 2560 байт
+    conn.send_bytes(fake_image)
+    conn.close()
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+
+    p = multiprocessing.Process(target=image_sender, args=(child_conn,))
+    p.start()
+
+    raw_data = parent_conn.recv_bytes()
+    print(f"Получено байт: {len(raw_data)}")  # 2560
+
+    # С ограничением размера:
+    # raw_data = parent_conn.recv_bytes(maxlength=1000)
+    # OSError если > 1000 байт
+
+    p.join()`,
+  },
+  {
+    name: "Connection.recv_bytes_into(buffer[, offset])",
+    category: "multiprocessing",
+    description:
+      "Получает байты в существующий буфер (без создания нового объекта bytes). Более эффективно по памяти, чем recv_bytes() — особенно при работе с большими данными и заранее выделенными буферами. Возвращает число прочитанных байт.",
+    syntax: "connection.recv_bytes_into(buffer[, offset])",
+    arguments: [
+      {
+        name: "buffer",
+        description:
+          "Записываемый bytes-like объект (bytearray, array, memoryview) для приёма данных.",
+      },
+      {
+        name: "offset",
+        description:
+          "Позиция в буфере, начиная с которой записываются данные. По умолчанию 0.",
+      },
+    ],
+    example: `import multiprocessing
+import array
+
+def data_sender(conn):
+    data = array.array('d', [3.14, 2.71, 1.41, 1.73])
+    conn.send_bytes(data.tobytes())
+    conn.close()
+
+if __name__ == '__main__':
+    parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
+
+    p = multiprocessing.Process(target=data_sender, args=(child_conn,))
+    p.start()
+
+    # Заранее выделяем буфер нужного размера
+    buf = bytearray(4 * 8)  # 4 double по 8 байт = 32 байта
+    n = parent_conn.recv_bytes_into(buf)
+    print(f"Прочитано байт: {n}")  # 32
+
+    result = array.array('d')
+    result.frombytes(buf)
+    print(result.tolist())  # [3.14, 2.71, 1.41, 1.73]
+
+    p.join()`,
+  },
 ];
