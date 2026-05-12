@@ -20698,7 +20698,7 @@ print(arr)  # array('i', [1, 2, 3, 4, 5])
   },
   {
     name: "array.buffer_info()",
-    category: "array",
+
     description:
       "Возвращает кортеж (address, length) — адрес начала внутреннего буфера данных в памяти и количество элементов в массиве. Используется для низкоуровневой работы с памятью, передачи массива в C-расширения или системные вызовы.",
     syntax: "array.buffer_info()",
@@ -20716,7 +20716,7 @@ print(f"Размер буфера: {length * arr.itemsize} байт")  # 16 ба
   },
   {
     name: "array.byteswap()",
-    category: "array",
+
     description:
       "Меняет порядок байт у каждого элемента массива на обратный (big-endian ↔ little-endian). Используется при обмене бинарными данными между системами с разным порядком байт. Работает только с массивами числовых типов.",
     syntax: "array.byteswap()",
@@ -20736,7 +20736,7 @@ print(arr)  # array('i', [1, 256, 65536])`,
   },
   {
     name: "array.count(x)",
-    category: "array",
+
     description:
       "Возвращает количество вхождений элемента x в массиве. Аналогично list.count(). Сравнение выполняется по значению с учётом типа массива.",
     syntax: "array.count(x)",
@@ -20759,7 +20759,7 @@ print(farr.count(1.5))  # 2`,
   },
   {
     name: "array.extend(iterable)",
-    category: "array",
+
     description:
       "Добавляет все элементы итерируемого объекта в конец массива. Итерируемый объект должен содержать элементы подходящего типа. Аналог list.extend(), но с контролем типов.",
     syntax: "array.extend(iterable)",
@@ -20789,7 +20789,7 @@ print(arr)  # ... 0, 2, 4 в конце`,
   },
   {
     name: "array.frombytes(s)",
-    category: "array",
+
     description:
       "Добавляет элементы из байтовой строки s в конец массива. Байты интерпретируются как элементы нужного типа согласно typecode массива. Длина s должна быть кратна itemsize массива.",
     syntax: "array.frombytes(s)",
@@ -20818,7 +20818,7 @@ print(data)  # байтовое представление массива`,
   },
   {
     name: "array.fromfile(f, n)",
-    category: "array",
+
     description:
       'Читает ровно n элементов из файлового объекта f и добавляет их в конец массива. Читает двоичные данные — файл должен быть открыт в режиме "rb". Если данных недостаточно, возникает EOFError, но уже прочитанные элементы остаются в массиве.',
     syntax: "array.fromfile(f, n)",
@@ -20845,7 +20845,7 @@ print(arr2)  # array('i', [10, 20, 30])`,
   },
   {
     name: "array.fromlist(list)",
-    category: "array",
+
     description:
       "Добавляет все элементы списка в конец массива. Аналогично extend(), но принимает только список. Если хотя бы один элемент имеет несовместимый тип — возникает TypeError и массив не изменяется (атомарная операция).",
     syntax: "array.fromlist(list)",
@@ -20871,7 +20871,7 @@ print(arr)  # array('i', [1, 2, 3, 4, 5, 6]) — не изменился`,
   },
   {
     name: "array.fromunicode(s)",
-    category: "array",
+
     description:
       'Добавляет символы строки Unicode в конец массива. Метод применим только к массивам с typecode "u" (Unicode-символы). В Python 3.3+ тип "u" устарел — вместо него рекомендуется использовать str.',
     syntax: "array.fromunicode(s)",
@@ -20895,7 +20895,7 @@ print(text)  # Hello, World`,
   },
   {
     name: "array.index(x[, start[, stop]])",
-    category: "array",
+
     description:
       "Возвращает индекс первого вхождения элемента x в массиве. Если элемент не найден — возникает ValueError. Необязательные параметры start и stop ограничивают диапазон поиска (как в list.index()).",
     syntax: "array.index(x[, start[, stop]])",
@@ -20927,7 +20927,7 @@ except ValueError as e:
   },
   {
     name: "array.insert(i, x)",
-    category: "array",
+
     description:
       "Вставляет элемент x перед элементом с индексом i. Отрицательные индексы отсчитываются с конца. Если i больше длины массива — элемент добавляется в конец. Сдвигает все элементы правее позиции вставки.",
     syntax: "array.insert(i, x)",
@@ -20957,7 +20957,7 @@ print(arr)  # array('i', [0, 1, 2, 99, 3, 4, 88, 5])`,
   },
   {
     name: "array.pop([i])",
-    category: "array",
+
     description:
       "Удаляет и возвращает элемент с индексом i. По умолчанию удаляет последний элемент (i = -1). Отрицательные индексы отсчитываются с конца. Если массив пуст или индекс выходит за границы — возникает IndexError.",
     syntax: "array.pop([i])",
@@ -20986,7 +20986,7 @@ print(arr)     # array('i', [20, 40])`,
   },
   {
     name: "array.remove(x)",
-    category: "array",
+
     description:
       "Удаляет первое вхождение элемента x из массива. Если элемент не найден — возникает ValueError. В отличие от pop(), не возвращает удалённый элемент и принимает значение, а не индекс.",
     syntax: "array.remove(x)",
@@ -21014,7 +21014,7 @@ except ValueError as e:
   },
   {
     name: "array.reverse()",
-    category: "array",
+
     description:
       "Переворачивает порядок элементов массива на месте (in-place). Изменяет сам массив и возвращает None. Аналогично list.reverse() — не создаёт новый объект.",
     syntax: "array.reverse()",
@@ -21036,7 +21036,7 @@ print(result)  # None`,
   },
   {
     name: "array.tobytes()",
-    category: "array",
+
     description:
       "Возвращает байтовое представление массива в виде объекта bytes. Каждый элемент кодируется согласно typecode и порядку байт платформы. Обратная операция — frombytes(). Используется для сохранения, передачи по сети или работы с бинарными протоколами.",
     syntax: "array.tobytes()",
@@ -21058,7 +21058,7 @@ print(arr2)  # array('i', [1, 2, 3])`,
   },
   {
     name: "array.tofile(f)",
-    category: "array",
+
     description:
       'Записывает все элементы массива в файловый объект f в бинарном формате. Файл должен быть открыт в режиме "wb". Обратная операция — fromfile(). Эффективнее, чем запись каждого элемента по отдельности.',
     syntax: "array.tofile(f)",
@@ -21086,7 +21086,7 @@ print(arr == arr2)  # True`,
   },
   {
     name: "array.tolist()",
-    category: "array",
+
     description:
       "Преобразует массив в обычный список Python. Элементы преобразуются в соответствующие типы Python (int, float и т.д.). Обратная операция — fromlist(). Используется, когда нужна гибкость list вместо строготипизированного array.",
     syntax: "array.tolist()",
@@ -21108,7 +21108,7 @@ print(flst)  # [1.100000023841858, 2.200000047683716, 3.299999952316284]
   },
   {
     name: "array.tounicode()",
-    category: "array",
+
     description:
       'Преобразует массив Unicode-символов (typecode "u") в строку Python. Применим только к массивам с typecode "u". В Python 3.3+ тип "u" устарел — рекомендуется использовать str напрямую. Обратная операция — fromunicode().',
     syntax: "array.tounicode()",
@@ -21129,7 +21129,7 @@ print(text)  # Привет, мир!`,
   },
   {
     name: "array.typecode",
-    category: "array",
+
     description:
       'Атрибут (не метод) — односимвольная строка, указывающая тип элементов массива. Задаётся при создании и неизменен. Возможные значения: "b" (int8), "B" (uint8), "i" (int32), "I" (uint32), "f" (float32), "d" (float64) и другие.',
     syntax: "array.typecode",
@@ -21154,7 +21154,7 @@ print(arr_byte.typecode)   # 'b'  — знаковый byte (8 бит)
   },
   {
     name: "array.itemsize",
-    category: "array",
+
     description:
       "Атрибут (не метод) — размер одного элемента массива в байтах. Зависит от typecode и платформы. Позволяет вычислить общий размер массива в памяти: itemsize × len(array). Полезен при низкоуровневой работе с бинарными данными.",
     syntax: "array.itemsize",
@@ -23530,5 +23530,3329 @@ if __name__ == '__main__':
     print(result.tolist())  # [3.14, 2.71, 1.41, 1.73]
 
     p.join()`,
+  },
+  {
+    name: "Value.value",
+    description: `Атрибут объекта Value из модуля multiprocessing.sharedctypes. Обеспечивает доступ к числовому значению, хранящемуся в разделяемой памяти, из нескольких процессов одновременно.
+
+Value создаётся через multiprocessing.Value(typecode, value) и размещает одно значение в общей памяти. Атрибут .value используется как для чтения, так и для записи этого значения.
+
+Объект Value по умолчанию создаётся с блокировкой (Lock), поэтому доступ через .value потокобезопасен в большинстве сценариев. Для составных операций (чтение-изменение-запись) необходимо явно использовать контекстный менеджер with val.get_lock():.`,
+    syntax: "val.value",
+    arguments: [],
+    example: `import multiprocessing
+
+# Создание разделяемого значения (тип 'i' — целое число)
+counter = multiprocessing.Value('i', 0)
+
+def increment(val, n):
+    for _ in range(n):
+        with val.get_lock():   # явная блокировка для составных операций
+            val.value += 1
+
+processes = [
+    multiprocessing.Process(target=increment, args=(counter, 1000))
+    for _ in range(4)
+]
+for p in processes:
+    p.start()
+for p in processes:
+    p.join()
+
+print(counter.value)  # 4000
+
+# Другие типы Value:
+flag = multiprocessing.Value('b', False)   # байт (bool)
+result = multiprocessing.Value('d', 0.0)   # double (float)
+
+# Чтение и запись
+flag.value = True
+print(flag.value)   # True`,
+  },
+  {
+    name: "Array.typecode",
+    description: `Атрибут объекта Array из модуля multiprocessing.sharedctypes. Возвращает символ типа (typecode), который был задан при создании массива в разделяемой памяти.
+
+Array создаётся через multiprocessing.Array(typecode, size_or_initializer) и размещает массив фиксированного размера в общей памяти. Атрибут .typecode позволяет узнать тип элементов массива без обращения к ctypes.
+
+Символы типов совпадают со стандартным модулем array Python:
+- 'b' / 'B' — signed/unsigned byte
+- 'h' / 'H' — signed/unsigned short
+- 'i' / 'I' — signed/unsigned int
+- 'l' / 'L' — signed/unsigned long
+- 'f' — float
+- 'd' — double
+- 'c' — char (bytes)`,
+    syntax: "arr.typecode",
+    arguments: [],
+    example: `import multiprocessing
+
+# Создание разделяемого массива целых чисел
+arr = multiprocessing.Array('i', [1, 2, 3, 4, 5])
+print(arr.typecode)   # 'i'
+
+# Создание массива чисел с плавающей точкой
+farr = multiprocessing.Array('d', 10)  # 10 элементов, инициализированы 0.0
+print(farr.typecode)  # 'd'
+
+# Работа с массивом из нескольких процессов
+def fill_array(shared_arr, start, value):
+    for i in range(start, start + 2):
+        shared_arr[i] = value
+
+data = multiprocessing.Array('i', 6)
+p1 = multiprocessing.Process(target=fill_array, args=(data, 0, 10))
+p2 = multiprocessing.Process(target=fill_array, args=(data, 2, 20))
+p3 = multiprocessing.Process(target=fill_array, args=(data, 4, 30))
+for p in [p1, p2, p3]:
+    p.start()
+for p in [p1, p2, p3]:
+    p.join()
+
+print(list(data))       # [10, 10, 20, 20, 30, 30]
+print(data.typecode)    # 'i'`,
+  },
+  {
+    name: "Manager.start()",
+    description: `Метод запуска серверного процесса менеджера. Запускает отдельный процесс-сервер, который будет управлять разделяемыми объектами (dict, list, Value, Array и др.) и предоставлять к ним доступ другим процессам через прокси-объекты.
+
+Менеджер создаётся через multiprocessing.Manager() или SyncManager(). После вызова start() менеджер готов к созданию разделяемых объектов. Аргументы initializer и initargs позволяют выполнить инициализационный код в серверном процессе перед началом обслуживания.
+
+После завершения работы менеджер необходимо остановить через shutdown() или использовать контекстный менеджер with multiprocessing.Manager() as m:.`,
+    syntax: "Manager.start([initializer[, initargs]])",
+    arguments: [
+      {
+        name: "initializer",
+        description:
+          "Callable-объект, вызываемый при старте серверного процесса менеджера. Если None — инициализация не выполняется.",
+      },
+      {
+        name: "initargs",
+        description:
+          "Кортеж аргументов, передаваемых в initializer. По умолчанию ().",
+      },
+    ],
+    example: `import multiprocessing
+from multiprocessing.managers import BaseManager
+
+# Вариант 1: через контекстный менеджер (рекомендуется)
+with multiprocessing.Manager() as manager:
+    shared_dict = manager.dict()
+    shared_list = manager.list()
+    # менеджер автоматически остановится при выходе из блока
+
+# Вариант 2: явный вызов start() и shutdown()
+manager = multiprocessing.Manager()
+manager.start()
+shared = manager.dict({'key': 'value'})
+# работа с shared...
+manager.shutdown()
+
+# Вариант 3: с инициализатором
+def init_worker(db_url):
+    import sqlite3
+    global conn
+    conn = sqlite3.connect(db_url)
+
+manager = multiprocessing.Manager()
+manager.start(initializer=init_worker, initargs=(':memory:',))
+manager.shutdown()`,
+  },
+  {
+    name: "Manager.shutdown()",
+    description: `Метод остановки серверного процесса менеджера. Завершает серверный процесс, управляющий разделяемыми объектами, и освобождает связанные ресурсы.
+
+После вызова shutdown() все прокси-объекты, созданные через этот менеджер (dict, list, Value и др.), становятся недоступными — попытка обратиться к ним вызовет исключение. Вызывается автоматически при использовании контекстного менеджера with Manager() as m:.
+
+Если менеджер создан через multiprocessing.Manager() (без явного управления), следует вызывать shutdown() в блоке finally или использовать with-синтаксис для гарантированного освобождения ресурсов.`,
+    syntax: "Manager.shutdown()",
+    arguments: [],
+    example: `import multiprocessing
+
+# Безопасное завершение через with (рекомендуется)
+with multiprocessing.Manager() as m:
+    data = m.dict()
+    data['status'] = 'running'
+    # shutdown() вызывается автоматически
+
+# Явный вызов в блоке try/finally
+manager = multiprocessing.Manager()
+try:
+    shared = manager.list([1, 2, 3])
+    # обработка...
+    p = multiprocessing.Process(target=lambda lst: lst.append(4), args=(shared,))
+    p.start()
+    p.join()
+    print(list(shared))  # [1, 2, 3, 4]
+finally:
+    manager.shutdown()  # всегда завершаем менеджер
+
+# После shutdown() прокси недоступны:
+# shared.append(5)  → исключение`,
+  },
+  {
+    name: "Manager.join()",
+    description: `Метод ожидания завершения серверного процесса менеджера. Блокирует выполнение текущего процесса до тех пор, пока серверный процесс менеджера не завершится.
+
+Обычно вызывается после shutdown() для гарантии полного завершения серверного процесса перед продолжением основной программы. Если не вызвать join(), серверный процесс может остаться как зомби-процесс до завершения родительского.
+
+При использовании контекстного менеджера with Manager() as m: вызовы shutdown() и join() происходят автоматически.`,
+    syntax: "Manager.join()",
+    arguments: [],
+    example: `import multiprocessing
+
+# Явное использование shutdown() + join()
+manager = multiprocessing.Manager()
+shared_data = manager.dict()
+
+def worker(d, key, value):
+    d[key] = value
+
+processes = [
+    multiprocessing.Process(target=worker, args=(shared_data, f'key{i}', i))
+    for i in range(5)
+]
+for p in processes:
+    p.start()
+for p in processes:
+    p.join()
+
+print(dict(shared_data))  # {'key0': 0, 'key1': 1, ...}
+
+manager.shutdown()
+manager.join()   # ждём полного завершения серверного процесса
+
+# Контекстный менеджер делает это автоматически:
+with multiprocessing.Manager() as m:
+    d = m.dict()
+    # ...
+# здесь shutdown() и join() уже вызваны`,
+  },
+  {
+    name: "Manager.dict()",
+    description: `Метод создания разделяемого словаря. Возвращает прокси-объект, ссылающийся на словарь, хранящийся в серверном процессе менеджера. Поддерживает все стандартные операции dict: чтение, запись, удаление, итерация, методы keys(), values(), items() и др.
+
+В отличие от обычного dict, разделяемый словарь безопасен для использования из нескольких процессов одновременно — все операции проксируются через менеджер и выполняются атомарно на стороне сервера.
+
+Важно: составные операции (проверка + запись) не атомарны без дополнительной синхронизации. Также изменение вложенных мутабельных объектов (например, список внутри dict) не отслеживается автоматически — нужно переприсваивать значение.`,
+    syntax: "Manager.dict([iterable[, kwds]])",
+    arguments: [
+      {
+        name: "iterable",
+        description:
+          "Итерируемый объект пар (ключ, значение) или другой словарь для инициализации. Если не указан — создаётся пустой словарь.",
+      },
+      {
+        name: "kwds",
+        description:
+          "Именованные аргументы, добавляемые в словарь при создании. Аналогично dict(a=1, b=2).",
+      },
+    ],
+    example: `import multiprocessing
+
+def worker(shared_dict, key, value):
+    shared_dict[key] = value
+
+with multiprocessing.Manager() as m:
+    # Пустой словарь
+    d = m.dict()
+
+    # Инициализация из существующего словаря
+    d2 = m.dict({'a': 1, 'b': 2})
+
+    # Инициализация через kwds
+    d3 = m.dict(x=10, y=20)
+
+    # Параллельная запись из нескольких процессов
+    processes = [
+        multiprocessing.Process(target=worker, args=(d, f'key{i}', i * 10))
+        for i in range(5)
+    ]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+
+    print(dict(d))  # {'key0': 0, 'key1': 10, 'key2': 20, ...}
+
+    # Внимание: вложенные изменения нужно переприсваивать
+    d['list'] = [1, 2, 3]
+    tmp = d['list']
+    tmp.append(4)
+    d['list'] = tmp   # обязательно переприсвоить!`,
+  },
+  {
+    name: "Manager.list()",
+    description: `Метод создания разделяемого списка. Возвращает прокси-объект, ссылающийся на список, хранящийся в серверном процессе менеджера. Поддерживает все стандартные операции list: append, extend, insert, remove, pop, индексирование, срезы и итерацию.
+
+Разделяемый список безопасен для использования из нескольких процессов одновременно. Все операции проксируются через менеджер.
+
+Как и у Manager.dict(), изменения вложенных мутабельных объектов не распространяются автоматически — необходимо явно переприсваивать элемент. Для частых операций append из множества процессов рассмотрите использование Queue для лучшей производительности.`,
+    syntax: "Manager.list([iterable])",
+    arguments: [
+      {
+        name: "iterable",
+        description:
+          "Итерируемый объект для инициализации списка. Если не указан — создаётся пустой список.",
+      },
+    ],
+    example: `import multiprocessing
+
+def collect_results(shared_list, value):
+    shared_list.append(value ** 2)
+
+with multiprocessing.Manager() as m:
+    # Пустой список
+    results = m.list()
+
+    # Инициализация из итерируемого объекта
+    data = m.list([10, 20, 30])
+    print(list(data))   # [10, 20, 30]
+
+    # Параллельное заполнение из процессов
+    processes = [
+        multiprocessing.Process(target=collect_results, args=(results, i))
+        for i in range(1, 6)
+    ]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+
+    print(sorted(results))  # [1, 4, 9, 16, 25]
+
+    # Стандартные операции списка
+    data.append(40)
+    data.extend([50, 60])
+    data.insert(0, 5)
+    print(data[0])      # 5
+    print(len(data))    # 6
+
+    # Изменение вложенного списка — нужно переприсваивать
+    data[0] = [1, 2]
+    inner = data[0]
+    inner.append(3)
+    data[0] = inner     # обязательно переприсвоить!`,
+  },
+  {
+    name: "Manager.Value()",
+    description: `Метод создания разделяемого скалярного значения через менеджер. Возвращает прокси-объект с атрибутом .value для доступа к значению из нескольких процессов.
+
+В отличие от multiprocessing.Value() (разделяемая память через ctypes), Manager.Value() хранит значение в серверном процессе менеджера и доступно через прокси. Это медленнее, но позволяет работать с нестандартными типами данных и использоваться в распределённых системах через RemoteManager.
+
+Объект поддерживает тот же интерфейс, что и multiprocessing.Value: атрибут .value для чтения и записи. Синхронизация обеспечивается менеджером автоматически.`,
+    syntax: "Manager.Value(typecode, value)",
+    arguments: [
+      {
+        name: "typecode",
+        description:
+          "Символ типа данных (как в модуле array): 'i' — int, 'd' — double, 'f' — float, 'b' — byte и др.",
+      },
+      { name: "value", description: "Начальное значение переменной." },
+    ],
+    example: `import multiprocessing
+
+def increment(shared_val, n):
+    for _ in range(n):
+        shared_val.value += 1  # не атомарно — нужна внешняя синхронизация
+
+with multiprocessing.Manager() as m:
+    # Создание разделяемого целого числа
+    counter = m.Value('i', 0)
+    print(counter.value)   # 0
+
+    # Создание разделяемого числа с плавающей точкой
+    score = m.Value('d', 3.14)
+    print(score.value)     # 3.14
+
+    # Изменение значения
+    counter.value = 42
+    score.value += 1.0
+
+    # Использование из нескольких процессов (с блокировкой)
+    lock = m.Lock()
+    total = m.Value('i', 0)
+
+    def safe_increment(val, lk, n):
+        for _ in range(n):
+            with lk:
+                val.value += 1
+
+    procs = [
+        multiprocessing.Process(target=safe_increment, args=(total, lock, 100))
+        for _ in range(4)
+    ]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join()
+    print(total.value)   # 400`,
+  },
+  {
+    name: "Manager.Array()",
+    description: `Метод создания разделяемого массива фиксированного размера через менеджер. Возвращает прокси-объект, предоставляющий доступ к массиву из нескольких процессов.
+
+В отличие от multiprocessing.Array() (разделяемая память через ctypes), Manager.Array() хранит массив в серверном процессе менеджера. Это позволяет использовать его в сценариях с RemoteManager и не ограничивает тип данных ctypes.
+
+Поддерживает индексирование, срезы и итерацию. Атрибут .typecode возвращает тип элементов. Изменения через индекс (arr[i] = x) проксируются через менеджер и видны всем процессам.`,
+    syntax: "Manager.Array(typecode, sequence)",
+    arguments: [
+      {
+        name: "typecode",
+        description:
+          "Символ типа данных элементов массива: 'i' — int, 'd' — double, 'f' — float, 'b' — byte, 'c' — char и др.",
+      },
+      {
+        name: "sequence",
+        description:
+          "Последовательность (список, кортеж) для инициализации массива, либо целое число — размер массива (элементы инициализируются нулями).",
+      },
+    ],
+    example: `import multiprocessing
+
+def fill_segment(arr, start, end, value):
+    for i in range(start, end):
+        arr[i] = value
+
+with multiprocessing.Manager() as m:
+    # Инициализация из списка
+    arr = m.Array('i', [0, 1, 2, 3, 4, 5, 6, 7])
+    print(list(arr))        # [0, 1, 2, 3, 4, 5, 6, 7]
+    print(arr.typecode)     # 'i'
+
+    # Инициализация нулями (задаём размер числом)
+    farr = m.Array('d', 5)  # 5 элементов double = 0.0
+    print(list(farr))       # [0.0, 0.0, 0.0, 0.0, 0.0]
+
+    # Параллельная запись в разные сегменты
+    procs = [
+        multiprocessing.Process(target=fill_segment, args=(arr, i*2, i*2+2, (i+1)*10))
+        for i in range(4)
+    ]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join()
+
+    print(list(arr))   # [10, 10, 20, 20, 30, 30, 40, 40]
+
+    # Срезы и индексирование
+    print(arr[0])      # 10
+    print(arr[2:4])    # [20, 20]`,
+  },
+  {
+    name: "json.dump()",
+    description: `Сериализует объект Python в JSON и записывает результат в файловый объект (file-like object). Является основной функцией для записи JSON в файл.
+
+Поддерживает следующие типы Python → JSON:
+- dict → object, list/tuple → array, str → string
+- int/float → number, True/False → true/false, None → null
+
+Функция не возвращает строку — результат сразу пишется в fp. Для получения JSON как строки используйте json.dumps(). Кодировка файла должна совпадать с ожидаемой (по умолчанию ensure_ascii=True гарантирует ASCII-совместимость).`,
+    syntax:
+      "json.dump(obj, fp, *, skipkeys=False, ensure_ascii=True, check_circular=True, allow_nan=True, cls=None, indent=None, separators=None, default=None, sort_keys=False, **kw)",
+    arguments: [
+      {
+        name: "obj",
+        description:
+          "Сериализуемый объект Python (dict, list, str, int, float, bool, None).",
+      },
+      {
+        name: "fp",
+        description:
+          "Файловый объект с методом write(), куда записывается JSON. Например, открытый через open().",
+      },
+      {
+        name: "skipkeys",
+        description:
+          "Если True — ключи словаря нестандартных типов (не str/int/float/bool/None) пропускаются без исключения. По умолчанию False.",
+      },
+      {
+        name: "ensure_ascii",
+        description:
+          "Если True (по умолчанию) — все не-ASCII символы экранируются (\\uXXXX). Если False — символы Unicode записываются как есть.",
+      },
+      {
+        name: "check_circular",
+        description:
+          "Если True (по умолчанию) — проверяет цикличные ссылки. Если False — при цикличных ссылках возникнет RecursionError.",
+      },
+      {
+        name: "allow_nan",
+        description:
+          "Если True (по умолчанию) — float('nan'), float('inf'), float('-inf') записываются как NaN, Infinity, -Infinity (нестандартный JSON). Если False — бросается ValueError.",
+      },
+      {
+        name: "indent",
+        description:
+          "Отступ для форматирования: целое число (количество пробелов) или строка (например, '\\t'). None — компактный вывод без отступов.",
+      },
+      {
+        name: "separators",
+        description:
+          "Кортеж (item_separator, key_separator). По умолчанию (', ', ': ') или (',', ':') при indent=None.",
+      },
+      {
+        name: "default",
+        description:
+          "Функция, вызываемая для объектов, которые не сериализуются стандартно. Должна вернуть сериализуемый объект или бросить TypeError.",
+      },
+      {
+        name: "sort_keys",
+        description:
+          "Если True — ключи словарей сортируются по алфавиту. Полезно для воспроизводимых результатов.",
+      },
+    ],
+    example: `import json
+
+data = {
+    'name': 'Иван',
+    'age': 30,
+    'languages': ['Python', 'JavaScript'],
+    'active': True,
+    'score': None,
+}
+
+# Запись в файл
+with open('data.json', 'w', encoding='utf-8') as f:
+    json.dump(data, f, ensure_ascii=False, indent=4)
+# data.json:
+# {
+#     "name": "Иван",
+#     "age": 30,
+#     "languages": ["Python", "JavaScript"],
+#     "active": true,
+#     "score": null
+# }
+
+# Компактный вывод без отступов
+with open('compact.json', 'w') as f:
+    json.dump(data, f, separators=(',', ':'))
+
+# Кастомный default для несериализуемых типов
+from datetime import datetime
+
+def default_serializer(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f'Не сериализуем: {type(obj)}')
+
+event = {'name': 'Запуск', 'time': datetime(2024, 1, 15, 12, 0)}
+with open('event.json', 'w') as f:
+    json.dump(event, f, default=default_serializer)
+# {"name": "Запуск", "time": "2024-01-15T12:00:00"}`,
+  },
+  {
+    name: "json.dumps()",
+    description: `Сериализует объект Python в JSON-строку и возвращает её. Функционально идентична json.dump(), но вместо записи в файл возвращает строку.
+
+Используется когда нужно:
+- передать JSON в HTTP-ответе или запросе
+- сохранить JSON в переменной для дальнейшей обработки
+- логировать данные в JSON-формате
+
+Все параметры, кроме fp, идентичны json.dump(). Для записи JSON в файл используйте json.dump() — это эффективнее, чем dumps() + write().`,
+    syntax:
+      "json.dumps(obj, *, skipkeys=False, ensure_ascii=True, check_circular=True, allow_nan=True, cls=None, indent=None, separators=None, default=None, sort_keys=False, **kw)",
+    arguments: [
+      { name: "obj", description: "Сериализуемый объект Python." },
+      {
+        name: "skipkeys",
+        description:
+          "Если True — ключи нестандартных типов пропускаются. По умолчанию False.",
+      },
+      {
+        name: "ensure_ascii",
+        description:
+          "Если True (по умолчанию) — не-ASCII символы экранируются. Если False — Unicode записывается как есть.",
+      },
+      {
+        name: "check_circular",
+        description: "Проверка цикличных ссылок. По умолчанию True.",
+      },
+      {
+        name: "allow_nan",
+        description: "Разрешить NaN, Infinity, -Infinity. По умолчанию True.",
+      },
+      {
+        name: "indent",
+        description:
+          "Отступ для форматирования (число пробелов или строка). None — компактный вывод.",
+      },
+      {
+        name: "separators",
+        description:
+          "Кортеж (item_separator, key_separator) для управления разделителями.",
+      },
+      {
+        name: "default",
+        description: "Функция для обработки несериализуемых объектов.",
+      },
+      {
+        name: "sort_keys",
+        description: "Сортировать ключи словарей. По умолчанию False.",
+      },
+    ],
+    example: `import json
+
+data = {'id': 1, 'name': 'Продукт', 'price': 99.99, 'in_stock': True}
+
+# Базовая сериализация
+s = json.dumps(data)
+print(s)
+# '{"id": 1, "name": "Продукт", "price": 99.99, "in_stock": true}'
+
+# Красивый вывод с отступами
+pretty = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
+print(pretty)
+# {
+#   "id": 1,
+#   "in_stock": true,
+#   "name": "Продукт",
+#   "price": 99.99
+# }
+
+# Компактный вывод (минимум пробелов)
+compact = json.dumps(data, separators=(',', ':'))
+print(compact)
+# '{"id":1,"name":"Продукт","price":99.99,"in_stock":true}'
+
+# Использование в HTTP-ответе (Django)
+from django.http import HttpResponse
+
+def api_view(request):
+    payload = {'status': 'ok', 'data': [1, 2, 3]}
+    return HttpResponse(
+        json.dumps(payload, ensure_ascii=False),
+        content_type='application/json; charset=utf-8'
+    )
+
+# Кастомный encoder через класс
+class SetEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, set):
+            return sorted(obj)
+        return super().default(obj)
+
+print(json.dumps({'tags': {3, 1, 2}}, cls=SetEncoder))
+# '{"tags": [1, 2, 3]}'`,
+  },
+  {
+    name: "json.load()",
+    description: `Десериализует JSON из файлового объекта и возвращает соответствующий объект Python. Является основной функцией для чтения JSON из файла.
+
+JSON → Python соответствие типов:
+- object → dict, array → list, string → str
+- number (int) → int, number (float) → float
+- true/false → True/False, null → None
+
+Параметры object_hook и object_pairs_hook позволяют кастомизировать парсинг объектов JSON — например, преобразовывать словари в экземпляры классов. Параметры parse_float и parse_int позволяют управлять точностью числовых значений.`,
+    syntax:
+      "json.load(fp, *, cls=None, object_hook=None, parse_float=None, parse_int=None, parse_constant=None, object_pairs_hook=None, **kw)",
+    arguments: [
+      {
+        name: "fp",
+        description:
+          "Файловый объект с методом read(), содержащий JSON. Например, открытый через open().",
+      },
+      {
+        name: "cls",
+        description:
+          "Кастомный класс JSONDecoder для парсинга. Если None — используется стандартный декодер.",
+      },
+      {
+        name: "object_hook",
+        description:
+          "Функция, вызываемая для каждого JSON-объекта (dict). Принимает dict, возвращает любой объект — заменяет стандартный dict в результате.",
+      },
+      {
+        name: "parse_float",
+        description:
+          "Callable для парсинга чисел с плавающей точкой. По умолчанию float. Можно заменить на decimal.Decimal для точных вычислений.",
+      },
+      {
+        name: "parse_int",
+        description: "Callable для парсинга целых чисел. По умолчанию int.",
+      },
+      {
+        name: "parse_constant",
+        description:
+          "Устарело с Python 3.1. Callable для парсинга NaN, Infinity, -Infinity.",
+      },
+      {
+        name: "object_pairs_hook",
+        description:
+          "Функция, вызываемая со списком пар (ключ, значение) для каждого JSON-объекта. Имеет приоритет над object_hook. Полезно для OrderedDict или обработки дублирующихся ключей.",
+      },
+    ],
+    example: `import json
+from decimal import Decimal
+
+# Базовое чтение JSON из файла
+with open('data.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+
+print(data['name'])   # Иван
+print(type(data))     # <class 'dict'>
+
+# object_hook — преобразование словарей в объекты
+class User:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+def as_user(d):
+    if 'name' in d and 'age' in d:
+        return User(**d)
+    return d
+
+with open('user.json', 'r') as f:
+    user = json.load(f, object_hook=as_user)
+print(user.name)   # Иван
+
+# parse_float — точные вычисления с Decimal
+with open('prices.json', 'r') as f:
+    prices = json.load(f, parse_float=Decimal)
+# {"price": 99.99} → {'price': Decimal('99.99')}
+
+# object_pairs_hook — сохранение порядка и дублей
+from collections import OrderedDict
+
+with open('config.json', 'r') as f:
+    config = json.load(f, object_pairs_hook=OrderedDict)`,
+  },
+  {
+    name: "json.loads()",
+    description: `Десериализует JSON из строки (str, bytes или bytearray) и возвращает соответствующий объект Python. Функционально идентична json.load(), но принимает строку, а не файловый объект.
+
+Используется когда JSON приходит как строка — из HTTP-ответа, базы данных, переменной окружения, сообщения очереди и т.д.
+
+Начиная с Python 3.6 принимает также bytes и bytearray — они декодируются как UTF-8, UTF-16 или UTF-32 автоматически. При передаче некорректного JSON бросает json.JSONDecodeError (подкласс ValueError).`,
+    syntax:
+      "json.loads(s, *, cls=None, object_hook=None, parse_float=None, parse_int=None, parse_constant=None, object_pairs_hook=None, **kw)",
+    arguments: [
+      {
+        name: "s",
+        description:
+          "Строка (str), байты (bytes) или bytearray с JSON-данными для парсинга.",
+      },
+      {
+        name: "cls",
+        description:
+          "Кастомный класс JSONDecoder. Если None — используется стандартный.",
+      },
+      {
+        name: "object_hook",
+        description:
+          "Функция, вызываемая для каждого JSON-объекта (dict). Позволяет преобразовывать объекты в кастомные типы.",
+      },
+      {
+        name: "parse_float",
+        description:
+          "Callable для парсинга чисел с плавающей точкой. По умолчанию float. Используйте decimal.Decimal для точных вычислений.",
+      },
+      {
+        name: "parse_int",
+        description: "Callable для парсинга целых чисел. По умолчанию int.",
+      },
+      { name: "parse_constant", description: "Устарело с Python 3.1." },
+      {
+        name: "object_pairs_hook",
+        description:
+          "Функция со списком пар (ключ, значение) для каждого JSON-объекта. Имеет приоритет над object_hook.",
+      },
+    ],
+    example: `import json
+from decimal import Decimal
+
+# Базовый парсинг строки
+s = '{"name": "Анна", "age": 25, "active": true, "score": null}'
+data = json.loads(s)
+print(data)          # {'name': 'Анна', 'age': 25, 'active': True, 'score': None}
+print(data['name'])  # Анна
+print(type(data))    # <class 'dict'>
+
+# Парсинг массива
+arr = json.loads('[1, 2, 3, "four", true]')
+print(arr)           # [1, 2, 3, 'four', True]
+
+# Обработка ошибок
+try:
+    json.loads('{invalid json}')
+except json.JSONDecodeError as e:
+    print(f'Ошибка: {e.msg} на позиции {e.pos}')
+
+# parse_float для точных финансовых расчётов
+price_json = '{"price": 19.99, "tax": 1.50}'
+prices = json.loads(price_json, parse_float=Decimal)
+print(prices['price'])          # Decimal('19.99')
+print(type(prices['price']))    # <class 'decimal.Decimal'>
+
+# Парсинг ответа API (requests)
+import urllib.request
+with urllib.request.urlopen('https://api.example.com/data') as r:
+    data = json.loads(r.read().decode('utf-8'))
+
+# Парсинг bytes (Python 3.6+)
+raw = b'{"status": "ok"}'
+result = json.loads(raw)
+print(result)   # {'status': 'ok'}`,
+  },
+  {
+    name: "JSONEncoder.default()",
+    description: `Метод, вызываемый для объектов, которые JSONEncoder не умеет сериализовать стандартно. Переопределяется в подклассах для добавления поддержки кастомных типов.
+
+По умолчанию бросает TypeError. При переопределении метод должен либо вернуть JSON-сериализуемый объект (dict, list, str, int, float, bool, None), либо вызвать super().default(o) для стандартного поведения.
+
+Вызывается автоматически из encode() и iterencode() при встрече несериализуемого объекта. Это основной способ расширения JSONEncoder — гораздо проще, чем переопределять encode() целиком.`,
+    syntax: "JSONEncoder.default(o)",
+    arguments: [
+      {
+        name: "o",
+        description:
+          "Несериализуемый объект, для которого нужно вернуть JSON-совместимое представление.",
+      },
+    ],
+    example: `import json
+from datetime import datetime, date
+from decimal import Decimal
+from enum import Enum
+
+class AdvancedEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, (datetime, date)):
+            return o.isoformat()
+        if isinstance(o, Decimal):
+            return float(o)
+        if isinstance(o, Enum):
+            return o.value
+        if hasattr(o, '__dict__'):
+            return o.__dict__
+        return super().default(o)  # бросит TypeError
+
+class Status(Enum):
+    ACTIVE = 'active'
+    INACTIVE = 'inactive'
+
+class User:
+    def __init__(self, name, created):
+        self.name = name
+        self.created = created
+
+data = {
+    'user': User('Иван', datetime(2024, 1, 15)),
+    'price': Decimal('99.99'),
+    'status': Status.ACTIVE,
+    'date': date(2024, 6, 1),
+}
+
+print(json.dumps(data, cls=AdvancedEncoder, ensure_ascii=False, indent=2))
+# {
+#   "user": {"name": "Иван", "created": "2024-01-15T00:00:00"},
+#   "price": 99.99,
+#   "status": "active",
+#   "date": "2024-06-01"
+# }`,
+  },
+  {
+    name: "JSONEncoder.encode()",
+    description: `Метод, сериализующий объект Python в JSON-строку. Является основным методом кодирования — именно он вызывается при использовании json.dumps() с кастомным cls.
+
+Принимает один объект и возвращает строку. Для потоковой записи больших объектов используйте iterencode() — он возвращает итератор фрагментов, не загружая всё в память сразу.
+
+Метод можно переопределить для полного контроля над процессом кодирования, однако обычно достаточно переопределить только default() для поддержки кастомных типов.`,
+    syntax: "JSONEncoder.encode(o)",
+    arguments: [
+      {
+        name: "o",
+        description: "Объект Python для сериализации в JSON-строку.",
+      },
+    ],
+    example: `import json
+
+# Использование encode() напрямую
+encoder = json.JSONEncoder(ensure_ascii=False, indent=2)
+result = encoder.encode({'name': 'Мария', 'score': 42})
+print(result)
+# {
+#   "name": "Мария",
+#   "score": 42
+# }
+
+# encode() в подклассе
+class PrettyEncoder(json.JSONEncoder):
+    def encode(self, o):
+        if isinstance(o, list):
+            # компактный вывод для списков (всё в одну строку)
+            return '[' + ', '.join(self.encode(item) for item in o) + ']'
+        return super().encode(o)
+
+enc = PrettyEncoder()
+print(enc.encode([1, 2, 3]))        # [1, 2, 3]
+print(enc.encode({'a': [1, 2]}))    # {"a": [1, 2]}
+
+# json.dumps() использует encode() внутри
+print(json.dumps([1, 2, 3], cls=PrettyEncoder))
+
+# Эквивалентность:
+encoder = json.JSONEncoder()
+s1 = encoder.encode({'key': 'value'})
+s2 = json.dumps({'key': 'value'})
+print(s1 == s2)   # True`,
+  },
+  {
+    name: "JSONEncoder.iterencode()",
+    description: `Метод, возвращающий итератор фрагментов JSON-строки. Позволяет кодировать большие объекты по частям без загрузки всей строки в память — полезно для потоковой записи в файл или HTTP-ответ.
+
+Каждый элемент итератора — это строковый фрагмент итогового JSON. Для получения полной строки можно объединить фрагменты через ''.join(encoder.iterencode(obj)).
+
+Параметр _one_shot управляет внутренней оптимизацией (использование C-расширения). В большинстве случаев не требует изменений.`,
+    syntax: "JSONEncoder.iterencode(o)",
+    arguments: [
+      {
+        name: "o",
+        description: "Объект Python для потоковой сериализации в JSON.",
+      },
+    ],
+    example: `import json
+
+data = {'items': list(range(1000)), 'name': 'Большой список'}
+
+encoder = json.JSONEncoder()
+
+# Потоковая запись в файл без загрузки в память
+with open('large.json', 'w', encoding='utf-8') as f:
+    for chunk in encoder.iterencode(data):
+        f.write(chunk)
+
+# Потоковый HTTP-ответ (Django/Flask)
+def streaming_json_response():
+    encoder = json.JSONEncoder(ensure_ascii=False)
+    large_data = {'results': list(range(10000))}
+    # StreamingHttpResponse принимает итератор
+    from django.http import StreamingHttpResponse
+    return StreamingHttpResponse(
+        encoder.iterencode(large_data),
+        content_type='application/json'
+    )
+
+# Объединение фрагментов в строку
+encoder = json.JSONEncoder(indent=2)
+obj = {'a': 1, 'b': [1, 2, 3]}
+full_json = ''.join(encoder.iterencode(obj))
+print(full_json)
+
+# Просмотр фрагментов
+for chunk in json.JSONEncoder().iterencode({'x': [1, 2]}):
+    print(repr(chunk))
+# '{"x"' → ': ' → '[1' → ', 2' → ']' → '}'`,
+  },
+  {
+    name: "JSONEncoder.item_separator",
+    description: `Атрибут класса JSONEncoder, задающий строку-разделитель между элементами массива и парами ключ-значение в объекте.
+
+По умолчанию равен ', ' (запятая и пробел). При indent=None (компактный режим) json.dumps() автоматически использует ',' без пробела для минимизации размера.
+
+Изменяется через параметр separators в виде кортежа (item_separator, key_separator) при вызове json.dumps() или json.JSONEncoder(). Кастомное значение item_separator полезно для создания NDJSON (Newline Delimited JSON) или других форматов.`,
+    syntax: "JSONEncoder.item_separator",
+    arguments: [],
+    example: `import json
+
+# Просмотр значений по умолчанию
+enc = json.JSONEncoder()
+print(repr(enc.item_separator))   # ', '
+print(repr(enc.key_separator))    # ': '
+
+# Изменение через separators
+compact = json.dumps([1, 2, 3], separators=(',', ':'))
+print(compact)    # [1,2,3]  ← item_separator = ','
+
+pretty = json.dumps({'a': 1, 'b': 2}, separators=(', ', ': '))
+print(pretty)     # {"a": 1, "b": 2}
+
+# Кастомный encoder с изменёнными разделителями
+class CompactEncoder(json.JSONEncoder):
+    item_separator = ','
+    key_separator = ':'
+
+print(json.dumps({'x': [1, 2]}, cls=CompactEncoder))
+# {"x":[1,2]}
+
+# NDJSON: объекты разделены переносом строки, а не запятой
+objects = [{'id': 1}, {'id': 2}, {'id': 3}]
+ndjson = '\\n'.join(json.dumps(obj, separators=(',', ':')) for obj in objects)
+print(ndjson)
+# {"id":1}
+# {"id":2}
+# {"id":3}`,
+  },
+  {
+    name: "JSONEncoder.key_separator",
+    description: `Атрибут класса JSONEncoder, задающий строку-разделитель между ключом и значением в JSON-объекте.
+
+По умолчанию равен ': ' (двоеточие и пробел). В компактном режиме (separators=(',', ':')) становится ':' без пробела.
+
+Изменяется через параметр separators в виде кортежа (item_separator, key_separator). Вместе с item_separator управляет форматированием JSON — как читаемого для человека (с пробелами), так и минимального по размеру (без пробелов).`,
+    syntax: "JSONEncoder.key_separator",
+    arguments: [],
+    example: `import json
+
+# Значения по умолчанию
+enc = json.JSONEncoder()
+print(repr(enc.key_separator))    # ': '
+
+# Стандартный вывод
+print(json.dumps({'a': 1}))             # {"a": 1}  ← ': '
+
+# Компактный вывод без пробелов
+print(json.dumps({'a': 1}, separators=(',', ':')))   # {"a":1}
+
+# Кастомный разделитель (нестандартный формат)
+class ArrowEncoder(json.JSONEncoder):
+    key_separator = ' => '
+    item_separator = ' | '
+
+print(json.dumps({'x': 1, 'y': 2}, cls=ArrowEncoder))
+# {"x" => 1 | "y" => 2}
+
+# Минимальный размер JSON для передачи по сети
+data = {'status': 'ok', 'code': 200, 'data': [1, 2, 3]}
+minimal = json.dumps(data, separators=(',', ':'))
+print(f'Размер: {len(minimal)} байт')
+# {"status":"ok","code":200,"data":[1,2,3]}
+# Размер: 40 байт (против 45 со стандартными разделителями)`,
+  },
+  {
+    name: "JSONEncoder.skipkeys",
+    description: `Атрибут экземпляра JSONEncoder, определяющий поведение при встрече ключей словаря нестандартных типов (не str, int, float, bool, None).
+
+По умолчанию False — при нестандартном ключе бросается TypeError. Если True — такие ключи молча пропускаются.
+
+Задаётся через параметр skipkeys при создании JSONEncoder или через json.dumps(skipkeys=True). Полезно при работе с данными, где ключи могут быть кортежами или другими нехэшируемыми типами, но требуется продолжить сериализацию без прерывания.`,
+    syntax: "JSONEncoder.skipkeys",
+    arguments: [],
+    example: `import json
+
+data = {
+    'valid_key': 'значение',
+    (1, 2): 'кортеж-ключ',      # недопустимо в JSON
+    42: 'числовой ключ',         # допустимо — будет "42"
+    None: 'none-ключ',           # допустимо — будет "null"
+    True: 'bool-ключ',           # допустимо — будет "true"
+}
+
+# skipkeys=False (по умолчанию) — бросает TypeError
+try:
+    json.dumps(data)
+except TypeError as e:
+    print(e)   # keys must be str, int, float, bool or None, not tuple
+
+# skipkeys=True — кортеж-ключ пропускается
+result = json.dumps(data, skipkeys=True, ensure_ascii=False)
+print(result)
+# {"valid_key": "значение", "42": "числовой ключ",
+#  "null": "none-ключ", "true": "bool-ключ"}
+
+# Проверка атрибута
+enc = json.JSONEncoder(skipkeys=True)
+print(enc.skipkeys)   # True
+
+enc2 = json.JSONEncoder()
+print(enc2.skipkeys)  # False`,
+  },
+  {
+    name: "JSONEncoder.ensure_ascii",
+    description: `Атрибут экземпляра JSONEncoder, управляющий экранированием не-ASCII символов в выводе.
+
+По умолчанию True — все символы вне ASCII-диапазона экранируются как \\uXXXX. Это гарантирует совместимость результата с любой ASCII-системой, но увеличивает размер строки для текстов с кириллицей, китайскими иероглифами и другими Unicode-символами.
+
+Если False — Unicode-символы записываются как есть, что уменьшает размер вывода и делает его читаемым. При записи в файл убедитесь, что файл открыт с правильной кодировкой (encoding='utf-8').`,
+    syntax: "JSONEncoder.ensure_ascii",
+    arguments: [],
+    example: `import json
+
+data = {'сообщение': 'Привет, мир!', 'emoji': '✓'}
+
+# ensure_ascii=True (по умолчанию) — всё экранируется
+s1 = json.dumps(data)
+print(s1)
+# {"\\u0441\\u043e\\u043e\\u0431\\u0449\\u0435\\u043d\\u0438\\u0435":
+#  "\\u041f\\u0440\\u0438\\u0432\\u0435\\u0442, \\u043c\\u0438\\u0440!",
+#  "emoji": "\\u2713"}
+
+# ensure_ascii=False — Unicode как есть
+s2 = json.dumps(data, ensure_ascii=False)
+print(s2)
+# {"сообщение": "Привет, мир!", "emoji": "✓"}
+
+print(f'ASCII: {len(s1)} байт, Unicode: {len(s2)} байт')
+# ASCII: 118 байт, Unicode: 40 байт
+
+# Проверка атрибута
+enc = json.JSONEncoder(ensure_ascii=False)
+print(enc.ensure_ascii)   # False
+
+# При записи в файл с ensure_ascii=False обязательна кодировка utf-8
+with open('output.json', 'w', encoding='utf-8') as f:
+    json.dump(data, f, ensure_ascii=False)`,
+  },
+  {
+    name: "JSONEncoder.check_circular",
+    description: `Атрибут экземпляра JSONEncoder, определяющий, проверять ли объект на наличие циклических ссылок перед сериализацией.
+
+По умолчанию True — перед кодированием каждого объекта JSONEncoder проверяет, не встречался ли он уже в текущем стеке вызовов. При обнаружении цикла бросается ValueError: Circular reference detected.
+
+Если False — проверка не выполняется. Это незначительно ускоряет сериализацию, но при наличии цикличных ссылок возникнет RecursionError вместо понятного ValueError. Отключайте только если уверены в отсутствии циклов.`,
+    syntax: "JSONEncoder.check_circular",
+    arguments: [],
+    example: `import json
+
+# Создание циклической ссылки
+a = {}
+b = {'ref': a}
+a['ref'] = b   # a → b → a (цикл)
+
+# check_circular=True (по умолчанию) — понятная ошибка
+try:
+    json.dumps(a)
+except ValueError as e:
+    print(e)   # Circular reference detected
+
+# check_circular=False — RecursionError (трудно отладить)
+try:
+    json.dumps(a, check_circular=False)
+except RecursionError as e:
+    print('Переполнение стека!')
+
+# Корректный случай без цикла — check_circular=False безопасен
+data = {'items': [1, 2, 3], 'nested': {'key': 'value'}}
+result = json.dumps(data, check_circular=False)
+print(result)   # {"items": [1, 2, 3], "nested": {"key": "value"}}
+
+# Проверка атрибута
+enc = json.JSONEncoder(check_circular=False)
+print(enc.check_circular)   # False`,
+  },
+  {
+    name: "JSONEncoder.allow_nan",
+    description: `Атрибут экземпляра JSONEncoder, управляющий обработкой специальных значений float: NaN, Infinity и -Infinity.
+
+По умолчанию True — эти значения записываются как NaN, Infinity, -Infinity (нестандартное расширение JSON, поддерживаемое JavaScript, но не соответствующее RFC 8259).
+
+Если False — при встрече NaN, Infinity или -Infinity бросается ValueError. Используйте False для строгого соответствия стандарту JSON, если данные будут передаваться в системы, не поддерживающие NaN/Infinity.`,
+    syntax: "JSONEncoder.allow_nan",
+    arguments: [],
+    example: `import json
+import math
+
+data = {
+    'normal': 42.0,
+    'nan': float('nan'),
+    'inf': float('inf'),
+    'neg_inf': float('-inf'),
+    'pi': math.pi,
+}
+
+# allow_nan=True (по умолчанию) — нестандартный JSON
+result = json.dumps(data)
+print(result)
+# {"normal": 42.0, "nan": NaN, "inf": Infinity, "neg_inf": -Infinity, "pi": 3.14...}
+
+# allow_nan=False — строгий RFC 8259
+try:
+    json.dumps(data, allow_nan=False)
+except ValueError as e:
+    print(e)   # Out of range float values are not JSON compliant
+
+# Обход: заменить NaN/Infinity перед сериализацией
+def sanitize(obj):
+    if isinstance(obj, float):
+        if math.isnan(obj): return None
+        if math.isinf(obj): return None
+    return obj
+
+# Кастомный encoder с обработкой NaN
+class SafeEncoder(json.JSONEncoder):
+    def default(self, o):
+        return super().default(o)
+
+    def iterencode(self, o, _one_shot=False):
+        if isinstance(o, float) and (math.isnan(o) or math.isinf(o)):
+            o = None
+        return super().iterencode(o, _one_shot)`,
+  },
+  {
+    name: "JSONEncoder.sort_keys",
+    description: `Атрибут экземпляра JSONEncoder, определяющий, сортировать ли ключи словарей в алфавитном порядке при сериализации.
+
+По умолчанию False — ключи записываются в порядке вставки (Python 3.7+ гарантирует сохранение порядка dict). Если True — ключи сортируются по алфавиту.
+
+Сортировка полезна для:
+- воспроизводимых результатов (при сравнении файлов через diff)
+- читаемости вывода с предсказуемым порядком полей
+- тестирования, где важна стабильность вывода`,
+    syntax: "JSONEncoder.sort_keys",
+    arguments: [],
+    example: `import json
+
+data = {'zebra': 3, 'apple': 1, 'mango': 2}
+
+# sort_keys=False (по умолчанию) — порядок вставки
+print(json.dumps(data))
+# {"zebra": 3, "apple": 1, "mango": 2}
+
+# sort_keys=True — алфавитный порядок
+print(json.dumps(data, sort_keys=True))
+# {"apple": 1, "mango": 2, "zebra": 3}
+
+# Вложенные словари тоже сортируются
+nested = {'z': {'b': 2, 'a': 1}, 'a': {'y': 9, 'x': 8}}
+print(json.dumps(nested, sort_keys=True, indent=2))
+# {
+#   "a": {
+#     "x": 8,
+#     "y": 9
+#   },
+#   "z": {
+#     "a": 1,
+#     "b": 2
+#   }
+# }
+
+# Использование в тестах для стабильного сравнения
+import json
+
+def assert_json_equal(obj1, obj2):
+    s1 = json.dumps(obj1, sort_keys=True)
+    s2 = json.dumps(obj2, sort_keys=True)
+    assert s1 == s2, f'Объекты отличаются: {s1} != {s2}'`,
+  },
+  {
+    name: "JSONEncoder.indent",
+    description: `Атрибут экземпляра JSONEncoder, задающий отступ для форматирования JSON с переносами строк.
+
+Если None (по умолчанию) — JSON выводится компактно в одну строку. Если задано целое число — каждый уровень вложенности отделяется указанным количеством пробелов. Если задана строка — используется она как отступ (например, '\\t' для табуляции).
+
+При ненулевом indent автоматически добавляются переносы строк после каждого элемента массива и пары ключ-значение, что делает JSON читаемым для человека, но увеличивает размер файла.`,
+    syntax: "JSONEncoder.indent",
+    arguments: [],
+    example: `import json
+
+data = {'name': 'Python', 'version': 3.12, 'features': ['typing', 'async', 'dataclasses']}
+
+# indent=None (по умолчанию) — компактный вывод
+print(json.dumps(data))
+# {"name": "Python", "version": 3.12, "features": ["typing", "async", "dataclasses"]}
+
+# indent=4 — 4 пробела на каждый уровень
+print(json.dumps(data, indent=4))
+# {
+#     "name": "Python",
+#     "version": 3.12,
+#     "features": [
+#         "typing",
+#         "async",
+#         "dataclasses"
+#     ]
+# }
+
+# indent=2 — самый популярный вариант
+print(json.dumps(data, indent=2))
+
+# indent='\\t' — табуляция
+print(json.dumps(data, indent='\t'))
+
+# Сравнение размеров
+compact = json.dumps(data)
+pretty = json.dumps(data, indent=4)
+print(f'Компактный: {len(compact)} байт')
+print(f'Читаемый:   {len(pretty)} байт')
+
+# Проверка атрибута
+enc = json.JSONEncoder(indent=2)
+print(enc.indent)   # 2`,
+  },
+  {
+    name: "JSONDecoder.decode()",
+    description: `Метод десериализации JSON-строки в объект Python. Является основным методом класса JSONDecoder — именно он вызывается внутри json.loads().
+
+Принимает строку с валидным JSON и возвращает соответствующий объект Python. Если строка содержит данные после корректного JSON-значения (например, пробелы или дополнительный текст) — бросает JSONDecodeError.
+
+Для разбора строки, в которой JSON-значение находится не в начале, используйте raw_decode() — он принимает индекс начала.`,
+    syntax: "JSONDecoder.decode(s)",
+    arguments: [
+      {
+        name: "s",
+        description:
+          "Строка с JSON-данными. Должна содержать ровно одно JSON-значение (с возможными пробелами в конце).",
+      },
+    ],
+    example: `import json
+
+decoder = json.JSONDecoder()
+
+# Базовое декодирование
+result = decoder.decode('{"name": "Анна", "age": 25}')
+print(result)          # {'name': 'Анна', 'age': 25}
+print(type(result))    # <class 'dict'>
+
+# Декодирование разных типов
+print(decoder.decode('[1, 2, 3]'))        # [1, 2, 3]
+print(decoder.decode('"строка"'))         # строка
+print(decoder.decode('42'))               # 42
+print(decoder.decode('true'))             # True
+print(decoder.decode('null'))             # None
+
+# Ошибка при лишних данных после JSON
+try:
+    decoder.decode('{"a": 1} лишний текст')
+except json.JSONDecodeError as e:
+    print(e)   # Extra data: line 1 column 9 (char 8)
+
+# Пробелы в конце допустимы
+print(decoder.decode('42   '))    # 42 — OK
+
+# decode() эквивалентен json.loads()
+s = '{"key": "value"}'
+assert decoder.decode(s) == json.loads(s)`,
+  },
+  {
+    name: "JSONDecoder.raw_decode()",
+    description: `Метод декодирования JSON-значения из строки начиная с указанной позиции. В отличие от decode(), не требует, чтобы строка состояла только из JSON — он находит и парсит первое JSON-значение, начиная с idx, и возвращает кортеж (объект, конечная_позиция).
+
+Полезен для разбора потоков данных, где JSON-значения идут подряд без явных разделителей, или для извлечения JSON из строки с дополнительным контентом (например, NDJSON, логи, смешанные форматы).
+
+Возвращает tuple (obj, end), где end — индекс символа, следующего за распарсенным JSON. Это позволяет продолжить разбор с позиции end.`,
+    syntax: "JSONDecoder.raw_decode(s, idx=0)",
+    arguments: [
+      {
+        name: "s",
+        description: "Строка, из которой нужно декодировать JSON-значение.",
+      },
+      {
+        name: "idx",
+        description:
+          "Индекс символа в строке, с которого начинается поиск JSON-значения. По умолчанию 0 (начало строки).",
+      },
+    ],
+    example: `import json
+
+decoder = json.JSONDecoder()
+
+# Базовый пример
+obj, end = decoder.raw_decode('{"a": 1} лишний текст')
+print(obj)    # {'a': 1}
+print(end)    # 8  ← позиция после JSON
+
+# Разбор с ненулевого индекса
+s = 'prefix {"key": "val"} suffix'
+#           ^-- индекс 7
+obj, end = decoder.raw_decode(s, idx=7)
+print(obj)    # {'key': 'val'}
+print(end)    # 21
+
+# Разбор потока NDJSON (несколько JSON-объектов подряд)
+ndjson = '{"id":1}{"id":2}{"id":3}'
+pos = 0
+results = []
+while pos < len(ndjson):
+    obj, pos = decoder.raw_decode(ndjson, pos)
+    results.append(obj)
+print(results)   # [{'id': 1}, {'id': 2}, {'id': 3}]
+
+# Разбор строки с JSON + дополнительным текстом (например, лог)
+log_line = '2024-01-15 INFO {"event": "login", "user": "ivan"}'
+json_start = log_line.index('{')
+event, _ = decoder.raw_decode(log_line, json_start)
+print(event)   # {'event': 'login', 'user': 'ivan'}`,
+  },
+  {
+    name: "JSONDecoder.object_hook",
+    description: `Атрибут экземпляра JSONDecoder, хранящий функцию-callback, вызываемую для каждого декодированного JSON-объекта (object, то есть {}).
+
+Если задана, функция получает dict (уже декодированный стандартно) и должна вернуть объект, который будет использован вместо dict в итоговом результате. Это позволяет преобразовывать JSON-объекты в экземпляры классов, namedtuple, dataclass и др.
+
+Задаётся при создании JSONDecoder(object_hook=func) или через json.loads(object_hook=func). Если одновременно задан object_pairs_hook — он имеет приоритет над object_hook.`,
+    syntax: "JSONDecoder.object_hook",
+    arguments: [],
+    example: `import json
+from dataclasses import dataclass
+from datetime import datetime
+
+@dataclass
+class Point:
+    x: float
+    y: float
+
+@dataclass
+class User:
+    name: str
+    age: int
+    created: str
+
+# Преобразование JSON-объектов в dataclass
+def as_point(d):
+    if 'x' in d and 'y' in d:
+        return Point(**d)
+    return d
+
+decoder = json.JSONDecoder(object_hook=as_point)
+result = decoder.decode('{"x": 1.5, "y": 2.7}')
+print(result)         # Point(x=1.5, y=2.7)
+print(type(result))   # <class '__main__.Point'>
+
+# Через json.loads
+user = json.loads(
+    '{"name": "Мария", "age": 28, "created": "2024-01-01"}',
+    object_hook=lambda d: User(**d)
+)
+print(user.name)   # Мария
+
+# Проверка атрибута
+print(decoder.object_hook)   # <function as_point at 0x...>
+
+dec2 = json.JSONDecoder()
+print(dec2.object_hook)      # None`,
+  },
+  {
+    name: "JSONDecoder.object_pairs_hook",
+    description: `Атрибут экземпляра JSONDecoder, хранящий функцию-callback, вызываемую для каждого JSON-объекта со списком пар (ключ, значение) в порядке появления.
+
+В отличие от object_hook (получает dict), object_pairs_hook получает список кортежей [(ключ, значение), ...] — это позволяет обрабатывать дублирующиеся ключи и сохранять исходный порядок. Имеет приоритет над object_hook, если оба заданы.
+
+Типичные применения: создание OrderedDict, выявление дублирующихся ключей, преобразование в кастомные структуры с сохранением порядка полей.`,
+    syntax: "JSONDecoder.object_pairs_hook",
+    arguments: [],
+    example: `import json
+from collections import OrderedDict
+
+# Сохранение порядка ключей через OrderedDict
+decoder = json.JSONDecoder(object_pairs_hook=OrderedDict)
+result = decoder.decode('{"z": 3, "a": 1, "m": 2}')
+print(result)          # OrderedDict([('z', 3), ('a', 1), ('m', 2)])
+print(list(result))    # ['z', 'a', 'm']  — порядок сохранён
+
+# Обнаружение дублирующихся ключей
+def detect_duplicates(pairs):
+    keys = [k for k, v in pairs]
+    if len(keys) != len(set(keys)):
+        duplicates = [k for k in keys if keys.count(k) > 1]
+        raise ValueError(f'Дублирующиеся ключи: {set(duplicates)}')
+    return dict(pairs)
+
+try:
+    json.loads('{"a": 1, "b": 2, "a": 3}', object_pairs_hook=detect_duplicates)
+except ValueError as e:
+    print(e)   # Дублирующиеся ключи: {'a'}
+
+# Без detect_duplicates стандартный парсер берёт последнее значение:
+print(json.loads('{"a": 1, "a": 2}'))   # {'a': 2}
+
+# Проверка атрибута
+dec = json.JSONDecoder(object_pairs_hook=OrderedDict)
+print(dec.object_pairs_hook)   # <class 'collections.OrderedDict'>`,
+  },
+  {
+    name: "JSONDecoder.parse_float",
+    description: `Атрибут экземпляра JSONDecoder, хранящий callable для парсинга чисел с плавающей точкой из JSON.
+
+По умолчанию None — используется встроенный float. При задании любого callable он получает строку с числом (например, '3.14') и должен вернуть нужный объект.
+
+Наиболее частое применение — замена на decimal.Decimal для точных финансовых расчётов, поскольку float не может точно представить многие десятичные дроби. Задаётся через JSONDecoder(parse_float=Decimal) или json.loads(parse_float=Decimal).`,
+    syntax: "JSONDecoder.parse_float",
+    arguments: [],
+    example: `import json
+from decimal import Decimal
+
+# По умолчанию — float (возможна потеря точности)
+result = json.loads('{"price": 19.99}')
+print(result['price'])          # 19.99
+print(type(result['price']))    # <class 'float'>
+print(result['price'] == 19.99) # True, но внутри неточно
+
+# parse_float=Decimal — точное представление
+result = json.loads('{"price": 19.99}', parse_float=Decimal)
+print(result['price'])          # 19.99
+print(type(result['price']))    # <class 'decimal.Decimal'>
+
+# Демонстрация проблемы float:
+import decimal
+a = float('0.1') + float('0.2')
+b = Decimal('0.1') + Decimal('0.2')
+print(a)   # 0.30000000000000004  ← неточно
+print(b)   # 0.3                  ← точно
+
+# Проверка атрибута
+dec = json.JSONDecoder(parse_float=Decimal)
+print(dec.parse_float)    # <class 'decimal.Decimal'>
+
+dec2 = json.JSONDecoder()
+print(dec2.parse_float)   # None (используется float)
+
+# Кастомный парсер с округлением
+import functools
+rounded_float = functools.partial(round, ndigits=2)
+result = json.loads('{"val": 1.23456789}', parse_float=rounded_float)
+print(result)   # {'val': 1.23}`,
+  },
+  {
+    name: "JSONDecoder.parse_int",
+    description: `Атрибут экземпляра JSONDecoder, хранящий callable для парсинга целых чисел из JSON.
+
+По умолчанию None — используется встроенный int. При задании callable он получает строку с целым числом (например, '42') и должен вернуть нужный объект.
+
+Используется реже, чем parse_float. Типичные случаи: ограничение диапазона значений, преобразование в numpy.int64 или другой числовой тип, логирование больших целых чисел JavaScript (до 2^53).`,
+    syntax: "JSONDecoder.parse_int",
+    arguments: [],
+    example: `import json
+
+# По умолчанию — int
+result = json.loads('{"count": 42}')
+print(type(result['count']))   # <class 'int'>
+
+# parse_int — кастомный парсер
+def bounded_int(s):
+    """Ограничивает целое число диапазоном [-1000, 1000]."""
+    value = int(s)
+    return max(-1000, min(1000, value))
+
+result = json.loads('{"a": 500, "b": 9999, "c": -5000}',
+                    parse_int=bounded_int)
+print(result)   # {'a': 500, 'b': 1000, 'c': -1000}
+
+# Использование для обнаружения больших чисел JS
+def safe_int(s):
+    value = int(s)
+    js_max = 2 ** 53
+    if abs(value) > js_max:
+        import warnings
+        warnings.warn(f'Число {value} превышает точность JavaScript')
+    return value
+
+json.loads('{"id": 9007199254740993}', parse_int=safe_int)
+# UserWarning: Число 9007199254740993 превышает точность JavaScript
+
+# Проверка атрибута
+dec = json.JSONDecoder(parse_int=int)
+print(dec.parse_int)   # <class 'int'>
+
+dec2 = json.JSONDecoder()
+print(dec2.parse_int)  # None`,
+  },
+  {
+    name: "JSONDecoder.parse_constant",
+    description: `Атрибут экземпляра JSONDecoder, хранящий callable для обработки специальных констант JSON: -Infinity, Infinity и NaN.
+
+Устарел начиная с Python 3.1 и удалён в Python 3.9. В современных версиях Python использовать не следует.
+
+В Python 3.1+ NaN, Infinity и -Infinity парсятся встроенным декодером напрямую в float значения. Атрибут сохранён для обратной совместимости, но при передаче в JSONDecoder вызывает DeprecationWarning.`,
+    syntax: "JSONDecoder.parse_constant",
+    arguments: [],
+    example: `import json
+
+# Современный способ — parse_constant устарел и удалён в Python 3.9
+# Используйте parse_float для обработки числовых значений
+
+# NaN и Infinity парсятся напрямую (при allow_nan=True у encoder)
+# Но стандартный json.loads не принимает NaN по умолчанию:
+try:
+    json.loads('NaN')
+except json.JSONDecodeError as e:
+    print(e)   # Expecting value
+
+# NaN/Infinity появляются в JSON при сериализации с allow_nan=True
+import json
+s = json.dumps(float('nan'))    # 'NaN' — нестандартный JSON
+s2 = json.dumps(float('inf'))   # 'Infinity'
+
+# Современная замена: пост-обработка через object_hook
+def handle_specials(d):
+    for k, v in d.items():
+        if v == 'NaN':
+            d[k] = float('nan')
+        elif v == 'Infinity':
+            d[k] = float('inf')
+    return d
+
+# Или используйте библиотеку simplejson с поддержкой NaN/Inf
+# pip install simplejson
+# import simplejson
+# simplejson.loads('NaN', allow_nan=True)`,
+  },
+  {
+    name: "JSONDecoder.strict",
+    description: `Атрибут экземпляра JSONDecoder, определяющий режим строгого разбора строк. Управляет тем, разрешены ли управляющие символы (коды 0–31) внутри JSON-строк.
+
+По умолчанию True (строгий режим) — управляющие символы (\\n, \\t, \\r и другие) внутри JSON-строк без экранирования вызывают JSONDecodeError. По стандарту RFC 8259 они должны быть экранированы.
+
+Если False — управляющие символы допускаются внутри строк напрямую. Это нарушает стандарт JSON, но может быть нужно для разбора нестандартных источников данных.`,
+    syntax: "JSONDecoder.strict",
+    arguments: [],
+    example: `import json
+
+# strict=True (по умолчанию) — символ переноса строки без экранирования запрещён
+decoder_strict = json.JSONDecoder(strict=True)
+
+try:
+    decoder_strict.decode('"строка\\nс переносом"')   # \\n экранирован — OK
+    decoder_strict.decode('{"a": "b"}')               # OK
+
+    # Реальный символ переноса строки без \\n — ошибка:
+    bad_json = '{"text": "line1\nline2"}'   # \n — реальный байт 0x0A
+    decoder_strict.decode(bad_json)
+except json.JSONDecodeError as e:
+    print(e)   # Invalid control character at: ...
+
+# strict=False — управляющие символы допускаются
+decoder_lenient = json.JSONDecoder(strict=False)
+result = decoder_lenient.decode('{"text": "line1\nline2"}')
+print(result)   # {'text': 'line1\nline2'}
+
+# Проверка атрибута
+print(decoder_strict.strict)    # True
+print(decoder_lenient.strict)   # False
+
+# json.loads() использует strict=True по умолчанию
+# Нет параметра strict в json.loads() — только через JSONDecoder
+data = json.JSONDecoder(strict=False).decode('{"msg": "a\tb"}')
+print(data)   # {'msg': 'a\tb'}`,
+  },
+  {
+    name: "json.JSONDecodeError()",
+    description: `Исключение, бросаемое при ошибке разбора JSON. Является подклассом ValueError и содержит подробную информацию о местонахождении ошибки в исходной строке.
+
+Дополнительные атрибуты по сравнению с ValueError:
+- msg — краткое описание ошибки (без позиции)
+- doc — полная исходная строка JSON, в которой возникла ошибка
+- pos — индекс символа, на котором произошла ошибка
+- lineno — номер строки (1-based) в doc, где возникла ошибка
+- colno — номер столбца (1-based) в строке lineno
+
+JSONDecodeError бросается из json.loads(), json.load(), JSONDecoder.decode() и JSONDecoder.raw_decode() при любой синтаксической ошибке JSON.`,
+    syntax: "json.JSONDecodeError(msg, doc, pos)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          'Строка с описанием ошибки (например, "Expecting value", "Extra data", "Invalid control character").',
+      },
+      {
+        name: "doc",
+        description: "Полная исходная строка JSON, в которой произошла ошибка.",
+      },
+      {
+        name: "pos",
+        description: "Индекс символа в doc, на котором обнаружена ошибка.",
+      },
+    ],
+    example: `import json
+
+# Типичные ошибки и их атрибуты
+examples = [
+    '{invalid}',             # неверный ключ
+    '{"a": 1,}',             # лишняя запятая
+    '{"a": undefined}',      # undefined не существует в JSON
+    '[1, 2',                 # незакрытый массив
+]
+
+for s in examples:
+    try:
+        json.loads(s)
+    except json.JSONDecodeError as e:
+        print(f'Строка:   {repr(s)}')
+        print(f'  msg:    {e.msg}')
+        print(f'  pos:    {e.pos}')
+        print(f'  lineno: {e.lineno}')
+        print(f'  colno:  {e.colno}')
+        print()
+
+# Многострочный JSON — lineno и colno точно указывают место
+multiline = """{
+    "name": "Тест",
+    "value": WRONG
+}"""
+try:
+    json.loads(multiline)
+except json.JSONDecodeError as e:
+    print(f'Ошибка на строке {e.lineno}, столбце {e.colno}')
+    print(f'Символ: {repr(e.doc[e.pos])}')
+# Ошибка на строке 3, столбце 14
+
+# JSONDecodeError является подклассом ValueError
+print(issubclass(json.JSONDecodeError, ValueError))   # True`,
+  },
+  {
+    name: "io.DEFAULT_BUFFER_SIZE",
+    description: `Константа модуля io, содержащая размер буфера по умолчанию в байтах, используемый буферизованными потоками ввода-вывода.
+
+На большинстве платформ значение равно 8192 (8 КБ). Это значение используется при создании буферизованных объектов (BufferedReader, BufferedWriter, BufferedRandom), если размер буфера явно не задан через параметр buffering.
+
+Значение определяется операционной системой через os.stat() на реальных файлах (поле st_blksize), либо берётся как константа для потоков, не связанных с файловой системой. Задание buffering=io.DEFAULT_BUFFER_SIZE эквивалентно buffering=-1 (буфер по умолчанию).`,
+    syntax: "io.DEFAULT_BUFFER_SIZE",
+    arguments: [],
+    example: `import io
+
+# Значение константы
+print(io.DEFAULT_BUFFER_SIZE)   # 8192
+
+# Явное использование при создании потока
+with open('data.bin', 'rb', buffering=io.DEFAULT_BUFFER_SIZE) as f:
+    chunk = f.read(io.DEFAULT_BUFFER_SIZE)
+
+# Чтение файла кусками по размеру буфера
+def read_in_chunks(filepath):
+    with open(filepath, 'rb') as f:
+        while True:
+            chunk = f.read(io.DEFAULT_BUFFER_SIZE)
+            if not chunk:
+                break
+            yield chunk
+
+# Использование в BufferedReader вручную
+raw = io.FileIO('data.bin', 'rb')
+buffered = io.BufferedReader(raw, buffer_size=io.DEFAULT_BUFFER_SIZE)
+data = buffered.read()
+buffered.close()
+
+# Сравнение с другими размерами буфера
+print(io.DEFAULT_BUFFER_SIZE)    # 8192  (8 KB)
+print(io.DEFAULT_BUFFER_SIZE * 8)  # 65536 (64 KB) — для больших файлов`,
+  },
+  {
+    name: "io.open()",
+    description: `Функция открытия файла и возврата потокового объекта. Является псевдонимом встроенной функции open() и предпочтительным способом работы с файлами в модуле io.
+
+Режимы открытия (параметр mode):
+- 'r' — чтение (по умолчанию), 'w' — запись, 'a' — добавление, 'x' — создание (ошибка если существует)
+- 'b' — бинарный режим, 't' — текстовый (по умолчанию)
+- '+' — чтение и запись одновременно
+- Комбинации: 'rb', 'wb', 'r+', 'rb+' и др.
+
+Возвращаемый тип зависит от комбинации параметров:
+- Текстовый файл → TextIOWrapper
+- Буферизованный бинарный → BufferedReader / BufferedWriter / BufferedRandom
+- Небуферизованный бинарный → FileIO`,
+    syntax: `io.open(file, mode='r', buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None)`,
+    arguments: [
+      {
+        name: "file",
+        description:
+          "Путь к файлу (str, bytes, Path) или дескриптор файла (int).",
+      },
+      {
+        name: "mode",
+        description:
+          "Режим открытия: 'r', 'w', 'a', 'x', 'b', 't', '+' и их комбинации. По умолчанию 'r' (текстовое чтение).",
+      },
+      {
+        name: "buffering",
+        description:
+          "-1 — буфер по умолчанию; 0 — без буфера (только бинарный режим); 1 — построчная буферизация; >1 — размер буфера в байтах.",
+      },
+      {
+        name: "encoding",
+        description:
+          "Кодировка для текстового режима (например, 'utf-8', 'cp1251'). None — системная кодировка (locale.getpreferredencoding).",
+      },
+      {
+        name: "errors",
+        description:
+          "Обработка ошибок кодирования: 'strict' (ошибка), 'ignore' (пропустить), 'replace' (заменить на ?), 'surrogateescape' и др.",
+      },
+      {
+        name: "newline",
+        description:
+          "Управление переводом строк: None — универсальный режим (\\n, \\r, \\r\\n → \\n); '' — без перевода; '\\n', '\\r', '\\r\\n' — конкретный разделитель.",
+      },
+      {
+        name: "closefd",
+        description:
+          "Если False и file — дескриптор (int) — дескриптор не закрывается при закрытии потока. По умолчанию True.",
+      },
+      {
+        name: "opener",
+        description:
+          "Кастомный callable(path, flags) для открытия файла. Если None — используется os.open().",
+      },
+    ],
+    example: `import io
+
+# Текстовое чтение (по умолчанию)
+with io.open('readme.txt', 'r', encoding='utf-8') as f:
+    text = f.read()
+
+# Текстовая запись
+with io.open('output.txt', 'w', encoding='utf-8', newline='\\n') as f:
+    f.write('Привет, мир!\\n')
+
+# Бинарное чтение
+with io.open('image.png', 'rb') as f:
+    header = f.read(8)
+
+# Бинарная запись без буфера
+with io.open('raw.bin', 'wb', buffering=0) as f:
+    f.write(b'\\x00\\x01\\x02')
+
+# Чтение и запись одновременно
+with io.open('data.txt', 'r+', encoding='utf-8') as f:
+    content = f.read()
+    f.seek(0)
+    f.write(content.upper())
+
+# Кастомный opener (открыть с флагами ОС)
+import os
+def my_opener(path, flags):
+    return os.open(path, flags, mode=0o600)  # права 600
+
+with io.open('secret.txt', 'w', opener=my_opener) as f:
+    f.write('секрет')
+
+# Обработка ошибок кодировки
+with io.open('mixed.txt', 'r', encoding='utf-8', errors='replace') as f:
+    text = f.read()  # некорректные байты → '?'`,
+  },
+  {
+    name: "io.open_code()",
+    description: `Функция открытия файла для чтения исходного кода Python. Предназначена для хуков импорта и инструментов, читающих .py-файлы — обеспечивает правильную обработку в средах с зашифрованным или защищённым кодом.
+
+В отличие от io.open(), функция open_code() открывает файл без трансляции переводов строк и предполагает, что файл будет декодирован как исходный код. В CPython является псевдонимом io.open(path, 'rb'), но может быть переопределена через sys.set_coroutine_origin_tracking_depth() или аудит-хуки.
+
+Позволяет среде выполнения (например, с шифрованием исходников) перехватывать чтение .py-файлов через механизм аудита Python (sys.addaudithook).`,
+    syntax: "io.open_code(path)",
+    arguments: [
+      {
+        name: "path",
+        description:
+          "Путь к файлу исходного кода Python (str). Файл открывается в бинарном режиме.",
+      },
+    ],
+    example: `import io
+
+# Чтение исходного кода Python-файла
+with io.open_code('mymodule.py') as f:
+    source_bytes = f.read()
+
+print(type(source_bytes))   # <class 'bytes'>
+print(source_bytes[:50])    # b'import os\\nimport sys\\n...'
+
+# Декодирование прочитанного кода
+source = source_bytes.decode('utf-8')
+print(source[:100])
+
+# Компиляция прочитанного кода
+code = compile(source_bytes, 'mymodule.py', 'exec')
+exec(code)
+
+# Отличие от io.open():
+# io.open(path, 'r') — текстовый режим, трансляция переносов строк
+# io.open_code(path) — бинарный режим, без трансляции, с аудит-хуком
+
+# Использование в инструментах импорта
+import sys
+
+def my_audit_hook(event, args):
+    if event == 'open':
+        path, mode, flags = args
+        print(f'Открывается файл: {path} (mode={mode})')
+
+sys.addaudithook(my_audit_hook)
+# Теперь io.open_code() будет вызывать хук при открытии файла`,
+  },
+  {
+    name: "io.UnsupportedOperation",
+    description: `Исключение, бросаемое при вызове метода, не поддерживаемого данным потоком ввода-вывода. Является подклассом одновременно OSError и ValueError.
+
+Типичные случаи возникновения:
+- Вызов write() на потоке, открытом только для чтения
+- Вызов read() на потоке, открытом только для записи
+- Вызов seek() на потоке, не поддерживающем позиционирование (например, sys.stdin)
+- Вызов truncate() на потоке без поддержки этой операции
+
+Наследование от обоих OSError и ValueError позволяет перехватывать исключение как любым из этих типов.`,
+    syntax: "io.UnsupportedOperation",
+    arguments: [],
+    example: `import io
+
+# Попытка записи в поток только для чтения
+with io.open('data.txt', 'r') as f:
+    try:
+        f.write('текст')
+    except io.UnsupportedOperation as e:
+        print(e)   # write
+
+# Попытка позиционирования в непозиционируемом потоке
+import sys
+try:
+    sys.stdin.seek(0)
+except io.UnsupportedOperation as e:
+    print(e)   # underlying stream is not seekable
+
+# Попытка чтения из потока только для записи
+stream = io.BytesIO()
+stream.read()   # OK — BytesIO поддерживает оба направления
+
+write_only = io.open('output.txt', 'w')
+try:
+    write_only.read()
+except io.UnsupportedOperation as e:
+    print(e)   # not readable
+finally:
+    write_only.close()
+
+# UnsupportedOperation является подклассом OSError и ValueError
+print(issubclass(io.UnsupportedOperation, OSError))    # True
+print(issubclass(io.UnsupportedOperation, ValueError)) # True
+
+# Перехват как OSError тоже работает
+try:
+    io.open('data.txt', 'r').write('x')
+except OSError as e:
+    print(type(e).__name__)   # UnsupportedOperation`,
+  },
+  {
+    name: "io.SEEK_SET",
+    description: `Константа позиционирования потока — начало файла. Числовое значение: 0.
+
+Используется как аргумент whence в методе seek() для указания, что смещение отсчитывается от начала файла. Это наиболее распространённый режим позиционирования: seek(n, io.SEEK_SET) перемещает указатель на позицию n от начала файла.
+
+Числовое значение 0 можно передавать напрямую (seek(n, 0)), однако использование именованной константы io.SEEK_SET делает код более читаемым и явным.`,
+    syntax: "io.SEEK_SET",
+    arguments: [],
+    example: `import io
+
+with io.open('data.txt', 'r+', encoding='utf-8') as f:
+    f.write('Hello, World!')
+
+    # SEEK_SET — от начала файла (значение 0)
+    f.seek(0, io.SEEK_SET)     # перейти в начало
+    print(f.read(5))           # Hello
+
+    f.seek(7, io.SEEK_SET)     # перейти на позицию 7 от начала
+    print(f.read(5))           # World
+
+    # SEEK_SET используется по умолчанию (whence=0)
+    f.seek(0)                  # то же самое, что seek(0, io.SEEK_SET)
+    print(f.read())            # Hello, World!
+
+# Проверка значения константы
+print(io.SEEK_SET)   # 0
+print(io.SEEK_CUR)   # 1
+print(io.SEEK_END)   # 2
+
+# Работа с бинарным потоком
+with io.open('binary.bin', 'rb') as f:
+    f.seek(0, io.SEEK_SET)    # начало файла
+    header = f.read(4)         # первые 4 байта (например, magic bytes PNG)
+    print(header)`,
+  },
+  {
+    name: "io.SEEK_CUR",
+    description: `Константа позиционирования потока — текущая позиция. Числовое значение: 1.
+
+Используется как аргумент whence в методе seek() для указания, что смещение отсчитывается от текущей позиции указателя. Положительное смещение двигает вперёд, отрицательное — назад.
+
+seek(0, io.SEEK_CUR) — удобный способ узнать текущую позицию без изменения, хотя метод tell() делает то же самое более явно.`,
+    syntax: "io.SEEK_CUR",
+    arguments: [],
+    example: `import io
+
+with io.open('data.bin', 'rb') as f:
+    # Чтение заголовка
+    header = f.read(8)
+    print(f'После header: позиция {f.tell()}')  # 8
+
+    # SEEK_CUR — смещение от текущей позиции (значение 1)
+    f.seek(4, io.SEEK_CUR)    # пропустить 4 байта вперёд
+    print(f'После пропуска: позиция {f.tell()}')  # 12
+
+    f.seek(-2, io.SEEK_CUR)   # вернуться на 2 байта назад
+    print(f'После возврата: позиция {f.tell()}')  # 10
+
+    # Узнать текущую позицию (эквивалент tell())
+    pos = f.seek(0, io.SEEK_CUR)
+    print(f'Текущая позиция: {pos}')   # 10
+
+# Пример: пропуск блоков фиксированного размера
+def read_blocks(filepath, block_size, skip_every_n=2):
+    with io.open(filepath, 'rb') as f:
+        i = 0
+        while True:
+            block = f.read(block_size)
+            if not block:
+                break
+            if i % skip_every_n == 0:
+                yield block
+            else:
+                f.seek(block_size, io.SEEK_CUR)
+            i += 1`,
+  },
+  {
+    name: "io.SEEK_END",
+    description: `Константа позиционирования потока — конец файла. Числовое значение: 2.
+
+Используется как аргумент whence в методе seek() для указания, что смещение отсчитывается от конца файла. Смещение обычно отрицательное (для перемещения назад от конца) или нулевое (перейти в самый конец).
+
+seek(0, io.SEEK_END) — стандартный способ перейти в конец файла и узнать его размер через tell(). Поддерживается не всеми потоками — для некоторых (сокеты, pipes) вызывает io.UnsupportedOperation.`,
+    syntax: "io.SEEK_END",
+    arguments: [],
+    example: `import io
+
+with io.open('data.bin', 'rb') as f:
+    # SEEK_END — смещение от конца файла (значение 2)
+
+    # Переход в конец файла
+    f.seek(0, io.SEEK_END)
+    file_size = f.tell()
+    print(f'Размер файла: {file_size} байт')
+
+    # Чтение последних N байт
+    n = 16
+    f.seek(-n, io.SEEK_END)
+    tail = f.read(n)
+    print(f'Последние {n} байт: {tail}')
+
+    # Чтение предпоследнего блока
+    block_size = 512
+    f.seek(-block_size * 2, io.SEEK_END)
+    prev_block = f.read(block_size)
+
+# Получение размера файла без полного чтения
+def get_file_size(filepath):
+    with io.open(filepath, 'rb') as f:
+        f.seek(0, io.SEEK_END)
+        return f.tell()
+
+print(get_file_size('data.bin'))   # размер в байтах
+
+# Добавление в конец (эквивалентно режиму 'a')
+with io.open('log.txt', 'r+b') as f:
+    f.seek(0, io.SEEK_END)
+    f.write(b'новая запись\\n')`,
+  },
+  {
+    name: "IOBase.close()",
+    description: `Метод закрытия потока. Освобождает системные ресурсы, связанные с потоком: дескриптор файла, буферы, сетевые соединения. После закрытия любой вызов метода ввода-вывода бросает ValueError.
+
+Метод идемпотентен — повторный вызов close() не вызывает исключения и не имеет эффекта. Внутри close() вызывает flush() для сброса буфера перед закрытием.
+
+Рекомендуется использовать контекстный менеджер with, который гарантирует вызов close() даже при исключении. Прямой вызов close() требуется только при работе вне контекстного менеджера — в этом случае используйте try/finally.`,
+    syntax: "IOBase.close()",
+    arguments: [],
+    example: `import io
+
+# Рекомендуемый способ — контекстный менеджер
+with open('data.txt', 'r') as f:
+    text = f.read()
+# close() вызван автоматически, даже при исключении
+
+# Явный вызов close() в try/finally
+f = open('data.txt', 'r')
+try:
+    text = f.read()
+finally:
+    f.close()   # гарантированное закрытие
+
+# Идемпотентность — повторный вызов безопасен
+f = open('data.txt', 'r')
+f.close()
+f.close()   # не вызывает ошибки
+
+# После закрытия — ValueError
+f = open('data.txt', 'r')
+f.close()
+try:
+    f.read()
+except ValueError as e:
+    print(e)   # I/O operation on closed file.
+
+# BytesIO и StringIO тоже закрываются
+buf = io.BytesIO(b'data')
+buf.close()
+print(buf.closed)   # True`,
+  },
+  {
+    name: "IOBase.closed",
+    description: `Атрибут (свойство) потока, показывающий, закрыт ли поток. Возвращает True если поток закрыт, False если открыт.
+
+Доступен только для чтения — установить напрямую нельзя. Устанавливается в True после вызова close() или при выходе из контекстного менеджера with.
+
+Используется для проверки состояния потока перед выполнением операций ввода-вывода, а также в отладочных целях и при написании контекстных менеджеров.`,
+    syntax: "IOBase.closed",
+    arguments: [],
+    example: `import io
+
+# Проверка состояния файла
+f = open('data.txt', 'r')
+print(f.closed)   # False
+
+f.close()
+print(f.closed)   # True
+
+# В контекстном менеджере
+with open('data.txt', 'r') as f:
+    print(f.closed)   # False
+print(f.closed)       # True — закрыт после выхода из with
+
+# Защитная проверка перед операцией
+def safe_read(f):
+    if f.closed:
+        raise ValueError('Попытка чтения из закрытого потока')
+    return f.read()
+
+# StringIO и BytesIO
+buf = io.StringIO('hello')
+print(buf.closed)   # False
+buf.close()
+print(buf.closed)   # True
+
+# Нельзя установить напрямую
+try:
+    f.closed = False
+except AttributeError as e:
+    print(e)   # can't set attribute`,
+  },
+  {
+    name: "IOBase.fileno()",
+    description: `Метод, возвращающий целочисленный дескриптор файла (file descriptor) операционной системы, связанный с потоком.
+
+Дескриптор файла — это целое число, используемое ядром ОС для идентификации открытого файла или другого ресурса (сокета, трубы). Стандартные дескрипторы: 0 — stdin, 1 — stdout, 2 — stderr.
+
+Если поток не связан с реальным файловым дескриптором (например, io.BytesIO, io.StringIO) — бросает io.UnsupportedOperation. Используется при работе с низкоуровневыми API ОС через модуль os.`,
+    syntax: "IOBase.fileno()",
+    arguments: [],
+    example: `import io
+import os
+
+# Дескриптор реального файла
+with open('data.txt', 'r') as f:
+    fd = f.fileno()
+    print(fd)          # например: 3, 4, 5...
+    print(type(fd))    # <class 'int'>
+
+# Стандартные дескрипторы
+import sys
+print(sys.stdin.fileno())   # 0
+print(sys.stdout.fileno())  # 1
+print(sys.stderr.fileno())  # 2
+
+# Использование с os (низкоуровневое чтение)
+with open('data.bin', 'rb') as f:
+    fd = f.fileno()
+    data = os.read(fd, 1024)   # низкоуровневое чтение через ОС
+
+# BytesIO и StringIO не имеют дескриптора
+buf = io.BytesIO(b'data')
+try:
+    buf.fileno()
+except io.UnsupportedOperation as e:
+    print(e)   # fileno
+
+# Проверка дескриптора через os
+with open('data.txt', 'r') as f:
+    fd = f.fileno()
+    stat = os.fstat(fd)   # статистика файла по дескриптору
+    print(stat.st_size)   # размер файла`,
+  },
+  {
+    name: "IOBase.flush()",
+    description: `Метод принудительного сброса буфера записи в базовый поток или файловую систему. Гарантирует, что все данные из буфера приложения переданы в ОС.
+
+Важно понимать разницу уровней:
+- flush() сбрасывает буфер Python → буфер ОС
+- os.fsync(f.fileno()) дополнительно сбрасывает буфер ОС → физический диск
+
+После flush() данные доступны другим процессам, читающим этот файл, но не обязательно записаны на диск. Для гарантированной записи на диск используйте os.fsync() после flush().
+
+Для потоков без буферизации (FileIO с buffering=0) flush() не имеет эффекта. Вызывается автоматически при close().`,
+    syntax: "IOBase.flush()",
+    arguments: [],
+    example: `import io
+import os
+
+# Принудительный сброс буфера
+with open('log.txt', 'w', encoding='utf-8') as f:
+    f.write('Запись 1\\n')
+    f.flush()   # данные переданы в ОС, другие процессы их видят
+    f.write('Запись 2\\n')
+    # flush() вызывается автоматически при close()
+
+# Реальная запись на диск (не только в буфер ОС)
+with open('critical.txt', 'w') as f:
+    f.write('критические данные')
+    f.flush()
+    os.fsync(f.fileno())   # гарантированная запись на физический диск
+
+# Потоковый вывод (например, прогресс)
+import sys
+for i in range(5):
+    sys.stdout.write(f'\\rШаг {i+1}/5...')
+    sys.stdout.flush()   # без flush() вывод будет буферизован
+
+# BytesIO — flush() безопасен, но не имеет эффекта
+buf = io.BytesIO()
+buf.write(b'data')
+buf.flush()   # OK, ничего не происходит
+print(buf.getvalue())   # b'data'`,
+  },
+  {
+    name: "IOBase.isatty()",
+    description: `Метод проверки, подключён ли поток к интерактивному терминалу (TTY — TeleTYpewriter). Возвращает True если поток является терминалом, False в противном случае.
+
+Используется для определения интерактивного режима работы: если вывод идёт в терминал — можно использовать цветной вывод, прогресс-бары, интерактивные запросы. Если в файл или pipe — лучше простой текст.
+
+Большинство файлов, BytesIO и StringIO возвращают False. sys.stdout возвращает True при запуске в интерактивной оболочке и False при перенаправлении вывода (python script.py > file.txt).`,
+    syntax: "IOBase.isatty()",
+    arguments: [],
+    example: `import io
+import sys
+
+# Проверка интерактивного терминала
+print(sys.stdout.isatty())   # True в терминале, False при > file.txt
+print(sys.stdin.isatty())    # True в интерактивном режиме
+
+# Адаптивный вывод
+def print_progress(current, total):
+    if sys.stdout.isatty():
+        # Интерактивный режим — перезаписываем строку
+        print(f'\\r{current}/{total} ({current/total:.0%})', end='', flush=True)
+    else:
+        # Pipe или файл — обычный вывод
+        print(f'Progress: {current}/{total}')
+
+# Цветной вывод только в терминале
+def colored(text, color_code):
+    if sys.stdout.isatty():
+        return f'\\033[{color_code}m{text}\\033[0m'
+    return text
+
+print(colored('Успех!', '32'))   # зелёный в терминале, обычный в файле
+
+# Обычные файлы и буферы — всегда False
+with open('data.txt', 'r') as f:
+    print(f.isatty())   # False
+
+buf = io.BytesIO()
+print(buf.isatty())     # False`,
+  },
+  {
+    name: "IOBase.readable()",
+    description: `Метод проверки, поддерживает ли поток чтение. Возвращает True если поток открыт для чтения, False в противном случае.
+
+Позволяет проверить возможность чтения до фактической попытки — это удобнее, чем перехватывать io.UnsupportedOperation. Потоки, открытые только для записи ('w', 'a', 'x'), возвращают False.
+
+Используется при написании универсальных функций, принимающих произвольный поток ввода-вывода, и при реализации кастомных классов-потоков.`,
+    syntax: "IOBase.readable()",
+    arguments: [],
+    example: `import io
+
+# Проверка читаемости потоков
+with open('data.txt', 'r') as f:
+    print(f.readable())   # True
+
+with open('data.txt', 'w') as f:
+    print(f.readable())   # False
+
+with open('data.txt', 'r+') as f:
+    print(f.readable())   # True (r+ — чтение и запись)
+
+# BytesIO и StringIO — всегда читаемы
+print(io.BytesIO(b'data').readable())    # True
+print(io.StringIO('text').readable())    # True
+
+# Универсальная функция для любого потока
+def safe_read(stream, n=-1):
+    if not stream.readable():
+        raise io.UnsupportedOperation('Поток не поддерживает чтение')
+    return stream.read(n)
+
+# Кастомный класс потока
+class WriteOnlyStream(io.RawIOBase):
+    def readable(self):
+        return False
+
+    def writable(self):
+        return True
+
+stream = WriteOnlyStream()
+print(stream.readable())   # False
+print(stream.writable())   # True`,
+  },
+  {
+    name: "IOBase.readline()",
+    description: `Метод чтения одной строки из потока. Читает символы до тех пор, пока не встретит символ новой строки '\\n', конец файла или не прочитает size байт/символов.
+
+Возвращённая строка включает символ новой строки '\\n' (если он присутствует в файле). Последняя строка файла без '\\n' возвращается как есть. Пустая строка '' означает конец файла.
+
+В бинарном режиме возвращает bytes с b'\\n' в конце. В текстовом — str. Параметр size ограничивает максимальное количество читаемых байт/символов (строка может оказаться короче полной строки файла).`,
+    syntax: "IOBase.readline(size=-1)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Максимальное количество байт/символов для чтения. -1 (по умолчанию) — читать до конца строки или EOF.",
+      },
+    ],
+    example: `import io
+
+# Создаём тестовый файл
+with open('lines.txt', 'w', encoding='utf-8') as f:
+    f.write('строка 1\\nстрока 2\\nстрока 3\\n')
+
+# Чтение строк по одной
+with open('lines.txt', 'r', encoding='utf-8') as f:
+    print(repr(f.readline()))   # 'строка 1\\n'
+    print(repr(f.readline()))   # 'строка 2\\n'
+    print(repr(f.readline()))   # 'строка 3\\n'
+    print(repr(f.readline()))   # ''  ← EOF
+
+# Чтение с ограничением по размеру
+with open('lines.txt', 'r') as f:
+    print(repr(f.readline(5)))   # 'строк'  ← только 5 символов
+
+# Итерация по строкам (эффективнее readlines())
+with open('lines.txt', 'r', encoding='utf-8') as f:
+    for line in f:   # использует readline() внутри
+        print(line.rstrip())
+
+# StringIO
+buf = io.StringIO('line 1\\nline 2\\nline 3')
+print(buf.readline())   # 'line 1\\n'
+print(buf.readline())   # 'line 2\\n'
+
+# BytesIO
+bbuf = io.BytesIO(b'row1\\nrow2\\n')
+print(bbuf.readline())   # b'row1\\n'`,
+  },
+  {
+    name: "IOBase.readlines()",
+    description: `Метод чтения всех строк потока в список. Читает поток до EOF и возвращает список строк, каждая из которых заканчивается символом '\\n' (кроме последней, если файл не заканчивается переносом строки).
+
+Параметр hint позволяет ограничить количество читаемых байт: метод читает строки, пока суммарный их размер не превысит hint. Это полезно для частичного чтения больших файлов по строкам.
+
+Для больших файлов предпочтительно итерироваться по файловому объекту напрямую (for line in f:) — это не загружает весь файл в память. readlines() загружает все строки сразу.`,
+    syntax: "IOBase.readlines(hint=-1)",
+    arguments: [
+      {
+        name: "hint",
+        description:
+          "Приблизительный лимит байт для чтения. -1 (по умолчанию) — читать весь файл. При hint > 0 читаются строки, пока их суммарный размер не превысит hint.",
+      },
+    ],
+    example: `import io
+
+with open('lines.txt', 'w') as f:
+    f.write('line 1\\nline 2\\nline 3\\nline 4\\n')
+
+# Чтение всех строк
+with open('lines.txt', 'r') as f:
+    lines = f.readlines()
+print(lines)   # ['line 1\\n', 'line 2\\n', 'line 3\\n', 'line 4\\n']
+
+# Удаление символов новой строки
+lines = [l.rstrip('\\n') for l in lines]
+
+# С параметром hint — частичное чтение
+with open('lines.txt', 'r') as f:
+    partial = f.readlines(hint=14)   # ~14 байт → ['line 1\\n', 'line 2\\n']
+print(partial)
+
+# Эффективная альтернатива для больших файлов (без загрузки в память)
+with open('large.txt', 'r') as f:
+    for line in f:               # итерация строка за строкой
+        process(line.rstrip())
+
+# StringIO
+buf = io.StringIO('a\\nb\\nc\\n')
+print(buf.readlines())   # ['a\\n', 'b\\n', 'c\\n']
+
+# BytesIO
+bbuf = io.BytesIO(b'x\\ny\\nz\\n')
+print(bbuf.readlines())   # [b'x\\n', b'y\\n', b'z\\n']`,
+  },
+  {
+    name: "IOBase.seek()",
+    description: `Метод изменения текущей позиции в потоке. Перемещает указатель чтения/записи на заданное смещение относительно точки отсчёта whence и возвращает новую абсолютную позицию.
+
+Значения whence:
+- io.SEEK_SET (0) — от начала файла (по умолчанию)
+- io.SEEK_CUR (1) — от текущей позиции
+- io.SEEK_END (2) — от конца файла
+
+Не все потоки поддерживают позиционирование. Сокеты, pipes и stdin/stdout при запуске из скрипта не поддерживают seek() и бросают io.UnsupportedOperation. Поддержку можно проверить через seekable().
+
+В текстовом режиме допустимы только seek(0) и значения, возвращённые предыдущим вызовом tell().`,
+    syntax: "IOBase.seek(offset, whence=SEEK_SET)",
+    arguments: [
+      {
+        name: "offset",
+        description:
+          "Смещение в байтах/символах. В текстовом режиме должен быть 0 или значение из tell().",
+      },
+      {
+        name: "whence",
+        description:
+          "Точка отсчёта: io.SEEK_SET (0) — начало, io.SEEK_CUR (1) — текущая позиция, io.SEEK_END (2) — конец файла. По умолчанию SEEK_SET.",
+      },
+    ],
+    example: `import io
+
+with open('data.bin', 'rb') as f:
+    # Перейти в начало файла
+    f.seek(0, io.SEEK_SET)   # или просто f.seek(0)
+    header = f.read(4)
+
+    # Перейти на конкретную позицию
+    f.seek(100)
+    data = f.read(20)
+
+    # Пропустить вперёд от текущей позиции
+    f.seek(50, io.SEEK_CUR)
+
+    # Перейти к последним 10 байтам
+    f.seek(-10, io.SEEK_END)
+    tail = f.read()
+
+    # Узнать размер файла
+    f.seek(0, io.SEEK_END)
+    size = f.tell()
+    print(f'Размер: {size} байт')
+
+# Текстовый режим — только seek(0) или значения из tell()
+with open('text.txt', 'r', encoding='utf-8') as f:
+    pos = f.tell()
+    line = f.readline()
+    f.seek(pos)           # вернуться к началу строки
+    line_again = f.readline()
+
+# BytesIO — полная поддержка seek
+buf = io.BytesIO(b'Hello, World!')
+buf.seek(7)
+print(buf.read())   # b'World!'
+buf.seek(-6, io.SEEK_END)
+print(buf.read())   # b'World!'`,
+  },
+  {
+    name: "IOBase.seekable()",
+    description: `Метод проверки, поддерживает ли поток позиционирование (метод seek()). Возвращает True если seek(), tell() и truncate() поддерживаются, False в противном случае.
+
+Файлы на диске поддерживают позиционирование. Сокеты, трубы (pipes), stdin/stdout в неинтерактивном режиме — не поддерживают. Попытка вызвать seek() на непозиционируемом потоке бросает io.UnsupportedOperation.
+
+Используется при написании универсального кода, работающего с произвольными потоками.`,
+    syntax: "IOBase.seekable()",
+    arguments: [],
+    example: `import io
+import sys
+
+# Файлы поддерживают позиционирование
+with open('data.txt', 'r') as f:
+    print(f.seekable())   # True
+
+# StringIO и BytesIO — поддерживают
+print(io.BytesIO(b'data').seekable())     # True
+print(io.StringIO('text').seekable())     # True
+
+# stdin/stdout — зависит от среды
+print(sys.stdin.seekable())    # False (обычно)
+print(sys.stdout.seekable())   # False (обычно)
+
+# Безопасное позиционирование
+def rewind_if_possible(stream):
+    if stream.seekable():
+        stream.seek(0)
+        return True
+    return False
+
+# Кастомный класс без позиционирования
+class ForwardOnlyStream(io.RawIOBase):
+    def seekable(self):
+        return False
+
+    def readable(self):
+        return True
+
+stream = ForwardOnlyStream()
+print(stream.seekable())   # False
+try:
+    stream.seek(0)
+except io.UnsupportedOperation:
+    print('Позиционирование не поддерживается')`,
+  },
+  {
+    name: "IOBase.tell()",
+    description: `Метод получения текущей позиции указателя в потоке. Возвращает целое число — количество байт/символов от начала файла до текущей позиции.
+
+В бинарном режиме возвращает абсолютное смещение в байтах. В текстовом режиме возвращает непрозрачный токен (opaque number) — его значение зависит от реализации и не обязательно равно числу символов; используется только для передачи обратно в seek().
+
+Вызов tell() не изменяет текущую позицию. Эквивалент seek(0, SEEK_CUR). Бросает io.UnsupportedOperation для потоков без поддержки позиционирования.`,
+    syntax: "IOBase.tell()",
+    arguments: [],
+    example: `import io
+
+# Бинарный режим — байтовое смещение
+with open('data.bin', 'rb') as f:
+    print(f.tell())   # 0 (начало)
+    f.read(10)
+    print(f.tell())   # 10
+    f.seek(0)
+    print(f.tell())   # 0
+
+# Запоминание позиции для возврата
+with open('data.txt', 'r', encoding='utf-8') as f:
+    f.readline()              # прочитали первую строку
+    bookmark = f.tell()       # запомнили позицию
+    f.readline()              # прочитали вторую строку
+    f.seek(bookmark)          # вернулись
+    line = f.readline()       # снова вторая строка
+
+# Размер файла через tell()
+def get_size(filepath):
+    with open(filepath, 'rb') as f:
+        f.seek(0, io.SEEK_END)
+        return f.tell()
+
+# BytesIO
+buf = io.BytesIO(b'Hello, World!')
+buf.read(5)
+print(buf.tell())   # 5
+
+buf.seek(0)
+print(buf.tell())   # 0
+
+# StringIO
+sbuf = io.StringIO('абвгд')
+sbuf.read(3)
+pos = sbuf.tell()
+sbuf.seek(pos)       # корректный возврат к позиции`,
+  },
+  {
+    name: "IOBase.truncate()",
+    description: `Метод усечения потока до заданного размера. Если size не указан — усекает до текущей позиции tell(). Возвращает новый размер файла в байтах.
+
+После truncate() позиция в потоке не изменяется — если она была за пределами нового размера, при последующей записи возможно создание разреженного файла (sparse file) с нулевыми байтами между старой позицией и новой записью.
+
+Поддерживается только для записываемых и позиционируемых потоков. Бросает io.UnsupportedOperation для только-читаемых или непозиционируемых потоков.`,
+    syntax: "IOBase.truncate(size=None)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Размер в байтах, до которого усекается файл. None (по умолчанию) — усечь до текущей позиции tell().",
+      },
+    ],
+    example: `import io
+
+# Усечение до конкретного размера
+with open('data.txt', 'r+', encoding='utf-8') as f:
+    content = f.read()
+    print(f'Исходный размер: {len(content)} символов')
+
+    f.seek(0)
+    f.truncate(10)   # оставить только первые 10 байт
+
+# Усечение до текущей позиции
+with open('data.txt', 'r+', encoding='utf-8') as f:
+    f.seek(5)
+    f.truncate()     # усечь всё после позиции 5
+
+# Очистка файла (нулевой размер)
+with open('log.txt', 'r+') as f:
+    f.seek(0)
+    f.truncate(0)    # полная очистка
+    f.seek(0)
+    f.write('Новое начало')
+
+# BytesIO
+buf = io.BytesIO(b'Hello, World!')
+buf.seek(5)
+buf.truncate()           # усечь до позиции 5
+print(buf.getvalue())    # b'Hello'
+
+buf2 = io.BytesIO(b'Hello, World!')
+buf2.truncate(7)         # усечь до 7 байт
+print(buf2.getvalue())   # b'Hello, '`,
+  },
+  {
+    name: "IOBase.writable()",
+    description: `Метод проверки, поддерживает ли поток запись. Возвращает True если поток открыт для записи, False в противном случае.
+
+Потоки, открытые в режимах 'w', 'a', 'x', 'r+', 'w+', 'a+', возвращают True. Потоки только для чтения ('r') возвращают False.
+
+Используется при написании универсальных функций, принимающих произвольный поток, а также при реализации кастомных классов-потоков. Попытка вызвать write() на незаписываемом потоке бросает io.UnsupportedOperation.`,
+    syntax: "IOBase.writable()",
+    arguments: [],
+    example: `import io
+
+# Проверка записываемости потоков
+with open('data.txt', 'r') as f:
+    print(f.writable())   # False
+
+with open('data.txt', 'w') as f:
+    print(f.writable())   # True
+
+with open('data.txt', 'r+') as f:
+    print(f.writable())   # True
+
+with open('data.txt', 'a') as f:
+    print(f.writable())   # True
+
+# BytesIO — всегда записываем
+buf = io.BytesIO()
+print(buf.writable())   # True
+
+# Безопасная запись
+def safe_write(stream, data):
+    if not stream.writable():
+        raise io.UnsupportedOperation('Поток не поддерживает запись')
+    stream.write(data)
+
+# Кастомный класс
+class ReadOnlyStream(io.RawIOBase):
+    def readable(self):
+        return True
+
+    def writable(self):
+        return False
+
+stream = ReadOnlyStream()
+print(stream.writable())   # False
+
+try:
+    stream.write(b'data')
+except io.UnsupportedOperation as e:
+    print(e)   # write`,
+  },
+  {
+    name: "IOBase.writelines()",
+    description: `Метод записи списка строк (или байтовых строк) в поток без добавления разделителей между ними. Является эквивалентом последовательного вызова write() для каждого элемента.
+
+Метод не добавляет символы новой строки автоматически — их нужно включать в элементы списка явно. Принимает любой итерируемый объект строк (list, tuple, generator и др.).
+
+В текстовом режиме принимает итерируемое строк (str). В бинарном — итерируемое байтов (bytes). Возвращает None.`,
+    syntax: "IOBase.writelines(lines)",
+    arguments: [
+      {
+        name: "lines",
+        description:
+          "Итерируемый объект строк (str в текстовом режиме) или байтовых строк (bytes в бинарном режиме) для записи.",
+      },
+    ],
+    example: `import io
+
+# Запись списка строк в файл
+lines = ['строка 1\\n', 'строка 2\\n', 'строка 3\\n']
+with open('output.txt', 'w', encoding='utf-8') as f:
+    f.writelines(lines)
+# Результат: строка 1\nстрока 2\nстрока 3\n
+
+# Разделители нужно добавлять явно
+words = ['apple', 'banana', 'cherry']
+with open('fruits.txt', 'w') as f:
+    f.writelines(word + '\\n' for word in words)  # генератор
+
+# Бинарный режим
+with open('binary.bin', 'wb') as f:
+    f.writelines([b'chunk1', b'chunk2', b'chunk3'])
+
+# StringIO
+buf = io.StringIO()
+buf.writelines(['hello ', 'world', '\\n', 'foo'])
+print(buf.getvalue())   # 'hello world\\nfoo'
+
+# BytesIO
+bbuf = io.BytesIO()
+bbuf.writelines([b'part1', b'_', b'part2'])
+print(bbuf.getvalue())   # b'part1_part2'
+
+# Эквивалент через write()
+with open('out.txt', 'w') as f:
+    for line in lines:
+        f.write(line)   # то же самое, что writelines(lines)`,
+  },
+  {
+    name: "RawIOBase.read()",
+    description: `Метод небуферизованного чтения из сырого потока. Читает и возвращает до size байт. Если size равен -1 или не указан — читает до конца файла (вызывает readall()).
+
+RawIOBase — это низкоуровневый небуферизованный поток. В отличие от BufferedReader, здесь нет внутреннего буфера: каждый вызов read() напрямую обращается к ОС. Метод может вернуть меньше байт, чем запрошено, даже если данные ещё есть — это нормально для сырых потоков.
+
+Возвращает bytes. При достижении EOF возвращает b'' (пустые байты). Если данные временно недоступны — возвращает None (только для неблокирующих потоков).`,
+    syntax: "RawIOBase.read(size=-1)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Максимальное количество байт для чтения. -1 (по умолчанию) — читать до EOF через readall().",
+      },
+    ],
+    example: `import io
+
+# FileIO — конкретная реализация RawIOBase
+raw = io.FileIO('data.bin', 'rb')
+
+# Чтение всего файла (size=-1)
+data = raw.read()
+print(len(data))   # размер файла в байтах
+
+# Чтение первых 16 байт
+raw.seek(0)
+chunk = raw.read(16)
+print(chunk)   # b'\\x89PNG\\r\\n...'
+
+# read() может вернуть меньше size байт — это нормально
+raw.seek(0)
+part = raw.read(1024)   # запросили 1024, получили меньше если файл мал
+
+# Чтение по кускам до EOF
+raw.seek(0)
+while True:
+    chunk = raw.read(io.DEFAULT_BUFFER_SIZE)
+    if not chunk:   # b'' — EOF
+        break
+    process(chunk)
+
+raw.close()
+
+# Обёртывание в BufferedReader для буферизации
+raw = io.FileIO('data.bin', 'rb')
+buffered = io.BufferedReader(raw)
+data = buffered.read()   # буферизованное чтение
+buffered.close()`,
+  },
+  {
+    name: "RawIOBase.readall()",
+    description: `Метод чтения всех байт от текущей позиции до конца файла. Возвращает bytes с полным содержимым от текущей позиции до EOF.
+
+Вызывается автоматически из read(-1) или read() без аргументов. Для больших файлов загружает всё содержимое в память целиком — при работе с большими файлами лучше читать кусками через read(size).
+
+Конкретные реализации (FileIO) переопределяют этот метод для эффективного чтения через системные вызовы ОС, которые могут читать файл сразу одной операцией.`,
+    syntax: "RawIOBase.readall()",
+    arguments: [],
+    example: `import io
+
+# Чтение всего файла через readall()
+raw = io.FileIO('data.bin', 'rb')
+data = raw.readall()
+print(f'Прочитано: {len(data)} байт')
+raw.close()
+
+# readall() эквивалентен read(-1) и read()
+raw = io.FileIO('data.bin', 'rb')
+d1 = raw.readall()
+
+raw.seek(0)
+d2 = raw.read(-1)
+
+raw.seek(0)
+d3 = raw.read()
+
+assert d1 == d2 == d3   # все три эквивалентны
+raw.close()
+
+# Чтение с промежуточной позиции
+raw = io.FileIO('data.bin', 'rb')
+raw.read(10)          # пропустить первые 10 байт
+rest = raw.readall()  # прочитать всё остальное
+raw.close()
+
+# Для больших файлов — читать кусками, не readall()
+def process_large_file(path, chunk_size=io.DEFAULT_BUFFER_SIZE):
+    with io.FileIO(path, 'rb') as raw:
+        while True:
+            chunk = raw.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk`,
+  },
+  {
+    name: "RawIOBase.readinto()",
+    description: `Метод чтения байт непосредственно в предварительно выделенный буфер (объект, поддерживающий запись в буфер протокола buffer protocol). Возвращает количество прочитанных байт или None.
+
+Главное преимущество перед read() — отсутствие лишнего выделения памяти: данные записываются напрямую в существующий объект bytearray или memoryview. Это критично для высокопроизводительного кода, обрабатывающего большие объёмы данных.
+
+Возвращает количество реально прочитанных байт (может быть меньше len(b) даже если данные ещё есть), 0 при EOF, или None для неблокирующих потоков при отсутствии данных.`,
+    syntax: "RawIOBase.readinto(b)",
+    arguments: [
+      {
+        name: "b",
+        description:
+          "Изменяемый байтовый буфер (bytearray, memoryview, array.array) куда записываются прочитанные данные. Размер буфера определяет максимум байт для чтения.",
+      },
+    ],
+    example: `import io
+
+# Чтение в bytearray без выделения новой памяти
+buf = bytearray(1024)   # буфер на 1024 байта
+
+with io.FileIO('data.bin', 'rb') as raw:
+    n = raw.readinto(buf)
+    print(f'Прочитано: {n} байт')
+    data = buf[:n]   # только реально прочитанные байты
+
+# Повторное использование буфера для минимизации аллокаций
+buf = bytearray(io.DEFAULT_BUFFER_SIZE)
+with io.FileIO('large.bin', 'rb') as raw:
+    total = 0
+    while True:
+        n = raw.readinto(buf)
+        if not n:   # 0 — EOF, None — нет данных (неблокирующий)
+            break
+        total += n
+        process(buf[:n])   # обработка прочитанных байт
+    print(f'Итого: {total} байт')
+
+# Использование memoryview для работы со срезами без копирования
+buf = bytearray(4096)
+mv = memoryview(buf)
+with io.FileIO('data.bin', 'rb') as raw:
+    n = raw.readinto(mv[100:200])   # читать в срез [100:200]
+    print(n)   # прочитано в buf[100:100+n]`,
+  },
+  {
+    name: "RawIOBase.write()",
+    description: `Метод небуферизованной записи байт в сырой поток. Записывает объект байтов b в поток и возвращает количество реально записанных байт.
+
+Как и read(), метод работает напрямую с ОС без внутреннего буфера. Возвращаемое количество байт может быть меньше len(b) — вызывающий код должен проверять это и при необходимости дозаписывать оставшееся.
+
+Принимает любой объект, поддерживающий buffer protocol: bytes, bytearray, memoryview, array.array. Для удобной записи без проверки числа байт используйте BufferedWriter, который гарантирует полную запись.`,
+    syntax: "RawIOBase.write(b)",
+    arguments: [
+      {
+        name: "b",
+        description:
+          "Байтовый объект для записи (bytes, bytearray, memoryview). Возвращается количество реально записанных байт.",
+      },
+    ],
+    example: `import io
+
+# Простая запись через FileIO
+with io.FileIO('output.bin', 'wb') as raw:
+    n = raw.write(b'Hello, World!')
+    print(f'Записано: {n} байт')   # 13
+
+# ВАЖНО: write() может записать меньше чем len(b)
+# Надёжная запись с проверкой
+def write_all(raw_stream, data):
+    """Гарантированная запись всех байт."""
+    total = 0
+    mv = memoryview(data)
+    while total < len(data):
+        n = raw_stream.write(mv[total:])
+        if n is None or n == 0:
+            raise IOError('Ошибка записи')
+        total += n
+    return total
+
+with io.FileIO('data.bin', 'wb') as raw:
+    write_all(raw, b'x' * 100000)
+
+# Запись bytearray и memoryview
+with io.FileIO('output.bin', 'wb') as raw:
+    arr = bytearray(b'\\x00\\x01\\x02\\x03')
+    raw.write(arr)
+
+    mv = memoryview(b'binary data')
+    raw.write(mv)
+
+# BufferedWriter — удобнее, гарантирует полную запись
+with io.FileIO('out.bin', 'wb') as raw:
+    buffered = io.BufferedWriter(raw)
+    buffered.write(b'автоматически полная запись')
+    buffered.flush()`,
+  },
+  {
+    name: "FileIO.mode",
+    description: `Атрибут объекта FileIO (и любого файлового объекта), содержащий режим открытия файла в виде строки.
+
+Возвращает строку, переданную в параметр mode при открытии файла: 'r', 'rb', 'w', 'wb', 'a', 'ab', 'r+', 'rb+', 'w+', 'wb+' и др. Позволяет узнать, в каком режиме открыт файл — полезно в универсальных функциях, принимающих файловый объект.
+
+Атрибут доступен только для чтения. Присутствует на всех файловых объектах, возвращаемых open() и io.FileIO().`,
+    syntax: "FileIO.mode",
+    arguments: [],
+    example: `import io
+
+# Проверка режима через FileIO
+raw = io.FileIO('data.bin', 'rb')
+print(raw.mode)   # 'rb'
+raw.close()
+
+# Режим стандартного файлового объекта
+with open('data.txt', 'r') as f:
+    print(f.mode)   # 'r'
+
+with open('data.txt', 'w') as f:
+    print(f.mode)   # 'w'
+
+with open('data.bin', 'rb+') as f:
+    print(f.mode)   # 'rb+'
+
+# Использование в универсальной функции
+def is_binary_mode(file_obj):
+    return 'b' in file_obj.mode
+
+def is_writable_mode(file_obj):
+    return any(m in file_obj.mode for m in ('w', 'a', 'x', '+'))
+
+with open('data.txt', 'r') as f:
+    print(is_binary_mode(f))    # False
+    print(is_writable_mode(f))  # False
+
+with open('data.bin', 'rb+') as f:
+    print(is_binary_mode(f))    # True
+    print(is_writable_mode(f))  # True
+
+# Все возможные режимы
+modes = ['r', 'rb', 'w', 'wb', 'a', 'ab', 'r+', 'rb+', 'w+', 'x']`,
+  },
+  {
+    name: "FileIO.name",
+    description: `Атрибут объекта FileIO (и любого файлового объекта), содержащий имя или дескриптор файла, переданный при открытии.
+
+Если файл открыт по пути — возвращает строку с путём (как передан в open()). Если файл открыт по дескриптору (int) — возвращает этот целочисленный дескриптор. Атрибут присутствует на всех файловых объектах, включая TextIOWrapper, BufferedReader/Writer.
+
+Полезен для логирования, отладки и отображения пользователю информации о том, с каким файлом ведётся работа. Только для чтения.`,
+    syntax: "FileIO.name",
+    arguments: [],
+    example: `import io
+
+# Имя файла, открытого по пути
+with open('data.txt', 'r') as f:
+    print(f.name)   # 'data.txt'
+
+with open('/tmp/report.csv', 'w') as f:
+    print(f.name)   # '/tmp/report.csv'
+
+# FileIO — имя как путь
+raw = io.FileIO('image.png', 'rb')
+print(raw.name)   # 'image.png'
+raw.close()
+
+# Открытие по файловому дескриптору — name = int
+import os
+fd = os.open('data.txt', os.O_RDONLY)
+with open(fd, 'r') as f:
+    print(f.name)    # целое число, например: 5
+    print(type(f.name))   # <class 'int'>
+
+# Стандартные потоки
+import sys
+print(sys.stdin.name)    # '<stdin>'
+print(sys.stdout.name)   # '<stdout>'
+print(sys.stderr.name)   # '<stderr>'
+
+# Использование в логировании
+def log_file_operation(file_obj, operation):
+    print(f'[{operation}] файл: {file_obj.name}, режим: {file_obj.mode}')
+
+with open('report.txt', 'w') as f:
+    log_file_operation(f, 'запись')
+    # [запись] файл: report.txt, режим: w`,
+  },
+  {
+    name: "BufferedIOBase.raw",
+    description: `Атрибут, содержащий ссылку на базовый сырой (RawIOBase) поток, который обёрнут буферизованным потоком. Доступен у BufferedReader, BufferedWriter, BufferedRandom.
+
+Позволяет получить прямой доступ к небуферизованному потоку нижнего уровня. Полезен для низкоуровневых операций, которые нельзя выполнить через буферизованный интерфейс, например: получение файлового дескриптора, применение флагов ОС, работа с неблокирующим режимом.
+
+После вызова detach() атрибут raw становится недействительным. У BytesIO нет атрибута raw — он не оборачивает сырой поток.`,
+    syntax: "BufferedIOBase.raw",
+    arguments: [],
+    example: `import io
+
+# Получение сырого потока из BufferedReader
+raw = io.FileIO('data.bin', 'rb')
+buffered = io.BufferedReader(raw)
+
+print(buffered.raw is raw)   # True
+print(type(buffered.raw))    # <class '_io.FileIO'>
+
+# Доступ к атрибутам сырого потока
+print(buffered.raw.name)     # 'data.bin'
+print(buffered.raw.mode)     # 'rb'
+
+# Низкоуровневый дескриптор через raw
+import os
+fd = buffered.raw.fileno()
+stat = os.fstat(fd)
+print(f'Размер файла: {stat.st_size} байт')
+
+# BufferedWriter
+raw_w = io.FileIO('output.bin', 'wb')
+buffered_w = io.BufferedWriter(raw_w)
+print(type(buffered_w.raw))   # <class '_io.FileIO'>
+
+buffered_w.close()   # закрывает и raw тоже
+
+# open() возвращает буферизованный поток с .raw
+with open('data.bin', 'rb') as f:
+    print(type(f))        # <class '_io.BufferedReader'>
+    print(type(f.raw))    # <class '_io.FileIO'>`,
+  },
+  {
+    name: "BufferedIOBase.detach()",
+    description: `Метод отсоединения базового сырого потока от буферизованного объекта. Возвращает сырой поток (RawIOBase), сбросив перед этим буфер записи (для BufferedWriter).
+
+После detach() буферизованный объект становится непригодным для использования — любые попытки выполнить на нём операции ввода-вывода бросают ValueError. Сырой поток при этом остаётся открытым и пригодным для использования.
+
+Используется в ситуациях, когда нужно передать владение потоком другому объекту или перейти от буферизованной работы к небуферизованной без закрытия файла.`,
+    syntax: "BufferedIOBase.detach()",
+    arguments: [],
+    example: `import io
+
+# Отсоединение сырого потока
+raw = io.FileIO('data.bin', 'rb')
+buffered = io.BufferedReader(raw)
+
+# Работа через буферизованный поток
+data = buffered.read(10)
+
+# Отсоединяем — получаем сырой поток обратно
+raw2 = buffered.detach()
+print(raw2 is raw)   # True — тот же объект
+
+# Буферизованный поток теперь непригоден
+try:
+    buffered.read()
+except ValueError as e:
+    print(e)   # raw stream has been detached
+
+# Сырой поток по-прежнему работает
+raw2.seek(0)
+chunk = raw2.read(1024)
+raw2.close()
+
+# Смена буфера — типичный сценарий
+raw = io.FileIO('data.bin', 'rb')
+buf1 = io.BufferedReader(raw, buffer_size=1024)
+raw_back = buf1.detach()
+buf2 = io.BufferedReader(raw_back, buffer_size=65536)  # другой размер буфера
+buf2.close()`,
+  },
+  {
+    name: "BufferedIOBase.read()",
+    description: `Метод чтения из буферизованного потока с внутренним буфером. Читает и возвращает до size байт. Если size равен -1 или не указан — читает до EOF. Возвращает bytes.
+
+Ключевое отличие от RawIOBase.read(): буферизованный read() гарантирует возврат ровно size байт (или меньше только при EOF). Внутренний буфер снижает количество системных вызовов — данные читаются большими кусками из ОС, а возвращаются нужными порциями.
+
+При EOF возвращает b''. Блокирует поток до получения нужного количества байт (для блокирующих потоков).`,
+    syntax: "BufferedIOBase.read(size=-1)",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Количество байт для чтения. -1 (по умолчанию) — читать до EOF. В отличие от RawIOBase, гарантированно возвращает size байт (если EOF не достигнут раньше).",
+      },
+    ],
+    example: `import io
+
+# Буферизованное чтение файла
+with open('data.bin', 'rb') as f:   # возвращает BufferedReader
+    # Чтение всего файла
+    data = f.read()
+
+    # Чтение по N байт
+    f.seek(0)
+    header = f.read(4)    # ровно 4 байта (или меньше при EOF)
+    body = f.read(1024)   # ровно 1024 байта (или остаток до EOF)
+
+# Явный BufferedReader
+raw = io.FileIO('data.bin', 'rb')
+buf = io.BufferedReader(raw, buffer_size=io.DEFAULT_BUFFER_SIZE)
+
+buf.read(16)    # 16 байт (1 системный вызов может прочитать 8192)
+buf.read(16)    # ещё 16 байт — из буфера, без системного вызова!
+buf.close()
+
+# BytesIO — буферизованный поток в памяти
+buf = io.BytesIO(b'Hello, World! Python io')
+print(buf.read(5))    # b'Hello'
+print(buf.read(2))    # b', '
+print(buf.read(-1))   # b'World! Python io'  ← до EOF
+print(buf.read())     # b''  ← EOF
+
+# Чтение по кускам
+with open('large.bin', 'rb') as f:
+    while chunk := f.read(65536):
+        process(chunk)`,
+  },
+  {
+    name: "BufferedIOBase.read1()",
+    description: `Метод чтения из буферизованного потока с использованием не более одного вызова к базовому сырому потоку. Возвращает bytes размером до size байт.
+
+Ключевое отличие от read(): read() может выполнять несколько системных вызовов для накопления нужного числа байт, тогда как read1() ограничивается одним обращением к RawIOBase.read() или RawIOBase.readinto(). Если буфер не пуст — возвращает данные из него без обращения к ОС.
+
+Полезен при реализации собственных протоколов, парсеров и обёрток потоков, где важно контролировать количество системных вызовов и избегать блокировки в ожидании данных.`,
+    syntax: "BufferedIOBase.read1([size])",
+    arguments: [
+      {
+        name: "size",
+        description:
+          "Максимальное количество байт для чтения. Если не указан или -1 — возвращает произвольное количество байт за одно обращение к базовому потоку.",
+      },
+    ],
+    example: `import io
+
+# Разница между read() и read1()
+raw = io.FileIO('data.bin', 'rb')
+buf = io.BufferedReader(raw, buffer_size=8192)
+
+# read(100): может читать 8192 из ОС, вернуть 100 из буфера
+chunk_a = buf.read(100)
+
+# read1(100): возвращает то, что уже в буфере (может быть 8192-100=8092 байт)
+# или читает из ОС ровно один раз и возвращает до 100 байт
+chunk_b = buf.read1(100)
+
+buf.close()
+
+# Типичный сценарий: реализация peek-парсера
+class ProtocolReader:
+    def __init__(self, raw_stream):
+        self.buf = io.BufferedReader(raw_stream)
+
+    def read_message(self):
+        # read1() без аргумента — один системный вызов
+        # не блокирует дольше необходимого
+        data = self.buf.read1()
+        return data
+
+# BytesIO
+buf = io.BytesIO(b'Hello, World!')
+print(buf.read1(5))    # b'Hello'
+print(buf.read1(100))  # b', World!'  ← всё оставшееся за один вызов`,
+  },
+  {
+    name: "BufferedIOBase.readinto()",
+    description: `Метод буферизованного чтения непосредственно в предварительно выделенный буфер. Аналог RawIOBase.readinto(), но с внутренней буферизацией — данные могут поступать из буфера без обращения к ОС.
+
+Принимает изменяемый байтовый объект (bytearray, memoryview) и записывает в него прочитанные байты. Возвращает количество реально прочитанных байт (0 при EOF). В отличие от RawIOBase.readinto(), гарантирует заполнение буфера полностью (до len(b) байт) если данных достаточно.
+
+Сочетает преимущества буферизации (меньше системных вызовов) и работы без лишнего выделения памяти (zero-copy чтение в существующий буфер).`,
+    syntax: "BufferedIOBase.readinto(b)",
+    arguments: [
+      {
+        name: "b",
+        description:
+          "Изменяемый байтовый буфер (bytearray, memoryview) куда записываются прочитанные данные. Читается ровно len(b) байт (или меньше при EOF).",
+      },
+    ],
+    example: `import io
+
+# Буферизованное чтение в существующий буфер
+buf = bytearray(1024)
+
+with open('data.bin', 'rb') as f:   # BufferedReader
+    n = f.readinto(buf)
+    print(f'Прочитано: {n} байт')
+    data = buf[:n]
+
+# Повторное использование буфера (zero-copy обработка)
+buf = bytearray(io.DEFAULT_BUFFER_SIZE)  # 8192 байт
+with open('large.bin', 'rb') as f:
+    while True:
+        n = f.readinto(buf)
+        if n == 0:   # EOF
+            break
+        process(buf[:n])
+
+# Использование memoryview для работы со срезами
+big_buffer = bytearray(65536)
+mv = memoryview(big_buffer)
+
+with open('data.bin', 'rb') as f:
+    n1 = f.readinto(mv[:1024])    # прочитать в первые 1024 байт
+    n2 = f.readinto(mv[1024:])    # прочитать остаток в хвост буфера
+
+# Сравнение с readinto из RawIOBase
+raw = io.FileIO('data.bin', 'rb')
+buf_reader = io.BufferedReader(raw)
+arr = bytearray(512)
+n = buf_reader.readinto(arr)   # буферизовано — меньше системных вызовов
+buf_reader.close()`,
+  },
+  {
+    name: "BufferedIOBase.readinto1()",
+    description: `Метод буферизованного чтения в существующий буфер, ограниченный одним обращением к базовому сырому потоку. Аналог read1(), но записывает данные в предоставленный буфер вместо создания нового объекта bytes.
+
+Сочетает преимущества readinto() (zero-copy, без лишних аллокаций) и read1() (не более одного системного вызова к ОС). Возвращает количество прочитанных байт или 0 при EOF.
+
+Применяется в высокопроизводительных парсерах протоколов и асинхронных обёртках, где нужно минимизировать как количество системных вызовов, так и число аллокаций памяти.`,
+    syntax: "BufferedIOBase.readinto1(b)",
+    arguments: [
+      {
+        name: "b",
+        description:
+          "Изменяемый байтовый буфер (bytearray, memoryview) куда записываются прочитанные данные. За один вызов выполняется не более одного обращения к базовому сырому потоку.",
+      },
+    ],
+    example: `import io
+
+# readinto1() — один системный вызов, zero-copy
+buf = bytearray(4096)
+
+raw = io.FileIO('data.bin', 'rb')
+buffered = io.BufferedReader(raw)
+
+# Не более одного обращения к raw за вызов
+n = buffered.readinto1(buf)
+print(f'Прочитано: {n} байт (не более одного системного вызова)')
+
+# Сравнение readinto vs readinto1
+buf_a = bytearray(4096)
+buf_b = bytearray(4096)
+
+raw = io.FileIO('data.bin', 'rb')
+b_reader = io.BufferedReader(raw, buffer_size=8192)
+
+# readinto: выполнит столько системных вызовов, сколько нужно для len(buf_a)
+n_a = b_reader.readinto(buf_a)
+
+b_reader.seek(0)
+# readinto1: не более одного системного вызова
+n_b = b_reader.readinto1(buf_b)
+
+b_reader.close()
+
+# Цикл с readinto1 для потокового парсинга
+buf = bytearray(io.DEFAULT_BUFFER_SIZE)
+with open('stream.bin', 'rb') as f:
+    while True:
+        n = f.readinto1(buf)
+        if n == 0:
+            break
+        parse_chunk(buf[:n])   # обрабатываем одну порцию`,
+  },
+  {
+    name: "BufferedIOBase.write()",
+    description: `Метод записи байт в буферизованный поток. Записывает объект байтов b в внутренний буфер и возвращает количество записанных байт (всегда равное len(b)).
+
+Ключевое отличие от RawIOBase.write(): буферизованный write() всегда записывает все байты (len(b)) — никогда не возвращает меньше. Данные сначала накапливаются во внутреннем буфере и сбрасываются в ОС одной порцией при переполнении буфера или вызове flush()/close().
+
+Буферизация значительно ускоряет запись множества небольших порций данных, сокращая количество системных вызовов write().`,
+    syntax: "BufferedIOBase.write(b)",
+    arguments: [
+      {
+        name: "b",
+        description:
+          "Байтовый объект для записи (bytes, bytearray, memoryview). Всегда записываются все len(b) байт — возвращаемое значение всегда равно len(b).",
+      },
+    ],
+    example: `import io
+
+# Буферизованная запись через BufferedWriter
+raw = io.FileIO('output.bin', 'wb')
+buf = io.BufferedWriter(raw, buffer_size=8192)
+
+# Множество мелких записей — эффективно благодаря буферу
+for i in range(1000):
+    n = buf.write(f'строка {i}\\n'.encode())
+    print(n)   # всегда len(b), не меньше
+# Реальные системные вызовы — значительно меньше 1000
+
+buf.flush()   # сброс буфера в ОС
+buf.close()   # flush() + close()
+
+# open() возвращает BufferedWriter для 'wb'
+with open('data.bin', 'wb') as f:
+    f.write(b'\\x89PNG\\r\\n\\x1a\\n')   # PNG-заголовок
+    f.write(b'\\x00' * 1024)            # нулевые данные
+
+# BytesIO — запись в буфер в памяти
+buf = io.BytesIO()
+buf.write(b'Hello')
+buf.write(b', ')
+buf.write(b'World!')
+print(buf.getvalue())   # b'Hello, World!'
+
+# Запись bytearray и memoryview
+with open('out.bin', 'wb') as f:
+    f.write(bytearray([0x00, 0x01, 0x02, 0xFF]))
+    f.write(memoryview(b'binary data')[2:7])`,
+  },
+  {
+    name: "BytesIO.getbuffer()",
+    description: `Метод получения объекта memoryview над внутренним буфером BytesIO без копирования данных. Возвращает записываемый memoryview, указывающий непосредственно на содержимое BytesIO.
+
+Ключевые особенности: данные не копируются (zero-copy), memoryview поддерживает как чтение, так и запись (изменения видны через BytesIO), пока memoryview активен — BytesIO нельзя изменить в размере (нельзя вызвать write() если это изменит размер, seek() с расширением и т.п.).
+
+Используется для передачи содержимого BytesIO в функции, принимающие buffer protocol, без лишних копий памяти.`,
+    syntax: "BytesIO.getbuffer()",
+    arguments: [],
+    example: `import io
+
+buf = io.BytesIO(b'Hello, World!')
+
+# Получение memoryview без копирования
+view = buf.getbuffer()
+print(bytes(view))     # b'Hello, World!'
+print(len(view))       # 13
+
+# Запись через memoryview изменяет BytesIO
+view[0] = ord('h')     # изменяем первый байт
+print(buf.getvalue())  # b'hello, World!'
+
+# Передача в функции, принимающие buffer protocol
+view2 = buf.getbuffer()
+# socket.send(view2)   # без копирования данных
+# ssl_sock.write(view2)
+
+# Пока view активен — нельзя менять размер
+buf2 = io.BytesIO(b'data')
+view3 = buf2.getbuffer()
+try:
+    buf2.write(b'extra')   # ошибка — resize запрещён
+except BufferError as e:
+    print(e)   # Existing exports of data: object cannot be re-sized
+
+# Освобождение view разблокирует BytesIO
+view3.release()
+buf2.write(b'extra')   # теперь можно
+
+# Срезы memoryview — zero-copy подмассивы
+data = io.BytesIO(b'ABCDEFGH')
+view4 = data.getbuffer()
+sub = view4[2:5]       # срез без копирования
+print(bytes(sub))      # b'CDE'`,
+  },
+  {
+    name: "BytesIO.getvalue()",
+    description: `Метод получения всего содержимого буфера BytesIO в виде объекта bytes. Возвращает копию всех данных независимо от текущей позиции указателя.
+
+В отличие от read(), который возвращает данные от текущей позиции до конца, getvalue() всегда возвращает полное содержимое — с самого начала. Это позволяет получить результат записи не перематывая поток в начало.
+
+Создаёт копию данных (в отличие от getbuffer()). Работает на открытом и закрытом BytesIO. Незаменим при использовании BytesIO как промежуточного буфера для сборки бинарных данных.`,
+    syntax: "BytesIO.getvalue()",
+    arguments: [],
+    example: `import io
+
+# Сборка бинарных данных в памяти
+buf = io.BytesIO()
+buf.write(b'\\x89PNG\\r\\n\\x1a\\n')   # PNG signature
+buf.write(b'\\x00\\x00\\x00\\rIHDR')   # chunk header
+buf.write(b'\\x00' * 13)               # IHDR data
+
+# getvalue() не зависит от позиции
+print(buf.tell())          # 26 (конец буфера)
+data = buf.getvalue()      # все 26 байт с начала
+print(len(data))           # 26
+
+# Сравнение с read()
+buf.seek(10)
+print(len(buf.read()))     # 16 (от позиции 10 до конца)
+buf.seek(10)
+print(len(buf.getvalue())) # 26 (всегда полное содержимое!)
+
+# Типичный паттерн: BytesIO как промежуточный буфер
+def build_packet(cmd, payload):
+    buf = io.BytesIO()
+    buf.write(cmd.encode('ascii'))
+    buf.write(len(payload).to_bytes(4, 'big'))
+    buf.write(payload)
+    return buf.getvalue()   # получить готовый пакет
+
+packet = build_packet('DATA', b'hello')
+print(packet)   # b'DATA\\x00\\x00\\x00\\x05hello'
+
+# Работает и после close()
+buf = io.BytesIO(b'test')
+buf.close()
+# buf.getvalue() — ValueError после close()`,
   },
 ];
