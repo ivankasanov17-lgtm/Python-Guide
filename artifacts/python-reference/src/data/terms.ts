@@ -29045,4 +29045,2593 @@ class ItemsView(web.View):
         data = await self.request.json()
         return web.json_response(data, status=201)`,
   },
+  {
+    name: "aiohttp.web.Application()",
+    category: "aiohttp.web",
+    description:
+      "Создаёт экземпляр ASGI/WSGI-совместимого асинхронного веб-приложения aiohttp. Является центральным объектом сервера — содержит маршрутизатор, список промежуточного ПО (middleware) и сигналы жизненного цикла. Поддерживает вложенные подприложения через add_subapp().",
+    syntax:
+      "web.Application(*, logger=<DEFAULT>, middlewares=(), handler_factory=<DEFAULT>, client_max_size=1024**2, loop=None, debug=...)",
+    arguments: [
+      {
+        name: "logger",
+        description:
+          "Объект logging.Logger для логирования событий приложения. По умолчанию используется aiohttp.web_logger.",
+      },
+      {
+        name: "middlewares",
+        description:
+          "Кортеж или список промежуточных обработчиков (middleware). Выполняются в порядке объявления при каждом запросе.",
+      },
+      {
+        name: "client_max_size",
+        description:
+          "Максимальный размер тела запроса в байтах. По умолчанию 1 МБ (1024**2). При превышении — возбуждает HTTPRequestEntityTooLarge.",
+      },
+      {
+        name: "loop",
+        description:
+          "Устаревший параметр. Цикл событий asyncio. Начиная с версии 3.x игнорируется — используется текущий цикл событий.",
+      },
+      {
+        name: "debug",
+        description:
+          "Включает режим отладки. Устарел в пользу loop.set_debug().",
+      },
+    ],
+    example: `import aiohttp.web as web
+
+async def handle(request):
+    return web.Response(text="Привет, мир!")
+
+app = web.Application()
+app.router.add_get('/', handle)
+
+# Запуск через runner:
+# web.run_app(app, host='127.0.0.1', port=8080)
+
+# С middleware:
+@web.middleware
+async def error_middleware(request, handler):
+    try:
+        return await handler(request)
+    except web.HTTPException as ex:
+        return web.Response(status=ex.status, text=str(ex))
+
+app_with_mw = web.Application(middlewares=[error_middleware])`,
+  },
+  {
+    name: "aiohttp.web.Application.add_routes()",
+    category: "aiohttp.web",
+    description:
+      "Регистрирует список маршрутов в маршрутизаторе приложения. Принимает коллекцию объектов RouteDef, созданных через декораторы web.get(), web.post(), web.RouteTableDef и т.д. Более лаконичный способ добавить сразу несколько маршрутов, чем вызывать router.add_get() по одному.",
+    syntax: "app.add_routes(routes)",
+    arguments: [
+      {
+        name: "routes",
+        description:
+          "Список объектов RouteDef. Создаются через web.get(), web.post(), web.put(), web.delete(), web.route() или web.RouteTableDef.",
+      },
+    ],
+    example: `import aiohttp.web as web
+
+routes = web.RouteTableDef()
+
+@routes.get('/')
+async def index(request):
+    return web.Response(text="Главная")
+
+@routes.get('/users/{id}')
+async def get_user(request):
+    uid = request.match_info['id']
+    return web.Response(text=f"Пользователь {uid}")
+
+@routes.post('/users')
+async def create_user(request):
+    data = await request.json()
+    return web.json_response(data, status=201)
+
+app = web.Application()
+app.add_routes(routes)
+
+# Либо через список функций:
+app.add_routes([
+    web.get('/health', lambda r: web.Response(text='ok')),
+])`,
+  },
+  {
+    name: "aiohttp.web.Application.add_subapp()",
+    category: "aiohttp.web",
+    description:
+      "Монтирует вложенное подприложение (subapp) по заданному URL-префиксу. Все маршруты подприложения становятся доступны под этим префиксом. Сигналы жизненного цикла (on_startup, on_cleanup) подприложения вызываются вместе с родительским.",
+    syntax: "app.add_subapp(prefix, subapp)",
+    arguments: [
+      {
+        name: "prefix",
+        description:
+          'URL-префикс (строка), по которому монтируется подприложение. Например, "/api/v1".',
+      },
+      {
+        name: "subapp",
+        description:
+          "Экземпляр web.Application, который будет обрабатывать запросы с данным префиксом.",
+      },
+    ],
+    example: `import aiohttp.web as web
+
+# Создаём подприложение для API
+api = web.Application()
+
+@api.router.add_get('/users')
+async def list_users(request):
+    return web.json_response([{"id": 1, "name": "Иван"}])
+
+@api.router.add_get('/posts')
+async def list_posts(request):
+    return web.json_response([{"id": 1, "title": "Статья"}])
+
+# Основное приложение
+app = web.Application()
+app.add_subapp('/api/v1', api)
+
+# Теперь доступны:
+# GET /api/v1/users
+# GET /api/v1/posts
+
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Application.cleanup()",
+    category: "aiohttp.web",
+    description:
+      "Корутина, выполняющая завершение работы приложения — запускает обработчики сигнала on_cleanup. Вызывается автоматически при использовании web.run_app() или AppRunner. При ручном управлении жизненным циклом должна быть вызвана явно после shutdown().",
+    syntax: "await app.cleanup()",
+    arguments: [],
+    example: `import aiohttp.web as web
+import asyncio
+
+async def on_cleanup(app):
+    print("Закрываем соединения с БД...")
+    # await app['db'].close()
+
+async def main():
+    app = web.Application()
+    app.on_cleanup.append(on_cleanup)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+
+    site = web.TCPSite(runner, 'localhost', 8080)
+    await site.start()
+    print("Сервер запущен")
+
+    await asyncio.sleep(10)  # работаем 10 секунд
+
+    # Ручное завершение:
+    await runner.cleanup()  # вызывает app.shutdown() и app.cleanup()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.web.Application.on_cleanup",
+    category: "aiohttp.web",
+    description:
+      "Сигнал (список корутин-обработчиков), вызываемых на этапе очистки приложения — после on_shutdown. Используется для освобождения ресурсов: закрытия подключений к БД, завершения фоновых задач, сохранения состояния. Обработчики принимают единственный аргумент — экземпляр приложения.",
+    syntax: "app.on_cleanup.append(handler)",
+    arguments: [
+      {
+        name: "handler",
+        description:
+          "Асинхронная функция (корутина) с сигнатурой async def handler(app). Вызывается при завершении приложения.",
+      },
+    ],
+    example: `import aiohttp.web as web
+import aiohttp
+
+async def init_db(app):
+    app['session'] = aiohttp.ClientSession()
+    print("HTTP-сессия создана")
+
+async def close_db(app):
+    await app['session'].close()
+    print("HTTP-сессия закрыта")
+
+async def close_cache(app):
+    # Закрываем кэш-соединение
+    print("Кэш очищен")
+
+app = web.Application()
+
+# Регистрируем обработчики старта и очистки
+app.on_startup.append(init_db)
+app.on_cleanup.append(close_db)
+app.on_cleanup.append(close_cache)
+
+# web.run_app(app)
+# При остановке: close_db → close_cache`,
+  },
+  {
+    name: "aiohttp.web.Application.on_response_prepare",
+    category: "aiohttp.web",
+    description:
+      "Сигнал, вызываемый непосредственно перед отправкой ответа клиенту — после формирования объекта Response, но до начала передачи данных. Позволяет динамически модифицировать заголовки ответа. Обработчики принимают request и response.",
+    syntax: "app.on_response_prepare.append(handler)",
+    arguments: [
+      {
+        name: "handler",
+        description:
+          "Корутина с сигнатурой async def handler(request, response). Позволяет изменять response.headers перед отправкой.",
+      },
+    ],
+    example: `import aiohttp.web as web
+
+async def add_security_headers(request, response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Request-ID'] = request.headers.get('X-Request-ID', 'unknown')
+
+async def handle(request):
+    return web.Response(text="Защищённый ответ")
+
+app = web.Application()
+app.on_response_prepare.append(add_security_headers)
+app.router.add_get('/', handle)
+
+# web.run_app(app)
+# Все ответы будут содержать заголовки безопасности`,
+  },
+  {
+    name: "aiohttp.web.Application.on_shutdown",
+    category: "aiohttp.web",
+    description:
+      "Сигнал, вызываемый при начале завершения работы приложения — до on_cleanup. Используется для мягкого завершения: уведомления клиентов WebSocket о закрытии, остановки принятия новых задач. Обработчики принимают единственный аргумент — экземпляр приложения.",
+    syntax: "app.on_shutdown.append(handler)",
+    arguments: [
+      {
+        name: "handler",
+        description:
+          "Корутина с сигнатурой async def handler(app). Вызывается при получении сигнала остановки (SIGTERM и т.д.).",
+      },
+    ],
+    example: `import aiohttp.web as web
+import weakref
+
+async def handle_ws(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+    request.app['websockets'].add(ws)
+    try:
+        async for msg in ws:
+            await ws.send_str(f"Эхо: {msg.data}")
+    finally:
+        request.app['websockets'].discard(ws)
+    return ws
+
+async def on_shutdown(app):
+    # Закрываем все активные WebSocket-соединения
+    for ws in set(app['websockets']):
+        await ws.close(message=b"Server shutdown")
+    print("Все WebSocket закрыты")
+
+app = web.Application()
+app['websockets'] = weakref.WeakSet()
+app.on_shutdown.append(on_shutdown)
+app.router.add_get('/ws', handle_ws)`,
+  },
+  {
+    name: "aiohttp.web.Application.on_startup",
+    category: "aiohttp.web",
+    description:
+      "Сигнал, вызываемый при запуске приложения — до начала обработки запросов. Используется для инициализации ресурсов: подключения к БД, запуска фоновых задач, прогрева кэша. Обработчики принимают единственный аргумент — экземпляр приложения.",
+    syntax: "app.on_startup.append(handler)",
+    arguments: [
+      {
+        name: "handler",
+        description:
+          "Корутина с сигнатурой async def handler(app). Вызывается при старте сервера.",
+      },
+    ],
+    example: `import aiohttp.web as web
+import aiohttp
+import asyncio
+
+async def init_http_client(app):
+    app['client'] = aiohttp.ClientSession()
+    print("HTTP-клиент инициализирован")
+
+async def start_background_task(app):
+    async def heartbeat():
+        while True:
+            print("heartbeat...")
+            await asyncio.sleep(30)
+
+    app['heartbeat_task'] = asyncio.create_task(heartbeat())
+
+async def stop_background_task(app):
+    app['heartbeat_task'].cancel()
+    try:
+        await app['heartbeat_task']
+    except asyncio.CancelledError:
+        pass
+
+app = web.Application()
+app.on_startup.append(init_http_client)
+app.on_startup.append(start_background_task)
+app.on_cleanup.append(stop_background_task)
+
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Application.router",
+    category: "aiohttp.web",
+    description:
+      "Объект маршрутизатора приложения (UrlDispatcher). Хранит таблицу маршрутов и сопоставляет входящие URL-запросы с обработчиками. Позволяет добавлять маршруты напрямую через методы add_get(), add_post() и т.д. или использовать app.add_routes().",
+    syntax: "app.router",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def index(request):
+    return web.Response(text="Главная")
+
+async def about(request):
+    return web.Response(text="О нас")
+
+async def get_item(request):
+    item_id = request.match_info['id']
+    return web.json_response({"id": item_id})
+
+app = web.Application()
+
+# Добавляем маршруты через router:
+app.router.add_get('/', index)
+app.router.add_get('/about', about)
+app.router.add_get('/items/{id}', get_item)
+app.router.add_post('/items', lambda r: web.Response(status=201))
+app.router.add_delete('/items/{id}', lambda r: web.Response(status=204))
+
+# Просмотр всех маршрутов:
+for resource in app.router.resources():
+    print(resource.get_info())`,
+  },
+  {
+    name: "aiohttp.web.Application.shutdown()",
+    category: "aiohttp.web",
+    description:
+      "Корутина, выполняющая первый этап завершения работы приложения — запускает обработчики сигнала on_shutdown. Вызывается автоматически при использовании web.run_app() или AppRunner.cleanup(). При ручном управлении должна быть вызвана перед cleanup().",
+    syntax: "await app.shutdown()",
+    arguments: [],
+    example: `import aiohttp.web as web
+import asyncio
+import signal
+
+async def on_shutdown(app):
+    print("Приложение завершает работу...")
+
+async def main():
+    app = web.Application()
+    app.on_shutdown.append(on_shutdown)
+
+    async def handle(request):
+        return web.Response(text="OK")
+
+    app.router.add_get('/', handle)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, 'localhost', 8080)
+    await site.start()
+
+    # Ручное управление жизненным циклом:
+    stop = asyncio.Event()
+    loop = asyncio.get_event_loop()
+    loop.add_signal_handler(signal.SIGTERM, stop.set)
+
+    await stop.wait()
+    await app.shutdown()   # 1. on_shutdown
+    await app.cleanup()    # 2. on_cleanup
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.web.Application.startup()",
+    category: "aiohttp.web",
+    description:
+      "Корутина, выполняющая инициализацию приложения — запускает обработчики сигнала on_startup. Вызывается автоматически AppRunner.setup() или web.run_app(). При ручном управлении жизненным циклом должна быть вызвана явно после создания приложения.",
+    syntax: "await app.startup()",
+    arguments: [],
+    example: `import aiohttp.web as web
+import asyncio
+
+async def init_resources(app):
+    app['ready'] = True
+    print("Ресурсы инициализированы")
+
+async def main():
+    app = web.Application()
+    app.on_startup.append(init_resources)
+
+    # Ручной старт без AppRunner:
+    await app.startup()
+    print(f"app['ready'] = {app['ready']}")  # True
+
+    # ... использование приложения ...
+
+    await app.shutdown()
+    await app.cleanup()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.web.Request.method",
+    category: "aiohttp.web",
+    description:
+      'Атрибут объекта запроса. Возвращает HTTP-метод запроса в верхнем регистре (строка). Например: "GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS". Доступен только для чтения.',
+    syntax: "request.method",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def universal_handler(request):
+    method = request.method
+    print(f"Метод запроса: {method}")
+
+    if method == 'GET':
+        return web.Response(text="Чтение данных")
+    elif method == 'POST':
+        body = await request.json()
+        return web.json_response(body, status=201)
+    elif method == 'DELETE':
+        return web.Response(status=204)
+    else:
+        return web.Response(status=405, text=f"Метод {method} не поддерживается")
+
+app = web.Application()
+# Регистрируем один обработчик для нескольких методов:
+app.router.add_route('*', '/resource', universal_handler)
+
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.version",
+    category: "aiohttp.web",
+    description:
+      "Атрибут только для чтения. Возвращает версию HTTP-протокола запроса в виде именованного кортежа HttpVersion(major, minor). Например, для HTTP/1.1 вернёт HttpVersion(major=1, minor=1), для HTTP/2 — HttpVersion(major=2, minor=0).",
+    syntax: "request.version",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def handle(request):
+    version = request.version
+    print(f"HTTP версия: {version.major}.{version.minor}")
+    # HTTP/1.1 → HttpVersion(major=1, minor=1)
+    # HTTP/2   → HttpVersion(major=2, minor=0)
+
+    if version.major == 2:
+        return web.Response(text="HTTP/2 запрос")
+    else:
+        return web.Response(text=f"HTTP/{version.major}.{version.minor} запрос")
+
+app = web.Application()
+app.router.add_get('/', handle)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.url",
+    category: "aiohttp.web",
+    description:
+      "Атрибут только для чтения. Возвращает полный URL запроса в виде объекта yarl.URL. Содержит схему, хост, порт, путь, строку запроса и фрагмент. Позволяет удобно извлекать отдельные части URL через атрибуты объекта yarl.URL.",
+    syntax: "request.url",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def handle(request):
+    url = request.url
+    print(f"Полный URL:   {url}")
+    print(f"Схема:        {url.scheme}")   # http / https
+    print(f"Хост:         {url.host}")     # example.com
+    print(f"Порт:         {url.port}")     # 8080
+    print(f"Путь:         {url.path}")     # /users/42
+    print(f"Строка запроса: {url.query_string}")  # page=1&sort=name
+    print(f"Параметры:    {url.query}")    # <MultiDict>
+
+    # Формирование нового URL на основе текущего:
+    new_url = url.with_path('/new-path').with_query({'key': 'value'})
+    return web.Response(text=str(new_url))
+
+app = web.Application()
+app.router.add_get('/users/{id}', handle)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.path",
+    category: "aiohttp.web",
+    description:
+      'Атрибут только для чтения. Возвращает путь URL запроса без строки запроса и фрагмента (строка). Например, для URL /users/42?sort=name вернёт "/users/42". URL-декодирован — процентное кодирование раскрыто.',
+    syntax: "request.path",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def handle(request):
+    path = request.path
+    print(f"Путь: {path}")  # /users/42
+
+    # Разбор сегментов пути:
+    segments = path.strip('/').split('/')
+    print(f"Сегменты: {segments}")  # ['users', '42']
+
+    return web.Response(text=f"Путь: {path}")
+
+async def handle_encoded(request):
+    # URL: /файлы/документ.pdf (закодированный)
+    print(request.path)         # /файлы/документ.pdf  (декодировано)
+    print(request.raw_path)     # /%D1%84%D0%B0%D0%B9%D0%BB%D1%8B/... (сырой)
+    return web.Response(text="ok")
+
+app = web.Application()
+app.router.add_get('/users/{id}', handle)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.query",
+    category: "aiohttp.web",
+    description:
+      "Атрибут только для чтения. Возвращает параметры строки запроса в виде объекта MultiDict (похож на словарь, но поддерживает несколько значений для одного ключа). Все ключи и значения — строки. URL-декодирован.",
+    syntax: "request.query",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def search(request):
+    query = request.query
+
+    # URL: /search?q=python&page=2&tag=async&tag=web
+    search_term = query.get('q', '')          # 'python'
+    page = int(query.get('page', 1))          # 2
+    tags = query.getall('tag', [])            # ['async', 'web']
+
+    print(f"Поиск: {search_term}")
+    print(f"Страница: {page}")
+    print(f"Теги: {tags}")
+
+    return web.json_response({
+        'q': search_term,
+        'page': page,
+        'tags': tags
+    })
+
+app = web.Application()
+app.router.add_get('/search', search)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.query_string",
+    category: "aiohttp.web",
+    description:
+      'Атрибут только для чтения. Возвращает строку запроса URL в сыром виде (без знака "?") как строку. Например, для /search?q=python&page=2 вернёт "q=python&page=2". Не декодирован — содержит оригинальные символы URL-кодирования.',
+    syntax: "request.query_string",
+    arguments: [],
+    example: `import aiohttp.web as web
+from urllib.parse import parse_qs
+
+async def handle(request):
+    qs = request.query_string
+    print(f"Строка запроса: '{qs}'")
+    # URL: /api?name=Иван&role=admin&role=user
+    # → 'name=%D0%98%D0%B2%D0%B0%D0%BD&role=admin&role=user'
+
+    # Ручной разбор через urllib:
+    parsed = parse_qs(qs)
+    print(parsed)
+    # {'name': ['Иван'], 'role': ['admin', 'user']}
+
+    # Обычно удобнее использовать request.query:
+    print(dict(request.query))
+
+    return web.Response(text=qs)
+
+app = web.Application()
+app.router.add_get('/api', handle)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.headers",
+    category: "aiohttp.web",
+    description:
+      'Атрибут только для чтения. Возвращает HTTP-заголовки запроса в виде объекта CIMultiDictProxy (регистронезависимый словарь). Ключи нечувствительны к регистру: "Content-Type" и "content-type" — одно и то же.',
+    syntax: "request.headers",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def handle(request):
+    headers = request.headers
+
+    # Стандартные заголовки:
+    content_type = headers.get('Content-Type', 'не указан')
+    auth = headers.get('Authorization', '')
+    user_agent = headers.get('User-Agent', '')
+
+    # Регистронезависимость:
+    print(headers.get('content-type'))    # то же что 'Content-Type'
+    print(headers.get('CONTENT-TYPE'))    # и это тоже
+
+    # Проверка наличия заголовка:
+    if 'X-API-Key' not in headers:
+        raise web.HTTPUnauthorized(reason="API ключ не передан")
+
+    return web.json_response({
+        'content_type': content_type,
+        'user_agent': user_agent,
+    })
+
+app = web.Application()
+app.router.add_get('/', handle)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.keep_alive",
+    category: "aiohttp.web",
+    description:
+      'Атрибут только для чтения. Возвращает True если соединение может быть оставлено открытым (keep-alive) после обработки запроса. Для HTTP/1.1 по умолчанию True. Для HTTP/1.0 — True только если клиент явно передал заголовок "Connection: keep-alive".',
+    syntax: "request.keep_alive",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def handle(request):
+    ka = request.keep_alive
+    version = request.version
+    connection_header = request.headers.get('Connection', '')
+
+    print(f"HTTP версия: {version.major}.{version.minor}")
+    print(f"Keep-Alive:  {ka}")
+    print(f"Connection:  {connection_header}")
+
+    # HTTP/1.1 без "Connection: close" → keep_alive = True
+    # HTTP/1.1 с "Connection: close"   → keep_alive = False
+    # HTTP/1.0 без заголовка           → keep_alive = False
+    # HTTP/1.0 с "Connection: keep-alive" → keep_alive = True
+
+    return web.Response(
+        text=f"Keep-Alive: {ka}",
+        headers={'Connection': 'keep-alive' if ka else 'close'}
+    )
+
+app = web.Application()
+app.router.add_get('/', handle)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.match_info",
+    category: "aiohttp.web",
+    description:
+      'Атрибут только для чтения. Возвращает объект UrlMappingMatchInfo — словарь с именованными параметрами пути, извлечёнными из URL-шаблона маршрута. Например, для маршрута /users/{id} и URL /users/42 вернёт {"id": "42"}. Все значения — строки.',
+    syntax: "request.match_info",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def get_user(request):
+    # Маршрут: /users/{user_id}/posts/{post_id}
+    match = request.match_info
+
+    user_id = match['user_id']          # '42'
+    post_id = match.get('post_id', '')  # '7'
+
+    # Преобразование типов (всё приходит как строка):
+    try:
+        uid = int(user_id)
+        pid = int(post_id)
+    except ValueError:
+        raise web.HTTPBadRequest(reason="ID должен быть числом")
+
+    return web.json_response({
+        'user_id': uid,
+        'post_id': pid
+    })
+
+app = web.Application()
+app.router.add_get('/users/{user_id}/posts/{post_id}', get_user)
+# web.run_app(app)
+# GET /users/42/posts/7 → {"user_id": 42, "post_id": 7}`,
+  },
+  {
+    name: "aiohttp.web.Request.app",
+    category: "aiohttp.web",
+    description:
+      'Атрибут только для чтения. Возвращает экземпляр web.Application, которому принадлежит данный запрос. Используется для доступа к ресурсам приложения (подключениям к БД, кэшу и др.), хранящимся в приложении как в словаре через app["key"].',
+    syntax: "request.app",
+    arguments: [],
+    example: `import aiohttp.web as web
+import aiohttp
+
+async def startup(app):
+    app['http_client'] = aiohttp.ClientSession()
+    app['db_pool'] = None  # здесь было бы asyncpg.create_pool(...)
+
+async def cleanup(app):
+    await app['http_client'].close()
+
+async def get_external_data(request):
+    # Получаем ресурсы через request.app:
+    client = request.app['http_client']
+
+    async with client.get('https://httpbin.org/get') as resp:
+        data = await resp.json()
+
+    return web.json_response({'origin': data.get('origin')})
+
+app = web.Application()
+app.on_startup.append(startup)
+app.on_cleanup.append(cleanup)
+app.router.add_get('/external', get_external_data)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.read()",
+    category: "aiohttp.web",
+    description:
+      "Корутина. Читает тело запроса целиком и возвращает объект bytes. Тело буферизуется в памяти — не подходит для очень больших файлов. Повторный вызов возвращает тот же буфер. Максимальный размер ограничен параметром client_max_size приложения (по умолчанию 1 МБ).",
+    syntax: "await request.read()",
+    arguments: [],
+    example: `import aiohttp.web as web
+import hashlib
+
+async def upload(request):
+    # Читаем тело запроса как сырые байты:
+    body = await request.read()
+
+    size = len(body)
+    checksum = hashlib.sha256(body).hexdigest()
+
+    print(f"Получено байт: {size}")
+    print(f"SHA-256: {checksum}")
+
+    # Обработка бинарных данных:
+    if request.content_type == 'image/png':
+        # Проверяем PNG-заголовок:
+        is_png = body[:8] == b'\\x89PNG\\r\\n\\x1a\\n'
+        if not is_png:
+            raise web.HTTPBadRequest(reason="Не PNG файл")
+
+    return web.json_response({
+        'size': size,
+        'sha256': checksum
+    })
+
+app = web.Application(client_max_size=10 * 1024 * 1024)  # 10 МБ
+app.router.add_post('/upload', upload)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.text()",
+    category: "aiohttp.web",
+    description:
+      "Корутина. Читает тело запроса и возвращает его как строку (str). Кодировка определяется из заголовка Content-Type (charset). Если кодировка не указана — используется UTF-8. Тело буферизуется; повторный вызов возвращает тот же результат.",
+    syntax: "await request.text()",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def echo(request):
+    # Читаем тело как строку:
+    body_text = await request.text()
+    print(f"Длина: {len(body_text)} символов")
+    print(f"Первые 100 символов: {body_text[:100]}")
+
+    # Пример: приём plain text данных
+    lines = body_text.strip().split('\\n')
+    print(f"Строк: {len(lines)}")
+
+    return web.Response(
+        text=f"Получено {len(body_text)} символов",
+        content_type='text/plain'
+    )
+
+async def handle_xml(request):
+    xml_body = await request.text()
+    # Content-Type: application/xml; charset=windows-1251
+    # → автоматически декодируется в str
+
+    return web.Response(text=f"XML длиной {len(xml_body)} символов")
+
+app = web.Application()
+app.router.add_post('/echo', echo)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.json()",
+    category: "aiohttp.web",
+    description:
+      "Корутина. Читает тело запроса и десериализует его из JSON, возвращая Python-объект (dict, list и т.д.). Использует стандартный модуль json или кастомный loads через параметр. Если тело — невалидный JSON, возбуждает json.JSONDecodeError.",
+    syntax: "await request.json(loads=json.loads)",
+    arguments: [
+      {
+        name: "loads",
+        description:
+          "Функция десериализации JSON. По умолчанию json.loads. Можно передать ujson.loads или orjson.loads для ускорения.",
+      },
+    ],
+    example: `import aiohttp.web as web
+
+async def create_user(request):
+    try:
+        data = await request.json()
+    except Exception:
+        raise web.HTTPBadRequest(reason="Невалидный JSON")
+
+    # Валидация обязательных полей:
+    name = data.get('name')
+    email = data.get('email')
+
+    if not name or not email:
+        raise web.HTTPUnprocessableEntity(
+            reason="Обязательные поля: name, email"
+        )
+
+    # Обработка данных:
+    user = {'id': 1, 'name': name, 'email': email}
+    return web.json_response(user, status=201)
+
+app = web.Application()
+app.router.add_post('/users', create_user)
+# web.run_app(app)
+
+# Пример запроса:
+# POST /users
+# Content-Type: application/json
+# {"name": "Иван", "email": "ivan@example.com"}`,
+  },
+  {
+    name: "aiohttp.web.Request.multipart()",
+    category: "aiohttp.web",
+    description:
+      "Корутина. Возвращает объект MultipartReader для построчного (потокового) чтения multipart/form-data запроса. В отличие от post(), читает данные потоково без полной буферизации в памяти — оптимально для загрузки больших файлов.",
+    syntax: "await request.multipart()",
+    arguments: [],
+    example: `import aiohttp.web as web
+import aioiofiles  # pip install aiofiles
+
+async def upload_file(request):
+    reader = await request.multipart()
+
+    # Читаем части по одной:
+    async for part in reader:
+        if part.name == 'file':
+            filename = part.filename
+            size = 0
+            # Потоковая запись без буферизации всего файла:
+            with open(f'/tmp/{filename}', 'wb') as f:
+                while True:
+                    chunk = await part.read_chunk(8192)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    size += len(chunk)
+            print(f"Сохранён файл: {filename} ({size} байт)")
+
+        elif part.name == 'description':
+            desc = await part.text()
+            print(f"Описание: {desc}")
+
+    return web.Response(text="Файл загружен")
+
+app = web.Application(client_max_size=100 * 1024 * 1024)  # 100 МБ
+app.router.add_post('/upload', upload_file)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.post()",
+    category: "aiohttp.web",
+    description:
+      "Корутина. Читает тело запроса как данные HTML-формы и возвращает объект MultiDict. Обрабатывает Content-Type: application/x-www-form-urlencoded и multipart/form-data. Для файлов — возвращает объекты FileField. Буферизует всё тело в памяти.",
+    syntax: "await request.post()",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def handle_form(request):
+    data = await request.post()
+
+    # application/x-www-form-urlencoded:
+    username = data.get('username', '')
+    password = data.get('password', '')
+    roles = data.getall('role', [])  # несколько значений одного поля
+
+    print(f"Пользователь: {username}")
+    print(f"Роли: {roles}")
+
+    return web.json_response({'username': username, 'roles': roles})
+
+async def handle_upload(request):
+    data = await request.post()
+
+    # multipart/form-data с файлом:
+    file_field = data.get('avatar')
+    if file_field:
+        filename = file_field.filename
+        content = file_field.file.read()
+        print(f"Файл: {filename}, размер: {len(content)} байт")
+
+    return web.Response(text="Форма принята")
+
+app = web.Application()
+app.router.add_post('/login', handle_form)
+app.router.add_post('/profile', handle_upload)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.status",
+    category: "aiohttp.web",
+    description:
+      "Атрибут объекта ответа. Возвращает или устанавливает HTTP-код статуса ответа (целое число). Стандартные коды: 200 OK, 201 Created, 204 No Content, 301/302 Redirect, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 500 Internal Server Error.",
+    syntax: "response.status",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def handle(request):
+    # Создание ответа с конкретным статусом:
+    response = web.Response(status=201, text="Ресурс создан")
+    print(response.status)   # 201
+    print(response.reason)   # Created
+
+    # Изменение статуса после создания:
+    response.status = 202
+    print(response.status)   # 202
+
+    return response
+
+async def get_user(request):
+    user_id = request.match_info['id']
+    user = None  # имитация отсутствия пользователя
+
+    if user is None:
+        return web.Response(status=404, text=f"Пользователь {user_id} не найден")
+
+    return web.json_response(user, status=200)
+
+app = web.Application()
+app.router.add_get('/users/{id}', get_user)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.reason",
+    category: "aiohttp.web",
+    description:
+      'Атрибут объекта ответа. Возвращает или устанавливает текстовое описание HTTP-статуса (строка). Для стандартных кодов устанавливается автоматически (например, "OK" для 200, "Not Found" для 404). Можно переопределить произвольным текстом.',
+    syntax: "response.reason",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def handle(request):
+    # Стандартный reason по умолчанию:
+    r200 = web.Response(status=200)
+    print(r200.reason)  # OK
+
+    r404 = web.Response(status=404)
+    print(r404.reason)  # Not Found
+
+    r500 = web.Response(status=500)
+    print(r500.reason)  # Internal Server Error
+
+    # Переопределение reason:
+    custom = web.Response(
+        status=422,
+        reason="Validation Failed",
+        text="Поле email обязательно"
+    )
+    print(custom.reason)  # Validation Failed
+
+    return custom
+
+app = web.Application()
+app.router.add_post('/validate', handle)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.headers",
+    category: "aiohttp.web",
+    description:
+      "Атрибут объекта ответа. Возвращает заголовки ответа в виде объекта CIMultiDict (регистронезависимый изменяемый словарь). Позволяет читать, добавлять и изменять заголовки до отправки ответа клиенту. После вызова prepare() заголовки становятся неизменяемыми.",
+    syntax: "response.headers",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def handle(request):
+    response = web.Response(text="Данные")
+
+    # Добавление заголовков:
+    response.headers['X-Request-ID'] = 'abc-123'
+    response.headers['Cache-Control'] = 'max-age=3600'
+    response.headers['X-Custom-Header'] = 'значение'
+
+    # Чтение заголовков (регистронезависимо):
+    print(response.headers.get('content-type'))  # text/plain; charset=utf-8
+    print(response.headers.get('Content-Type'))  # то же самое
+
+    return response
+
+async def cors_handler(request):
+    response = web.Response(text="OK")
+    # CORS заголовки:
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
+
+app = web.Application()
+app.router.add_get('/', handle)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.body",
+    category: "aiohttp.web",
+    description:
+      "Атрибут объекта ответа. Возвращает или устанавливает тело ответа в виде объекта bytes или None. При установке bytes автоматически обновляет заголовок Content-Length. Взаимоисключает с атрибутом text — установка одного сбрасывает другое.",
+    syntax: "response.body",
+    arguments: [],
+    example: `import aiohttp.web as web
+import json
+
+async def binary_response(request):
+    # Установка бинарного тела:
+    data = bytes([0x89, 0x50, 0x4E, 0x47])  # PNG заголовок
+    response = web.Response(
+        body=data,
+        content_type='image/png'
+    )
+    print(response.body)            # b'\\x89PNG'
+    print(len(response.body))       # 4
+    return response
+
+async def json_manual(request):
+    payload = {'status': 'ok', 'count': 42}
+    body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+
+    response = web.Response(
+        body=body,
+        content_type='application/json',
+        charset='utf-8'
+    )
+    # Изменение тела после создания:
+    print(response.body)  # b'{"status": "ok", "count": 42}'
+    return response
+
+app = web.Application()
+app.router.add_get('/image', binary_response)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.text",
+    category: "aiohttp.web",
+    description:
+      "Атрибут объекта ответа. Возвращает или устанавливает тело ответа как строку (str). При чтении декодирует bytes-тело по кодировке из Content-Type. При записи кодирует строку в bytes. Взаимоисключает с body — установка одного сбрасывает другое.",
+    syntax: "response.text",
+    arguments: [],
+    example: `import aiohttp.web as web
+
+async def handle(request):
+    response = web.Response(text="Привет, мир!")
+
+    # Чтение атрибута text:
+    print(response.text)    # Привет, мир!
+    print(type(response.text))  # <class 'str'>
+
+    # Изменение текста после создания:
+    response.text = "Обновлённый текст"
+    print(response.text)    # Обновлённый текст
+    print(response.body)    # b'\\xd0\\x9e\\xd0\\xb1...' (UTF-8)
+
+    return response
+
+async def dynamic_text(request):
+    name = request.query.get('name', 'Незнакомец')
+    response = web.Response(content_type='text/plain')
+    response.text = f"Добро пожаловать, {name}!"
+    # Content-Length обновляется автоматически
+    return response
+
+app = web.Application()
+app.router.add_get('/', dynamic_text)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.prepare()",
+    category: "aiohttp.web",
+    description:
+      "Корутина. Отправляет HTTP-заголовки ответа клиенту без отправки тела. Вызывается автоматически при использовании обычного Response. Нужна явно при потоковой передаче (StreamResponse) — позволяет отправлять тело по частям через write(). После вызова заголовки нельзя изменить.",
+    syntax: "await response.prepare(request)",
+    arguments: [
+      {
+        name: "request",
+        description: "Объект web.Request, для которого подготавливается ответ.",
+      },
+    ],
+    example: `import aiohttp.web as web
+import asyncio
+
+async def stream_handler(request):
+    response = web.StreamResponse(
+        status=200,
+        reason='OK',
+        headers={'Content-Type': 'text/event-stream'}
+    )
+
+    # Отправляем заголовки клиенту:
+    await response.prepare(request)
+
+    # После prepare() можно отправлять тело по частям:
+    for i in range(5):
+        data = f"data: событие {i}\\n\\n"
+        await response.write(data.encode('utf-8'))
+        await asyncio.sleep(1)
+
+    await response.write_eof()
+    return response
+
+app = web.Application()
+app.router.add_get('/events', stream_handler)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.write()",
+    category: "aiohttp.web",
+    description:
+      "Корутина. Отправляет часть тела ответа клиенту. Используется только со StreamResponse для потоковой передачи данных. Должна вызываться после prepare(). Принимает bytes — строки необходимо предварительно закодировать.",
+    syntax: "await response.write(data)",
+    arguments: [
+      {
+        name: "data",
+        description:
+          'Объект bytes для отправки. Строки необходимо закодировать: data.encode("utf-8").',
+      },
+    ],
+    example: `import aiohttp.web as web
+import asyncio
+import json
+
+async def sse_handler(request):
+    response = web.StreamResponse(headers={
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no'
+    })
+    await response.prepare(request)
+
+    # Server-Sent Events (SSE) поток:
+    for i in range(10):
+        event = {
+            'id': i,
+            'data': f"Сообщение {i}",
+            'timestamp': i * 1000
+        }
+        payload = f"data: {json.dumps(event, ensure_ascii=False)}\\n\\n"
+        await response.write(payload.encode('utf-8'))
+        await asyncio.sleep(0.5)
+
+    return response
+
+async def chunked_file(request):
+    response = web.StreamResponse()
+    await response.prepare(request)
+
+    # Отправка большого файла по частям:
+    chunk_size = 64 * 1024  # 64 КБ
+    with open('/tmp/large_file.bin', 'rb') as f:
+        while chunk := f.read(chunk_size):
+            await response.write(chunk)
+
+    return response
+
+app = web.Application()
+app.router.add_get('/sse', sse_handler)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.write_eof()",
+    category: "aiohttp.web",
+    description:
+      "Корутина. Завершает потоковую передачу данных — сигнализирует клиенту об окончании тела ответа. Используется со StreamResponse после последнего вызова write(). После вызова отправка данных невозможна. Для обычного Response вызывается автоматически.",
+    syntax: "await response.write_eof()",
+    arguments: [],
+    example: `import aiohttp.web as web
+import asyncio
+
+async def stream_with_eof(request):
+    response = web.StreamResponse(status=200)
+    await response.prepare(request)
+
+    lines = ["Строка 1", "Строка 2", "Строка 3", "Конец"]
+
+    for line in lines:
+        await response.write(f"{line}\\n".encode('utf-8'))
+        await asyncio.sleep(0.2)
+
+    # Явно завершаем поток:
+    await response.write_eof()
+    # После write_eof() вызов write() вызовет ошибку
+
+    return response
+
+async def progress_stream(request):
+    response = web.StreamResponse(headers={
+        'Content-Type': 'text/plain; charset=utf-8'
+    })
+    await response.prepare(request)
+
+    total = 100
+    for step in range(0, total + 1, 10):
+        await response.write(f"Прогресс: {step}%\\n".encode())
+        await asyncio.sleep(0.1)
+
+    await response.write_eof()  # клиент знает, что поток завершён
+    return response
+
+app = web.Application()
+app.router.add_get('/stream', stream_with_eof)
+# web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.run_app()",
+    category: "aiohttp.web",
+    description:
+      "Запускает веб-приложение aiohttp в синхронном режиме — создаёт цикл событий, настраивает сервер и блокирует выполнение до получения сигнала остановки (SIGTERM, SIGINT / Ctrl+C). Автоматически вызывает on_startup и on_cleanup. Наиболее простой способ запуска приложения.",
+    syntax:
+      "web.run_app(app, *, host=None, port=None, path=None, sock=None, shutdown_timeout=60.0, ssl_context=None, print=print, backlog=128, access_log=...)",
+    arguments: [
+      {
+        name: "app",
+        description:
+          "Экземпляр web.Application или корутина, возвращающая приложение.",
+      },
+      {
+        name: "host",
+        description:
+          'Хост для прослушивания. По умолчанию "0.0.0.0" (все интерфейсы). Может быть строкой или списком строк.',
+      },
+      {
+        name: "port",
+        description:
+          "Порт для прослушивания. По умолчанию 8080, или 8443 при использовании ssl_context.",
+      },
+      {
+        name: "path",
+        description:
+          "Путь к Unix-сокету (строка). Альтернатива host/port для работы через сокет-файл.",
+      },
+      {
+        name: "shutdown_timeout",
+        description:
+          "Время ожидания завершения активных соединений при остановке (секунды). По умолчанию 60.0.",
+      },
+      {
+        name: "ssl_context",
+        description: "Объект ssl.SSLContext для запуска HTTPS-сервера.",
+      },
+    ],
+    example: `import aiohttp.web as web
+import ssl
+
+async def handle(request):
+    return web.Response(text="Привет!")
+
+app = web.Application()
+app.router.add_get('/', handle)
+
+# Простой запуск:
+# web.run_app(app)  # 0.0.0.0:8080
+
+# С указанием хоста и порта:
+# web.run_app(app, host='127.0.0.1', port=9000)
+
+# HTTPS:
+# ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+# ssl_ctx.load_cert_chain('cert.pem', 'key.pem')
+# web.run_app(app, port=443, ssl_context=ssl_ctx)
+
+# Несколько хостов:
+# web.run_app(app, host=['127.0.0.1', '::1'], port=8080)
+
+# Unix-сокет (для работы за nginx):
+# web.run_app(app, path='/tmp/myapp.sock')
+
+web.run_app(app, host='127.0.0.1', port=8080)`,
+  },
+  {
+    name: "aiohttp.TCPConnector",
+    description:
+      "Класс библиотеки aiohttp. Управляет пулом TCP-соединений для ClientSession. Позволяет настраивать максимальное количество соединений, параметры SSL, DNS-кэширование и таймауты подключения. Передаётся в ClientSession через параметр connector. Один коннектор может использоваться несколькими сессиями.",
+    syntax:
+      "connector = aiohttp.TCPConnector(limit=100, ssl=None, ttl_dns_cache=10, use_dns_cache=True, ...)",
+    arguments: [
+      {
+        name: "limit",
+        description:
+          "Максимальное общее число одновременных соединений. 0 — без ограничений. По умолчанию 100.",
+      },
+      {
+        name: "ssl",
+        description:
+          "Параметры SSL: None (по умолчанию, стандартная проверка), False (без проверки), ssl.SSLContext или aiohttp.Fingerprint.",
+      },
+      {
+        name: "ttl_dns_cache",
+        description: "Время жизни DNS-кэша в секундах. По умолчанию 10.",
+      },
+      {
+        name: "use_dns_cache",
+        description: "Включить кэширование DNS-запросов. По умолчанию True.",
+      },
+    ],
+    example: `import aiohttp
+import asyncio
+import ssl
+
+async def main():
+    # Базовое использование с лимитом соединений:
+    connector = aiohttp.TCPConnector(limit=50)
+    async with aiohttp.ClientSession(connector=connector) as session:
+        async with session.get('https://httpbin.org/get') as resp:
+            print(resp.status)
+
+    # Отключение проверки SSL (небезопасно, только для разработки):
+    connector = aiohttp.TCPConnector(ssl=False)
+    async with aiohttp.ClientSession(connector=connector) as session:
+        async with session.get('https://self-signed.example.com') as resp:
+            print(resp.status)
+
+    # Кастомный SSL-контекст:
+    ssl_ctx = ssl.create_default_context(cafile='/path/to/ca-bundle.crt')
+    connector = aiohttp.TCPConnector(ssl=ssl_ctx, limit=200)
+    async with aiohttp.ClientSession(connector=connector) as session:
+        async with session.get('https://api.example.com') as resp:
+            data = await resp.json()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.UnixConnector",
+    description:
+      "Класс библиотеки aiohttp. Коннектор для подключения через Unix Domain Socket (UDS) вместо TCP. Используется для взаимодействия с локальными сервисами через сокет-файл: Docker daemon, systemd сервисы, nginx, Gunicorn и другие. Быстрее TCP для локальных соединений.",
+    syntax: "connector = aiohttp.UnixConnector(path)",
+    arguments: [
+      {
+        name: "path",
+        description:
+          'Путь к Unix-сокету (файл .sock). Например: "/var/run/docker.sock" или "/tmp/myapp.sock".',
+      },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    # Подключение к Docker daemon через Unix-сокет:
+    connector = aiohttp.UnixConnector(path='/var/run/docker.sock')
+    async with aiohttp.ClientSession(connector=connector) as session:
+        async with session.get('http://localhost/v1.41/containers/json') as resp:
+            containers = await resp.json()
+            for c in containers:
+                print(c['Names'], c['Status'])
+
+    # Подключение к кастомному сервису:
+    connector = aiohttp.UnixConnector(path='/tmp/myservice.sock')
+    async with aiohttp.ClientSession(connector=connector) as session:
+        async with session.get('http://localhost/api/status') as resp:
+            print(await resp.json())
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.CookieJar",
+    description:
+      "Класс библиотеки aiohttp. Хранилище куков для ClientSession. Автоматически сохраняет куки из ответов и отправляет их в следующих запросах, соблюдая политику безопасности (домен, путь, срок действия). Параметр unsafe=True разрешает работу с IP-адресами вместо доменных имён.",
+    syntax: "jar = aiohttp.CookieJar(unsafe=False)",
+    arguments: [
+      {
+        name: "unsafe",
+        description:
+          "Если True — разрешает куки для числовых IP-адресов (по умолчанию запрещено стандартом RFC 2109). По умолчанию False.",
+      },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    # Стандартное использование (куки сохраняются автоматически):
+    jar = aiohttp.CookieJar()
+    async with aiohttp.ClientSession(cookie_jar=jar) as session:
+        await session.post('https://example.com/login',
+                           data={'username': 'user', 'password': 'pass'})
+        async with session.get('https://example.com/profile') as resp:
+            print(await resp.text())
+
+    # Для локальной разработки с IP-адресом:
+    jar = aiohttp.CookieJar(unsafe=True)
+    async with aiohttp.ClientSession(cookie_jar=jar) as session:
+        await session.get('http://127.0.0.1:8080/set-cookie')
+        async with session.get('http://127.0.0.1:8080/get-cookie') as resp:
+            print(await resp.text())
+
+    # Просмотр сохранённых куков:
+    for cookie in jar:
+        print(cookie.key, cookie.value)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.FormData",
+    description:
+      "Класс библиотеки aiohttp. Используется для формирования multipart/form-data или application/x-www-form-urlencoded тела запроса. Позволяет добавлять текстовые поля, файлы, байтовые данные и вложенные части с произвольными заголовками.",
+    syntax:
+      "form = aiohttp.FormData(fields=(), quote_fields=True, charset=None)",
+    arguments: [
+      {
+        name: "fields",
+        description:
+          "Начальный список полей формы. Каждый элемент — кортеж (name, value) или словарь.",
+      },
+      {
+        name: "quote_fields",
+        description:
+          "Экранировать специальные символы в именах полей. По умолчанию True.",
+      },
+      {
+        name: "charset",
+        description:
+          "Кодировка для текстовых полей. Если None — используется utf-8.",
+      },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Загрузка файла:
+        form = aiohttp.FormData()
+        form.add_field('username', 'ivan')
+        form.add_field('file',
+                       open('document.pdf', 'rb'),
+                       filename='document.pdf',
+                       content_type='application/pdf')
+
+        async with session.post('https://api.example.com/upload', data=form) as resp:
+            print(resp.status)
+
+        # Несколько файлов:
+        form = aiohttp.FormData()
+        form.add_field('title', 'Фотографии отпуска')
+        for i, path in enumerate(['photo1.jpg', 'photo2.jpg']):
+            form.add_field(f'photo_{i}',
+                           open(path, 'rb'),
+                           filename=path,
+                           content_type='image/jpeg')
+
+        async with session.post('https://api.example.com/photos', data=form) as resp:
+            result = await resp.json()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.ClientTimeout",
+    description:
+      "Класс библиотеки aiohttp. Задаёт таймауты для HTTP-запросов на разных этапах соединения. Позволяет раздельно настраивать общий таймаут, таймаут на установку соединения и таймаут на чтение данных. Передаётся в ClientSession или в отдельный запрос.",
+    syntax:
+      "timeout = aiohttp.ClientTimeout(total=None, connect=None, sock_read=None, sock_connect=None)",
+    arguments: [
+      {
+        name: "total",
+        description:
+          "Общий таймаут на весь запрос (в секундах): от начала до получения всего ответа. None — без ограничения.",
+      },
+      {
+        name: "connect",
+        description:
+          "Таймаут на получение соединения из пула (включая DNS и TCP-handshake). None — без ограничения.",
+      },
+      {
+        name: "sock_connect",
+        description:
+          "Таймаут только на TCP-соединение с хостом. None — без ограничения.",
+      },
+      {
+        name: "sock_read",
+        description:
+          "Таймаут на чтение порции данных из сокета. None — без ограничения.",
+      },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    # Глобальный таймаут для всей сессии:
+    timeout = aiohttp.ClientTimeout(total=30)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.get('https://httpbin.org/delay/1') as resp:
+            print(resp.status)
+
+    # Детальная настройка:
+    timeout = aiohttp.ClientTimeout(
+        total=60,
+        connect=10,
+        sock_read=30,
+    )
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get('https://slow-api.example.com',
+                                   timeout=timeout) as resp:
+                data = await resp.json()
+        except asyncio.TimeoutError:
+            print('Превышен таймаут запроса')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.MultipartReader.at_eof",
+    description:
+      "Метод класса MultipartReader библиотеки aiohttp. Возвращает True, если все части multipart-ответа были прочитаны и достигнут конец потока. Используется в цикле чтения для определения момента завершения обработки multipart-данных.",
+    syntax: "reader.at_eof()",
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        async with session.get('https://api.example.com/multipart') as resp:
+            reader = aiohttp.MultipartReader.from_response(resp)
+
+            parts = []
+            while not reader.at_eof():
+                part = await reader.next()
+                if part is None:
+                    break
+                data = await part.read()
+                parts.append({
+                    'headers': dict(part.headers),
+                    'data': data,
+                })
+
+            print(f'Прочитано {len(parts)} частей')
+            print('Конец потока:', reader.at_eof())   # True
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.MultipartReader.next",
+    description:
+      "Асинхронный метод класса MultipartReader библиотеки aiohttp. Возвращает следующую часть multipart-ответа как объект BodyPartReader или вложенный MultipartReader (для nested multipart). Возвращает None если все части прочитаны.",
+    syntax: "part = await reader.next()",
+    arguments: [],
+    example: `import aiohttp
+import asyncio
+
+async def download_multipart(url: str):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            reader = aiohttp.MultipartReader.from_response(resp)
+
+            index = 0
+            while True:
+                part = await reader.next()
+                if part is None:
+                    break
+
+                filename = part.filename
+
+                if filename:
+                    data = await part.read()
+                    with open(f'downloaded_{filename}', 'wb') as f:
+                        f.write(data)
+                    print(f'Сохранён файл: {filename} ({len(data)} байт)')
+                else:
+                    text = await part.text()
+                    print(f'Часть {index}: {text[:100]}')
+
+                index += 1
+
+asyncio.run(download_multipart('https://api.example.com/files'))`,
+  },
+  {
+    name: "aiohttp.MultipartWriter.append",
+    description:
+      "Метод класса MultipartWriter библиотеки aiohttp. Добавляет произвольный объект как часть multipart-запроса. Принимает строки, байты, объекты BytesIO и другие данные. Позволяет задать дополнительные заголовки для части (Content-Type, Content-Disposition и др.).",
+    syntax: "writer.append(obj, headers=None)",
+    arguments: [
+      {
+        name: "obj",
+        description:
+          "Данные для добавления: str, bytes, BytesIO, asyncio.StreamReader или другой объект с поддержкой чтения.",
+      },
+      {
+        name: "headers",
+        description:
+          "Словарь или CIMultiDict дополнительных заголовков для этой части.",
+      },
+    ],
+    example: `import aiohttp
+import asyncio
+from aiohttp import MultipartWriter
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        with MultipartWriter('form-data') as writer:
+            writer.append('Иван Иванов',
+                          {'Content-Disposition': 'form-data; name="username"'})
+
+            writer.append(b'binary data',
+                          {'Content-Disposition': 'form-data; name="data"',
+                           'Content-Type': 'application/octet-stream'})
+
+            with open('photo.jpg', 'rb') as f:
+                writer.append(f,
+                              {'Content-Disposition': 'form-data; name="photo"; filename="photo.jpg"',
+                               'Content-Type': 'image/jpeg'})
+
+        async with session.post('https://api.example.com/upload',
+                                data=writer,
+                                headers={'Content-Type': writer.content_type}) as resp:
+            print(resp.status)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.MultipartWriter.append_json",
+    description:
+      "Метод класса MultipartWriter библиотеки aiohttp. Сериализует объект в JSON и добавляет его как часть multipart-запроса с Content-Type: application/json. Удобная обёртка над append() для отправки JSON-данных внутри multipart-тела.",
+    syntax: "writer.append_json(obj, headers=None)",
+    arguments: [
+      {
+        name: "obj",
+        description:
+          "Любой JSON-сериализуемый объект: dict, list, str, int и др.",
+      },
+      {
+        name: "headers",
+        description:
+          "Дополнительные заголовки для части. Content-Type устанавливается автоматически в application/json.",
+      },
+    ],
+    example: `import aiohttp
+import asyncio
+from aiohttp import MultipartWriter
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        with MultipartWriter('mixed') as writer:
+            writer.append_json({
+                'title': 'Отчёт за январь',
+                'author': 'Иван Иванов',
+                'tags': ['финансы', 'q1'],
+            })
+
+            with open('report.pdf', 'rb') as f:
+                writer.append(
+                    f,
+                    {'Content-Disposition': 'attachment; filename="report.pdf"',
+                     'Content-Type': 'application/pdf'},
+                )
+
+        async with session.post(
+            'https://api.example.com/reports',
+            data=writer,
+            headers={'Content-Type': writer.content_type},
+        ) as resp:
+            result = await resp.json()
+            print(result)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.MultipartWriter.append_form",
+    description:
+      "Метод класса MultipartWriter библиотеки aiohttp. Добавляет данные формы как часть multipart-запроса с Content-Type: application/x-www-form-urlencoded. Принимает словарь или список пар (ключ, значение). Используется для вложенных форм внутри multipart-тела.",
+    syntax: "writer.append_form(obj, headers=None)",
+    arguments: [
+      {
+        name: "obj",
+        description:
+          "Данные формы: словарь {str: str} или список пар [(str, str)].",
+      },
+      { name: "headers", description: "Дополнительные заголовки для части." },
+    ],
+    example: `import aiohttp
+import asyncio
+from aiohttp import MultipartWriter
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        with MultipartWriter('form-data') as writer:
+            writer.append_form({
+                'username': 'ivan',
+                'email': 'ivan@example.com',
+                'role': 'admin',
+            })
+
+            writer.append_form([
+                ('field1', 'значение1'),
+                ('field2', 'значение2'),
+            ])
+
+            with open('avatar.png', 'rb') as f:
+                writer.append(
+                    f,
+                    {'Content-Disposition': 'form-data; name="avatar"; filename="avatar.png"',
+                     'Content-Type': 'image/png'},
+                )
+
+        async with session.post(
+            'https://api.example.com/profile',
+            data=writer,
+            headers={'Content-Type': writer.content_type},
+        ) as resp:
+            print(resp.status)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "aiohttp.web.get",
+    description:
+      "Функция маршрутизации серверной части aiohttp. Создаёт объект RouteDef для регистрации обработчика GET-запросов по заданному пути. Используется совместно с app.add_routes() или внутри RouteTableDef как декоратор @routes.get(). Аналоги: web.post(), web.put(), web.patch(), web.delete().",
+    syntax: "web.get(path, handler, **kwargs)",
+    arguments: [
+      {
+        name: "path",
+        description:
+          'URL-путь маршрута. Может содержать динамические сегменты: "/users/{id}" или "/files/{name:.+}".',
+      },
+      {
+        name: "handler",
+        description:
+          "Асинхронная функция-обработчик: async def handler(request: web.Request) → web.Response.",
+      },
+      {
+        name: "**kwargs",
+        description:
+          "Дополнительные параметры: name (имя маршрута для url_for), expect_handler и др.",
+      },
+    ],
+    example: `from aiohttp import web
+
+async def index(request: web.Request) -> web.Response:
+    return web.Response(text='Главная')
+
+async def get_user(request: web.Request) -> web.Response:
+    user_id = int(request.match_info['id'])
+    return web.json_response({'id': user_id, 'name': 'Иван'})
+
+app = web.Application()
+app.add_routes([
+    web.get('/', index),
+    web.get('/users/{id}', get_user, name='user-detail'),
+])
+
+# Через RouteTableDef:
+routes = web.RouteTableDef()
+
+@routes.get('/')
+async def index(request):
+    return web.Response(text='Главная')
+
+@routes.get('/users/{id}')
+async def get_user(request):
+    return web.json_response({'id': request.match_info['id']})
+
+app = web.Application()
+app.add_routes(routes)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.post",
+    description:
+      "Функция маршрутизации серверной части aiohttp. Создаёт объект RouteDef для регистрации обработчика POST-запросов по заданному пути. Используется совместно с app.add_routes() или как декоратор @routes.post() в RouteTableDef.",
+    syntax: "web.post(path, handler, **kwargs)",
+    arguments: [
+      {
+        name: "path",
+        description:
+          "URL-путь маршрута. Может содержать динамические сегменты.",
+      },
+      {
+        name: "handler",
+        description:
+          "Асинхронная функция-обработчик async def handler(request) → web.Response.",
+      },
+      {
+        name: "**kwargs",
+        description:
+          "Дополнительные параметры маршрута: name, expect_handler и др.",
+      },
+    ],
+    example: `from aiohttp import web
+
+routes = web.RouteTableDef()
+
+@routes.post('/users')
+async def create_user(request: web.Request) -> web.Response:
+    data = await request.json()
+    if 'name' not in data:
+        raise web.HTTPBadRequest(reason='Поле name обязательно')
+    user = {'id': 42, 'name': data['name'], 'email': data.get('email')}
+    return web.json_response(user, status=201)
+
+@routes.post('/login')
+async def login(request: web.Request) -> web.Response:
+    form = await request.post()
+    username = form['username']
+    password = form['password']
+    return web.json_response({'token': 'abc123'})
+
+@routes.post('/upload')
+async def upload(request: web.Request) -> web.Response:
+    reader = await request.multipart()
+    field = await reader.next()
+    data = await field.read()
+    return web.json_response({'size': len(data)})
+
+app = web.Application()
+app.add_routes(routes)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.route",
+    description:
+      'Функция маршрутизации серверной части aiohttp. Создаёт объект RouteDef для указанного HTTP-метода. Позволяет регистрировать маршрут для любого метода (включая нестандартные) или символа "*" — для обработки всех методов.',
+    syntax: "web.route(method, path, handler, **kwargs)",
+    arguments: [
+      {
+        name: "method",
+        description:
+          'HTTP-метод в верхнем регистре: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" или "*" для любого метода.',
+      },
+      { name: "path", description: "URL-путь маршрута." },
+      { name: "handler", description: "Асинхронная функция-обработчик." },
+      { name: "**kwargs", description: "Дополнительные параметры маршрута." },
+    ],
+    example: `from aiohttp import web
+
+async def handle_all(request: web.Request) -> web.Response:
+    return web.Response(text=f'Метод: {request.method}')
+
+async def custom_method(request: web.Request) -> web.Response:
+    return web.Response(text='PROPFIND запрос обработан')
+
+app = web.Application()
+app.add_routes([
+    web.route('*', '/echo', handle_all),
+    web.route('PROPFIND', '/dav/{path:.+}', custom_method),
+    web.route('GET', '/items', handle_all),
+    web.route('POST', '/items', handle_all),
+])
+
+# Через RouteTableDef:
+routes = web.RouteTableDef()
+
+@routes.route('*', '/any')
+async def any_method(request):
+    return web.Response(text=request.method)
+
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.view",
+    description:
+      "Функция маршрутизации серверной части aiohttp. Регистрирует класс-обработчик (наследник web.View) для заданного пути. Класс-обработчик определяет методы get(), post(), put() и др., каждый из которых обрабатывает соответствующий HTTP-метод. Удобно для группировки логики одного ресурса.",
+    syntax: "web.view(path, handler, **kwargs)",
+    arguments: [
+      { name: "path", description: "URL-путь маршрута." },
+      {
+        name: "handler",
+        description:
+          "Класс, наследующий web.View, с методами get(), post() и другими HTTP-методами.",
+      },
+      { name: "**kwargs", description: "Дополнительные параметры: name и др." },
+    ],
+    example: `from aiohttp import web
+
+class UserView(web.View):
+    async def get(self):
+        user_id = self.request.match_info['id']
+        return web.json_response({'id': user_id, 'name': 'Иван'})
+
+    async def put(self):
+        user_id = self.request.match_info['id']
+        data = await self.request.json()
+        return web.json_response({'id': user_id, **data})
+
+    async def delete(self):
+        return web.Response(status=204)
+
+class UsersView(web.View):
+    async def get(self):
+        return web.json_response([{'id': 1}, {'id': 2}])
+
+    async def post(self):
+        data = await self.request.json()
+        return web.json_response(data, status=201)
+
+app = web.Application()
+app.add_routes([
+    web.view('/users', UsersView),
+    web.view('/users/{id}', UserView),
+])
+
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.static",
+    description:
+      "Функция маршрутизации серверной части aiohttp. Регистрирует маршрут для раздачи статических файлов из указанной директории. Все файлы в директории становятся доступны по URL с заданным префиксом. Поддерживает кэширование, сжатие и ETag-заголовки.",
+    syntax: "web.static(prefix, path, **kwargs)",
+    arguments: [
+      {
+        name: "prefix",
+        description:
+          'URL-префикс для статических файлов. Например: "/static" — файлы будут доступны по /static/style.css.',
+      },
+      {
+        name: "path",
+        description:
+          "Путь к директории со статическими файлами в файловой системе. Строка или pathlib.Path.",
+      },
+      {
+        name: "**kwargs",
+        description:
+          "Дополнительные параметры: name (имя маршрута), chunk_size, show_index (показывать листинг), follow_symlinks, append_version.",
+      },
+    ],
+    example: `from aiohttp import web
+from pathlib import Path
+
+BASE_DIR = Path(__file__).parent
+
+app = web.Application()
+
+app.add_routes([
+    web.static('/static', BASE_DIR / 'static'),
+    web.static('/media', BASE_DIR / 'media', name='media'),
+])
+
+# Или через router:
+app.router.add_static('/assets', path=BASE_DIR / 'assets',
+                       show_index=True)
+
+# Структура URL:
+# ./static/style.css   → http://localhost:8080/static/style.css
+# ./static/app.js      → http://localhost:8080/static/app.js
+# ./media/photo.jpg    → http://localhost:8080/media/photo.jpg
+
+async def index(request):
+    static_url = request.app.router['media'].url_for(filename='photo.jpg')
+    return web.Response(text=f'Фото: {static_url}')
+
+web.run_app(app, host='0.0.0.0', port=8080)`,
+  },
+  {
+    name: "asyncio.run",
+    description:
+      "Функция библиотеки asyncio. Запускает корутину верхнего уровня, создавая новый цикл событий, выполняя корутину до завершения и закрывая цикл. Является основной точкой входа в асинхронную программу. Не может вызываться из уже работающего цикла событий.",
+    syntax: "asyncio.run(coro, *, debug=None, loop_factory=None)",
+    arguments: [
+      {
+        name: "coro",
+        description:
+          "Корутина для выполнения. Объект, полученный вызовом async def функции.",
+      },
+      {
+        name: "debug",
+        description:
+          "Режим отладки цикла событий. True — включить, False — выключить, None — использовать переменную среды PYTHONASYNCIODEBUG. По умолчанию None.",
+      },
+      {
+        name: "loop_factory",
+        description:
+          "Фабрика для создания цикла событий. Если None — используется asyncio.DefaultEventLoopPolicy. Добавлено в Python 3.12.",
+      },
+    ],
+    example: `import asyncio
+
+async def fetch_data(url: str) -> str:
+    await asyncio.sleep(1)   # Имитация сетевого запроса
+    return f'Данные из {url}'
+
+async def main():
+    result = await fetch_data('https://api.example.com')
+    print(result)
+
+# Запуск программы:
+asyncio.run(main())
+
+# С режимом отладки:
+asyncio.run(main(), debug=True)
+
+# Нельзя вызывать из работающего цикла событий:
+# asyncio.run(main())  ← RuntimeError в Jupyter или если уже есть event loop`,
+  },
+  {
+    name: "asyncio.create_task",
+    description:
+      "Функция библиотеки asyncio. Оборачивает корутину в объект Task и планирует её выполнение в текущем цикле событий. Задача начинает выполняться при ближайшей возможности (при следующем await). Позволяет запускать несколько корутин параллельно без ожидания каждой из них.",
+    syntax: "task = asyncio.create_task(coro, *, name=None, context=None)",
+    arguments: [
+      { name: "coro", description: "Корутина для выполнения в виде задачи." },
+      {
+        name: "name",
+        description:
+          "Имя задачи для отладки. Отображается в repr(task) и логах. По умолчанию None.",
+      },
+      {
+        name: "context",
+        description:
+          "contextvars.Context для задачи. Если None — копируется текущий контекст. Добавлено в Python 3.11.",
+      },
+    ],
+    example: `import asyncio
+
+async def worker(name: str, delay: float) -> str:
+    print(f'{name}: начало')
+    await asyncio.sleep(delay)
+    print(f'{name}: конец')
+    return f'{name}: результат'
+
+async def main():
+    # Запуск нескольких задач параллельно:
+    task1 = asyncio.create_task(worker('Задача-1', 2.0), name='task-1')
+    task2 = asyncio.create_task(worker('Задача-2', 1.0), name='task-2')
+    task3 = asyncio.create_task(worker('Задача-3', 1.5), name='task-3')
+
+    # Ожидание завершения всех задач:
+    result1 = await task1
+    result2 = await task2
+    result3 = await task3
+    print(result1, result2, result3)
+
+    # Отмена задачи:
+    task = asyncio.create_task(worker('Отменяемая', 10.0))
+    await asyncio.sleep(0.1)
+    task.cancel()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.gather",
+    description:
+      "Функция библиотеки asyncio. Запускает несколько корутин или задач параллельно и ожидает завершения всех. Возвращает список результатов в том же порядке, в котором переданы аргументы. При return_exceptions=False отменяет все задачи при первом исключении.",
+    syntax: "results = await asyncio.gather(*aws, return_exceptions=False)",
+    arguments: [
+      {
+        name: "*aws",
+        description:
+          "Корутины, задачи (Task) или Future-объекты для параллельного выполнения.",
+      },
+      {
+        name: "return_exceptions",
+        description:
+          "Если False (по умолчанию) — первое исключение немедленно передаётся ожидающей задаче. Если True — исключения возвращаются как результаты, не отменяя остальные.",
+      },
+    ],
+    example: `import asyncio
+
+async def fetch(url: str, delay: float) -> str:
+    await asyncio.sleep(delay)
+    return f'Ответ от {url}'
+
+async def main():
+    # Параллельное выполнение, результаты в порядке аргументов:
+    results = await asyncio.gather(
+        fetch('https://api1.example.com', 1.0),
+        fetch('https://api2.example.com', 0.5),
+        fetch('https://api3.example.com', 1.5),
+    )
+    print(results)
+    # ['Ответ от api1', 'Ответ от api2', 'Ответ от api3']
+
+    # С обработкой исключений:
+    async def failing():
+        raise ValueError('Ошибка!')
+
+    results = await asyncio.gather(
+        fetch('https://api.example.com', 0.5),
+        failing(),
+        return_exceptions=True,
+    )
+    for r in results:
+        if isinstance(r, Exception):
+            print(f'Ошибка: {r}')
+        else:
+            print(f'OK: {r}')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.sleep",
+    description:
+      "Корутина библиотеки asyncio. Приостанавливает выполнение текущей задачи на заданное количество секунд, передавая управление циклу событий. Позволяет другим задачам выполняться в это время. asyncio.sleep(0) передаёт управление без задержки.",
+    syntax: "await asyncio.sleep(delay, result=None)",
+    arguments: [
+      {
+        name: "delay",
+        description:
+          "Время ожидания в секундах. Может быть дробным числом. 0 — передать управление без задержки.",
+      },
+      {
+        name: "result",
+        description:
+          "Значение, которое вернёт корутина после пробуждения. По умолчанию None.",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    print('Начало')
+    await asyncio.sleep(2.5)   # Пауза 2.5 секунды
+    print('После паузы')
+
+    # sleep(0) — передать управление другим задачам:
+    async def busy_worker():
+        for i in range(1000):
+            if i % 100 == 0:
+                await asyncio.sleep(0)   # Не блокируем цикл событий
+            # ... тяжёлые вычисления ...
+
+    # sleep с возвращаемым значением:
+    value = await asyncio.sleep(1, result='готово')
+    print(value)   # 'готово'
+
+    # Параллельные задачи с разными задержками:
+    async def task(name, delay):
+        await asyncio.sleep(delay)
+        print(f'{name} завершена')
+
+    await asyncio.gather(
+        task('Быстрая', 0.5),
+        task('Средняя', 1.0),
+        task('Медленная', 1.5),
+    )
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.wait",
+    description:
+      "Корутина библиотеки asyncio. Ожидает завершения набора задач или Future-объектов. В отличие от gather(), возвращает два множества: done (завершённые) и pending (незавершённые). Позволяет гибко управлять ожиданием через параметр return_when.",
+    syntax:
+      "done, pending = await asyncio.wait(aws, *, timeout=None, return_when=ALL_COMPLETED)",
+    arguments: [
+      {
+        name: "aws",
+        description:
+          "Множество или список корутин, задач (Task) или Future. Не может быть пустым.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах. По истечении возвращает незавершённые задачи в pending. По умолчанию None (без ограничения).",
+      },
+      {
+        name: "return_when",
+        description:
+          "Условие возврата: ALL_COMPLETED (по умолчанию, ждёт все), FIRST_COMPLETED (первая завершённая), FIRST_EXCEPTION (первое исключение).",
+      },
+    ],
+    example: `import asyncio
+
+async def worker(n: int, delay: float) -> int:
+    await asyncio.sleep(delay)
+    return n * 2
+
+async def main():
+    tasks = {
+        asyncio.create_task(worker(1, 1.0)),
+        asyncio.create_task(worker(2, 0.5)),
+        asyncio.create_task(worker(3, 1.5)),
+    }
+
+    # Ждём все задачи:
+    done, pending = await asyncio.wait(tasks)
+    for task in done:
+        print(task.result())
+
+    # Возврат после первой завершённой:
+    tasks = {asyncio.create_task(worker(i, i * 0.5)) for i in range(1, 4)}
+    done, pending = await asyncio.wait(
+        tasks, return_when=asyncio.FIRST_COMPLETED
+    )
+    print(f'Первой завершилась: {next(iter(done)).result()}')
+
+    # Отменяем оставшиеся:
+    for task in pending:
+        task.cancel()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.wait_for",
+    description:
+      "Корутина библиотеки asyncio. Ожидает выполнения корутины или Future с ограничением по времени. При превышении таймаута выбрасывает asyncio.TimeoutError и отменяет задачу. Удобна когда нужно ограничить время выполнения одной операции.",
+    syntax: "result = await asyncio.wait_for(aw, timeout)",
+    arguments: [
+      { name: "aw", description: "Корутина или Future-объект для ожидания." },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах. None — без ограничения (эквивалентно простому await).",
+      },
+    ],
+    example: `import asyncio
+
+async def slow_operation() -> str:
+    await asyncio.sleep(10)
+    return 'готово'
+
+async def main():
+    # Ограничение 5 секундами:
+    try:
+        result = await asyncio.wait_for(slow_operation(), timeout=5.0)
+        print(result)
+    except asyncio.TimeoutError:
+        print('Операция превысила таймаут!')
+
+    # С обработкой и повторной попыткой:
+    for attempt in range(3):
+        try:
+            result = await asyncio.wait_for(
+                slow_operation(), timeout=2.0
+            )
+            print(f'Успех: {result}')
+            break
+        except asyncio.TimeoutError:
+            print(f'Попытка {attempt + 1}: таймаут')
+    else:
+        print('Все попытки исчерпаны')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.as_completed",
+    description:
+      "Функция библиотеки asyncio. Принимает список корутин или задач и возвращает итератор Future-объектов, которые завершаются по мере готовности. Позволяет обрабатывать результаты сразу по мере поступления, не дожидаясь завершения всех задач.",
+    syntax: "for future in asyncio.as_completed(aws, *, timeout=None):",
+    arguments: [
+      {
+        name: "aws",
+        description: "Итерируемый объект корутин, задач (Task) или Future.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания для каждого Future в секундах. При превышении — asyncio.TimeoutError.",
+      },
+    ],
+    example: `import asyncio
+
+async def fetch(url: str, delay: float) -> str:
+    await asyncio.sleep(delay)
+    return f'Данные из {url}'
+
+async def main():
+    tasks = [
+        fetch('https://api1.example.com', 3.0),
+        fetch('https://api2.example.com', 1.0),
+        fetch('https://api3.example.com', 2.0),
+    ]
+
+    # Обрабатываем результаты по мере готовности:
+    for future in asyncio.as_completed(tasks):
+        result = await future
+        print(f'Получено: {result}')
+    # Порядок: api2 (1с), api3 (2с), api1 (3с)
+
+    # С таймаутом:
+    for future in asyncio.as_completed(tasks, timeout=1.5):
+        try:
+            result = await future
+            print(result)
+        except asyncio.TimeoutError:
+            print('Таймаут для одной из задач')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.to_thread",
+    description:
+      "Корутина библиотеки asyncio. Запускает синхронную (блокирующую) функцию в отдельном потоке из пула потоков, не блокируя цикл событий. Позволяет использовать синхронные библиотеки (файловый ввод-вывод, CPU-тяжёлые операции) в асинхронном коде. Добавлено в Python 3.9.",
+    syntax: "result = await asyncio.to_thread(func, /, *args, **kwargs)",
+    arguments: [
+      {
+        name: "func",
+        description: "Синхронная функция для выполнения в отдельном потоке.",
+      },
+      {
+        name: "*args",
+        description: "Позиционные аргументы, передаваемые в func.",
+      },
+      {
+        name: "**kwargs",
+        description: "Именованные аргументы, передаваемые в func.",
+      },
+    ],
+    example: `import asyncio
+import time
+import requests   # Синхронная библиотека
+
+def blocking_io(path: str) -> str:
+    with open(path) as f:
+        time.sleep(1)   # Имитация медленного IO
+        return f.read()
+
+def blocking_request(url: str) -> dict:
+    return requests.get(url).json()
+
+def cpu_heavy(n: int) -> int:
+    return sum(i * i for i in range(n))
+
+async def main():
+    # Файловый ввод-вывод без блокировки цикла событий:
+    content = await asyncio.to_thread(blocking_io, 'data.txt')
+    print(content[:100])
+
+    # Синхронный HTTP без блокировки:
+    data = await asyncio.to_thread(blocking_request, 'https://api.github.com')
+    print(data['current_user_url'])
+
+    # Параллельные CPU-задачи в потоках:
+    results = await asyncio.gather(
+        asyncio.to_thread(cpu_heavy, 1_000_000),
+        asyncio.to_thread(cpu_heavy, 2_000_000),
+    )
+    print(results)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.run_coroutine_threadsafe",
+    description:
+      "Функция библиотеки asyncio. Планирует выполнение корутины в указанном цикле событий из другого потока (thread-safe). Возвращает объект concurrent.futures.Future, через который можно получить результат или дождаться завершения из синхронного кода. Используется для интеграции синхронного многопоточного кода с асинхронным.",
+    syntax: "future = asyncio.run_coroutine_threadsafe(coro, loop)",
+    arguments: [
+      { name: "coro", description: "Корутина для выполнения в цикле событий." },
+      {
+        name: "loop",
+        description:
+          "Работающий цикл событий asyncio, в котором будет выполнена корутина.",
+      },
+    ],
+    example: `import asyncio
+import threading
+
+async def async_task(value: int) -> int:
+    await asyncio.sleep(1)
+    return value * 2
+
+def run_loop(loop):
+    loop.run_forever()
+
+async def main():
+    # Запуск цикла событий в отдельном потоке:
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=run_loop, args=(loop,), daemon=True)
+    thread.start()
+
+    # Отправка корутины из другого потока:
+    future = asyncio.run_coroutine_threadsafe(async_task(21), loop)
+
+    # Ожидание результата (блокирует текущий поток):
+    result = future.result(timeout=5.0)
+    print(result)   # 42
+
+    # С обработкой исключений:
+    future = asyncio.run_coroutine_threadsafe(async_task(10), loop)
+    try:
+        result = future.result(timeout=2.0)
+    except concurrent.futures.TimeoutError:
+        print('Таймаут')
+    except Exception as e:
+        print(f'Ошибка: {e}')
+
+    loop.call_soon_threadsafe(loop.stop)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.current_task",
+    description:
+      "Функция библиотеки asyncio. Возвращает текущий выполняющийся объект Task или None, если вызывается вне задачи (например, в корутине, запущенной через asyncio.run() напрямую). Используется для получения информации о текущей задаче: имени, статуса, отмены.",
+    syntax: "task = asyncio.current_task()",
+    arguments: [],
+    example: `import asyncio
+
+async def worker():
+    task = asyncio.current_task()
+    print(f'Текущая задача: {task.get_name()}')
+    print(f'Отменена: {task.cancelled()}')
+    print(f'Завершена: {task.done()}')
+    await asyncio.sleep(1)
+
+async def middleware():
+    task = asyncio.current_task()
+    if task:
+        task.set_name('my-important-task')
+
+    await worker()
+
+async def main():
+    # В корутине верхнего уровня (asyncio.run):
+    print(asyncio.current_task())   # None (это не Task, а coroutine)
+
+    # Внутри create_task:
+    task = asyncio.create_task(middleware(), name='main-worker')
+    await task
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.all_tasks",
+    description:
+      "Функция библиотеки asyncio. Возвращает множество всех незавершённых задач (Task) в текущем цикле событий. Полезна для мониторинга, отладки и мягкого завершения — можно получить все активные задачи и отменить их перед остановкой сервера.",
+    syntax: "tasks = asyncio.all_tasks(loop=None)",
+    arguments: [
+      {
+        name: "loop",
+        description:
+          "Цикл событий, задачи которого нужно получить. Если None — используется текущий цикл. Устарел в Python 3.10, параметр игнорируется.",
+      },
+    ],
+    example: `import asyncio
+
+async def worker(name: str, delay: float):
+    await asyncio.sleep(delay)
+    print(f'{name} завершена')
+
+async def monitor():
+    while True:
+        tasks = asyncio.all_tasks()
+        # Исключаем текущую задачу монитора:
+        active = {t for t in tasks if t is not asyncio.current_task()}
+        print(f'Активных задач: {len(active)}')
+        for t in active:
+            print(f'  - {t.get_name()}')
+        await asyncio.sleep(0.5)
+
+async def shutdown():
+    tasks = asyncio.all_tasks()
+    current = asyncio.current_task()
+    for task in tasks:
+        if task is not current:
+            task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+async def main():
+    asyncio.create_task(worker('A', 2.0), name='worker-a')
+    asyncio.create_task(worker('B', 3.0), name='worker-b')
+    asyncio.create_task(monitor(), name='monitor')
+    await asyncio.sleep(1.5)
+    print('Всего задач:', len(asyncio.all_tasks()))
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.shield",
+    description:
+      "Функция библиотеки asyncio. Защищает корутину или Future от отмены. Если задача, ожидающая shield(), будет отменена — внутренняя корутина продолжит выполнение. Сам shield() получит CancelledError, но защищённая операция не прервётся.",
+    syntax: "result = await asyncio.shield(aw)",
+    arguments: [
+      {
+        name: "aw",
+        description:
+          "Корутина или Future-объект, которую нужно защитить от отмены.",
+      },
+    ],
+    example: `import asyncio
+
+async def important_cleanup():
+    print('Начало важной очистки...')
+    await asyncio.sleep(2)
+    print('Очистка завершена')
+    return 'cleaned'
+
+async def main():
+    # Создаём задачу:
+    task = asyncio.create_task(
+        asyncio.shield(important_cleanup())
+    )
+
+    # Отменяем через 0.5 секунды:
+    await asyncio.sleep(0.5)
+    task.cancel()
+
+    try:
+        await task
+    except asyncio.CancelledError:
+        print('Задача отменена, но очистка продолжается в фоне!')
+
+    # Ждём завершения фоновой очистки:
+    await asyncio.sleep(2.0)
+    print('Программа завершена')
+
+asyncio.run(main())
+# Вывод:
+# Начало важной очистки...
+# Задача отменена, но очистка продолжается в фоне!
+# Очистка завершена`,
+  },
+  {
+    name: "asyncio.timeout",
+    description:
+      "Менеджер контекста библиотеки asyncio. Задаёт ограничение времени выполнения блока кода через async with. При превышении таймаута выбрасывает asyncio.TimeoutError. Более гибкая альтернатива wait_for(): позволяет охватывать несколько await-выражений одним таймаутом. Добавлено в Python 3.11.",
+    syntax: "async with asyncio.timeout(delay):",
+    arguments: [
+      {
+        name: "delay",
+        description:
+          "Максимальное время выполнения в секундах. None — без ограничения (контекстный менеджер без эффекта).",
+      },
+    ],
+    example: `import asyncio
+
+async def fetch(url: str) -> str:
+    await asyncio.sleep(2)
+    return f'данные из {url}'
+
+async def main():
+    # Один таймаут на несколько операций:
+    try:
+        async with asyncio.timeout(5.0):
+            data1 = await fetch('https://api1.example.com')
+            data2 = await fetch('https://api2.example.com')
+            print(data1, data2)
+    except asyncio.TimeoutError:
+        print('Не уложились в 5 секунд')
+
+    # Можно проверять и изменять deadline:
+    try:
+        async with asyncio.timeout(3.0) as cm:
+            print(f'Дедлайн: {cm.deadline()}')
+            await asyncio.sleep(1)
+            # Продлить таймаут:
+            cm.reschedule(asyncio.get_event_loop().time() + 10)
+            await asyncio.sleep(2)
+    except asyncio.TimeoutError:
+        print('Таймаут')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.timeout_at",
+    description:
+      "Менеджер контекста библиотеки asyncio. Аналог asyncio.timeout(), но принимает абсолютное время (timestamp) вместо задержки. Время задаётся как значение, возвращаемое loop.time(). Удобен когда нужно задать единый дедлайн для нескольких операций на основе абсолютного времени. Добавлено в Python 3.11.",
+    syntax: "async with asyncio.timeout_at(when):",
+    arguments: [
+      {
+        name: "when",
+        description:
+          "Абсолютное время дедлайна в формате loop.time() (float). None — без ограничения.",
+      },
+    ],
+    example: `import asyncio
+
+async def step(name: str, delay: float) -> str:
+    await asyncio.sleep(delay)
+    return f'{name} готово'
+
+async def main():
+    loop = asyncio.get_event_loop()
+
+    # Дедлайн — через 5 секунд от текущего момента:
+    deadline = loop.time() + 5.0
+
+    try:
+        async with asyncio.timeout_at(deadline):
+            r1 = await step('Шаг 1', 1.5)
+            print(r1)
+            r2 = await step('Шаг 2', 1.5)
+            print(r2)
+            r3 = await step('Шаг 3', 1.5)   # Может не успеть
+            print(r3)
+    except asyncio.TimeoutError:
+        elapsed = loop.time() - (deadline - 5.0)
+        print(f'Таймаут после {elapsed:.1f} сек')
+
+    # Общий дедлайн для группы запросов:
+    deadline = loop.time() + 3.0
+    async with asyncio.timeout_at(deadline):
+        results = await asyncio.gather(
+            step('A', 1.0),
+            step('B', 2.0),
+        )
+        print(results)
+
+asyncio.run(main())`,
+  },
 ];
