@@ -31634,4 +31634,6374 @@ async def main():
 
 asyncio.run(main())`,
   },
+  {
+    name: "asyncio.Task.cancel(msg=None)",
+    description:
+      "Запрашивает отмену задачи Task. В следующий раз, когда задача получит управление в цикле событий, в неё будет брошено исключение CancelledError. Если задача уже завершена или отменена — возвращает False. Параметр msg передаётся в CancelledError и доступен через exception.args.",
+    syntax: "task.cancel(msg=None)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          "Необязательное сообщение, передаваемое в исключение CancelledError. Доступно через атрибут args исключения. По умолчанию None.",
+      },
+    ],
+    example: `import asyncio
+
+async def long_task():
+    try:
+        await asyncio.sleep(10)
+    except asyncio.CancelledError:
+        print("Задача отменена")
+        raise  # обязательно перебросить
+
+async def main():
+    task = asyncio.create_task(long_task())
+    await asyncio.sleep(1)
+
+    cancelled = task.cancel(msg="Превышено время ожидания")
+    print(f"Запрос отмены: {cancelled}")  # True
+
+    try:
+        await task
+    except asyncio.CancelledError as e:
+        print(f"Поймано: {e.args}")        # ('Превышено время ожидания',)
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Task.cancelled()",
+    description:
+      "Возвращает True, если задача была успешно отменена (завершилась с исключением CancelledError). Возвращает False в любом другом случае — если задача ещё выполняется, завершилась нормально или с другим исключением.",
+    syntax: "task.cancelled()",
+    arguments: [],
+    example: `import asyncio
+
+async def cancellable():
+    await asyncio.sleep(5)
+
+async def main():
+    task = asyncio.create_task(cancellable())
+    task.cancel()
+
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    print(task.cancelled())  # True
+    print(task.done())       # True
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Task.done()",
+    description:
+      "Возвращает True, если задача завершена — успешно, с исключением или была отменена. Возвращает False, если задача ещё выполняется. Метод не блокирует выполнение и не ожидает завершения задачи.",
+    syntax: "task.done()",
+    arguments: [],
+    example: `import asyncio
+
+async def work():
+    await asyncio.sleep(0.1)
+    return 42
+
+async def main():
+    task = asyncio.create_task(work())
+
+    print(task.done())  # False — задача ещё выполняется
+
+    await task
+
+    print(task.done())    # True
+    print(task.result())  # 42
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Task.result()",
+    description:
+      "Возвращает результат задачи. Если задача ещё не завершена — возбуждает InvalidStateError. Если задача отменена — возбуждает CancelledError. Если задача завершилась с исключением — повторно возбуждает это исключение.",
+    syntax: "task.result()",
+    arguments: [],
+    example: `import asyncio
+
+async def compute():
+    return 100
+
+async def failing():
+    raise ValueError("Ошибка вычисления")
+
+async def main():
+    # Успешная задача:
+    t1 = asyncio.create_task(compute())
+    await t1
+    print(t1.result())  # 100
+
+    # Задача с исключением:
+    t2 = asyncio.create_task(failing())
+    try:
+        await t2
+    except ValueError:
+        pass
+
+    try:
+        t2.result()  # повторно возбуждает ValueError
+    except ValueError as e:
+        print(f"Поймано: {e}")  # Ошибка вычисления
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Task.exception()",
+    description:
+      "Возвращает исключение, с которым завершилась задача. Если задача завершилась без исключения — возвращает None. Если задача не завершена — возбуждает InvalidStateError. Если задача отменена — возбуждает CancelledError.",
+    syntax: "task.exception()",
+    arguments: [],
+    example: `import asyncio
+
+async def buggy():
+    raise RuntimeError("Что-то пошло не так")
+
+async def main():
+    task = asyncio.create_task(buggy())
+
+    try:
+        await task
+    except RuntimeError:
+        pass  # перехватываем, чтобы продолжить
+
+    exc = task.exception()
+    print(type(exc).__name__)  # RuntimeError
+    print(exc)                 # Что-то пошло не так
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Task.add_done_callback(callback, *, context=None)",
+    description:
+      "Добавляет функцию обратного вызова, которая будет вызвана при завершении задачи (успешном, с ошибкой или при отмене). Callback получает задачу в качестве единственного аргумента. Можно добавить несколько callback-функций — они вызываются в порядке добавления.",
+    syntax: "task.add_done_callback(callback, *, context=None)",
+    arguments: [
+      {
+        name: "callback",
+        description:
+          "Callable, принимающий один аргумент — завершённую задачу. Вызывается в следующей итерации цикла событий после завершения задачи.",
+      },
+      {
+        name: "context",
+        description:
+          "Объект contextvars.Context для выполнения callback. По умолчанию None — используется текущий контекст.",
+      },
+    ],
+    example: `import asyncio
+
+def on_done(task):
+    if task.cancelled():
+        print("Задача отменена")
+    elif task.exception():
+        print(f"Ошибка: {task.exception()}")
+    else:
+        print(f"Результат: {task.result()}")
+
+async def work():
+    await asyncio.sleep(0.1)
+    return "готово"
+
+async def main():
+    task = asyncio.create_task(work())
+    task.add_done_callback(on_done)
+    await task  # Результат: готово
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Task.remove_done_callback(callback)",
+    description:
+      "Удаляет callback, ранее добавленный через add_done_callback(). Возвращает количество удалённых экземпляров (один callback мог быть добавлен несколько раз). Если callback не найден — возвращает 0.",
+    syntax: "task.remove_done_callback(callback)",
+    arguments: [
+      {
+        name: "callback",
+        description:
+          "Callable, который нужно удалить из списка обратных вызовов задачи.",
+      },
+    ],
+    example: `import asyncio
+
+def on_done(task):
+    print("Вызван callback")
+
+async def work():
+    return 42
+
+async def main():
+    task = asyncio.create_task(work())
+    task.add_done_callback(on_done)
+
+    # Удаляем callback до завершения задачи:
+    removed = task.remove_done_callback(on_done)
+    print(f"Удалено: {removed}")  # Удалено: 1
+
+    await task  # callback НЕ вызывается
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Task.get_stack(*, limit=None)",
+    description:
+      "Возвращает список объектов фрейма (frame) стека вызовов задачи на текущий момент. Если задача выполняется — возвращает стек корутины. Если задача завершилась с исключением — возвращает стек traceback. Полезно для отладки зависших задач.",
+    syntax: "task.get_stack(*, limit=None)",
+    arguments: [
+      {
+        name: "limit",
+        description:
+          "Максимальное количество фреймов стека для возврата. По умолчанию None — возвращаются все фреймы.",
+      },
+    ],
+    example: `import asyncio
+
+async def inner():
+    await asyncio.sleep(100)  # зависаем здесь
+
+async def outer():
+    await inner()
+
+async def main():
+    task = asyncio.create_task(outer())
+    await asyncio.sleep(0)  # даём задаче запуститься
+
+    frames = task.get_stack()
+    for frame in frames:
+        print(f"{frame.f_code.co_filename}:{frame.f_lineno}")
+
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Task.print_stack(*, limit=None, file=None)",
+    description:
+      "Выводит стек вызовов задачи в форматированном виде (аналогично traceback.print_stack). Удобен для быстрой отладки зависших задач без ручного обхода фреймов. Вывод идёт в file (по умолчанию sys.stdout).",
+    syntax: "task.print_stack(*, limit=None, file=None)",
+    arguments: [
+      {
+        name: "limit",
+        description:
+          "Максимальное количество фреймов стека для вывода. По умолчанию None — выводятся все фреймы.",
+      },
+      {
+        name: "file",
+        description:
+          "Файловый объект для записи вывода. По умолчанию None — выводится в sys.stdout.",
+      },
+    ],
+    example: `import asyncio
+import sys
+
+async def hanging_coroutine():
+    await asyncio.sleep(999)
+
+async def main():
+    task = asyncio.create_task(hanging_coroutine())
+    await asyncio.sleep(0)
+
+    print("=== Стек задачи ===")
+    task.print_stack(file=sys.stdout)
+
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Task.set_name(value)",
+    description:
+      "Устанавливает имя задачи. Имя используется в repr() задачи и отображается в отладочных сообщениях. Не влияет на поведение задачи — только на её идентификацию при логировании и отладке.",
+    syntax: "task.set_name(value)",
+    arguments: [
+      {
+        name: "value",
+        description:
+          "Новое имя задачи. Обычно строка, описывающая назначение задачи. Преобразуется в строку через str().",
+      },
+    ],
+    example: `import asyncio
+
+async def worker(task_id):
+    await asyncio.sleep(1)
+    return f"результат-{task_id}"
+
+async def main():
+    tasks = []
+    for i in range(3):
+        task = asyncio.create_task(worker(i))
+        task.set_name(f"worker-{i}")
+        tasks.append(task)
+
+    for task in tasks:
+        print(task.get_name())  # worker-0, worker-1, worker-2
+
+    results = await asyncio.gather(*tasks)
+    print(results)
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Task.get_name()",
+    description:
+      "Возвращает имя задачи. Если имя не было установлено явно через set_name() или create_task(name=...), задача получает автоматически сгенерированное имя вида 'Task-N', где N — порядковый номер.",
+    syntax: "task.get_name()",
+    arguments: [],
+    example: `import asyncio
+
+async def my_coroutine():
+    await asyncio.sleep(0)
+
+async def main():
+    # Автоматическое имя:
+    t1 = asyncio.create_task(my_coroutine())
+    print(t1.get_name())  # Task-1
+
+    # Явное имя через create_task:
+    t2 = asyncio.create_task(my_coroutine(), name="загрузка-данных")
+    print(t2.get_name())  # загрузка-данных
+
+    # Имя через set_name:
+    t3 = asyncio.create_task(my_coroutine())
+    t3.set_name("обработка")
+    print(t3.get_name())  # обработка
+
+    await asyncio.gather(t1, t2, t3)
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Future.set_result(result)",
+    description:
+      "Устанавливает результат объекта Future. После этого Future считается завершённым, все ожидающие его задачи и callbacks получают управление. Если Future уже завершён — возбуждает InvalidStateError. Обычно вызывается из кода низкого уровня, не из пользовательских корутин.",
+    syntax: "future.set_result(result)",
+    arguments: [
+      {
+        name: "result",
+        description:
+          "Значение результата Future. Может быть любым Python-объектом, включая None.",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    def resolve():
+        if not future.done():
+            future.set_result("данные получены")
+
+    # Планируем установку результата через 1 секунду:
+    loop.call_later(1, resolve)
+
+    result = await future
+    print(result)          # данные получены
+    print(future.done())   # True
+    print(future.result()) # данные получены
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Future.set_exception(exception)",
+    description:
+      "Устанавливает исключение для объекта Future. Все ожидающие задачи получат это исключение при попытке получить результат. Если Future уже завершён — возбуждает InvalidStateError. Нельзя передавать StopIteration — вместо него используйте RuntimeError.",
+    syntax: "future.set_exception(exception)",
+    arguments: [
+      {
+        name: "exception",
+        description:
+          "Экземпляр исключения или класс исключения (без аргументов). Не может быть StopIteration — это вызовет TypeError.",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    def fail():
+        future.set_exception(ValueError("Недопустимые данные"))
+
+    loop.call_soon(fail)
+
+    try:
+        await future
+    except ValueError as e:
+        print(f"Ошибка: {e}")          # Ошибка: Недопустимые данные
+
+    print(future.done())               # True
+    print(future.exception())          # Недопустимые данные
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Queue.empty()",
+    description:
+      "Возвращает True, если очередь пуста (не содержит элементов), иначе False. Не блокирует выполнение. Используется для проверки наличия элементов перед вызовом get_nowait(), чтобы избежать исключения QueueEmpty.",
+    syntax: "queue.empty()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    q = asyncio.Queue()
+
+    print(q.empty())  # True
+
+    await q.put("задача-1")
+    await q.put("задача-2")
+
+    print(q.empty())  # False
+
+    await q.get()
+    await q.get()
+
+    print(q.empty())  # True
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Queue.full()",
+    description:
+      "Возвращает True, если очередь заполнена до предела (maxsize), иначе False. Всегда возвращает False для очередей без ограничения размера (maxsize=0). Полезно перед вызовом put_nowait(), чтобы избежать исключения QueueFull.",
+    syntax: "queue.full()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    q = asyncio.Queue(maxsize=2)
+
+    print(q.full())  # False
+
+    await q.put("a")
+    await q.put("b")
+
+    print(q.full())   # True
+    print(q.qsize())  # 2
+
+    # Безограниченная очередь никогда не full:
+    infinite_q = asyncio.Queue()
+    for i in range(1000):
+        await infinite_q.put(i)
+    print(infinite_q.full())  # False
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Queue.get()",
+    description:
+      "Извлекает и возвращает элемент из очереди. Если очередь пуста — ожидает (корутина приостанавливается), пока элемент не появится. Является корутиной — необходимо использовать await. Извлекает элементы в порядке FIFO (первым вошёл — первым вышел).",
+    syntax: "await queue.get()",
+    arguments: [],
+    example: `import asyncio
+
+async def producer(q):
+    for i in range(3):
+        await asyncio.sleep(0.5)
+        await q.put(f"элемент-{i}")
+        print(f"Добавлено: элемент-{i}")
+
+async def consumer(q):
+    for _ in range(3):
+        item = await q.get()  # ожидает появления элемента
+        print(f"Получено: {item}")
+        q.task_done()
+
+async def main():
+    q = asyncio.Queue()
+    await asyncio.gather(producer(q), consumer(q))
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Queue.get_nowait()",
+    description:
+      "Немедленно извлекает и возвращает элемент из очереди. Если очередь пуста — возбуждает исключение asyncio.QueueEmpty, не блокируя выполнение. Не является корутиной — вызывается без await.",
+    syntax: "queue.get_nowait()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    q = asyncio.Queue()
+    await q.put(42)
+    await q.put(99)
+
+    # Извлекаем без ожидания:
+    print(q.get_nowait())  # 42
+    print(q.get_nowait())  # 99
+
+    # Очередь пуста — исключение:
+    try:
+        q.get_nowait()
+    except asyncio.QueueEmpty:
+        print("Очередь пуста!")
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Queue.join()",
+    description:
+      "Блокирует (как корутина) до тех пор, пока все элементы, когда-либо добавленные в очередь, не будут обработаны. Ожидание завершается, когда для каждого элемента, добавленного через put(), был вызван task_done(). Используется для ожидания полного завершения обработки очереди.",
+    syntax: "await queue.join()",
+    arguments: [],
+    example: `import asyncio
+
+async def worker(q):
+    while True:
+        item = await q.get()
+        print(f"Обрабатываю: {item}")
+        await asyncio.sleep(0.2)
+        q.task_done()  # сигнализируем об обработке
+
+async def main():
+    q = asyncio.Queue()
+
+    # Добавляем задачи:
+    for i in range(5):
+        await q.put(f"задача-{i}")
+
+    # Запускаем 2 воркера:
+    workers = [asyncio.create_task(worker(q)) for _ in range(2)]
+
+    await q.join()  # ждём обработки всех задач
+    print("Все задачи обработаны!")
+
+    for w in workers:
+        w.cancel()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Queue.put(item)",
+    description:
+      "Добавляет элемент в очередь. Если очередь ограничена (maxsize > 0) и заполнена — ожидает (корутина приостанавливается), пока не освободится место. Является корутиной — необходимо использовать await.",
+    syntax: "await queue.put(item)",
+    arguments: [
+      {
+        name: "item",
+        description:
+          "Элемент, добавляемый в очередь. Может быть любым Python-объектом: строкой, числом, словарём, coroutine и т.д.",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    # Ограниченная очередь:
+    q = asyncio.Queue(maxsize=2)
+
+    await q.put("a")
+    await q.put("b")
+
+    print(q.full())   # True
+
+    # Следующий put будет ждать:
+    async def delayed_get():
+        await asyncio.sleep(0.5)
+        item = await q.get()
+        q.task_done()
+        print(f"Извлечено: {item}")
+
+    getter = asyncio.create_task(delayed_get())
+    await q.put("c")   # подождёт, пока getter не освободит место
+    print("c добавлено")
+
+    await getter
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Queue.put_nowait(item)",
+    description:
+      "Немедленно добавляет элемент в очередь. Если очередь ограничена и заполнена — возбуждает asyncio.QueueFull, не ожидая освобождения места. Не является корутиной — вызывается без await.",
+    syntax: "queue.put_nowait(item)",
+    arguments: [
+      {
+        name: "item",
+        description:
+          "Элемент для добавления в очередь. Может быть любым Python-объектом.",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    q = asyncio.Queue(maxsize=2)
+
+    q.put_nowait("первый")
+    q.put_nowait("второй")
+
+    print(q.qsize())  # 2
+    print(q.full())   # True
+
+    # Очередь заполнена — исключение:
+    try:
+        q.put_nowait("третий")
+    except asyncio.QueueFull:
+        print("Очередь переполнена!")
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Queue.qsize()",
+    description:
+      "Возвращает текущее количество элементов в очереди. Не блокирует выполнение. Результат может устареть в конкурентной среде — между проверкой и следующей операцией другая задача может изменить очередь.",
+    syntax: "queue.qsize()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    q = asyncio.Queue()
+
+    print(q.qsize())  # 0
+
+    await q.put("a")
+    await q.put("b")
+    await q.put("c")
+
+    print(q.qsize())  # 3
+
+    await q.get()
+    print(q.qsize())  # 2
+
+    q.put_nowait("d")
+    print(q.qsize())  # 3
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Queue.task_done()",
+    description:
+      "Сигнализирует, что обработка ранее полученного элемента завершена. Должен вызываться ровно один раз после каждого get(). Уменьшает внутренний счётчик незавершённых задач. Когда счётчик достигает нуля, любое ожидание в queue.join() снимается.",
+    syntax: "queue.task_done()",
+    arguments: [],
+    example: `import asyncio
+
+async def worker(name, q):
+    while True:
+        item = await q.get()
+        if item is None:
+            break
+        print(f"[{name}] обрабатываю {item}")
+        await asyncio.sleep(0.1)
+        q.task_done()  # обязательно после каждого get()
+
+async def main():
+    q = asyncio.Queue()
+
+    tasks = [
+        asyncio.create_task(worker("W1", q)),
+        asyncio.create_task(worker("W2", q)),
+    ]
+
+    for i in range(6):
+        await q.put(f"задача-{i}")
+
+    await q.join()   # ждём task_done() для каждого элемента
+
+    # Останавливаем воркеров:
+    for _ in tasks:
+        await q.put(None)
+    await asyncio.gather(*tasks)
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Queue.maxsize",
+    description:
+      "Атрибут, содержащий максимальный размер очереди, заданный при создании. Если равен 0 — очередь не ограничена по размеру (может содержать произвольное количество элементов). Только для чтения — изменить после создания невозможно.",
+    syntax: "queue.maxsize",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    # Ограниченная очередь:
+    q1 = asyncio.Queue(maxsize=10)
+    print(q1.maxsize)  # 10
+
+    # Неограниченная очередь:
+    q2 = asyncio.Queue()
+    print(q2.maxsize)  # 0
+
+    # Проверка ограничения:
+    q3 = asyncio.Queue(maxsize=3)
+    if q3.maxsize > 0:
+        print(f"Очередь ограничена: макс. {q3.maxsize} элементов")
+    else:
+        print("Очередь неограничена")
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Lock.acquire()",
+    description:
+      "Захватывает блокировку (Lock). Если блокировка уже захвачена другой задачей — ожидает её освобождения. Является корутиной — необходимо использовать await. Рекомендуется использовать через async with, который автоматически вызывает acquire() и release().",
+    syntax: "await lock.acquire()",
+    arguments: [],
+    example: `import asyncio
+
+async def worker(lock, name):
+    print(f"{name}: жду блокировки...")
+    async with lock:  # эквивалентно await lock.acquire() + lock.release()
+        print(f"{name}: захватил блокировку")
+        await asyncio.sleep(1)
+        print(f"{name}: освобождаю блокировку")
+
+async def main():
+    lock = asyncio.Lock()
+    await asyncio.gather(
+        worker(lock, "Задача-1"),
+        worker(lock, "Задача-2"),
+    )
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Lock.release()",
+    description:
+      "Освобождает ранее захваченную блокировку. Если после освобождения есть ожидающие задачи — одна из них немедленно получит блокировку. Если блокировка не была захвачена — возбуждает RuntimeError. Не является корутиной.",
+    syntax: "lock.release()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    lock = asyncio.Lock()
+
+    # Ручное управление:
+    await lock.acquire()
+    print(f"Захвачена: {lock.locked()}")  # True
+    try:
+        # критическая секция
+        await asyncio.sleep(0.1)
+    finally:
+        lock.release()  # всегда освобождать в finally
+        print(f"Захвачена: {lock.locked()}")  # False
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Lock.locked()",
+    description:
+      "Возвращает True, если блокировка в данный момент захвачена какой-либо задачей, иначе False. Не блокирует выполнение. Используется для проверки состояния без попытки захвата.",
+    syntax: "lock.locked()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    lock = asyncio.Lock()
+
+    print(lock.locked())  # False
+
+    await lock.acquire()
+    print(lock.locked())  # True
+
+    lock.release()
+    print(lock.locked())  # False
+
+    # Проверка перед попыткой захвата:
+    if not lock.locked():
+        await lock.acquire()
+        lock.release()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Event.set()",
+    description:
+      "Устанавливает внутренний флаг Event в True. Все задачи, ожидающие события через wait(), немедленно пробуждаются. Последующие вызовы wait() не блокируются — возвращают управление немедленно, пока не будет вызван clear().",
+    syntax: "event.set()",
+    arguments: [],
+    example: `import asyncio
+
+async def waiter(event, name):
+    print(f"{name}: жду события...")
+    await event.wait()
+    print(f"{name}: событие получено!")
+
+async def main():
+    event = asyncio.Event()
+
+    tasks = [
+        asyncio.create_task(waiter(event, "Задача-1")),
+        asyncio.create_task(waiter(event, "Задача-2")),
+        asyncio.create_task(waiter(event, "Задача-3")),
+    ]
+
+    await asyncio.sleep(1)
+    print("Устанавливаю событие...")
+    event.set()  # пробуждает все три задачи сразу
+
+    await asyncio.gather(*tasks)
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Event.clear()",
+    description:
+      "Сбрасывает внутренний флаг Event в False. После этого задачи, вызывающие wait(), снова будут ожидать следующего set(). Не влияет на задачи, уже прошедшие через wait() до вызова clear().",
+    syntax: "event.clear()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    event = asyncio.Event()
+
+    event.set()
+    print(event.is_set())  # True
+
+    await event.wait()     # не блокирует — флаг уже установлен
+    print("Прошли без ожидания")
+
+    event.clear()
+    print(event.is_set())  # False
+
+    # Теперь wait() будет ожидать:
+    async def setter():
+        await asyncio.sleep(0.5)
+        event.set()
+
+    asyncio.create_task(setter())
+    await event.wait()     # ждёт 0.5 сек
+    print("Событие снова установлено")
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Event.wait()",
+    description:
+      "Ожидает установки флага Event. Если флаг уже установлен — возвращает True немедленно. Если не установлен — блокирует (приостанавливает корутину) до вызова set() другой задачей. Является корутиной — необходимо использовать await.",
+    syntax: "await event.wait()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    ready = asyncio.Event()
+    results = []
+
+    async def data_loader():
+        await asyncio.sleep(1)
+        results.append("данные загружены")
+        ready.set()  # сигнализируем о готовности
+
+    async def processor():
+        await ready.wait()  # ждём загрузки данных
+        print(f"Обрабатываю: {results[0]}")
+
+    await asyncio.gather(data_loader(), processor())
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Event.is_set()",
+    description:
+      "Возвращает True, если внутренний флаг Event установлен (был вызван set()), иначе False. Не блокирует выполнение. Позволяет синхронно проверить состояние события без ожидания.",
+    syntax: "event.is_set()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    event = asyncio.Event()
+
+    print(event.is_set())  # False
+
+    event.set()
+    print(event.is_set())  # True
+
+    event.clear()
+    print(event.is_set())  # False
+
+    # Условный await:
+    if not event.is_set():
+        asyncio.create_task(
+            asyncio.sleep(0)  # даём другим задачам шанс
+        )
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Semaphore.acquire()",
+    description:
+      "Захватывает семафор — уменьшает внутренний счётчик на 1. Если счётчик уже равен 0 — ожидает (корутина приостанавливается), пока другая задача не вызовет release(). Является корутиной. Рекомендуется использовать через async with.",
+    syntax: "await semaphore.acquire()",
+    arguments: [],
+    example: `import asyncio
+
+async def fetch(semaphore, url):
+    async with semaphore:  # не более 3 одновременных запросов
+        print(f"Загружаю {url}")
+        await asyncio.sleep(1)  # имитация HTTP-запроса
+        print(f"Готово: {url}")
+
+async def main():
+    semaphore = asyncio.Semaphore(3)  # лимит — 3 одновременно
+
+    urls = [f"https://example.com/page/{i}" for i in range(10)]
+    await asyncio.gather(*[fetch(semaphore, url) for url in urls])
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Semaphore.release()",
+    description:
+      "Освобождает семафор — увеличивает внутренний счётчик на 1. Если есть задачи, ожидающие в acquire(), одна из них немедленно получает семафор. Не является корутиной. Для BoundedSemaphore возбуждает ValueError при превышении начального значения.",
+    syntax: "semaphore.release()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    sem = asyncio.Semaphore(2)
+
+    await sem.acquire()
+    await sem.acquire()
+    print(f"Захвачено: {sem.locked()}")  # True
+
+    sem.release()
+    print(f"После release: {sem._value}")  # 1
+
+    sem.release()
+    print(f"После release: {sem._value}")  # 2
+    print(f"Захвачено: {sem.locked()}")    # False
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Semaphore.locked()",
+    description:
+      "Возвращает True, если семафор полностью исчерпан (внутренний счётчик равен 0) и следующий acquire() будет блокировать. Возвращает False, если есть свободные слоты. Не блокирует выполнение.",
+    syntax: "semaphore.locked()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    sem = asyncio.Semaphore(2)
+
+    print(sem.locked())  # False — есть 2 свободных слота
+
+    await sem.acquire()
+    print(sem.locked())  # False — остался 1 слот
+
+    await sem.acquire()
+    print(sem.locked())  # True — слотов нет
+
+    sem.release()
+    print(sem.locked())  # False — освободился 1 слот
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Condition.acquire()",
+    description:
+      "Захватывает внутренний Lock объекта Condition. Является корутиной. Condition используется для ожидания определённого условия с возможностью уведомления других задач. Рекомендуется использовать через async with condition.",
+    syntax: "await condition.acquire()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    condition = asyncio.Condition()
+
+    # Ручное управление:
+    await condition.acquire()
+    try:
+        print("Захвачено условие")
+        condition.notify_all()
+    finally:
+        condition.release()
+
+    # Рекомендуется: async with:
+    async with condition:
+        print("Захвачено через async with")
+        condition.notify_all()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Condition.release()",
+    description:
+      "Освобождает внутренний Lock объекта Condition. Должен вызываться только после успешного acquire(). Не является корутиной. При использовании async with вызывается автоматически при выходе из блока.",
+    syntax: "condition.release()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    cond = asyncio.Condition()
+
+    await cond.acquire()
+    print("Lock захвачен")
+
+    # обработка...
+    await asyncio.sleep(0.1)
+
+    cond.release()
+    print("Lock освобождён")
+
+    # Безопаснее использовать async with:
+    async with cond:
+        pass  # release() вызывается автоматически
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Condition.notify(n=1)",
+    description:
+      "Уведомляет n ожидающих задач, что условие могло измениться. Пробуждённые задачи снова конкурируют за захват Lock. Должен вызываться только при захваченном Lock (внутри async with condition). Если ожидающих задач меньше n — уведомляет всех.",
+    syntax: "condition.notify(n=1)",
+    arguments: [
+      {
+        name: "n",
+        description:
+          "Количество задач для уведомления. По умолчанию 1 — уведомляется одна задача. Передайте большее число для уведомления нескольких задач одновременно.",
+      },
+    ],
+    example: `import asyncio
+
+async def consumer(cond, name, items):
+    async with cond:
+        await cond.wait()  # ждём уведомления
+        print(f"{name}: получил уведомление, items={items}")
+
+async def producer(cond, items):
+    await asyncio.sleep(1)
+    async with cond:
+        items.append("новый_элемент")
+        cond.notify(1)  # уведомляем одного потребителя
+        print("Отправлено уведомление одному")
+
+async def main():
+    cond = asyncio.Condition()
+    items = []
+    await asyncio.gather(
+        consumer(cond, "C1", items),
+        consumer(cond, "C2", items),
+        producer(cond, items),
+    )
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Condition.notify_all()",
+    description:
+      "Уведомляет все задачи, ожидающие в Condition.wait(). Все пробуждённые задачи конкурируют за повторный захват Lock. Должен вызываться только при захваченном Lock. Эквивалентно notify(n) где n — количество всех ожидающих задач.",
+    syntax: "condition.notify_all()",
+    arguments: [],
+    example: `import asyncio
+
+shared = {"ready": False}
+
+async def worker(cond, name):
+    async with cond:
+        while not shared["ready"]:
+            await cond.wait()
+        print(f"{name}: работаю с данными")
+
+async def controller(cond):
+    await asyncio.sleep(1)
+    async with cond:
+        shared["ready"] = True
+        cond.notify_all()  # пробуждаем всех воркеров
+        print("Все воркеры уведомлены")
+
+async def main():
+    cond = asyncio.Condition()
+    await asyncio.gather(
+        worker(cond, "W1"),
+        worker(cond, "W2"),
+        worker(cond, "W3"),
+        controller(cond),
+    )
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.Condition.wait()",
+    description:
+      "Освобождает Lock и ожидает уведомления через notify() или notify_all(). После получения уведомления повторно захватывает Lock перед возвратом. Должна вызываться только при захваченном Lock. Является корутиной — необходимо использовать await.",
+    syntax: "await condition.wait()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    cond = asyncio.Condition()
+    data = []
+
+    async def producer():
+        await asyncio.sleep(0.5)
+        async with cond:
+            data.append(42)
+            cond.notify()  # пробуждаем потребителя
+
+    async def consumer():
+        async with cond:
+            while not data:
+                await cond.wait()  # освобождает Lock, ждёт notify()
+            print(f"Получены данные: {data[0]}")  # 42
+
+    await asyncio.gather(consumer(), producer())
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.open_connection(host=None, port=None, ...)",
+    description:
+      "Устанавливает TCP-соединение с указанным хостом и портом. Возвращает пару (StreamReader, StreamWriter) для чтения и записи данных. Является корутиной — необходимо использовать await. Высокоуровневая обёртка над loop.create_connection().",
+    syntax:
+      "reader, writer = await asyncio.open_connection(host=None, port=None, *, limit=2**16, ssl=None, ...)",
+    arguments: [
+      {
+        name: "host",
+        description:
+          "Хост для подключения: строка с IP-адресом или доменным именем. None означает localhost.",
+      },
+      {
+        name: "port",
+        description: "Номер порта для подключения. Целое число от 1 до 65535.",
+      },
+      {
+        name: "ssl",
+        description:
+          "SSL-контекст (ssl.SSLContext) для защищённого соединения. True — использовать стандартный контекст. None (по умолчанию) — без SSL.",
+      },
+      {
+        name: "limit",
+        description:
+          "Максимальный размер буфера StreamReader в байтах. По умолчанию 64 КБ (2**16).",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    reader, writer = await asyncio.open_connection(
+        "httpbin.org", 80
+    )
+
+    # Отправляем HTTP-запрос:
+    request = (
+        "GET /get HTTP/1.0\\r\\n"
+        "Host: httpbin.org\\r\\n"
+        "\\r\\n"
+    )
+    writer.write(request.encode())
+    await writer.drain()
+
+    # Читаем ответ:
+    data = await reader.read(1024)
+    print(data.decode())
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.start_server(client_connected_cb, host=None, port=None, ...)",
+    description:
+      "Запускает TCP-сервер, принимающий входящие подключения. При каждом новом подключении вызывается callback client_connected_cb(reader, writer). Является корутиной. Возвращает объект Server, который можно использовать как асинхронный контекстный менеджер.",
+    syntax:
+      "server = await asyncio.start_server(client_connected_cb, host=None, port=None, *, limit=2**16, ssl=None, ...)",
+    arguments: [
+      {
+        name: "client_connected_cb",
+        description:
+          "Корутина или callable, вызываемый для каждого нового подключения. Получает два аргумента: StreamReader и StreamWriter.",
+      },
+      {
+        name: "host",
+        description:
+          "Хост для прослушивания. None — прослушивать все интерфейсы (0.0.0.0).",
+      },
+      {
+        name: "port",
+        description: "Порт для прослушивания входящих соединений.",
+      },
+      {
+        name: "ssl",
+        description:
+          "SSL-контекст для защищённого сервера (TLS). По умолчанию None — без SSL.",
+      },
+    ],
+    example: `import asyncio
+
+async def handle_client(reader, writer):
+    addr = writer.get_extra_info("peername")
+    print(f"Подключился: {addr}")
+
+    data = await reader.readline()
+    message = data.decode().strip()
+    print(f"Получено: {message!r}")
+
+    writer.write(f"Эхо: {message}\\n".encode())
+    await writer.drain()
+
+    writer.close()
+    await writer.wait_closed()
+
+async def main():
+    server = await asyncio.start_server(
+        handle_client, "127.0.0.1", 8888
+    )
+    async with server:
+        print("Сервер запущен на порту 8888")
+        await server.serve_forever()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.StreamReader.read(n=-1)",
+    description:
+      "Читает до n байт из потока. Если n=-1 — читает до конца потока (EOF). Если данных нет — ожидает их поступления. Является корутиной. Возвращает bytes. Возвращает пустой bytes b'' при достижении EOF.",
+    syntax: "data = await reader.read(n=-1)",
+    arguments: [
+      {
+        name: "n",
+        description:
+          "Максимальное количество байт для чтения. -1 (по умолчанию) — читать до EOF. При n=0 возвращает b'' немедленно.",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    reader, writer = await asyncio.open_connection("127.0.0.1", 8888)
+
+    # Читать ровно 100 байт:
+    chunk = await reader.read(100)
+    print(f"Получено {len(chunk)} байт: {chunk!r}")
+
+    # Читать всё до закрытия соединения:
+    all_data = await reader.read(-1)
+    print(f"Всего получено: {len(all_data)} байт")
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.StreamReader.readline()",
+    description:
+      "Читает одну строку из потока — до символа '\\n' включительно. Если '\\n' не найден до EOF — возвращает всё, что успело поступить. Является корутиной. Возвращает bytes. Удобна для построчного чтения текстовых протоколов.",
+    syntax: "line = await reader.readline()",
+    arguments: [],
+    example: `import asyncio
+
+async def handle(reader, writer):
+    # Читаем команды построчно:
+    while True:
+        line = await reader.readline()
+        if not line:
+            break  # EOF — клиент отключился
+
+        command = line.decode().strip()
+        print(f"Команда: {command!r}")
+
+        if command == "QUIT":
+            writer.write(b"До свидания\\n")
+            await writer.drain()
+            break
+        else:
+            writer.write(f"OK: {command}\\n".encode())
+            await writer.drain()
+
+    writer.close()`,
+  },
+
+  {
+    name: "asyncio.StreamReader.readexactly(n)",
+    description:
+      "Читает ровно n байт из потока. Ожидает поступления данных, пока не будет прочитано указанное количество байт. Если соединение закрылось раньше — возбуждает asyncio.IncompleteReadError. Является корутиной.",
+    syntax: "data = await reader.readexactly(n)",
+    arguments: [
+      {
+        name: "n",
+        description:
+          "Точное количество байт для чтения. Если до EOF пришло меньше n байт — возбуждается IncompleteReadError с атрибутом partial, содержащим прочитанные данные.",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    reader, writer = await asyncio.open_connection("127.0.0.1", 8888)
+
+    # Протокол: первые 4 байта — длина сообщения
+    try:
+        header = await reader.readexactly(4)
+        length = int.from_bytes(header, "big")
+        print(f"Ожидаемая длина: {length} байт")
+
+        body = await reader.readexactly(length)
+        print(f"Тело сообщения: {body!r}")
+
+    except asyncio.IncompleteReadError as e:
+        print(f"Соединение прервано, получено: {e.partial!r}")
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.StreamReader.readuntil(separator=b'\\n')",
+    description:
+      "Читает данные из потока до нахождения разделителя (включительно). Возвращает bytes с данными, включая разделитель. Если данные превышают лимит буфера — возбуждает LimitOverrunError. Если EOF достигнут до разделителя — возбуждает IncompleteReadError.",
+    syntax: "data = await reader.readuntil(separator=b'\\n')",
+    arguments: [
+      {
+        name: "separator",
+        description:
+          "Байтовый разделитель, до которого нужно читать (включительно). По умолчанию b'\\n' (перевод строки).",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    reader, writer = await asyncio.open_connection("127.0.0.1", 8888)
+
+    # Читать до разделителя "\\r\\n" (HTTP-заголовки):
+    try:
+        line = await reader.readuntil(b"\\r\\n")
+        print(f"Строка: {line!r}")  # включает \\r\\n
+
+        # Пользовательский разделитель:
+        chunk = await reader.readuntil(b"||END||")
+        print(f"Блок данных: {chunk!r}")
+
+    except asyncio.LimitOverrunError:
+        print("Данные превысили лимит буфера!")
+    except asyncio.IncompleteReadError as e:
+        print(f"EOF без разделителя: {e.partial!r}")
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.StreamReader.at_eof()",
+    description:
+      "Возвращает True, если StreamReader достиг конца потока (EOF) и внутренний буфер пуст. Не блокирует выполнение. Используется для проверки завершения потока без попытки чтения.",
+    syntax: "reader.at_eof()",
+    arguments: [],
+    example: `import asyncio
+
+async def read_all(reader):
+    chunks = []
+    while not reader.at_eof():
+        chunk = await reader.read(1024)
+        if chunk:
+            chunks.append(chunk)
+    return b"".join(chunks)
+
+async def main():
+    reader, writer = await asyncio.open_connection("127.0.0.1", 8888)
+
+    all_data = await read_all(reader)
+    print(f"Получено всего: {len(all_data)} байт")
+    print(f"EOF: {reader.at_eof()}")  # True
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.StreamWriter.write(data)",
+    description:
+      "Записывает данные в буфер потока для последующей отправки. Не является корутиной — возвращает управление немедленно. Данные не обязательно сразу отправляются по сети. После write() рекомендуется вызывать await writer.drain() для сброса буфера.",
+    syntax: "writer.write(data)",
+    arguments: [
+      {
+        name: "data",
+        description:
+          "Байтовый объект (bytes, bytearray, memoryview) для записи в поток. Строки необходимо предварительно кодировать: data.encode('utf-8').",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    reader, writer = await asyncio.open_connection("127.0.0.1", 8888)
+
+    # Запись не является корутиной:
+    writer.write(b"Hello, Server!\\n")
+
+    # Несколько write() подряд — данные буферизуются:
+    writer.write(b"Строка 1\\n")
+    writer.write(b"Строка 2\\n")
+    writer.write(b"Строка 3\\n")
+
+    # drain() сбрасывает буфер в сеть:
+    await writer.drain()
+
+    response = await reader.readline()
+    print(response.decode())
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.StreamWriter.writelines(data)",
+    description:
+      "Записывает последовательность байтовых объектов в буфер потока. Эквивалентно последовательным вызовам write() для каждого элемента. Не является корутиной. После вызова рекомендуется await writer.drain().",
+    syntax: "writer.writelines(data)",
+    arguments: [
+      {
+        name: "data",
+        description:
+          "Итерируемый объект, содержащий байтовые строки (bytes, bytearray). Каждый элемент записывается в буфер последовательно.",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    reader, writer = await asyncio.open_connection("127.0.0.1", 8888)
+
+    lines = [
+        b"GET / HTTP/1.0\\r\\n",
+        b"Host: 127.0.0.1\\r\\n",
+        b"User-Agent: asyncio-client\\r\\n",
+        b"\\r\\n",
+    ]
+
+    writer.writelines(lines)   # записывает все строки разом
+    await writer.drain()       # сбрасывает буфер в сеть
+
+    response = await reader.read(4096)
+    print(response.decode())
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.StreamWriter.drain()",
+    description:
+      "Ожидает сброса буфера записи в сеть. Является корутиной. Позволяет контролировать поток данных (flow control) — если буфер переполнен, drain() ожидает, пока данные не будут переданы. Рекомендуется вызывать после каждого write() или серии записей.",
+    syntax: "await writer.drain()",
+    arguments: [],
+    example: `import asyncio
+
+async def send_large_data(writer, data, chunk_size=65536):
+    # Отправка больших данных с контролем потока:
+    offset = 0
+    while offset < len(data):
+        chunk = data[offset:offset + chunk_size]
+        writer.write(chunk)
+        await writer.drain()  # ждём, пока буфер разгрузится
+        offset += chunk_size
+        print(f"Отправлено: {offset}/{len(data)} байт")
+
+async def main():
+    reader, writer = await asyncio.open_connection("127.0.0.1", 8888)
+
+    large_payload = b"X" * (1024 * 1024)  # 1 МБ
+    await send_large_data(writer, large_payload)
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.StreamWriter.close()",
+    description:
+      "Инициирует закрытие потока и соединения. Не является корутиной — возвращает управление немедленно, закрытие происходит асинхронно. После close() необходимо дождаться полного закрытия через await writer.wait_closed().",
+    syntax: "writer.close()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    reader, writer = await asyncio.open_connection("127.0.0.1", 8888)
+
+    writer.write(b"Последнее сообщение\\n")
+    await writer.drain()
+
+    # Закрываем соединение:
+    writer.close()
+
+    # Ждём полного закрытия:
+    await writer.wait_closed()
+
+    print(f"Соединение закрыто: {writer.is_closing()}")
+
+    # Рекомендуемый паттерн через try/finally:
+    reader2, writer2 = await asyncio.open_connection("127.0.0.1", 8888)
+    try:
+        writer2.write(b"данные\\n")
+        await writer2.drain()
+    finally:
+        writer2.close()
+        await writer2.wait_closed()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.StreamWriter.is_closing()",
+    description:
+      "Возвращает True, если StreamWriter находится в процессе закрытия или уже закрыт (после вызова close()). Не блокирует выполнение. Полезно для проверки состояния соединения перед попыткой записи.",
+    syntax: "writer.is_closing()",
+    arguments: [],
+    example: `import asyncio
+
+async def safe_write(writer, data):
+    if not writer.is_closing():
+        writer.write(data)
+        await writer.drain()
+    else:
+        print("Соединение закрывается, запись невозможна")
+
+async def main():
+    reader, writer = await asyncio.open_connection("127.0.0.1", 8888)
+
+    print(writer.is_closing())  # False
+
+    await safe_write(writer, b"данные\\n")
+
+    writer.close()
+    print(writer.is_closing())  # True
+
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.StreamWriter.wait_closed()",
+    description:
+      "Ожидает полного закрытия соединения после вызова close(). Является корутиной. Гарантирует, что все буферизованные данные были отправлены или отброшены, а соединение полностью завершено перед продолжением выполнения.",
+    syntax: "await writer.wait_closed()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    reader, writer = await asyncio.open_connection("127.0.0.1", 8888)
+
+    writer.write(b"Финальные данные\\n")
+    await writer.drain()
+
+    # Закрываем и ждём полного завершения:
+    writer.close()
+    await writer.wait_closed()  # блокирует до полного закрытия
+
+    print("Соединение полностью закрыто")
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "asyncio.StreamWriter.get_extra_info(name, default=None)",
+    description:
+      "Возвращает дополнительную информацию о транспорте или соединении по имени атрибута. Позволяет получить IP-адрес и порт удалённой стороны, SSL-объект, сокет и другие низкоуровневые данные соединения.",
+    syntax: "writer.get_extra_info(name, default=None)",
+    arguments: [
+      {
+        name: "name",
+        description:
+          "Имя запрашиваемого атрибута. Наиболее используемые: 'peername' (адрес удалённой стороны), 'sockname' (локальный адрес), 'socket' (объект сокета), 'ssl_object' (SSL-объект для TLS-соединений).",
+      },
+      {
+        name: "default",
+        description:
+          "Значение по умолчанию, возвращаемое если атрибут не найден. По умолчанию None.",
+      },
+    ],
+    example: `import asyncio
+
+async def handle_client(reader, writer):
+    # Получаем информацию о подключении:
+    peername = writer.get_extra_info("peername")
+    sockname = writer.get_extra_info("sockname")
+    socket   = writer.get_extra_info("socket")
+
+    print(f"Клиент: {peername[0]}:{peername[1]}")
+    print(f"Сервер: {sockname[0]}:{sockname[1]}")
+    print(f"Сокет: {socket}")
+
+    # Для TLS-соединений:
+    ssl_obj = writer.get_extra_info("ssl_object", default=None)
+    if ssl_obj:
+        print(f"Шифр: {ssl_obj.cipher()}")
+
+    writer.close()
+    await writer.wait_closed()
+
+async def main():
+    server = await asyncio.start_server(handle_client, "127.0.0.1", 8888)
+    async with server:
+        await server.serve_forever()
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "loop.run_until_complete(future)",
+    description:
+      "Запускает цикл событий и блокирует выполнение до завершения переданной корутины, задачи или Future. Возвращает результат выполнения. Если цикл уже запущен — возбуждает RuntimeError. Основной способ запуска asyncio-кода в синхронном контексте (низкоуровневый аналог asyncio.run()).",
+    syntax: "result = loop.run_until_complete(future)",
+    arguments: [
+      {
+        name: "future",
+        description:
+          "Корутина, asyncio.Task, asyncio.Future или любой awaitable-объект. Корутина автоматически оборачивается в Task.",
+      },
+    ],
+    example: `import asyncio
+
+async def fetch_data():
+    await asyncio.sleep(1)
+    return {"status": "ok", "data": [1, 2, 3]}
+
+# Низкоуровневое использование:
+loop = asyncio.new_event_loop()
+
+try:
+    result = loop.run_until_complete(fetch_data())
+    print(result)  # {'status': 'ok', 'data': [1, 2, 3]}
+finally:
+    loop.close()
+
+# Современный аналог (рекомендуется):
+# result = asyncio.run(fetch_data())`,
+  },
+
+  {
+    name: "loop.run_forever()",
+    description:
+      "Запускает цикл событий и работает бесконечно, пока не будет вызван loop.stop(). Используется для долгоживущих серверных приложений, где нет единственной «главной» корутины. Блокирует текущий поток выполнения.",
+    syntax: "loop.run_forever()",
+    arguments: [],
+    example: `import asyncio
+
+def schedule_task(loop):
+    async def periodic():
+        for i in range(3):
+            print(f"Итерация {i}")
+            await asyncio.sleep(1)
+        loop.stop()  # останавливаем после 3 итераций
+
+    asyncio.ensure_future(periodic(), loop=loop)
+
+loop = asyncio.new_event_loop()
+schedule_task(loop)
+
+try:
+    loop.run_forever()  # блокирует до loop.stop()
+    print("Цикл остановлен")
+finally:
+    loop.close()`,
+  },
+
+  {
+    name: "loop.stop()",
+    description:
+      "Останавливает цикл событий. Если цикл запущен через run_forever() — он завершит текущую итерацию и вернёт управление вызывающей стороне. Не является корутиной. Обычно вызывается из callback или другого потока.",
+    syntax: "loop.stop()",
+    arguments: [],
+    example: `import asyncio
+import threading
+
+loop = asyncio.new_event_loop()
+
+async def worker():
+    for i in range(5):
+        print(f"Работаю: {i}")
+        await asyncio.sleep(0.5)
+
+# Остановить цикл из другого потока через 2 сек:
+def stopper():
+    import time
+    time.sleep(2)
+    loop.call_soon_threadsafe(loop.stop)
+
+t = threading.Thread(target=stopper, daemon=True)
+t.start()
+
+asyncio.ensure_future(worker(), loop=loop)
+loop.run_forever()  # остановится через ~2 сек
+loop.close()
+print("Завершено")`,
+  },
+
+  {
+    name: "loop.is_running()",
+    description:
+      "Возвращает True, если цикл событий в данный момент выполняется (активен), иначе False. Не блокирует выполнение. Полезно для проверки состояния цикла перед вызовами, требующими (или запрещающими) активный цикл.",
+    syntax: "loop.is_running()",
+    arguments: [],
+    example: `import asyncio
+
+loop = asyncio.new_event_loop()
+
+print(loop.is_running())  # False — цикл не запущен
+
+async def check():
+    # Внутри корутины цикл уже запущен:
+    current = asyncio.get_event_loop()
+    print(current.is_running())  # True
+
+    # Нельзя вызвать run_until_complete() когда is_running() == True
+    # Используйте asyncio.create_task() или await вместо этого
+
+loop.run_until_complete(check())
+
+print(loop.is_running())  # False — цикл завершил работу
+loop.close()`,
+  },
+
+  {
+    name: "loop.is_closed()",
+    description:
+      "Возвращает True, если цикл событий был закрыт методом close(). Закрытый цикл нельзя использовать повторно. Не блокирует выполнение. Полезно для проверки перед попыткой запустить или использовать цикл.",
+    syntax: "loop.is_closed()",
+    arguments: [],
+    example: `import asyncio
+
+loop = asyncio.new_event_loop()
+
+print(loop.is_closed())  # False
+
+async def task():
+    await asyncio.sleep(0.1)
+    return "готово"
+
+loop.run_until_complete(task())
+print(loop.is_closed())  # False — цикл завершил задачу, но не закрыт
+
+loop.close()
+print(loop.is_closed())  # True
+
+# Попытка использовать закрытый цикл:
+try:
+    loop.run_until_complete(task())
+except RuntimeError as e:
+    print(f"Ошибка: {e}")  # Event loop is closed`,
+  },
+
+  {
+    name: "loop.close()",
+    description:
+      "Закрывает цикл событий и освобождает все связанные ресурсы. После закрытия цикл нельзя использовать повторно. Не останавливает работающий цикл — сначала нужно вызвать stop(). Рекомендуется вызывать в блоке finally для гарантированной очистки ресурсов.",
+    syntax: "loop.close()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    await asyncio.sleep(0.1)
+    return "результат"
+
+loop = asyncio.new_event_loop()
+
+try:
+    result = loop.run_until_complete(main())
+    print(result)  # результат
+finally:
+    # Корректное завершение:
+    pending = asyncio.all_tasks(loop)
+    for task in pending:
+        task.cancel()
+    if pending:
+        loop.run_until_complete(
+            asyncio.gather(*pending, return_exceptions=True)
+        )
+    loop.close()
+
+print(loop.is_closed())  # True`,
+  },
+
+  {
+    name: "loop.create_future()",
+    description:
+      "Создаёт и возвращает новый объект asyncio.Future, привязанный к данному циклу событий. Предпочтительный способ создания Future, так как подклассы цикла могут возвращать альтернативные реализации Future для повышения производительности.",
+    syntax: "future = loop.create_future()",
+    arguments: [],
+    example: `import asyncio
+
+async def setter(future, value):
+    await asyncio.sleep(1)
+    future.set_result(value)
+
+async def main():
+    loop = asyncio.get_event_loop()
+
+    # Создаём Future вручную:
+    future = loop.create_future()
+
+    # Запускаем задачу, которая установит результат:
+    asyncio.create_task(setter(future, "данные готовы"))
+
+    # Ожидаем результата:
+    result = await future
+    print(result)  # данные готовы
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "loop.create_task(coro, *, name=None, context=None)",
+    description:
+      "Планирует выполнение корутины как Task в цикле событий. Возвращает объект asyncio.Task. Task начинает выполняться при следующей итерации цикла. Аналогичен asyncio.create_task(), но применяется при явном управлении циклом.",
+    syntax: "task = loop.create_task(coro, *, name=None, context=None)",
+    arguments: [
+      {
+        name: "coro",
+        description:
+          "Объект корутины для выполнения в качестве Task. Не запускается немедленно — добавляется в очередь цикла событий.",
+      },
+      {
+        name: "name",
+        description:
+          "Имя задачи (строка). Используется в отладке и repr(). Доступно через task.get_name().",
+      },
+      {
+        name: "context",
+        description:
+          "Объект contextvars.Context для выполнения корутины. None — используется текущий контекст.",
+      },
+    ],
+    example: `import asyncio
+
+async def background_job(name, delay):
+    await asyncio.sleep(delay)
+    print(f"{name} завершено за {delay}с")
+    return name
+
+async def main():
+    loop = asyncio.get_event_loop()
+
+    t1 = loop.create_task(background_job("задача-1", 1), name="job-1")
+    t2 = loop.create_task(background_job("задача-2", 2), name="job-2")
+
+    print(f"Имя: {t1.get_name()}")  # job-1
+
+    results = await asyncio.gather(t1, t2)
+    print(results)  # ['задача-1', 'задача-2']
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "loop.call_soon(callback, *args, context=None)",
+    description:
+      "Планирует вызов callback с аргументами args на следующей итерации цикла событий. Callback вызывается в порядке FIFO. Возвращает asyncio.Handle, который можно отменить через handle.cancel(). Не является корутиной — предназначен для синхронных функций.",
+    syntax: "handle = loop.call_soon(callback, *args, context=None)",
+    arguments: [
+      {
+        name: "callback",
+        description:
+          "Синхронная функция (callable) для вызова. Не может быть корутиной — для корутин используйте create_task().",
+      },
+      {
+        name: "*args",
+        description:
+          "Позиционные аргументы, передаваемые в callback при вызове.",
+      },
+      {
+        name: "context",
+        description:
+          "Объект contextvars.Context для выполнения callback. None — текущий контекст.",
+      },
+    ],
+    example: `import asyncio
+
+def on_event(name, value):
+    print(f"Событие [{name}]: {value}")
+
+async def main():
+    loop = asyncio.get_event_loop()
+
+    # Запланировать вызов на следующей итерации:
+    handle = loop.call_soon(on_event, "клик", 42)
+
+    # handle позволяет отменить до выполнения:
+    # handle.cancel()
+
+    loop.call_soon(on_event, "загрузка", "завершена")
+    loop.call_soon(print, "call_soon выполняется в FIFO-порядке")
+
+    await asyncio.sleep(0)  # уступаем управление циклу
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "loop.call_later(delay, callback, *args, context=None)",
+    description:
+      "Планирует вызов callback через delay секунд (может быть дробным числом). Возвращает asyncio.TimerHandle. Если несколько callback запланированы на одно время — они вызываются в порядке регистрации. Предназначен для синхронных функций.",
+    syntax: "handle = loop.call_later(delay, callback, *args, context=None)",
+    arguments: [
+      {
+        name: "delay",
+        description:
+          "Задержка в секундах (float). Может быть дробным: 0.5 — полсекунды, 0.001 — миллисекунда.",
+      },
+      {
+        name: "callback",
+        description: "Синхронная функция для вызова после задержки.",
+      },
+      {
+        name: "*args",
+        description: "Позиционные аргументы для callback.",
+      },
+    ],
+    example: `import asyncio
+
+def alarm(message):
+    print(f"Сигнал: {message}")
+
+async def main():
+    loop = asyncio.get_event_loop()
+
+    # Запланировать через 1 и 2 секунды:
+    loop.call_later(1.0, alarm, "через 1 сек")
+    loop.call_later(2.0, alarm, "через 2 сек")
+    h = loop.call_later(3.0, alarm, "через 3 сек (отменён)")
+
+    # Отменяем третий:
+    h.cancel()
+
+    await asyncio.sleep(2.5)  # ждём выполнения первых двух
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "loop.call_at(when, callback, *args, context=None)",
+    description:
+      "Планирует вызов callback в абсолютный момент времени when (по часам цикла событий, loop.time()). Аналог call_later, но принимает абсолютное время вместо относительной задержки. Возвращает asyncio.TimerHandle.",
+    syntax: "handle = loop.call_at(when, callback, *args, context=None)",
+    arguments: [
+      {
+        name: "when",
+        description:
+          "Абсолютное время вызова по шкале loop.time() (float, секунды). Должно быть больше текущего loop.time(), иначе callback выполнится немедленно.",
+      },
+      {
+        name: "callback",
+        description:
+          "Синхронная функция для вызова в указанный момент времени.",
+      },
+      {
+        name: "*args",
+        description: "Позиционные аргументы для callback.",
+      },
+    ],
+    example: `import asyncio
+
+def scheduled_job(label):
+    print(f"Выполнено: {label}")
+
+async def main():
+    loop = asyncio.get_event_loop()
+    now = loop.time()
+
+    print(f"Текущее время цикла: {now:.3f}")
+
+    # Запланировать через 1 и 2 секунды от текущего момента:
+    loop.call_at(now + 1.0, scheduled_job, "t+1с")
+    loop.call_at(now + 2.0, scheduled_job, "t+2с")
+
+    # В прошлом — выполнится немедленно:
+    loop.call_at(now - 1.0, scheduled_job, "прошлое время")
+
+    await asyncio.sleep(2.5)
+
+asyncio.run(main())`,
+  },
+
+  {
+    name: "loop.time()",
+    description:
+      "Возвращает текущее монотонное время по внутренним часам цикла событий в виде числа с плавающей точкой (секунды). Монотонное время никогда не идёт назад, даже при переводе системных часов. Используется как основа для call_at() и измерения интервалов.",
+    syntax: "t = loop.time()",
+    arguments: [],
+    example: `import asyncio
+
+async def measure_performance():
+    loop = asyncio.get_event_loop()
+
+    start = loop.time()
+    print(f"Начало: {start:.6f}")
+
+    await asyncio.sleep(0.5)
+
+    end = loop.time()
+    elapsed = end - start
+    print(f"Конец:  {end:.6f}")
+    print(f"Прошло: {elapsed:.3f}с")  # ~0.500с
+
+    # Использование с call_at():
+    target = loop.time() + 1.0
+    loop.call_at(target, print, "Выполнено через 1 сек")
+    await asyncio.sleep(1.1)
+
+asyncio.run(measure_performance())`,
+  },
+  {
+    name: "aiohttp.web.Request.version",
+    description:
+      "Атрибут, возвращающий версию HTTP-протокола входящего запроса. Значение представлено как именованный кортеж с полями major и minor (например, (1, 1) для HTTP/1.1).",
+    syntax: "request.version",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    version = request.version
+    print(version.major, version.minor)  # 1 1
+    return web.Response(text=f'HTTP/{version.major}.{version.minor}')
+
+app = web.Application()
+app.router.add_get('/', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.url",
+    description:
+      "Атрибут, возвращающий полный URL запроса в виде объекта yarl.URL. Содержит схему, хост, путь, строку запроса и другие компоненты адреса.",
+    syntax: "request.url",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    url = request.url
+    print(url.scheme)   # http
+    print(url.host)     # localhost
+    print(url.path)     # /items
+    print(url.query)    # <MultiDictProxy>
+    return web.Response(text=str(url))
+
+app = web.Application()
+app.router.add_get('/items', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.path",
+    description:
+      'Атрибут, возвращающий путь URL запроса без строки запроса (query string) и без хоста. Например, для URL http://example.com/users?page=1 вернёт "/users".',
+    syntax: "request.path",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    path = request.path
+    # GET http://localhost/api/users?page=2
+    print(path)  # /api/users
+    return web.Response(text=path)
+
+app = web.Application()
+app.router.add_get('/api/users', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.query",
+    description:
+      "Атрибут, возвращающий параметры строки запроса (query string) в виде объекта MultiDictProxy. Поддерживает множественные значения для одного ключа. Является распарсенным представлением query_string.",
+    syntax: "request.query",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    # GET /search?q=python&page=1&tag=async&tag=web
+    q = request.query.get('q', '')          # 'python'
+    page = request.query.get('page', '1')   # '1'
+    tags = request.query.getall('tag', [])  # ['async', 'web']
+    return web.Response(text=f'q={q}, page={page}, tags={tags}')
+
+app = web.Application()
+app.router.add_get('/search', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.query_string",
+    description:
+      'Атрибут, возвращающий сырую строку запроса (query string) URL без символа "?". Если параметров нет — возвращает пустую строку.',
+    syntax: "request.query_string",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    # GET /search?q=python&page=2
+    qs = request.query_string
+    print(qs)  # 'q=python&page=2'
+    return web.Response(text=qs)
+
+app = web.Application()
+app.router.add_get('/search', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.headers",
+    description:
+      "Атрибут, возвращающий заголовки HTTP-запроса в виде объекта CIMultiDictProxy (нечувствительного к регистру MultiDict). Позволяет получать заголовки по имени, независимо от регистра ключа.",
+    syntax: "request.headers",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    content_type = request.headers.get('Content-Type', 'не задан')
+    auth = request.headers.get('Authorization', '')
+    user_agent = request.headers.get('User-Agent', '')
+
+    print(content_type)  # application/json
+    print(auth)          # Bearer eyJ...
+    return web.Response(text=f'UA: {user_agent}')
+
+app = web.Application()
+app.router.add_post('/data', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.keep_alive",
+    description:
+      "Атрибут, возвращающий булево значение: True, если соединение поддерживает keep-alive (постоянное соединение), False — если соединение будет закрыто после ответа. Зависит от версии HTTP и заголовка Connection.",
+    syntax: "request.keep_alive",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    if request.keep_alive:
+        print('Соединение будет сохранено')
+    else:
+        print('Соединение будет закрыто')
+    return web.Response(text=str(request.keep_alive))
+
+app = web.Application()
+app.router.add_get('/', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.match_info",
+    description:
+      "Атрибут, возвращающий объект UrlMappingMatchInfo с переменными, извлечёнными из шаблона маршрута. Используется для получения динамических сегментов пути, объявленных в фигурных скобках при регистрации маршрута.",
+    syntax: "request.match_info",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    # Маршрут: /users/{user_id}/posts/{post_id}
+    user_id = request.match_info['user_id']
+    post_id = request.match_info['post_id']
+    return web.Response(text=f'user={user_id}, post={post_id}')
+
+app = web.Application()
+app.router.add_get('/users/{user_id}/posts/{post_id}', handler)
+web.run_app(app)
+# GET /users/42/posts/7 -> user=42, post=7`,
+  },
+  {
+    name: "aiohttp.web.Request.app",
+    description:
+      "Атрибут, возвращающий экземпляр web.Application, к которому относится данный запрос. Позволяет обращаться к глобальным ресурсам приложения (например, к пулу соединений с базой данных, настройкам и другим объектам, сохранённым в app).",
+    syntax: "request.app",
+    arguments: [],
+    example: `from aiohttp import web
+import aiopg
+
+async def handler(request: web.Request) -> web.Response:
+    # Получаем пул БД, сохранённый при старте приложения
+    pool = request.app['db_pool']
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute('SELECT count(*) FROM users')
+            count = await cur.fetchone()
+    return web.Response(text=f'Users: {count[0]}')
+
+async def startup(app):
+    app['db_pool'] = await aiopg.create_pool('dbname=test')
+
+app = web.Application()
+app.on_startup.append(startup)
+app.router.add_get('/', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.read()",
+    description:
+      "Корутина, которая читает всё тело запроса и возвращает его в виде объекта bytes. Подходит для обработки бинарных данных. Повторный вызов на том же объекте запроса вернёт уже прочитанные данные из кэша.",
+    syntax: "await request.read()",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    body: bytes = await request.read()
+    print(f'Получено {len(body)} байт')
+    print(body[:50])  # первые 50 байт
+
+    # Повторный вызов безопасен — данные кэшируются:
+    body_again = await request.read()
+    assert body == body_again
+
+    return web.Response(text=f'Размер тела: {len(body)} байт')
+
+app = web.Application()
+app.router.add_post('/upload', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.text()",
+    description:
+      "Корутина, которая читает тело запроса и декодирует его в строку. Кодировка определяется из заголовка Content-Type (charset). Если кодировка не указана, по умолчанию используется UTF-8.",
+    syntax: "await request.text()",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    # Content-Type: text/plain; charset=utf-8
+    text = await request.text()
+    print(f'Получен текст: {text}')
+    return web.Response(text=f'Эхо: {text}')
+
+app = web.Application()
+app.router.add_post('/echo', handler)
+web.run_app(app)
+
+# curl -X POST http://localhost:8080/echo \\
+#      -H "Content-Type: text/plain" \\
+#      -d "Привет, мир!"`,
+  },
+  {
+    name: "aiohttp.web.Request.json()",
+    description:
+      "Корутина, которая читает тело запроса и десериализует его из формата JSON в объект Python (dict, list и т.д.). Использует стандартный модуль json или пользовательский загрузчик, если он задан. Выбрасывает исключение, если тело не является валидным JSON.",
+    syntax: "await request.json(loads=json.loads)",
+    arguments: [
+      {
+        name: "loads",
+        description:
+          "Необязательная функция для десериализации JSON. По умолчанию используется json.loads из стандартной библиотеки. Можно передать альтернативу, например ujson.loads.",
+      },
+    ],
+    example: `from aiohttp import web
+import json
+
+async def handler(request: web.Request) -> web.Response:
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        raise web.HTTPBadRequest(text='Невалидный JSON')
+
+    name = data.get('name', 'Аноним')
+    age = data.get('age', 0)
+    return web.Response(text=f'Привет, {name}! Тебе {age} лет.')
+
+app = web.Application()
+app.router.add_post('/greet', handler)
+web.run_app(app)
+
+# curl -X POST http://localhost:8080/greet \\
+#      -H "Content-Type: application/json" \\
+#      -d '{"name": "Алиса", "age": 30}'`,
+  },
+  {
+    name: "aiohttp.web.Request.multipart()",
+    description:
+      'Метод, возвращающий MultipartReader для последовательного чтения частей multipart-запроса (например, при загрузке файлов через форму с enctype="multipart/form-data"). Каждая часть читается отдельно как поток.',
+    syntax: "request.multipart()",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    reader = await request.multipart()
+
+    uploaded_files = []
+    async for part in reader:
+        if part.filename:
+            # Читаем содержимое файла
+            content = await part.read()
+            uploaded_files.append({
+                'filename': part.filename,
+                'size': len(content),
+                'content_type': part.headers.get('Content-Type')
+            })
+
+    return web.json_response({'uploaded': uploaded_files})
+
+app = web.Application()
+app.router.add_post('/upload', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Request.post()",
+    description:
+      "Корутина, которая читает и парсит тело запроса как данные HTML-формы (application/x-www-form-urlencoded или multipart/form-data). Возвращает объект MultiDictProxy с полями формы. Для multipart-запросов файлы доступны как объекты FileField.",
+    syntax: "await request.post()",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    # Content-Type: application/x-www-form-urlencoded
+    data = await request.post()
+
+    username = data.get('username', '')
+    password = data.get('password', '')
+
+    if not username or not password:
+        raise web.HTTPBadRequest(text='Заполните все поля')
+
+    # Для multipart/form-data доступны и файлы:
+    # file_field = data.get('avatar')  # FileField
+    # content = file_field.file.read()
+
+    return web.Response(text=f'Пользователь: {username}')
+
+app = web.Application()
+app.router.add_post('/login', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.status",
+    description:
+      "Атрибут, возвращающий или устанавливающий HTTP-статус код ответа в виде целого числа. По умолчанию равен 200. Может быть изменён до вызова prepare().",
+    syntax: "response.status",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    response = web.Response(text='Не найдено')
+    response.status = 404
+    print(response.status)  # 404
+    return response
+
+app = web.Application()
+app.router.add_get('/missing', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.reason",
+    description:
+      'Атрибут, возвращающий или устанавливающий текстовое пояснение к HTTP-статусу (reason phrase). Например, для статуса 404 стандартное значение — "Not Found". Если не задано явно, определяется автоматически на основе кода статуса.',
+    syntax: "response.reason",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    response = web.Response(status=418)
+    print(response.reason)   # "I'm a Teapot"
+
+    # Можно задать своё пояснение:
+    response.reason = 'Custom Reason'
+    print(response.reason)   # "Custom Reason"
+    return response
+
+app = web.Application()
+app.router.add_get('/', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.headers",
+    description:
+      "Атрибут, возвращающий заголовки ответа в виде объекта CIMultiDict (нечувствительного к регистру). Позволяет читать и изменять заголовки ответа до его отправки клиенту. После вызова prepare() заголовки становятся неизменяемыми.",
+    syntax: "response.headers",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    response = web.Response(text='Привет')
+
+    response.headers['X-Custom-Header'] = 'my-value'
+    response.headers['Cache-Control'] = 'no-cache'
+
+    print(response.headers['Content-Type'])  # text/plain; charset=utf-8
+    return response
+
+app = web.Application()
+app.router.add_get('/', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.body",
+    description:
+      "Атрибут, возвращающий или устанавливающий тело ответа в виде объекта bytes. При установке значения автоматически обновляется заголовок Content-Length. Несовместим с атрибутом text — можно использовать только один из них.",
+    syntax: "response.body",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    response = web.Response()
+    response.body = b'\\x89PNG\\r\\n...'  # бинарные данные
+    response.content_type = 'image/png'
+
+    print(len(response.body))  # размер в байтах
+    return response
+
+app = web.Application()
+app.router.add_get('/image', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.text",
+    description:
+      "Атрибут, возвращающий или устанавливающий тело ответа в виде строки. При чтении декодирует bytes-тело с кодировкой из Content-Type. При записи кодирует строку в bytes и обновляет Content-Length. Несовместим с атрибутом body.",
+    syntax: "response.text",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    response = web.Response()
+    response.text = 'Привет, мир!'
+    response.content_type = 'text/plain'
+
+    print(response.text)        # 'Привет, мир!'
+    print(type(response.body))  # <class 'bytes'>
+    return response
+
+app = web.Application()
+app.router.add_get('/', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.prepare()",
+    description:
+      "Корутина, которая инициализирует HTTP-ответ: отправляет строку статуса и заголовки клиенту. После вызова изменение заголовков невозможно. Обычно вызывается явно при потоковой передаче данных (streaming), перед последовательными вызовами write().",
+    syntax: "await response.prepare(request)",
+    arguments: [
+      {
+        name: "request",
+        description:
+          "Объект web.Request текущего запроса, для которого подготавливается ответ.",
+      },
+    ],
+    example: `from aiohttp import web
+import asyncio
+
+async def handler(request: web.Request) -> web.StreamResponse:
+    response = web.StreamResponse()
+    response.content_type = 'text/plain'
+
+    # Отправляем заголовки клиенту
+    await response.prepare(request)
+
+    # Теперь можно писать данные по частям
+    for i in range(5):
+        await response.write(f'Строка {i}\\n'.encode())
+        await asyncio.sleep(0.5)
+
+    return response
+
+app = web.Application()
+app.router.add_get('/stream', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.write()",
+    description:
+      "Корутина, отправляющая порцию данных в теле ответа клиенту. Может вызываться многократно для потоковой передачи. Перед первым вызовом write() необходимо вызвать prepare(). Принимает данные в виде bytes.",
+    syntax: "await response.write(data)",
+    arguments: [
+      {
+        name: "data",
+        description:
+          'Данные типа bytes для отправки клиенту. Строки необходимо предварительно закодировать, например: data.encode("utf-8").',
+      },
+    ],
+    example: `from aiohttp import web
+import asyncio
+
+async def handler(request: web.Request) -> web.StreamResponse:
+    response = web.StreamResponse()
+    await response.prepare(request)
+
+    lines = ['Первая строка', 'Вторая строка', 'Третья строка']
+    for line in lines:
+        await response.write((line + '\\n').encode('utf-8'))
+        await asyncio.sleep(0.3)
+
+    await response.write_eof()
+    return response
+
+app = web.Application()
+app.router.add_get('/stream', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.Response.write_eof()",
+    description:
+      "Корутина, сигнализирующая об окончании потоковой передачи тела ответа. Отправляет финальный пустой чанк при chunked-кодировании. После вызова дальнейшая запись в ответ невозможна. Обычно вызывается явно только при потоковых ответах (StreamResponse); для обычного Response вызывается автоматически.",
+    syntax: "await response.write_eof()",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.StreamResponse:
+    response = web.StreamResponse()
+    await response.prepare(request)
+
+    await response.write(b'chunk 1\\n')
+    await response.write(b'chunk 2\\n')
+    await response.write(b'chunk 3\\n')
+
+    # Явно завершаем поток
+    await response.write_eof()
+    return response
+
+app = web.Application()
+app.router.add_get('/chunked', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.run_app()",
+    description:
+      "Функция для запуска aiohttp-приложения. Создаёт event loop, инициализирует приложение, запускает TCP-сервер и блокирует выполнение до получения сигнала завершения (Ctrl+C / SIGTERM). Является основной точкой входа для запуска aiohttp-сервера в production и разработке.",
+    syntax:
+      "web.run_app(app, *, host=None, port=None, path=None, ssl_context=None, shutdown_timeout=60.0, keepalive_timeout=75.0, access_log=...)",
+    arguments: [
+      {
+        name: "app",
+        description:
+          "Экземпляр web.Application или корутина/функция, возвращающая приложение (Application Factory).",
+      },
+      {
+        name: "host",
+        description:
+          'Хост для привязки сервера. По умолчанию "0.0.0.0" (все интерфейсы). Можно передать строку или список строк.',
+      },
+      {
+        name: "port",
+        description:
+          "Порт для прослушивания. По умолчанию 8080, или 8443 при использовании SSL.",
+      },
+      {
+        name: "path",
+        description:
+          "Путь к Unix-сокету вместо TCP. Если задан — host и port игнорируются.",
+      },
+      {
+        name: "ssl_context",
+        description:
+          "Объект ssl.SSLContext для включения HTTPS. Если не задан — сервер работает по HTTP.",
+      },
+      {
+        name: "shutdown_timeout",
+        description:
+          "Таймаут в секундах на завершение активных соединений при остановке сервера. По умолчанию 60.0.",
+      },
+    ],
+    example: `from aiohttp import web
+import ssl
+
+async def index(request: web.Request) -> web.Response:
+    return web.Response(text='Привет от aiohttp!')
+
+app = web.Application()
+app.router.add_get('/', index)
+
+# Простой запуск на localhost:8080
+web.run_app(app)
+
+# Запуск на конкретном хосте и порту
+web.run_app(app, host='127.0.0.1', port=9000)
+
+# Запуск с HTTPS
+ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+ssl_ctx.load_cert_chain('cert.pem', 'key.pem')
+web.run_app(app, port=443, ssl_context=ssl_ctx)
+
+# Запуск через Unix-сокет
+web.run_app(app, path='/tmp/myapp.sock')`,
+  },
+  {
+    name: "aiohttp.TCPConnector",
+    description:
+      "Класс для управления пулом TCP-соединений в aiohttp. Контролирует максимальное количество одновременных соединений, настройки SSL, DNS-кэш и время жизни соединений. Используется при создании ClientSession для тонкой настройки сетевого слоя.",
+    syntax:
+      "aiohttp.TCPConnector(limit=100, ssl=None, ttl_dns_cache=10, use_dns_cache=True, keepalive_timeout=15.0, enable_cleanup_closed=False)",
+    arguments: [
+      {
+        name: "limit",
+        description:
+          "Максимальное количество одновременных соединений во всём пуле. По умолчанию 100. Значение 0 — без ограничений.",
+      },
+      {
+        name: "ssl",
+        description:
+          "Настройки SSL: объект ssl.SSLContext, False (отключить проверку сертификата) или None (использовать настройки по умолчанию).",
+      },
+      {
+        name: "ttl_dns_cache",
+        description:
+          "Время жизни DNS-кэша в секундах. По умолчанию 10. Помогает снизить количество DNS-запросов при частых обращениях к одному хосту.",
+      },
+      {
+        name: "keepalive_timeout",
+        description:
+          "Время в секундах, в течение которого неактивное соединение остаётся в пуле. По умолчанию 15.0.",
+      },
+    ],
+    example: `import aiohttp
+import ssl
+
+# Базовое использование с лимитом соединений
+connector = aiohttp.TCPConnector(limit=50)
+
+async with aiohttp.ClientSession(connector=connector) as session:
+    async with session.get('https://example.com') as resp:
+        print(resp.status)
+
+# Отключить проверку SSL-сертификата (не для production!)
+connector = aiohttp.TCPConnector(ssl=False)
+
+# Использовать свой SSL-контекст
+ssl_ctx = ssl.create_default_context()
+ssl_ctx.load_verify_locations('ca-bundle.crt')
+connector = aiohttp.TCPConnector(ssl=ssl_ctx)
+
+async with aiohttp.ClientSession(connector=connector) as session:
+    async with session.get('https://secure.example.com') as resp:
+        data = await resp.text()`,
+  },
+  {
+    name: "aiohttp.UnixConnector",
+    description:
+      "Коннектор для подключения к серверу через Unix domain socket вместо TCP. Применяется для взаимодействия с локальными сервисами (Docker, systemd, gunicorn), которые слушают на Unix-сокетах. Не поддерживает SSL.",
+    syntax: "aiohttp.UnixConnector(path, force_close=False, limit=100)",
+    arguments: [
+      {
+        name: "path",
+        description:
+          'Путь к Unix-сокету на файловой системе, например "/var/run/docker.sock".',
+      },
+      {
+        name: "force_close",
+        description:
+          "Если True — соединение закрывается после каждого запроса, без возврата в пул. По умолчанию False.",
+      },
+      {
+        name: "limit",
+        description:
+          "Максимальное количество одновременных соединений. По умолчанию 100.",
+      },
+    ],
+    example: `import aiohttp
+
+# Подключение к Docker API через Unix-сокет
+connector = aiohttp.UnixConnector(path='/var/run/docker.sock')
+
+async with aiohttp.ClientSession(connector=connector) as session:
+    # Запрос к Docker API (используем http://localhost как фиктивный хост)
+    async with session.get('http://localhost/v1.41/containers/json') as resp:
+        containers = await resp.json()
+        for c in containers:
+            print(c['Names'], c['Status'])
+
+# Подключение к локальному gunicorn-серверу
+connector = aiohttp.UnixConnector(path='/tmp/gunicorn.sock')
+async with aiohttp.ClientSession(connector=connector) as session:
+    async with session.post('http://localhost/api/data', json={'key': 'val'}) as resp:
+        result = await resp.json()`,
+  },
+  {
+    name: "aiohttp.CookieJar",
+    description:
+      "Класс для хранения и управления HTTP-cookies в рамках ClientSession. По умолчанию фильтрует небезопасные cookies (с IP-адресами вместо доменов). Поддерживает сохранение и загрузку cookies между сессиями.",
+    syntax:
+      "aiohttp.CookieJar(unsafe=False, quote_cookie=True, treat_as_secure_origin=[])",
+    arguments: [
+      {
+        name: "unsafe",
+        description:
+          "Если True — разрешает принимать cookies от серверов с IP-адресами (нестандартное поведение). По умолчанию False.",
+      },
+      {
+        name: "quote_cookie",
+        description:
+          "Если True — значения cookies будут экранироваться (URL-encode). По умолчанию True.",
+      },
+      {
+        name: "treat_as_secure_origin",
+        description:
+          "Список URL-источников, которые следует считать безопасными (для Secure-cookies при HTTP-соединении).",
+      },
+    ],
+    example: `import aiohttp
+
+# Стандартная jar (только безопасные домены)
+jar = aiohttp.CookieJar()
+
+async with aiohttp.ClientSession(cookie_jar=jar) as session:
+    await session.get('https://example.com/login')
+    # Cookies автоматически сохранены в jar
+
+    await session.get('https://example.com/profile')
+    # Cookies автоматически отправлены
+
+# Разрешить cookies от IP-адресов (для тестирования)
+jar = aiohttp.CookieJar(unsafe=True)
+
+async with aiohttp.ClientSession(cookie_jar=jar) as session:
+    await session.get('http://127.0.0.1:8080/')
+
+# Сохранить и загрузить cookies
+jar.save('cookies.pkl')
+jar.load('cookies.pkl')`,
+  },
+  {
+    name: "aiohttp.FormData",
+    description:
+      "Класс для формирования тела запроса в формате multipart/form-data или application/x-www-form-urlencoded. Позволяет добавлять текстовые поля и файлы, после чего передаётся в параметр data при отправке запроса.",
+    syntax: "aiohttp.FormData(fields=(), quote_fields=True, charset=None)",
+    arguments: [
+      {
+        name: "fields",
+        description:
+          "Начальные поля формы: список кортежей (name, value) или словарь. Можно добавлять поля позже через метод add_field().",
+      },
+      {
+        name: "quote_fields",
+        description:
+          "Если True — имена полей будут URL-экранированы. По умолчанию True.",
+      },
+      {
+        name: "charset",
+        description:
+          "Кодировка для текстовых полей. По умолчанию None (используется UTF-8).",
+      },
+    ],
+    example: `import aiohttp
+
+async def upload():
+    data = aiohttp.FormData()
+
+    # Текстовое поле
+    data.add_field('username', 'alice')
+    data.add_field('description', 'Тестовая загрузка')
+
+    # Загрузка файла с заголовками
+    with open('photo.jpg', 'rb') as f:
+        data.add_field(
+            'avatar',
+            f,
+            filename='photo.jpg',
+            content_type='image/jpeg'
+        )
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post('https://example.com/upload', data=data) as resp:
+            print(resp.status)
+            result = await resp.json()
+            print(result)`,
+  },
+  {
+    name: "aiohttp.ClientTimeout",
+    description:
+      "Класс для задания таймаутов клиентских запросов в aiohttp. Позволяет раздельно настраивать общий таймаут, таймаут соединения и таймаут чтения данных от сервера. Передаётся в ClientSession или в отдельный запрос.",
+    syntax:
+      "aiohttp.ClientTimeout(total=None, connect=None, sock_connect=None, sock_read=None)",
+    arguments: [
+      {
+        name: "total",
+        description:
+          "Максимальное время в секундах на весь запрос (от начала до получения полного ответа). None — без ограничений.",
+      },
+      {
+        name: "connect",
+        description:
+          "Максимальное время в секундах на установку соединения (включая DNS-разрешение). None — без ограничений.",
+      },
+      {
+        name: "sock_connect",
+        description:
+          "Максимальное время в секундах на установку TCP-соединения с сокетом (без DNS). None — без ограничений.",
+      },
+      {
+        name: "sock_read",
+        description:
+          "Максимальное время в секундах ожидания данных от сервера после установки соединения. None — без ограничений.",
+      },
+    ],
+    example: `import aiohttp
+
+# Таймаут для всей сессии
+timeout = aiohttp.ClientTimeout(total=30, connect=5, sock_read=20)
+
+async with aiohttp.ClientSession(timeout=timeout) as session:
+    try:
+        async with session.get('https://example.com/data') as resp:
+            data = await resp.json()
+    except aiohttp.ServerTimeoutError:
+        print('Сервер не ответил вовремя')
+    except aiohttp.ClientConnectorError:
+        print('Не удалось подключиться')
+
+# Таймаут для конкретного запроса (переопределяет таймаут сессии)
+short = aiohttp.ClientTimeout(total=5)
+async with aiohttp.ClientSession() as session:
+    async with session.get('https://slow.example.com', timeout=short) as resp:
+        print(resp.status)`,
+  },
+  {
+    name: "aiohttp.MultipartReader.at_eof()",
+    description:
+      "Метод, проверяющий, достигнут ли конец multipart-потока. Возвращает True, если все части были прочитаны, и False, если ещё остались непрочитанные части. Используется в цикле чтения как условие остановки.",
+    syntax: "reader.at_eof()",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    reader = await request.multipart()
+    parts = []
+
+    # Ручной цикл вместо async for
+    while not reader.at_eof():
+        part = await reader.next()
+        if part is None:
+            break
+        content = await part.read()
+        parts.append({
+            'name': part.name,
+            'size': len(content)
+        })
+
+    return web.json_response({'parts': parts})
+
+app = web.Application()
+app.router.add_post('/upload', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.MultipartReader.next()",
+    description:
+      "Корутина, возвращающая следующую часть multipart-запроса в виде объекта BodyPartReader. Если все части прочитаны — возвращает None. Каждую часть нужно прочитать полностью перед вызовом next(), иначе её данные будут пропущены.",
+    syntax: "await reader.next()",
+    arguments: [],
+    example: `from aiohttp import web
+
+async def handler(request: web.Request) -> web.Response:
+    reader = await request.multipart()
+    result = {}
+
+    while True:
+        part = await reader.next()
+        if part is None:
+            break  # Все части прочитаны
+
+        if part.filename:
+            # Это файл
+            data = await part.read()
+            result[part.name] = f'file:{part.filename} ({len(data)} bytes)'
+        else:
+            # Это текстовое поле
+            text = await part.text()
+            result[part.name] = text
+
+    return web.json_response(result)
+
+app = web.Application()
+app.router.add_post('/form', handler)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.MultipartWriter.append()",
+    description:
+      "Метод, добавляющий произвольные данные как новую часть multipart-сообщения. Принимает строку, bytes или объект с интерфейсом чтения. Возвращает объект Payload, которому можно задать дополнительные заголовки.",
+    syntax: "writer.append(obj, headers=None)",
+    arguments: [
+      {
+        name: "obj",
+        description:
+          "Данные для добавления: строка str, байты bytes, объект IOBase или другой поддерживаемый тип.",
+      },
+      {
+        name: "headers",
+        description:
+          "Дополнительные заголовки для этой части в виде словаря или CIMultiDict. Например, Content-Disposition, Content-Type.",
+      },
+    ],
+    example: `import aiohttp
+
+async def send_multipart():
+    with aiohttp.MultipartWriter('mixed') as writer:
+        # Добавить текст
+        writer.append('Привет, мир!')
+
+        # Добавить bytes с заголовком
+        writer.append(
+            b'\\x89PNG binary data',
+            headers={'Content-Type': 'image/png'}
+        )
+
+        # Добавить файл
+        with open('report.pdf', 'rb') as f:
+            writer.append(f, headers={
+                'Content-Disposition': 'attachment; filename="report.pdf"'
+            })
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                'https://example.com/upload',
+                data=writer
+            ) as resp:
+                print(resp.status)`,
+  },
+  {
+    name: "aiohttp.MultipartWriter.append_json()",
+    description:
+      "Метод, сериализующий объект Python в JSON и добавляющий его как часть multipart-сообщения с заголовком Content-Type: application/json. Удобная обёртка над append() для передачи структурированных данных вместе с файлами.",
+    syntax: "writer.append_json(obj, headers=None)",
+    arguments: [
+      {
+        name: "obj",
+        description:
+          "Объект Python, сериализуемый в JSON: словарь, список, строка, число и т.д.",
+      },
+      {
+        name: "headers",
+        description:
+          "Дополнительные заголовки для данной части. Content-Type: application/json устанавливается автоматически.",
+      },
+    ],
+    example: `import aiohttp
+
+async def send_with_metadata():
+    with aiohttp.MultipartWriter('form-data') as writer:
+        # Метаданные в JSON
+        writer.append_json({
+            'user_id': 42,
+            'tags': ['photo', 'avatar'],
+            'description': 'Фото профиля'
+        })
+
+        # Файл изображения
+        with open('avatar.png', 'rb') as f:
+            writer.append(f, headers={
+                'Content-Disposition': 'form-data; name="file"; filename="avatar.png"',
+                'Content-Type': 'image/png'
+            })
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                'https://api.example.com/photos',
+                data=writer
+            ) as resp:
+                print(await resp.json())`,
+  },
+  {
+    name: "aiohttp.MultipartWriter.append_form()",
+    description:
+      "Метод, добавляющий данные формы (список кортежей или словарь) как часть multipart-сообщения с заголовком Content-Type: application/x-www-form-urlencoded. Используется для вложения закодированных полей формы внутрь multipart-запроса.",
+    syntax: "writer.append_form(obj, headers=None)",
+    arguments: [
+      {
+        name: "obj",
+        description:
+          "Данные формы: словарь {key: value} или список кортежей [(key, value), ...]. Будут закодированы как application/x-www-form-urlencoded.",
+      },
+      {
+        name: "headers",
+        description:
+          "Дополнительные заголовки для данной части. Content-Type: application/x-www-form-urlencoded устанавливается автоматически.",
+      },
+    ],
+    example: `import aiohttp
+
+async def send_mixed_multipart():
+    with aiohttp.MultipartWriter('mixed') as writer:
+        # Поля формы как отдельная часть
+        writer.append_form({
+            'action': 'upload',
+            'folder': 'documents',
+            'overwrite': 'true'
+        })
+
+        # Или как список кортежей (сохраняет порядок)
+        writer.append_form([
+            ('category', 'reports'),
+            ('year', '2024'),
+            ('year', '2025'),  # Дублирующийся ключ
+        ])
+
+        # Бинарный файл
+        with open('doc.pdf', 'rb') as f:
+            writer.append(f, headers={'Content-Type': 'application/pdf'})
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                'https://example.com/api/upload',
+                data=writer
+            ) as resp:
+                print(resp.status)`,
+  },
+  {
+    name: "aiohttp.web.get()",
+    description:
+      "Декоратор и функция из web.RouteTableDef для регистрации обработчика GET-запросов по указанному пути. Используется совместно с RouteTableDef для декларативного описания маршрутов вне класса Application.",
+    syntax: "web.get(path, handler, **kwargs)",
+    arguments: [
+      {
+        name: "path",
+        description:
+          'URL-шаблон маршрута. Поддерживает динамические сегменты в фигурных скобках: "/users/{id}".',
+      },
+      {
+        name: "handler",
+        description:
+          "Асинхронная функция-обработчик, принимающая объект web.Request и возвращающая web.Response.",
+      },
+      {
+        name: "**kwargs",
+        description:
+          "Дополнительные параметры маршрута, например name (имя маршрута для url_for) или expect_handler.",
+      },
+    ],
+    example: `from aiohttp import web
+
+routes = web.RouteTableDef()
+
+@routes.get('/')
+async def index(request: web.Request) -> web.Response:
+    return web.Response(text='Главная страница')
+
+@routes.get('/users/{user_id}')
+async def get_user(request: web.Request) -> web.Response:
+    user_id = request.match_info['user_id']
+    return web.json_response({'id': user_id, 'name': 'Алиса'})
+
+app = web.Application()
+app.add_routes(routes)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.post()",
+    description:
+      "Декоратор и функция из web.RouteTableDef для регистрации обработчика POST-запросов по указанному пути. Применяется для создания ресурсов, отправки форм и обработки JSON-данных от клиента.",
+    syntax: "web.post(path, handler, **kwargs)",
+    arguments: [
+      {
+        name: "path",
+        description:
+          'URL-шаблон маршрута. Поддерживает динамические сегменты: "/articles/{slug}".',
+      },
+      {
+        name: "handler",
+        description:
+          "Асинхронная функция-обработчик, принимающая web.Request и возвращающая web.Response.",
+      },
+      {
+        name: "**kwargs",
+        description:
+          "Дополнительные параметры, например name для именования маршрута.",
+      },
+    ],
+    example: `from aiohttp import web
+
+routes = web.RouteTableDef()
+
+@routes.post('/users')
+async def create_user(request: web.Request) -> web.Response:
+    data = await request.json()
+    name = data.get('name', '').strip()
+
+    if not name:
+        raise web.HTTPBadRequest(text='Поле name обязательно')
+
+    # Имитация создания пользователя
+    new_user = {'id': 101, 'name': name}
+    return web.json_response(new_user, status=201)
+
+app = web.Application()
+app.add_routes(routes)
+web.run_app(app)
+
+# curl -X POST http://localhost:8080/users \\
+#      -H "Content-Type: application/json" \\
+#      -d '{"name": "Боб"}'`,
+  },
+  {
+    name: "aiohttp.web.route()",
+    description:
+      "Универсальный декоратор и функция из web.RouteTableDef для регистрации обработчика с произвольным HTTP-методом. Используется когда нужно обработать нестандартный метод (PATCH, DELETE, HEAD, OPTIONS и т.д.) или передать метод динамически.",
+    syntax: "web.route(method, path, handler, **kwargs)",
+    arguments: [
+      {
+        name: "method",
+        description:
+          'HTTP-метод в виде строки в верхнем регистре: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE" или "*" для любого метода.',
+      },
+      {
+        name: "path",
+        description:
+          "URL-шаблон маршрута. Поддерживает динамические сегменты в фигурных скобках.",
+      },
+      {
+        name: "handler",
+        description:
+          "Асинхронная функция-обработчик, принимающая web.Request и возвращающая web.Response.",
+      },
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры маршрута, например name.",
+      },
+    ],
+    example: `from aiohttp import web
+
+routes = web.RouteTableDef()
+
+@routes.route('PATCH', '/users/{id}')
+async def patch_user(request: web.Request) -> web.Response:
+    user_id = request.match_info['id']
+    data = await request.json()
+    return web.json_response({'id': user_id, 'updated': data})
+
+@routes.route('DELETE', '/users/{id}')
+async def delete_user(request: web.Request) -> web.Response:
+    user_id = request.match_info['id']
+    return web.json_response({'deleted': user_id})
+
+# Маршрут для любого HTTP-метода
+@routes.route('*', '/debug')
+async def debug(request: web.Request) -> web.Response:
+    return web.Response(text=f'Метод: {request.method}')
+
+app = web.Application()
+app.add_routes(routes)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.view()",
+    description:
+      "Декоратор и функция из web.RouteTableDef для привязки URL-пути к классу-обработчику, унаследованному от web.View. Позволяет организовать обработку разных HTTP-методов одного маршрута в виде методов одного класса (get, post, put и т.д.).",
+    syntax: "web.view(path, handler, **kwargs)",
+    arguments: [
+      {
+        name: "path",
+        description:
+          "URL-шаблон маршрута, который будет обслуживаться классом-обработчиком.",
+      },
+      {
+        name: "handler",
+        description:
+          "Класс, унаследованный от web.View. Методы класса get(), post(), put() и т.д. обрабатывают соответствующие HTTP-методы.",
+      },
+      {
+        name: "**kwargs",
+        description:
+          "Дополнительные параметры маршрута, например name для именования.",
+      },
+    ],
+    example: `from aiohttp import web
+
+class UserView(web.View):
+    async def get(self) -> web.Response:
+        user_id = self.request.match_info['id']
+        return web.json_response({'id': user_id, 'name': 'Алиса'})
+
+    async def put(self) -> web.Response:
+        user_id = self.request.match_info['id']
+        data = await self.request.json()
+        return web.json_response({'id': user_id, 'updated': data})
+
+    async def delete(self) -> web.Response:
+        user_id = self.request.match_info['id']
+        return web.json_response({'deleted': user_id})
+
+routes = web.RouteTableDef()
+routes.view('/users/{id}', UserView)
+
+app = web.Application()
+app.add_routes(routes)
+web.run_app(app)`,
+  },
+  {
+    name: "aiohttp.web.static()",
+    description:
+      "Функция для регистрации маршрута раздачи статических файлов (HTML, CSS, JS, изображения и т.д.) из указанной директории. Все файлы внутри директории становятся доступны по URL с заданным префиксом. Поддерживает кэширование, сжатие и заголовок If-Modified-Since.",
+    syntax: "web.static(prefix, path, **kwargs)",
+    arguments: [
+      {
+        name: "prefix",
+        description:
+          'URL-префикс, по которому будут доступны статические файлы. Например, "/static" сделает файл style.css доступным по адресу /static/style.css.',
+      },
+      {
+        name: "path",
+        description:
+          "Путь к директории на файловой системе, из которой будут раздаваться файлы. Может быть строкой или объектом pathlib.Path.",
+      },
+      {
+        name: "**kwargs",
+        description:
+          "Дополнительные параметры: show_index (bool) — показывать листинг директории; follow_symlinks (bool) — следовать символическим ссылкам; append_version (bool) — добавлять хэш версии к URL.",
+      },
+    ],
+    example: `from aiohttp import web
+from pathlib import Path
+
+BASE_DIR = Path(__file__).parent
+
+async def index(request: web.Request) -> web.Response:
+    return web.FileResponse(BASE_DIR / 'public' / 'index.html')
+
+app = web.Application()
+
+# Раздаём файлы из папки 'public' по префиксу '/static'
+app.router.add_static('/static', BASE_DIR / 'public' / 'static')
+
+# Или через RouteTableDef:
+routes = web.RouteTableDef()
+routes.static('/assets', BASE_DIR / 'assets')
+
+app.router.add_get('/', index)
+app.add_routes(routes)
+
+# GET /static/css/style.css -> файл public/static/css/style.css
+# GET /static/js/app.js     -> файл public/static/js/app.js
+
+web.run_app(app)`,
+  },
+  {
+    name: "asyncio.run()",
+    description:
+      "Запускает корутину верхнего уровня, создаёт новый event loop, выполняет корутину до завершения и закрывает loop. Является главной точкой входа в асинхронную программу. Нельзя вызывать внутри уже работающего event loop.",
+    syntax: "asyncio.run(coro, *, debug=None, loop_factory=None)",
+    arguments: [
+      {
+        name: "coro",
+        description:
+          "Корутина — объект, возвращаемый async-функцией. Будет выполнена как точка входа в программу.",
+      },
+      {
+        name: "debug",
+        description:
+          "Если True — включает режим отладки event loop (подробные предупреждения). None — использует переменную окружения PYTHONASYNCIODEBUG.",
+      },
+      {
+        name: "loop_factory",
+        description:
+          "Необязательный callable для создания event loop. По умолчанию None — используется asyncio.DefaultEventLoopPolicy.",
+      },
+    ],
+    example: `import asyncio
+
+async def fetch_data(name: str) -> str:
+    print(f'Начало: {name}')
+    await asyncio.sleep(1)
+    return f'Данные от {name}'
+
+async def main():
+    result = await fetch_data('сервер')
+    print(result)
+
+# Запуск программы
+asyncio.run(main())
+
+# С режимом отладки
+asyncio.run(main(), debug=True)`,
+  },
+  {
+    name: "asyncio.create_task()",
+    description:
+      "Оборачивает корутину в объект Task и планирует её выполнение в текущем event loop. Task запускается конкурентно с другими задачами. Возвращает объект asyncio.Task, который можно отменить или ожидать.",
+    syntax: "asyncio.create_task(coro, *, name=None, context=None)",
+    arguments: [
+      {
+        name: "coro",
+        description:
+          "Корутина, которую нужно обернуть в Task и запустить конкурентно.",
+      },
+      {
+        name: "name",
+        description:
+          "Строковое имя задачи. Отображается в отладочной информации и repr(task). По умолчанию None.",
+      },
+      {
+        name: "context",
+        description:
+          "Контекст contextvars.Context для выполнения задачи. По умолчанию None — копирует текущий контекст.",
+      },
+    ],
+    example: `import asyncio
+
+async def worker(n: int) -> int:
+    await asyncio.sleep(n)
+    print(f'Задача {n} завершена')
+    return n * 2
+
+async def main():
+    # Создаём задачи — они запускаются немедленно
+    task1 = asyncio.create_task(worker(1), name='task-1')
+    task2 = asyncio.create_task(worker(2), name='task-2')
+
+    print(f'Имя: {task1.get_name()}')  # task-1
+
+    # Ожидаем оба результата
+    result1 = await task1
+    result2 = await task2
+    print(result1, result2)  # 2 4
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.gather()",
+    description:
+      "Запускает несколько корутин или задач конкурентно и ожидает завершения всех. Возвращает список результатов в том же порядке, что и входные awaitable-объекты. Если один из них вызывает исключение — оно распространяется, если только return_exceptions=True.",
+    syntax: "asyncio.gather(*aws, return_exceptions=False)",
+    arguments: [
+      {
+        name: "*aws",
+        description:
+          "Произвольное количество корутин, Task или Future. Каждая корутина автоматически оборачивается в Task.",
+      },
+      {
+        name: "return_exceptions",
+        description:
+          "Если False (по умолчанию) — первое исключение немедленно передаётся ожидающей корутине. Если True — исключения возвращаются как результаты в списке, не прерывая остальные задачи.",
+      },
+    ],
+    example: `import asyncio
+
+async def fetch(url: str, delay: float) -> str:
+    await asyncio.sleep(delay)
+    return f'Ответ от {url}'
+
+async def main():
+    # Все три запроса выполняются конкурентно
+    results = await asyncio.gather(
+        fetch('api.example.com', 1),
+        fetch('cdn.example.com', 0.5),
+        fetch('db.example.com', 2),
+    )
+    print(results)
+    # ['Ответ от api.example.com', 'Ответ от cdn.example.com', 'Ответ от db.example.com']
+
+    # С обработкой ошибок
+    async def fail(): raise ValueError('ошибка')
+    results = await asyncio.gather(fetch('ok.com', 0.1), fail(), return_exceptions=True)
+    print(results)  # ['Ответ от ok.com', ValueError('ошибка')]
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.sleep()",
+    description:
+      "Приостанавливает выполнение текущей корутины на заданное количество секунд, передавая управление event loop. Позволяет другим задачам выполняться в это время. При delay=0 уступает управление без реальной задержки.",
+    syntax: "await asyncio.sleep(delay, result=None)",
+    arguments: [
+      {
+        name: "delay",
+        description:
+          "Время ожидания в секундах. Может быть дробным числом. При значении 0 — однократная передача управления event loop.",
+      },
+      {
+        name: "result",
+        description:
+          "Значение, которое вернёт sleep() после ожидания. По умолчанию None.",
+      },
+    ],
+    example: `import asyncio
+
+async def task(name: str, delay: float):
+    print(f'{name}: начало')
+    value = await asyncio.sleep(delay, result=f'{name} готово')
+    print(value)
+    return value
+
+async def main():
+    # Конкурентное выполнение с разными задержками
+    results = await asyncio.gather(
+        task('A', 1.0),
+        task('B', 0.5),
+        task('C', 1.5),
+    )
+    print(results)
+    # B завершится первым, затем A, затем C
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.wait()",
+    description:
+      "Ожидает завершения набора задач или future с возможностью задать таймаут и условие остановки. В отличие от gather(), возвращает два множества: done (завершённые) и pending (ещё выполняющиеся задачи). Не отменяет pending-задачи автоматически.",
+    syntax:
+      "await asyncio.wait(aws, *, timeout=None, return_when=asyncio.ALL_COMPLETED)",
+    arguments: [
+      {
+        name: "aws",
+        description:
+          "Множество или список корутин, Task или Future для ожидания.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Таймаут в секундах. По истечении возвращает управление, не отменяя pending-задачи. None — ждать до завершения условия return_when.",
+      },
+      {
+        name: "return_when",
+        description:
+          "Условие возврата: ALL_COMPLETED (все завершены), FIRST_COMPLETED (первая завершилась), FIRST_EXCEPTION (первое исключение).",
+      },
+    ],
+    example: `import asyncio
+
+async def job(n: int) -> int:
+    await asyncio.sleep(n)
+    return n
+
+async def main():
+    tasks = {asyncio.create_task(job(i)) for i in [1, 2, 3]}
+
+    # Ждём первую завершившуюся задачу
+    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+    print(f'Готово: {len(done)}, ожидают: {len(pending)}')
+    for t in done:
+        print('Результат:', t.result())
+
+    # Отменяем оставшиеся
+    for t in pending:
+        t.cancel()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.wait_for()",
+    description:
+      "Ожидает завершения корутины или задачи с жёстким таймаутом. Если таймаут истёк — автоматически отменяет задачу и выбрасывает asyncio.TimeoutError. Подходит когда нужно гарантировать максимальное время выполнения операции.",
+    syntax: "await asyncio.wait_for(aw, timeout)",
+    arguments: [
+      {
+        name: "aw",
+        description:
+          "Корутина или Task, которую нужно выполнить с ограничением по времени.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах. Если None — ждёт без ограничений (эквивалентно простому await).",
+      },
+    ],
+    example: `import asyncio
+
+async def slow_operation() -> str:
+    await asyncio.sleep(10)
+    return 'готово'
+
+async def main():
+    # Вариант 1: поймать TimeoutError
+    try:
+        result = await asyncio.wait_for(slow_operation(), timeout=2.0)
+        print(result)
+    except asyncio.TimeoutError:
+        print('Операция превысила таймаут 2 секунды')
+
+    # Вариант 2: без таймаута
+    result = await asyncio.wait_for(slow_operation(), timeout=None)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.as_completed()",
+    description:
+      "Возвращает итератор корутин, каждая из которых завершается по мере готовности соответствующей задачи из входного списка. Позволяет обрабатывать результаты сразу по мере их появления, не дожидаясь завершения всех задач.",
+    syntax: "asyncio.as_completed(aws, *, timeout=None)",
+    arguments: [
+      {
+        name: "aws",
+        description: "Список или множество корутин, Task или Future.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Общий таймаут в секундах для всего набора задач. При истечении выбрасывает asyncio.TimeoutError.",
+      },
+    ],
+    example: `import asyncio
+
+async def fetch(url: str, delay: float) -> str:
+    await asyncio.sleep(delay)
+    return f'Данные от {url}'
+
+async def main():
+    aws = [
+        fetch('fast.com', 0.5),
+        fetch('slow.com', 2.0),
+        fetch('medium.com', 1.0),
+    ]
+
+    # Обрабатываем результаты по мере готовности
+    for coro in asyncio.as_completed(aws):
+        result = await coro
+        print(f'Получено: {result}')
+    # Порядок вывода: fast.com -> medium.com -> slow.com
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.to_thread()",
+    description:
+      "Запускает синхронную (блокирующую) функцию в отдельном потоке из пула потоков, не блокируя event loop. Используется для выполнения CPU-bound или I/O-bound синхронного кода совместно с асинхронным.",
+    syntax: "await asyncio.to_thread(func, /, *args, **kwargs)",
+    arguments: [
+      {
+        name: "func",
+        description:
+          "Синхронная функция (callable), которую нужно выполнить в отдельном потоке.",
+      },
+      {
+        name: "*args",
+        description: "Позиционные аргументы, передаваемые в func.",
+      },
+      {
+        name: "**kwargs",
+        description: "Именованные аргументы, передаваемые в func.",
+      },
+    ],
+    example: `import asyncio
+import time
+import requests  # синхронная библиотека
+
+def blocking_request(url: str) -> str:
+    response = requests.get(url)
+    return response.text
+
+def cpu_heavy(n: int) -> int:
+    time.sleep(2)  # имитация тяжёлых вычислений
+    return n ** 2
+
+async def main():
+    # Выполняем блокирующий запрос без блокировки event loop
+    html = await asyncio.to_thread(blocking_request, 'https://example.com')
+    print(html[:100])
+
+    # CPU-задача в потоке
+    result = await asyncio.to_thread(cpu_heavy, 42)
+    print(result)  # 1764
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.run_coroutine_threadsafe()",
+    description:
+      "Потокобезопасный способ запустить корутину из обычного (не async) потока в уже работающем event loop. Возвращает объект concurrent.futures.Future. Используется когда event loop работает в одном потоке, а вызов происходит из другого.",
+    syntax: "asyncio.run_coroutine_threadsafe(coro, loop)",
+    arguments: [
+      {
+        name: "coro",
+        description:
+          "Корутина, которую нужно запланировать на выполнение в event loop.",
+      },
+      {
+        name: "loop",
+        description:
+          "Работающий event loop, в котором будет выполнена корутина. Получается через asyncio.get_event_loop() или хранится как ссылка.",
+      },
+    ],
+    example: `import asyncio
+import threading
+
+async def async_task(value: int) -> int:
+    await asyncio.sleep(1)
+    return value * 2
+
+def run_loop(loop: asyncio.AbstractEventLoop):
+    loop.run_forever()
+
+loop = asyncio.new_event_loop()
+t = threading.Thread(target=run_loop, args=(loop,), daemon=True)
+t.start()
+
+# Из обычного потока отправляем задачу в async loop
+future = asyncio.run_coroutine_threadsafe(async_task(21), loop)
+
+# Блокирующее ожидание результата
+result = future.result(timeout=5)
+print(result)  # 42
+
+loop.call_soon_threadsafe(loop.stop)`,
+  },
+  {
+    name: "asyncio.current_task()",
+    description:
+      "Возвращает объект Task, который выполняется в данный момент в текущем event loop. Если вызов происходит вне контекста выполнения задачи — возвращает None. Полезно для получения метаданных о текущей задаче (имя, контекст).",
+    syntax: "asyncio.current_task(loop=None)",
+    arguments: [
+      {
+        name: "loop",
+        description:
+          "Устаревший параметр (deprecated с Python 3.10). Ранее позволял указать конкретный event loop. Не рекомендуется использовать.",
+      },
+    ],
+    example: `import asyncio
+
+async def worker():
+    task = asyncio.current_task()
+    print(f'Текущая задача: {task.get_name()}')
+    print(f'Это task: {isinstance(task, asyncio.Task)}')
+    await asyncio.sleep(0.1)
+    return task.get_name()
+
+async def main():
+    t1 = asyncio.create_task(worker(), name='worker-1')
+    t2 = asyncio.create_task(worker(), name='worker-2')
+    results = await asyncio.gather(t1, t2)
+    print(results)  # ['worker-1', 'worker-2']
+
+    # Вне задачи — current_task() возвращает Task main
+    print(asyncio.current_task().get_name())  # Task-1
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.all_tasks()",
+    description:
+      "Возвращает множество всех активных (незавершённых) объектов Task в текущем event loop. Включает задачи, которые ожидают выполнения, выполняются или были отменены, но ещё не завершились. Полезно для мониторинга и graceful shutdown.",
+    syntax: "asyncio.all_tasks(loop=None)",
+    arguments: [
+      {
+        name: "loop",
+        description:
+          "Устаревший параметр (deprecated с Python 3.10). Раньше позволял указать event loop. Не рекомендуется использовать.",
+      },
+    ],
+    example: `import asyncio
+
+async def long_task(name: str, delay: float):
+    await asyncio.sleep(delay)
+    return name
+
+async def main():
+    tasks = [
+        asyncio.create_task(long_task('A', 1), name='task-A'),
+        asyncio.create_task(long_task('B', 2), name='task-B'),
+        asyncio.create_task(long_task('C', 3), name='task-C'),
+    ]
+
+    await asyncio.sleep(0.1)  # даём задачам запуститься
+
+    all_running = asyncio.all_tasks()
+    print(f'Активных задач: {len(all_running)}')
+    for t in all_running:
+        print(f'  - {t.get_name()}')
+
+    # Graceful shutdown: отменить все
+    for t in asyncio.all_tasks():
+        t.cancel()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.shield()",
+    description:
+      "Защищает корутину или задачу от внешней отмены. Если ожидающая задача будет отменена — внутренняя (защищённая) задача продолжит выполняться. Полезно для критических операций (запись в БД, финансовые транзакции), которые нельзя прерывать.",
+    syntax: "await asyncio.shield(aw)",
+    arguments: [
+      {
+        name: "aw",
+        description:
+          "Корутина, Task или Future, которую нужно защитить от отмены.",
+      },
+    ],
+    example: `import asyncio
+
+async def critical_write(data: str) -> str:
+    print('Начало записи...')
+    await asyncio.sleep(2)  # имитация долгой записи
+    print('Запись завершена!')
+    return f'Сохранено: {data}'
+
+async def main():
+    task = asyncio.create_task(critical_write('важные данные'))
+
+    try:
+        # shield защищает critical_write от отмены
+        result = await asyncio.wait_for(asyncio.shield(task), timeout=1.0)
+    except asyncio.TimeoutError:
+        print('Таймаут wait_for, но задача продолжает работать')
+
+    # Ждём завершения защищённой задачи
+    result = await task
+    print(result)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.timeout()",
+    description:
+      "Контекстный менеджер для задания таймаута на блок кода (Python 3.11+). При превышении времени ожидания выбрасывает asyncio.TimeoutError. В отличие от wait_for() позволяет ограничивать по времени произвольные блоки кода, содержащие несколько await.",
+    syntax: "async with asyncio.timeout(delay)",
+    arguments: [
+      {
+        name: "delay",
+        description:
+          "Таймаут в секундах от текущего момента. None — без таймаута. Может быть изменён внутри блока через метод reschedule().",
+      },
+    ],
+    example: `import asyncio
+
+async def step(name: str, delay: float):
+    await asyncio.sleep(delay)
+    print(f'{name} выполнен')
+
+async def main():
+    try:
+        async with asyncio.timeout(3.0):
+            await step('Шаг 1', 1.0)
+            await step('Шаг 2', 1.0)
+            await step('Шаг 3', 1.5)  # суммарно > 3с -> TimeoutError
+    except asyncio.TimeoutError:
+        print('Блок превысил 3 секунды')
+
+    # Изменение таймаута изнутри блока
+    async with asyncio.timeout(5.0) as cm:
+        await asyncio.sleep(1)
+        cm.reschedule(asyncio.get_event_loop().time() + 10)
+        await asyncio.sleep(2)
+        print('Успешно завершено')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.timeout_at()",
+    description:
+      "Контекстный менеджер для задания таймаута в виде абсолютного момента времени (Python 3.11+). Принимает момент в единицах event loop (asyncio.get_event_loop().time()). Удобен когда таймаут нужно вычислить заранее или разделить между несколькими блоками.",
+    syntax: "async with asyncio.timeout_at(when)",
+    arguments: [
+      {
+        name: "when",
+        description:
+          "Абсолютный момент дедлайна в секундах (float), полученный из loop.time(). None — без таймаута.",
+      },
+    ],
+    example: `import asyncio
+
+async def fetch(name: str, delay: float) -> str:
+    await asyncio.sleep(delay)
+    return f'Данные: {name}'
+
+async def main():
+    loop = asyncio.get_event_loop()
+
+    # Дедлайн — 5 секунд от текущего момента
+    deadline = loop.time() + 5.0
+
+    try:
+        async with asyncio.timeout_at(deadline):
+            r1 = await fetch('источник-1', 1.5)
+            print(r1)
+            r2 = await fetch('источник-2', 2.0)
+            print(r2)
+            r3 = await fetch('источник-3', 2.0)  # суммарно > 5с
+            print(r3)
+    except asyncio.TimeoutError:
+        remaining = deadline - loop.time()
+        print(f'Дедлайн истёк. Осталось: {remaining:.2f}с (отрицательно)')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Task.cancel()",
+    description:
+      "Запрашивает отмену задачи. В ближайшей точке await внутри задачи будет выброшено исключение asyncio.CancelledError. Задача может перехватить его и выполнить очистку ресурсов, но должна либо повторно выбросить его, либо завершиться. Возвращает True если отмена запрошена успешно, False если задача уже завершена.",
+    syntax: "task.cancel(msg=None)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          "Необязательное сообщение, которое будет передано в CancelledError. Доступно через exception.args[0]. По умолчанию None.",
+      },
+    ],
+    example: `import asyncio
+
+async def long_task():
+    try:
+        print('Начало работы')
+        await asyncio.sleep(10)
+        print('Эта строка не будет напечатана')
+    except asyncio.CancelledError:
+        print('Задача отменена, выполняем очистку...')
+        raise  # обязательно перебросить
+
+async def main():
+    task = asyncio.create_task(long_task())
+    await asyncio.sleep(1)
+
+    cancelled = task.cancel(msg='Больше не нужно')
+    print(f'Отмена запрошена: {cancelled}')  # True
+
+    try:
+        await task
+    except asyncio.CancelledError:
+        print('Задача успешно отменена')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Task.cancelled()",
+    description:
+      "Возвращает True, если задача была отменена (метод cancel() был вызван и задача завершилась с CancelledError). Возвращает False в любом другом случае — задача ещё выполняется, завершилась успешно или с другим исключением.",
+    syntax: "task.cancelled()",
+    arguments: [],
+    example: `import asyncio
+
+async def cancellable():
+    await asyncio.sleep(5)
+
+async def main():
+    task = asyncio.create_task(cancellable())
+    await asyncio.sleep(0.1)
+
+    print(task.cancelled())  # False — ещё выполняется
+
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    print(task.cancelled())  # True — была отменена
+    print(task.done())       # True — завершена (в том числе отменой)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Task.done()",
+    description:
+      "Возвращает True, если задача завершена — успешно, с исключением или отменой. Возвращает False, если задача ещё ожидает выполнения или выполняется. Используется для проверки статуса без блокирующего ожидания.",
+    syntax: "task.done()",
+    arguments: [],
+    example: `import asyncio
+
+async def quick():
+    await asyncio.sleep(0.1)
+    return 42
+
+async def main():
+    task = asyncio.create_task(quick())
+
+    print(task.done())  # False — ещё не завершена
+
+    await asyncio.sleep(0.2)
+
+    print(task.done())    # True — завершена
+    print(task.result())  # 42
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Task.result()",
+    description:
+      "Возвращает результат выполнения задачи. Если задача ещё не завершена — выбрасывает asyncio.InvalidStateError. Если задача завершилась с исключением — повторно выбрасывает это исключение. Если задача отменена — выбрасывает asyncio.CancelledError.",
+    syntax: "task.result()",
+    arguments: [],
+    example: `import asyncio
+
+async def compute(x: int) -> int:
+    await asyncio.sleep(0.1)
+    if x < 0:
+        raise ValueError('Отрицательное число')
+    return x ** 2
+
+async def main():
+    # Успешный результат
+    task = asyncio.create_task(compute(5))
+    await task
+    print(task.result())  # 25
+
+    # Задача с исключением
+    task2 = asyncio.create_task(compute(-1))
+    try:
+        await task2
+    except ValueError:
+        pass
+    try:
+        task2.result()  # повторно выбросит ValueError
+    except ValueError as e:
+        print(f'Ошибка: {e}')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Task.exception()",
+    description:
+      "Возвращает исключение, с которым завершилась задача, или None если задача завершилась успешно. Если задача ещё не завершена — выбрасывает asyncio.InvalidStateError. Если задача отменена — выбрасывает asyncio.CancelledError.",
+    syntax: "task.exception()",
+    arguments: [],
+    example: `import asyncio
+
+async def risky(fail: bool):
+    await asyncio.sleep(0.1)
+    if fail:
+        raise RuntimeError('Что-то пошло не так')
+    return 'всё хорошо'
+
+async def main():
+    task_ok = asyncio.create_task(risky(False))
+    task_err = asyncio.create_task(risky(True))
+
+    await asyncio.gather(task_ok, task_err, return_exceptions=True)
+
+    print(task_ok.exception())   # None — завершилась успешно
+    exc = task_err.exception()
+    print(type(exc).__name__)    # RuntimeError
+    print(str(exc))              # Что-то пошло не так
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Task.add_done_callback()",
+    description:
+      "Регистрирует функцию обратного вызова (callback), которая будет вызвана при завершении задачи (успешно, с ошибкой или при отмене). Callback получает объект Task в качестве единственного аргумента. Можно добавить несколько callbacks.",
+    syntax: "task.add_done_callback(callback, *, context=None)",
+    arguments: [
+      {
+        name: "callback",
+        description:
+          "Callable, принимающий один аргумент — завершённый объект Task/Future. Вызывается в потоке event loop.",
+      },
+      {
+        name: "context",
+        description:
+          "Контекст contextvars.Context для выполнения callback. По умолчанию None — используется текущий контекст.",
+      },
+    ],
+    example: `import asyncio
+
+def on_done(task: asyncio.Task):
+    if task.cancelled():
+        print('Задача отменена')
+    elif task.exception():
+        print(f'Ошибка: {task.exception()}')
+    else:
+        print(f'Готово, результат: {task.result()}')
+
+async def worker() -> str:
+    await asyncio.sleep(0.5)
+    return 'успех'
+
+async def main():
+    task = asyncio.create_task(worker())
+    task.add_done_callback(on_done)
+    await task
+    # on_done вызывается автоматически после завершения
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Task.remove_done_callback()",
+    description:
+      "Удаляет ранее зарегистрированный callback из списка обратных вызовов задачи. Возвращает количество удалённых экземпляров (один и тот же callback может быть добавлен несколько раз). Полезно для отмены подписки до завершения задачи.",
+    syntax: "task.remove_done_callback(callback)",
+    arguments: [
+      {
+        name: "callback",
+        description:
+          "Функция обратного вызова, ранее добавленная через add_done_callback(), которую нужно удалить.",
+      },
+    ],
+    example: `import asyncio
+
+def on_done(task: asyncio.Task):
+    print('Callback вызван')
+
+async def worker():
+    await asyncio.sleep(1)
+    return 42
+
+async def main():
+    task = asyncio.create_task(worker())
+    task.add_done_callback(on_done)
+
+    # Передумали — убираем callback до завершения
+    removed = task.remove_done_callback(on_done)
+    print(f'Удалено callbacks: {removed}')  # 1
+
+    await task
+    # on_done НЕ будет вызван
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Task.get_stack()",
+    description:
+      "Возвращает список объектов фреймов (frame) стека вызовов задачи. Если задача выполняется — возвращает текущий стек. Если задача ожидает future — возвращает стек до точки ожидания. Полезно для отладки зависших задач.",
+    syntax: "task.get_stack(*, limit=None)",
+    arguments: [
+      {
+        name: "limit",
+        description:
+          "Максимальное количество фреймов стека. None — возвращает весь стек. Фреймы упорядочены от самого внешнего к самому внутреннему.",
+      },
+    ],
+    example: `import asyncio
+
+async def inner():
+    await asyncio.sleep(10)  # зависает здесь
+
+async def outer():
+    await inner()
+
+async def main():
+    task = asyncio.create_task(outer())
+    await asyncio.sleep(0.1)  # даём задаче запуститься
+
+    frames = task.get_stack()
+    print(f'Глубина стека: {len(frames)}')
+    for frame in frames:
+        print(f'  {frame.f_code.co_filename}:{frame.f_lineno} в {frame.f_code.co_name}')
+
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Task.print_stack()",
+    description:
+      "Выводит стек вызовов задачи в текстовом виде (аналогично traceback). Удобная обёртка над get_stack() для быстрой отладки. По умолчанию выводит в stderr.",
+    syntax: "task.print_stack(*, limit=None, file=None)",
+    arguments: [
+      {
+        name: "limit",
+        description:
+          "Максимальное количество фреймов для вывода. None — весь стек.",
+      },
+      {
+        name: "file",
+        description:
+          "Файловый объект для вывода. По умолчанию None — вывод в sys.stderr.",
+      },
+    ],
+    example: `import asyncio
+import sys
+
+async def waiting_task():
+    await asyncio.sleep(100)
+
+async def main():
+    task = asyncio.create_task(waiting_task(), name='my-task')
+    await asyncio.sleep(0.1)
+
+    print('=== Стек задачи ===')
+    task.print_stack(file=sys.stdout)  # вывод в stdout вместо stderr
+
+    # Вывод только 2 последних фрейма
+    task.print_stack(limit=2)
+
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Task.set_name()",
+    description:
+      "Устанавливает имя задачи. Имя отображается в repr(task) и в отладочных сообщениях event loop. Может быть изменено в любой момент жизни задачи. Полезно для идентификации задач при логировании и мониторинге.",
+    syntax: "task.set_name(value)",
+    arguments: [
+      {
+        name: "value",
+        description:
+          "Новое имя задачи в виде строки. Будет преобразовано через str(value), если передан не строковый тип.",
+      },
+    ],
+    example: `import asyncio
+
+async def worker(user_id: int):
+    task = asyncio.current_task()
+    task.set_name(f'worker-user-{user_id}')
+
+    await asyncio.sleep(1)
+    print(f'Задача {task.get_name()} завершена')
+
+async def main():
+    tasks = [asyncio.create_task(worker(i)) for i in range(1, 4)]
+
+    await asyncio.sleep(0.1)
+    for t in tasks:
+        print(t.get_name())  # worker-user-1, worker-user-2, worker-user-3
+
+    await asyncio.gather(*tasks)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Task.get_name()",
+    description:
+      'Возвращает имя задачи в виде строки. Если имя не было задано явно через set_name() или create_task(name=...), возвращает автоматически сгенерированное имя вида "Task-N".',
+    syntax: "task.get_name()",
+    arguments: [],
+    example: `import asyncio
+
+async def job():
+    await asyncio.sleep(0.1)
+
+async def main():
+    # Автоматическое имя
+    t1 = asyncio.create_task(job())
+    print(t1.get_name())  # Task-1 (или Task-2 и т.д.)
+
+    # Явное имя
+    t2 = asyncio.create_task(job(), name='data-fetcher')
+    print(t2.get_name())  # data-fetcher
+
+    # Переименование
+    t2.set_name('renamed-task')
+    print(t2.get_name())  # renamed-task
+
+    await asyncio.gather(t1, t2)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Future.set_result()",
+    description:
+      'Устанавливает результат Future и переводит его в состояние "завершён". После этого все корутины, ожидающие данный Future через await, получат этот результат. Если Future уже имеет результат или исключение — выбрасывает asyncio.InvalidStateError.',
+    syntax: "future.set_result(result)",
+    arguments: [
+      {
+        name: "result",
+        description:
+          "Произвольное значение, которое будет возвращено при await future. Может быть любым объектом Python, включая None.",
+      },
+    ],
+    example: `import asyncio
+
+async def waiter(future: asyncio.Future):
+    print('Ожидаем результат...')
+    result = await future
+    print(f'Получен результат: {result}')
+
+async def setter(future: asyncio.Future):
+    await asyncio.sleep(1)
+    future.set_result({'status': 'ok', 'data': [1, 2, 3]})
+
+async def main():
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    await asyncio.gather(
+        waiter(future),
+        setter(future),
+    )
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Future.set_exception()",
+    description:
+      'Устанавливает исключение для Future и переводит его в состояние "завершён с ошибкой". Все корутины, ожидающие этот Future через await, получат данное исключение. Если Future уже завершён — выбрасывает asyncio.InvalidStateError. Нельзя передавать asyncio.CancelledError.',
+    syntax: "future.set_exception(exception)",
+    arguments: [
+      {
+        name: "exception",
+        description:
+          "Экземпляр или класс исключения (BaseException). При передаче класса он будет инстанциирован без аргументов. asyncio.CancelledError передавать нельзя.",
+      },
+    ],
+    example: `import asyncio
+
+async def consumer(future: asyncio.Future):
+    try:
+        result = await future
+        print(f'Результат: {result}')
+    except ValueError as e:
+        print(f'Поймано исключение: {e}')
+
+async def producer(future: asyncio.Future):
+    await asyncio.sleep(0.5)
+    # Сообщаем об ошибке через Future
+    future.set_exception(ValueError('Данные повреждены'))
+
+async def main():
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    await asyncio.gather(
+        consumer(future),
+        producer(future),
+    )
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Queue.empty()",
+    description:
+      "Возвращает True, если очередь пуста (не содержит ни одного элемента), и False в противном случае. Является неблокирующей проверкой состояния — не ожидает появления элементов.",
+    syntax: "queue.empty()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    queue = asyncio.Queue()
+
+    print(queue.empty())  # True — очередь пуста
+
+    await queue.put('задача')
+    print(queue.empty())  # False — есть элемент
+
+    await queue.get()
+    print(queue.empty())  # True — снова пуста
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Queue.full()",
+    description:
+      "Возвращает True, если очередь заполнена (количество элементов достигло maxsize), и False в противном случае. Для очереди без ограничения (maxsize=0) всегда возвращает False.",
+    syntax: "queue.full()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    queue = asyncio.Queue(maxsize=2)
+
+    print(queue.full())  # False
+
+    await queue.put('а')
+    await queue.put('б')
+    print(queue.full())  # True — заполнена
+
+    await queue.get()
+    print(queue.full())  # False — освободилось место
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Queue.get()",
+    description:
+      "Корутина, извлекающая и возвращающая элемент из начала очереди. Если очередь пуста — ожидает до появления элемента. Для использования без ожидания см. get_nowait().",
+    syntax: "await queue.get()",
+    arguments: [],
+    example: `import asyncio
+
+async def producer(queue: asyncio.Queue):
+    for i in range(3):
+        await asyncio.sleep(0.5)
+        await queue.put(f'задача-{i}')
+        print(f'Добавлено: задача-{i}')
+
+async def consumer(queue: asyncio.Queue):
+    while True:
+        item = await queue.get()  # ждёт, если очередь пуста
+        print(f'Обработано: {item}')
+        queue.task_done()
+
+async def main():
+    queue = asyncio.Queue()
+    asyncio.create_task(consumer(queue))
+    await producer(queue)
+    await queue.join()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Queue.get_nowait()",
+    description:
+      "Немедленно извлекает и возвращает элемент из очереди без ожидания. Если очередь пуста — выбрасывает asyncio.QueueEmpty. Используется когда нужна неблокирующая проверка наличия элементов.",
+    syntax: "queue.get_nowait()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    queue = asyncio.Queue()
+    await queue.put('данные')
+
+    # Успешное получение
+    item = queue.get_nowait()
+    print(item)  # данные
+
+    # Очередь пуста — исключение
+    try:
+        queue.get_nowait()
+    except asyncio.QueueEmpty:
+        print('Очередь пуста')
+
+    # Типичный паттерн: опустошить очередь без блокировки
+    await queue.put('а')
+    await queue.put('б')
+    items = []
+    while not queue.empty():
+        items.append(queue.get_nowait())
+    print(items)  # ['а', 'б']
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Queue.join()",
+    description:
+      "Корутина, которая блокирует выполнение до тех пор, пока все элементы, когда-либо помещённые в очередь, не будут обработаны (для каждого вызова get() должен быть вызван task_done()). Используется для ожидания завершения всей работы воркеров.",
+    syntax: "await queue.join()",
+    arguments: [],
+    example: `import asyncio
+
+async def worker(name: str, queue: asyncio.Queue):
+    while True:
+        item = await queue.get()
+        print(f'{name} обрабатывает: {item}')
+        await asyncio.sleep(0.3)  # имитация работы
+        queue.task_done()         # сигнал о завершении
+
+async def main():
+    queue = asyncio.Queue()
+
+    # Заполняем очередь задачами
+    for i in range(5):
+        await queue.put(f'задача-{i}')
+
+    # Запускаем двух воркеров
+    workers = [asyncio.create_task(worker(f'w{i}', queue)) for i in range(2)]
+
+    # Ждём обработки всех задач
+    await queue.join()
+    print('Все задачи выполнены!')
+
+    for w in workers:
+        w.cancel()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Queue.put()",
+    description:
+      "Корутина, добавляющая элемент в конец очереди. Если очередь заполнена (maxsize > 0) — ожидает, пока не освободится место. Для добавления без ожидания см. put_nowait().",
+    syntax: "await queue.put(item)",
+    arguments: [
+      {
+        name: "item",
+        description:
+          "Произвольный объект Python, который нужно поместить в очередь.",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    queue = asyncio.Queue(maxsize=2)
+
+    await queue.put('первый')
+    await queue.put('второй')
+    print(queue.full())  # True
+
+    # Создаём задачу, которая ждёт места в очереди
+    put_task = asyncio.create_task(queue.put('третий'))
+
+    # Освобождаем место
+    await queue.get()
+    await put_task  # теперь третий элемент добавлен
+
+    print(queue.qsize())  # 2
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Queue.put_nowait()",
+    description:
+      "Немедленно добавляет элемент в очередь без ожидания. Если очередь заполнена — выбрасывает asyncio.QueueFull. Используется когда добавление должно быть моментальным или когда переполнение является ожидаемой ситуацией.",
+    syntax: "queue.put_nowait(item)",
+    arguments: [
+      {
+        name: "item",
+        description:
+          "Произвольный объект Python, который нужно поместить в очередь.",
+      },
+    ],
+    example: `import asyncio
+
+async def main():
+    queue = asyncio.Queue(maxsize=2)
+
+    queue.put_nowait('а')
+    queue.put_nowait('б')
+    print(queue.qsize())  # 2
+
+    # Очередь полна — исключение
+    try:
+        queue.put_nowait('в')
+    except asyncio.QueueFull:
+        print('Очередь переполнена, элемент не добавлен')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Queue.qsize()",
+    description:
+      "Возвращает текущее количество элементов в очереди в виде целого числа. Является мгновенным снимком состояния — значение может измениться сразу после вызова при конкурентном доступе.",
+    syntax: "queue.qsize()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    queue = asyncio.Queue()
+
+    print(queue.qsize())  # 0
+
+    await queue.put('а')
+    await queue.put('б')
+    await queue.put('в')
+    print(queue.qsize())  # 3
+
+    await queue.get()
+    print(queue.qsize())  # 2
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Queue.task_done()",
+    description:
+      "Сигнализирует очереди, что элемент, полученный через get(), был полностью обработан. Уменьшает внутренний счётчик незавершённых задач. Когда счётчик достигает нуля — разблокирует все корутины, ожидающие в queue.join(). Вызов task_done() без предшествующего get() выбрасывает ValueError.",
+    syntax: "queue.task_done()",
+    arguments: [],
+    example: `import asyncio
+
+async def worker(queue: asyncio.Queue):
+    while True:
+        item = await queue.get()
+        try:
+            print(f'Обрабатываем: {item}')
+            await asyncio.sleep(0.2)  # основная работа
+        finally:
+            # Вызываем даже при ошибке, чтобы join() не завис
+            queue.task_done()
+
+async def main():
+    queue = asyncio.Queue()
+    for item in ['запрос-1', 'запрос-2', 'запрос-3']:
+        await queue.put(item)
+
+    task = asyncio.create_task(worker(queue))
+
+    await queue.join()  # ждёт трёх вызовов task_done()
+    print('Все задачи завершены')
+    task.cancel()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Queue.maxsize",
+    description:
+      "Атрибут, хранящий максимально допустимое количество элементов в очереди. Значение 0 (по умолчанию) означает отсутствие ограничения — очередь может расти неограниченно. Задаётся при создании очереди и не изменяется в процессе работы.",
+    syntax: "queue.maxsize",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    # Очередь без ограничения
+    q1 = asyncio.Queue()
+    print(q1.maxsize)   # 0
+    print(q1.full())    # False (всегда)
+
+    # Очередь с ограничением
+    q2 = asyncio.Queue(maxsize=5)
+    print(q2.maxsize)   # 5
+
+    for i in range(5):
+        await q2.put(i)
+    print(q2.full())    # True
+
+    # Другие типы очередей также поддерживают maxsize
+    lifo = asyncio.LifoQueue(maxsize=10)
+    prio = asyncio.PriorityQueue(maxsize=3)
+    print(lifo.maxsize, prio.maxsize)  # 10 3
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Lock.acquire()",
+    description:
+      "Корутина, захватывающая блокировку. Если блокировка уже захвачена другой задачей — ожидает её освобождения. После успешного захвата возвращает True. Рекомендуется использовать через контекстный менеджер async with вместо явного вызова.",
+    syntax: "await lock.acquire()",
+    arguments: [],
+    example: `import asyncio
+
+async def safe_update(lock: asyncio.Lock, shared: list, value: int):
+    await lock.acquire()
+    try:
+        # Критическая секция — только одна задача одновременно
+        shared.append(value)
+        await asyncio.sleep(0.1)  # имитация работы
+        print(f'Добавлено: {value}, список: {shared}')
+    finally:
+        lock.release()
+
+async def main():
+    lock = asyncio.Lock()
+    data: list = []
+    await asyncio.gather(
+        safe_update(lock, data, 1),
+        safe_update(lock, data, 2),
+        safe_update(lock, data, 3),
+    )
+    print('Итог:', data)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Lock.release()",
+    description:
+      "Освобождает захваченную блокировку, позволяя другим задачам её захватить. Если блокировка не была захвачена — выбрасывает RuntimeError. При использовании async with вызывается автоматически.",
+    syntax: "lock.release()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    lock = asyncio.Lock()
+
+    await lock.acquire()
+    print('Блокировка захвачена')
+    print(lock.locked())  # True
+
+    lock.release()
+    print('Блокировка освобождена')
+    print(lock.locked())  # False
+
+    # Предпочтительный способ — контекстный менеджер:
+    async with lock:
+        print('Захвачено через with')
+    # release() вызван автоматически
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Lock.locked()",
+    description:
+      "Возвращает True, если блокировка в данный момент захвачена какой-либо задачей, и False, если блокировка свободна. Является мгновенной проверкой без ожидания.",
+    syntax: "lock.locked()",
+    arguments: [],
+    example: `import asyncio
+
+async def holder(lock: asyncio.Lock):
+    async with lock:
+        await asyncio.sleep(1)
+
+async def main():
+    lock = asyncio.Lock()
+    print(lock.locked())  # False
+
+    task = asyncio.create_task(holder(lock))
+    await asyncio.sleep(0.1)
+    print(lock.locked())  # True — захвата в holder()
+
+    await task
+    print(lock.locked())  # False — освобождена
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Event.set()",
+    description:
+      "Устанавливает внутренний флаг события в True и немедленно пробуждает все корутины, ожидающие в wait(). После вызова set() все последующие вызовы wait() возвращаются без ожидания до тех пор, пока не будет вызван clear().",
+    syntax: "event.set()",
+    arguments: [],
+    example: `import asyncio
+
+async def waiter(event: asyncio.Event, name: str):
+    print(f'{name}: жду сигнала...')
+    await event.wait()
+    print(f'{name}: сигнал получен!')
+
+async def main():
+    event = asyncio.Event()
+
+    tasks = [asyncio.create_task(waiter(event, f'w{i}')) for i in range(3)]
+    await asyncio.sleep(0.5)
+
+    print('Отправляем сигнал всем...')
+    event.set()  # пробуждает сразу все три задачи
+
+    await asyncio.gather(*tasks)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Event.clear()",
+    description:
+      "Сбрасывает внутренний флаг события в False. После вызова clear() корутины, вызывающие wait(), снова будут ожидать до следующего set(). Используется для повторного использования события как сигнала.",
+    syntax: "event.clear()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    event = asyncio.Event()
+
+    event.set()
+    print(event.is_set())  # True
+
+    event.clear()
+    print(event.is_set())  # False
+
+    # Теперь wait() будет снова ожидать
+    async def wait_and_print():
+        await event.wait()
+        print('Дождались повторного set()')
+
+    task = asyncio.create_task(wait_and_print())
+    await asyncio.sleep(0.2)
+    event.set()  # повторный сигнал
+    await task
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Event.wait()",
+    description:
+      "Корутина, блокирующая выполнение до тех пор, пока внутренний флаг события не станет True (через set()). Если флаг уже установлен — возвращается немедленно. Возвращает True после ожидания.",
+    syntax: "await event.wait()",
+    arguments: [],
+    example: `import asyncio
+
+async def data_processor(ready: asyncio.Event, data: list):
+    print('Процессор: жду данных...')
+    await ready.wait()
+    print(f'Процессор: обрабатываю {len(data)} элементов')
+    return sum(data)
+
+async def data_loader(ready: asyncio.Event, data: list):
+    print('Загрузчик: загружаю данные...')
+    await asyncio.sleep(1)
+    data.extend([1, 2, 3, 4, 5])
+    print('Загрузчик: данные готовы!')
+    ready.set()
+
+async def main():
+    ready = asyncio.Event()
+    data: list = []
+    result, _ = await asyncio.gather(
+        data_processor(ready, data),
+        data_loader(ready, data),
+    )
+    print(f'Результат: {result}')  # 15
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Event.is_set()",
+    description:
+      "Возвращает True, если флаг события установлен (был вызван set()), и False, если флаг сброшен. Является мгновенной неблокирующей проверкой, в отличие от wait().",
+    syntax: "event.is_set()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    event = asyncio.Event()
+
+    print(event.is_set())  # False
+
+    event.set()
+    print(event.is_set())  # True
+
+    event.clear()
+    print(event.is_set())  # False
+
+    # Условная логика без блокировки
+    if not event.is_set():
+        print('Событие ещё не произошло, запускаем инициализацию')
+        await asyncio.sleep(0.1)
+        event.set()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Semaphore.acquire()",
+    description:
+      "Корутина, уменьшающая счётчик семафора на 1. Если счётчик равен 0 — ожидает, пока другая задача не вызовет release(). Используется для ограничения количества задач, одновременно выполняющих ресурсоёмкую операцию.",
+    syntax: "await semaphore.acquire()",
+    arguments: [],
+    example: `import asyncio
+
+async def fetch(sem: asyncio.Semaphore, url: str) -> str:
+    async with sem:  # acquire() + release() автоматически
+        print(f'Запрос к {url}')
+        await asyncio.sleep(0.5)  # имитация HTTP-запроса
+        return f'Данные от {url}'
+
+async def main():
+    # Не более 3 одновременных запросов
+    sem = asyncio.Semaphore(3)
+    urls = [f'https://api.example.com/item/{i}' for i in range(8)]
+    results = await asyncio.gather(*[fetch(sem, url) for url in urls])
+    print(f'Получено {len(results)} ответов')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Semaphore.release()",
+    description:
+      "Увеличивает счётчик семафора на 1 и пробуждает одну из ожидающих задач (если есть). Для BoundedSemaphore выбрасывает ValueError при попытке превысить начальное значение счётчика.",
+    syntax: "semaphore.release()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    sem = asyncio.Semaphore(2)
+
+    await sem.acquire()
+    await sem.acquire()
+    print('Захвачено 2 слота')
+    print(sem.locked())  # True — счётчик равен 0
+
+    sem.release()
+    print('Освобождён 1 слот')
+    print(sem.locked())  # False — счётчик стал 1
+
+    sem.release()
+    print('Освобождён 2-й слот, счётчик вернулся к 2')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Semaphore.locked()",
+    description:
+      "Возвращает True, если счётчик семафора равен нулю (все слоты заняты) и любой вызов acquire() будет заблокирован. Возвращает False, если есть свободные слоты.",
+    syntax: "semaphore.locked()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    sem = asyncio.Semaphore(2)
+
+    print(sem.locked())  # False — оба слота свободны
+
+    await sem.acquire()
+    print(sem.locked())  # False — остался 1 свободный слот
+
+    await sem.acquire()
+    print(sem.locked())  # True — слотов нет
+
+    sem.release()
+    print(sem.locked())  # False — появился 1 слот
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Condition.acquire()",
+    description:
+      "Корутина, захватывающая внутреннюю блокировку условной переменной. Должна быть захвачена перед вызовом wait(), notify() или notify_all(). Рекомендуется использовать через async with вместо явного вызова.",
+    syntax: "await condition.acquire()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    cond = asyncio.Condition()
+
+    # Явный захват
+    await cond.acquire()
+    try:
+        print('Блокировка захвачена')
+        cond.notify_all()
+    finally:
+        cond.release()
+
+    # Предпочтительный способ:
+    async with cond:
+        print('Захвачено через async with')
+        cond.notify_all()
+    # release() вызывается автоматически
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Condition.release()",
+    description:
+      "Освобождает внутреннюю блокировку условной переменной. Должна вызываться после acquire() для разблокировки других задач. При использовании async with вызывается автоматически.",
+    syntax: "condition.release()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    cond = asyncio.Condition()
+
+    await cond.acquire()
+    print('Захвачено')
+    await asyncio.sleep(0.1)
+    cond.release()
+    print('Освобождено')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Condition.notify()",
+    description:
+      "Пробуждает одну (или n) задач, ожидающих в condition.wait(). Должна вызываться при захваченной блокировке. Пробуждённая задача не начнёт выполнение до тех пор, пока вызывающая задача не освободит блокировку.",
+    syntax: "condition.notify(n=1)",
+    arguments: [
+      {
+        name: "n",
+        description:
+          "Количество задач, которые нужно пробудить. По умолчанию 1. Если ожидающих задач меньше n — пробуждаются все.",
+      },
+    ],
+    example: `import asyncio
+
+async def worker(cond: asyncio.Condition, name: str):
+    async with cond:
+        print(f'{name}: жду уведомления')
+        await cond.wait()
+        print(f'{name}: получил уведомление!')
+
+async def notifier(cond: asyncio.Condition):
+    await asyncio.sleep(0.5)
+    async with cond:
+        print('Уведомляем одну задачу')
+        cond.notify(1)
+    await asyncio.sleep(0.5)
+    async with cond:
+        print('Уведомляем ещё одну')
+        cond.notify(1)
+
+async def main():
+    cond = asyncio.Condition()
+    await asyncio.gather(
+        worker(cond, 'w1'),
+        worker(cond, 'w2'),
+        notifier(cond),
+    )
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Condition.notify_all()",
+    description:
+      "Пробуждает все задачи, ожидающие в condition.wait(). Аналогично notify(n), где n — количество всех ожидающих задач. Используется когда изменение состояния актуально для всех ожидающих.",
+    syntax: "condition.notify_all()",
+    arguments: [],
+    example: `import asyncio
+
+async def subscriber(cond: asyncio.Condition, name: str):
+    async with cond:
+        await cond.wait()
+        print(f'{name}: событие получено!')
+
+async def broadcaster(cond: asyncio.Condition):
+    await asyncio.sleep(0.5)
+    async with cond:
+        print('Рассылаем всем подписчикам...')
+        cond.notify_all()  # пробуждает все три задачи разом
+
+async def main():
+    cond = asyncio.Condition()
+    await asyncio.gather(
+        subscriber(cond, 'sub-А'),
+        subscriber(cond, 'sub-Б'),
+        subscriber(cond, 'sub-В'),
+        broadcaster(cond),
+    )
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.Condition.wait()",
+    description:
+      "Корутина, освобождающая внутреннюю блокировку и ожидающая уведомления от notify() или notify_all(). После получения уведомления повторно захватывает блокировку перед возвратом. Должна вызываться при захваченной блокировке (внутри async with cond).",
+    syntax: "await condition.wait()",
+    arguments: [],
+    example: `import asyncio
+
+shared_data: list = []
+
+async def consumer(cond: asyncio.Condition):
+    async with cond:
+        # Ждём, пока данные не появятся
+        await cond.wait_for(lambda: len(shared_data) > 0)
+        print(f'Обрабатываю данные: {shared_data}')
+
+async def producer(cond: asyncio.Condition):
+    await asyncio.sleep(0.5)
+    async with cond:
+        shared_data.extend([10, 20, 30])
+        print('Данные добавлены, уведомляем')
+        cond.notify_all()
+
+async def main():
+    cond = asyncio.Condition()
+    await asyncio.gather(consumer(cond), producer(cond))
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.open_connection()",
+    description:
+      "Корутина, устанавливающая TCP-соединение с указанным хостом и портом. Возвращает пару (StreamReader, StreamWriter) для чтения и записи данных. Является высокоуровневой оберткой над низкоуровневым API event loop.",
+    syntax:
+      "await asyncio.open_connection(host=None, port=None, *, ssl=None, limit=65536, **kwds)",
+    arguments: [
+      {
+        name: "host",
+        description:
+          "Хост для подключения: строка с IP-адресом или доменным именем.",
+      },
+      {
+        name: "port",
+        description: "Порт для подключения в виде целого числа.",
+      },
+      {
+        name: "ssl",
+        description:
+          "Настройки SSL: объект ssl.SSLContext, True (использовать стандартный контекст) или None (без SSL).",
+      },
+      {
+        name: "limit",
+        description:
+          "Максимальный размер внутреннего буфера StreamReader в байтах. По умолчанию 65536 (64 КБ).",
+      },
+    ],
+    example: `import asyncio
+
+async def tcp_client():
+    reader, writer = await asyncio.open_connection('example.com', 80)
+
+    # Отправляем HTTP-запрос
+    request = 'GET / HTTP/1.0\\r\\nHost: example.com\\r\\n\\r\\n'
+    writer.write(request.encode())
+    await writer.drain()
+
+    # Читаем ответ
+    data = await reader.read(1024)
+    print(data.decode())
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(tcp_client())`,
+  },
+  {
+    name: "asyncio.start_server()",
+    description:
+      "Корутина, создающая TCP-сервер. При каждом новом подключении вызывает callback-функцию с парой (StreamReader, StreamWriter). Возвращает объект asyncio.Server, который можно использовать как контекстный менеджер.",
+    syntax:
+      "await asyncio.start_server(client_connected_cb, host=None, port=None, *, ssl=None, limit=65536, **kwds)",
+    arguments: [
+      {
+        name: "client_connected_cb",
+        description:
+          "Корутина или обычная функция, вызываемая при новом подключении. Получает аргументы (reader: StreamReader, writer: StreamWriter).",
+      },
+      {
+        name: "host",
+        description:
+          "Хост для прослушивания. None или пустая строка — слушать на всех интерфейсах.",
+      },
+      {
+        name: "port",
+        description: "Порт для прослушивания.",
+      },
+      {
+        name: "ssl",
+        description:
+          "Настройки SSL для TLS-сервера. Объект ssl.SSLContext или None.",
+      },
+    ],
+    example: `import asyncio
+
+async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    addr = writer.get_extra_info('peername')
+    print(f'Подключение от {addr}')
+
+    data = await reader.readline()
+    message = data.decode().strip()
+    print(f'Получено: {message}')
+
+    writer.write(f'Эхо: {message}\\n'.encode())
+    await writer.drain()
+
+    writer.close()
+    await writer.wait_closed()
+
+async def main():
+    server = await asyncio.start_server(handle_client, '127.0.0.1', 8888)
+    async with server:
+        print('Сервер запущен на порту 8888')
+        await server.serve_forever()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.StreamReader.read()",
+    description:
+      'Корутина, читающая до n байт из потока. Если n=-1 — читает данные до достижения EOF. Возвращает bytes. Если соединение закрыто и буфер пуст — возвращает пустые bytes b"".',
+    syntax: "await reader.read(n=-1)",
+    arguments: [
+      {
+        name: "n",
+        description:
+          "Максимальное количество байт для чтения. -1 означает читать до EOF. Может вернуть меньше байт, чем запрошено, если данных ещё нет.",
+      },
+    ],
+    example: `import asyncio
+
+async def client():
+    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
+
+    # Читать порцию данных (до 1024 байт)
+    chunk = await reader.read(1024)
+    print(f'Получено {len(chunk)} байт: {chunk[:50]}')
+
+    # Читать всё до закрытия соединения
+    writer.write(b'START\\n')
+    await writer.drain()
+    all_data = await reader.read(-1)
+    print(f'Всего получено: {len(all_data)} байт')
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(client())`,
+  },
+  {
+    name: "asyncio.StreamReader.readline()",
+    description:
+      'Корутина, читающая одну строку из потока до символа новой строки "\\n" включительно. Возвращает bytes с символом "\\n" в конце. Если EOF достигнут до "\\n" — возвращает неполную строку.',
+    syntax: "await reader.readline()",
+    arguments: [],
+    example: `import asyncio
+
+async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    while True:
+        line = await reader.readline()
+        if not line:
+            break  # EOF
+
+        decoded = line.decode().strip()
+        print(f'Строка: {decoded}')
+
+        if decoded == 'quit':
+            break
+
+        writer.write(f'OK: {decoded}\\n'.encode())
+        await writer.drain()
+
+    writer.close()
+
+async def main():
+    server = await asyncio.start_server(handle, '127.0.0.1', 8888)
+    async with server:
+        await server.serve_forever()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.StreamReader.readexactly()",
+    description:
+      "Корутина, читающая ровно n байт из потока. Ждёт, пока не будет получено точно n байт. Если соединение закрыто раньше — выбрасывает asyncio.IncompleteReadError с частично прочитанными данными в атрибуте partial.",
+    syntax: "await reader.readexactly(n)",
+    arguments: [
+      {
+        name: "n",
+        description:
+          "Точное количество байт для чтения. Должно быть неотрицательным целым числом.",
+      },
+    ],
+    example: `import asyncio
+
+async def read_protocol(reader: asyncio.StreamReader):
+    try:
+        # Читаем заголовок фиксированного размера (4 байта — длина тела)
+        header = await reader.readexactly(4)
+        body_length = int.from_bytes(header, 'big')
+        print(f'Ожидаем тело размером {body_length} байт')
+
+        # Читаем тело ровно нужного размера
+        body = await reader.readexactly(body_length)
+        return body.decode()
+
+    except asyncio.IncompleteReadError as e:
+        print(f'Соединение разорвано, получено {len(e.partial)} байт')
+        return None
+
+asyncio.run(read_protocol(...))`,
+  },
+  {
+    name: "asyncio.StreamReader.readuntil()",
+    description:
+      "Корутина, читающая данные из потока до тех пор, пока не встретится заданный разделитель. Возвращает bytes, включая сам разделитель. Выбрасывает asyncio.LimitOverrunError, если разделитель не найден в пределах буфера.",
+    syntax: "await reader.readuntil(separator=b'\\n')",
+    arguments: [
+      {
+        name: "separator",
+        description:
+          'Байтовая последовательность-разделитель, при обнаружении которой чтение останавливается. По умолчанию b"\\n".',
+      },
+    ],
+    example: `import asyncio
+
+async def client():
+    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
+
+    # Читать до символа новой строки (аналог readline)
+    line = await reader.readuntil(b'\\n')
+    print(line.decode().strip())
+
+    # Читать до кастомного разделителя
+    data = await reader.readuntil(b'END\\r\\n')
+    print(f'Блок данных: {data[:-5].decode()}')  # убираем разделитель
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(client())`,
+  },
+  {
+    name: "asyncio.StreamReader.at_eof()",
+    description:
+      "Возвращает True, если буфер StreamReader пуст и соединение закрыто на стороне отправителя (получен сигнал EOF). Используется для проверки завершения потока без блокирующего чтения.",
+    syntax: "reader.at_eof()",
+    arguments: [],
+    example: `import asyncio
+
+async def drain_stream(reader: asyncio.StreamReader) -> list:
+    lines = []
+    while not reader.at_eof():
+        try:
+            line = await asyncio.wait_for(reader.readline(), timeout=1.0)
+            if line:
+                lines.append(line.decode().strip())
+        except asyncio.TimeoutError:
+            break
+    return lines
+
+async def main():
+    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
+    result = await drain_stream(reader)
+    print(f'Получено {len(result)} строк')
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.StreamWriter.write()",
+    description:
+      "Помещает данные в буфер отправки. Не является корутиной — возвращает управление немедленно. Данные не гарантированно отправлены до вызова drain(). После write() необходимо вызвать await writer.drain() для фактической отправки.",
+    syntax: "writer.write(data)",
+    arguments: [
+      {
+        name: "data",
+        description:
+          "Байтовые данные для записи в поток. Тип bytes или bytearray.",
+      },
+    ],
+    example: `import asyncio
+
+async def client():
+    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
+
+    # Запись данных в буфер
+    writer.write(b'Привет, сервер!\\n')
+
+    # Обязательно drain() для фактической отправки
+    await writer.drain()
+
+    # Можно несколько write() перед одним drain()
+    writer.write(b'Строка 1\\n')
+    writer.write(b'Строка 2\\n')
+    writer.write(b'Строка 3\\n')
+    await writer.drain()
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(client())`,
+  },
+  {
+    name: "asyncio.StreamWriter.writelines()",
+    description:
+      "Записывает последовательность байтовых объектов в буфер отправки. Эквивалентно последовательному вызову write() для каждого элемента. Не является корутиной. После вызова необходимо await writer.drain().",
+    syntax: "writer.writelines(data)",
+    arguments: [
+      {
+        name: "data",
+        description:
+          "Итерируемый объект, содержащий байтовые данные (bytes или bytearray). Например, список строк, предварительно закодированных в bytes.",
+      },
+    ],
+    example: `import asyncio
+
+async def client():
+    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
+
+    lines = [
+        b'USER guest\\r\\n',
+        b'PASS secret\\r\\n',
+        b'LIST\\r\\n',
+    ]
+    writer.writelines(lines)
+    await writer.drain()
+
+    response = await reader.read(4096)
+    print(response.decode())
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(client())`,
+  },
+  {
+    name: "asyncio.StreamWriter.drain()",
+    description:
+      "Корутина, ожидающая опустошения буфера отправки. Позволяет event loop отправить накопленные данные и предотвращает переполнение буфера при интенсивной записи. Необходимо вызывать после write() и writelines().",
+    syntax: "await writer.drain()",
+    arguments: [],
+    example: `import asyncio
+
+async def send_large_data(writer: asyncio.StreamWriter, data: bytes):
+    chunk_size = 64 * 1024  # 64 КБ за раз
+
+    for i in range(0, len(data), chunk_size):
+        chunk = data[i:i + chunk_size]
+        writer.write(chunk)
+        await writer.drain()  # ждём отправки перед следующим чанком
+        print(f'Отправлено {min(i + chunk_size, len(data))}/{len(data)} байт')
+
+async def main():
+    _, writer = await asyncio.open_connection('127.0.0.1', 8888)
+    await send_large_data(writer, b'X' * (1024 * 1024))  # 1 МБ
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.StreamWriter.close()",
+    description:
+      "Инициирует закрытие транспортного соединения. Не является корутиной и не ждёт фактического закрытия — для ожидания следует вызвать await writer.wait_closed(). После вызова запись в поток становится невозможной.",
+    syntax: "writer.close()",
+    arguments: [],
+    example: `import asyncio
+
+async def client():
+    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
+
+    writer.write(b'QUIT\\n')
+    await writer.drain()
+
+    # Инициируем закрытие
+    writer.close()
+
+    # Ждём фактического закрытия сокета
+    await writer.wait_closed()
+    print('Соединение закрыто')
+    print(writer.is_closing())  # True
+
+asyncio.run(client())`,
+  },
+  {
+    name: "asyncio.StreamWriter.is_closing()",
+    description:
+      "Возвращает True, если транспортное соединение закрыто или находится в процессе закрытия (был вызван close()). Позволяет проверить состояние соединения без блокирующего ожидания.",
+    syntax: "writer.is_closing()",
+    arguments: [],
+    example: `import asyncio
+
+async def safe_write(writer: asyncio.StreamWriter, data: bytes):
+    if writer.is_closing():
+        print('Соединение закрывается, запись невозможна')
+        return
+
+    writer.write(data)
+    await writer.drain()
+
+async def main():
+    _, writer = await asyncio.open_connection('127.0.0.1', 8888)
+
+    print(writer.is_closing())  # False
+
+    await safe_write(writer, b'данные\\n')
+
+    writer.close()
+    print(writer.is_closing())  # True
+
+    await safe_write(writer, b'это не отправится')
+    await writer.wait_closed()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.StreamWriter.wait_closed()",
+    description:
+      "Корутина, ожидающая фактического закрытия соединения после вызова close(). Должна вызываться совместно с close() для корректного завершения соединения и освобождения ресурсов.",
+    syntax: "await writer.wait_closed()",
+    arguments: [],
+    example: `import asyncio
+
+async def client():
+    reader, writer = await asyncio.open_connection('127.0.0.1', 8888)
+
+    writer.write(b'Последнее сообщение\\n')
+    await writer.drain()
+
+    # Корректная последовательность закрытия:
+    writer.close()           # 1. инициируем закрытие
+    await writer.wait_closed()  # 2. ждём завершения
+
+    print('Соединение полностью закрыто')
+
+asyncio.run(client())`,
+  },
+  {
+    name: "asyncio.StreamWriter.get_extra_info()",
+    description:
+      "Возвращает дополнительную информацию о транспортном соединении по имени атрибута. Позволяет получить IP-адрес и порт удалённой стороны, SSL-объект, название шифра и другие низкоуровневые детали соединения.",
+    syntax: "writer.get_extra_info(name, default=None)",
+    arguments: [
+      {
+        name: "name",
+        description:
+          'Строковое имя атрибута: "peername" (адрес удалённой стороны), "sockname" (локальный адрес), "socket" (объект сокета), "ssl_object" (SSL-объект), "cipher" (шифр SSL) и др.',
+      },
+      {
+        name: "default",
+        description:
+          "Значение по умолчанию, возвращаемое если атрибут с указанным именем не найден. По умолчанию None.",
+      },
+    ],
+    example: `import asyncio
+
+async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    # Адрес клиента (host, port)
+    peername = writer.get_extra_info('peername')
+    print(f'Клиент: {peername[0]}:{peername[1]}')
+
+    # Локальный адрес сервера
+    sockname = writer.get_extra_info('sockname')
+    print(f'Сервер: {sockname}')
+
+    # Объект сокета (для низкоуровневых операций)
+    sock = writer.get_extra_info('socket')
+    print(f'Тип сокета: {sock.type}')
+
+    # Для SSL-соединений:
+    ssl_obj = writer.get_extra_info('ssl_object')
+    if ssl_obj:
+        print(f'Шифр: {ssl_obj.cipher()}')
+
+    writer.close()
+    await writer.wait_closed()
+
+asyncio.run(asyncio.start_server(handle, '127.0.0.1', 8888))`,
+  },
+  {
+    name: "asyncio.loop.run_until_complete()",
+    description:
+      "Запускает event loop и блокирует выполнение до завершения переданной корутины или Future. Возвращает результат корутины. Если loop уже запущен — выбрасывает RuntimeError. Является основным способом запуска asyncio-кода в синхронном контексте (низкоуровневая альтернатива asyncio.run()).",
+    syntax: "loop.run_until_complete(future)",
+    arguments: [
+      {
+        name: "future",
+        description:
+          "Корутина, Task или Future для выполнения. Если передана корутина — автоматически оборачивается в Task.",
+      },
+    ],
+    example: `import asyncio
+
+async def compute(x: int, y: int) -> int:
+    await asyncio.sleep(0.1)
+    return x + y
+
+# Низкоуровневый способ (устаревший, предпочитайте asyncio.run())
+loop = asyncio.new_event_loop()
+try:
+    result = loop.run_until_complete(compute(3, 4))
+    print(f'Результат: {result}')  # 7
+finally:
+    loop.close()
+
+# Современный эквивалент:
+# result = asyncio.run(compute(3, 4))`,
+  },
+  {
+    name: "asyncio.loop.run_forever()",
+    description:
+      "Запускает event loop в бесконечном цикле до вызова loop.stop(). Используется для серверных приложений, которые должны работать непрерывно. Блокирует выполнение до остановки loop.",
+    syntax: "loop.run_forever()",
+    arguments: [],
+    example: `import asyncio
+import signal
+
+def shutdown(loop: asyncio.AbstractEventLoop):
+    print('Остановка...')
+    loop.stop()
+
+async def periodic_task():
+    while True:
+        print('Тик')
+        await asyncio.sleep(1)
+
+loop = asyncio.new_event_loop()
+
+# Регистрируем сигнал остановки
+loop.add_signal_handler(signal.SIGINT, lambda: shutdown(loop))
+
+# Планируем задачу
+loop.create_task(periodic_task())
+
+try:
+    print('Запуск loop навсегда...')
+    loop.run_forever()
+finally:
+    loop.close()
+    print('Loop закрыт')`,
+  },
+  {
+    name: "asyncio.loop.stop()",
+    description:
+      "Планирует остановку event loop. Loop завершит текущую итерацию и вернёт управление из run_forever() или run_until_complete(). Может вызываться из обратного вызова или из другого потока.",
+    syntax: "loop.stop()",
+    arguments: [],
+    example: `import asyncio
+
+async def main_task(loop: asyncio.AbstractEventLoop):
+    print('Задача запущена')
+    await asyncio.sleep(2)
+    print('Задача завершена, останавливаем loop')
+    loop.stop()
+
+loop = asyncio.new_event_loop()
+loop.create_task(main_task(loop))
+loop.run_forever()
+loop.close()
+print('Программа завершена')`,
+  },
+  {
+    name: "asyncio.loop.is_running()",
+    description:
+      "Возвращает True, если event loop в данный момент выполняется (запущен через run_forever() или run_until_complete()). Используется для проверки состояния loop перед запуском корутин или планированием задач.",
+    syntax: "loop.is_running()",
+    arguments: [],
+    example: `import asyncio
+
+async def check_state():
+    loop = asyncio.get_event_loop()
+    print(f'Запущен: {loop.is_running()}')   # True — внутри корутины
+    print(f'Закрыт: {loop.is_closed()}')     # False
+
+loop = asyncio.new_event_loop()
+print(f'До запуска: {loop.is_running()}')    # False
+
+loop.run_until_complete(check_state())
+
+print(f'После: {loop.is_running()}')        # False
+loop.close()`,
+  },
+  {
+    name: "asyncio.loop.is_closed()",
+    description:
+      "Возвращает True, если event loop был закрыт вызовом loop.close(). Закрытый loop не может быть снова запущен. Используется для проверки перед попыткой запустить или использовать loop.",
+    syntax: "loop.is_closed()",
+    arguments: [],
+    example: `import asyncio
+
+loop = asyncio.new_event_loop()
+print(loop.is_closed())   # False
+
+loop.run_until_complete(asyncio.sleep(0))
+print(loop.is_closed())   # False — loop завершил задачу, но не закрыт
+
+loop.close()
+print(loop.is_closed())   # True
+
+# Попытка использовать закрытый loop вызовет RuntimeError:
+try:
+    loop.run_until_complete(asyncio.sleep(0))
+except RuntimeError as e:
+    print(f'Ошибка: {e}')`,
+  },
+  {
+    name: "asyncio.loop.close()",
+    description:
+      "Закрывает event loop и освобождает все связанные ресурсы. После закрытия loop нельзя запустить снова. Не отменяет текущие задачи — их следует отменить до закрытия. Должен вызываться при завершении работы приложения.",
+    syntax: "loop.close()",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    await asyncio.sleep(0.1)
+    print('Работа завершена')
+
+loop = asyncio.new_event_loop()
+try:
+    loop.run_until_complete(main())
+finally:
+    # Корректное завершение: сначала отменяем незавершённые задачи
+    pending = asyncio.all_tasks(loop)
+    for task in pending:
+        task.cancel()
+    if pending:
+        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
+    loop.close()
+    print(f'Loop закрыт: {loop.is_closed()}')  # True`,
+  },
+  {
+    name: "asyncio.loop.create_future()",
+    description:
+      "Создаёт и возвращает объект asyncio.Future, привязанный к данному event loop. Future — это низкоуровневый примитив, представляющий результат, который будет доступен в будущем. Является предпочтительным способом создания Future по сравнению с прямым вызовом конструктора.",
+    syntax: "loop.create_future()",
+    arguments: [],
+    example: `import asyncio
+
+async def set_result(future: asyncio.Future, value: int):
+    await asyncio.sleep(0.5)
+    future.set_result(value)
+    print(f'Результат установлен: {value}')
+
+async def main():
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    asyncio.create_task(set_result(future, 42))
+
+    # Ожидаем результат Future
+    result = await future
+    print(f'Получен результат: {result}')  # 42
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.loop.create_task()",
+    description:
+      "Создаёт asyncio.Task из корутины и планирует её выполнение в event loop. Задача начинает выполняться при следующей итерации loop. Аналогична asyncio.create_task(), но вызывается напрямую на объекте loop.",
+    syntax: "loop.create_task(coro, *, name=None, context=None)",
+    arguments: [
+      {
+        name: "coro",
+        description: "Корутина для выполнения в виде Task.",
+      },
+      {
+        name: "name",
+        description:
+          "Необязательное имя задачи для отладки. Доступно через task.get_name().",
+      },
+      {
+        name: "context",
+        description:
+          "Объект contextvars.Context для выполнения задачи. Если None — копируется текущий контекст.",
+      },
+    ],
+    example: `import asyncio
+
+async def background_job(name: str, delay: float):
+    await asyncio.sleep(delay)
+    print(f'Задача {name} завершена')
+
+async def main():
+    loop = asyncio.get_event_loop()
+
+    t1 = loop.create_task(background_job('А', 1.0), name='job-A')
+    t2 = loop.create_task(background_job('Б', 0.5), name='job-B')
+
+    print(f'Задача: {t1.get_name()}')  # job-A
+    await asyncio.gather(t1, t2)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.loop.call_soon()",
+    description:
+      "Планирует вызов callback-функции в следующей итерации event loop. Не является корутиной — callback вызывается синхронно, без await. Возвращает объект asyncio.Handle, позволяющий отменить запланированный вызов.",
+    syntax: "loop.call_soon(callback, *args, context=None)",
+    arguments: [
+      {
+        name: "callback",
+        description: "Обычная (не async) функция для вызова.",
+      },
+      {
+        name: "*args",
+        description:
+          "Позиционные аргументы, передаваемые в callback при вызове.",
+      },
+      {
+        name: "context",
+        description:
+          "Объект contextvars.Context для выполнения callback. Если None — используется текущий контекст.",
+      },
+    ],
+    example: `import asyncio
+
+def on_event(message: str, count: int):
+    print(f'Событие #{count}: {message}')
+
+async def main():
+    loop = asyncio.get_event_loop()
+
+    # Планируем вызовы на следующую итерацию loop
+    loop.call_soon(on_event, 'первый', 1)
+    loop.call_soon(on_event, 'второй', 2)
+
+    handle = loop.call_soon(on_event, 'третий', 3)
+    handle.cancel()  # отменяем третий вызов
+
+    await asyncio.sleep(0)  # даём loop выполнить запланированные вызовы
+
+asyncio.run(main())
+# Событие #1: первый
+# Событие #2: второй`,
+  },
+  {
+    name: "asyncio.loop.call_later()",
+    description:
+      "Планирует вызов callback-функции через указанное количество секунд. Возвращает asyncio.TimerHandle для возможной отмены. Использует относительное время (задержку), в отличие от call_at(), который использует абсолютное время.",
+    syntax: "loop.call_later(delay, callback, *args, context=None)",
+    arguments: [
+      {
+        name: "delay",
+        description:
+          "Задержка в секундах (число с плавающей точкой) до вызова callback.",
+      },
+      {
+        name: "callback",
+        description:
+          "Обычная (не async) функция для вызова после истечения задержки.",
+      },
+      {
+        name: "*args",
+        description: "Позиционные аргументы, передаваемые в callback.",
+      },
+    ],
+    example: `import asyncio
+
+def reminder(text: str):
+    print(f'Напоминание: {text}')
+
+async def main():
+    loop = asyncio.get_event_loop()
+
+    loop.call_later(1.0, reminder, 'через 1 секунду')
+    loop.call_later(2.0, reminder, 'через 2 секунды')
+
+    handle = loop.call_later(3.0, reminder, 'через 3 секунды')
+    handle.cancel()  # отменяем третье напоминание
+
+    await asyncio.sleep(2.5)  # ждём выполнения первых двух
+
+asyncio.run(main())
+# Напоминание: через 1 секунду
+# Напоминание: через 2 секунды`,
+  },
+  {
+    name: "asyncio.loop.call_at()",
+    description:
+      "Планирует вызов callback-функции в указанный абсолютный момент времени по внутренним часам event loop (loop.time()). Возвращает asyncio.TimerHandle. Используется когда нужна точная привязка к абсолютному времени loop, а не относительная задержка.",
+    syntax: "loop.call_at(when, callback, *args, context=None)",
+    arguments: [
+      {
+        name: "when",
+        description:
+          "Абсолютное время вызова в единицах loop.time(). Если указанный момент уже прошёл — callback будет вызван немедленно.",
+      },
+      {
+        name: "callback",
+        description:
+          "Обычная (не async) функция для вызова в указанный момент.",
+      },
+      {
+        name: "*args",
+        description: "Позиционные аргументы, передаваемые в callback.",
+      },
+    ],
+    example: `import asyncio
+
+def tick(label: str):
+    print(f'Тик: {label}')
+
+async def main():
+    loop = asyncio.get_event_loop()
+    now = loop.time()
+
+    # Планируем по абсолютному времени
+    loop.call_at(now + 1.0, tick, 'T+1с')
+    loop.call_at(now + 2.0, tick, 'T+2с')
+    loop.call_at(now + 1.5, tick, 'T+1.5с')
+
+    await asyncio.sleep(2.5)
+
+asyncio.run(main())
+# Тик: T+1с
+# Тик: T+1.5с
+# Тик: T+2с`,
+  },
+  {
+    name: "asyncio.loop.time()",
+    description:
+      "Возвращает текущее время по внутренним монотонным часам event loop в виде числа с плавающей точкой (секунды). Монотонные часы гарантируют, что время всегда увеличивается, даже при изменении системных часов. Используется совместно с call_at() для планирования задач.",
+    syntax: "loop.time()",
+    arguments: [],
+    example: `import asyncio
+
+async def measure_time():
+    loop = asyncio.get_event_loop()
+
+    start = loop.time()
+    print(f'Начало: {start:.4f}')
+
+    await asyncio.sleep(0.5)
+
+    elapsed = loop.time() - start
+    print(f'Прошло: {elapsed:.4f} сек')  # ~0.5
+
+    # Планируем вызов через 1 секунду от текущего момента
+    loop.call_at(loop.time() + 1.0, print, 'Запланированный вызов')
+
+    await asyncio.sleep(1.1)
+
+asyncio.run(measure_time())`,
+  },
+  {
+    name: "asyncio.loop.create_connection()",
+    description:
+      "Корутина, устанавливающая исходящее TCP-соединение и возвращающая пару (transport, protocol). Является низкоуровневым API — требует реализации класса протокола (asyncio.Protocol). Для большинства задач предпочтительнее использовать высокоуровневый asyncio.open_connection().",
+    syntax:
+      "await loop.create_connection(protocol_factory, host=None, port=None, *, ssl=None, sock=None, **kwds)",
+    arguments: [
+      {
+        name: "protocol_factory",
+        description:
+          "Вызываемый объект без аргументов, возвращающий экземпляр asyncio.Protocol. Вызывается при установке соединения.",
+      },
+      {
+        name: "host",
+        description: "Хост для подключения: IP-адрес или доменное имя.",
+      },
+      {
+        name: "port",
+        description: "Порт для подключения.",
+      },
+      {
+        name: "ssl",
+        description:
+          "Объект ssl.SSLContext для TLS-соединения, True для стандартного контекста, или None для незащищённого соединения.",
+      },
+    ],
+    example: `import asyncio
+
+class EchoClientProtocol(asyncio.Protocol):
+    def __init__(self, message: str, on_con_lost):
+        self.message = message
+        self.on_con_lost = on_con_lost
+
+    def connection_made(self, transport):
+        transport.write(self.message.encode())
+        print(f'Отправлено: {self.message}')
+
+    def data_received(self, data: bytes):
+        print(f'Получено: {data.decode()}')
+
+    def connection_lost(self, exc):
+        self.on_con_lost.set_result(True)
+
+async def main():
+    loop = asyncio.get_event_loop()
+    on_con_lost = loop.create_future()
+
+    transport, protocol = await loop.create_connection(
+        lambda: EchoClientProtocol('Привет!', on_con_lost),
+        '127.0.0.1', 8888
+    )
+    await on_con_lost
+    transport.close()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.loop.create_server()",
+    description:
+      "Корутина, создающая TCP-сервер и возвращающая объект asyncio.Server. Является низкоуровневым API — требует реализации класса протокола. Для большинства задач предпочтительнее использовать высокоуровневый asyncio.start_server().",
+    syntax:
+      "await loop.create_server(protocol_factory, host=None, port=None, *, ssl=None, reuse_address=None, reuse_port=None, **kwds)",
+    arguments: [
+      {
+        name: "protocol_factory",
+        description:
+          "Вызываемый объект без аргументов, возвращающий экземпляр asyncio.Protocol. Вызывается при каждом новом подключении.",
+      },
+      {
+        name: "host",
+        description:
+          "Хост для прослушивания. None — слушать на всех интерфейсах.",
+      },
+      {
+        name: "port",
+        description: "Порт для прослушивания.",
+      },
+      {
+        name: "reuse_port",
+        description:
+          "Если True — несколько процессов могут слушать на одном порту (SO_REUSEPORT). Полезно для балансировки нагрузки.",
+      },
+    ],
+    example: `import asyncio
+
+class EchoServerProtocol(asyncio.Protocol):
+    def connection_made(self, transport):
+        peername = transport.get_extra_info('peername')
+        print(f'Подключение от {peername}')
+        self.transport = transport
+
+    def data_received(self, data: bytes):
+        message = data.decode()
+        print(f'Получено: {message}')
+        self.transport.write(data)  # эхо
+
+    def connection_lost(self, exc):
+        print('Соединение закрыто')
+
+async def main():
+    loop = asyncio.get_event_loop()
+    server = await loop.create_server(
+        EchoServerProtocol,
+        '127.0.0.1', 8888
+    )
+    async with server:
+        print('Сервер запущен')
+        await server.serve_forever()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.loop.getaddrinfo()",
+    description:
+      "Корутина, выполняющая асинхронное DNS-разрешение имени хоста. Возвращает список кортежей с информацией об адресах (family, type, proto, canonname, sockaddr). Является асинхронной оберткой над socket.getaddrinfo().",
+    syntax:
+      "await loop.getaddrinfo(host, port, *, family=0, type=0, proto=0, flags=0)",
+    arguments: [
+      {
+        name: "host",
+        description: "Имя хоста или IP-адрес для разрешения.",
+      },
+      {
+        name: "port",
+        description: 'Номер порта или имя сервиса (например, "http", "ftp").',
+      },
+      {
+        name: "family",
+        description:
+          "Семейство адресов: socket.AF_INET (IPv4), socket.AF_INET6 (IPv6) или 0 (любое).",
+      },
+      {
+        name: "type",
+        description:
+          "Тип сокета: socket.SOCK_STREAM (TCP), socket.SOCK_DGRAM (UDP) или 0 (любой).",
+      },
+    ],
+    example: `import asyncio
+import socket
+
+async def resolve(hostname: str, port: int):
+    loop = asyncio.get_event_loop()
+
+    infos = await loop.getaddrinfo(
+        hostname, port,
+        family=socket.AF_UNSPEC,
+        type=socket.SOCK_STREAM,
+    )
+
+    for family, type_, proto, canonname, sockaddr in infos:
+        fam_name = 'IPv4' if family == socket.AF_INET else 'IPv6'
+        print(f'{fam_name}: {sockaddr[0]}:{sockaddr[1]}')
+
+asyncio.run(resolve('example.com', 80))`,
+  },
+  {
+    name: "asyncio.loop.getnameinfo()",
+    description:
+      "Корутина, выполняющая обратное DNS-разрешение: преобразует числовой адрес сокета в имя хоста и имя сервиса. Возвращает кортеж (hostname, service). Является асинхронной оберткой над socket.getnameinfo().",
+    syntax: "await loop.getnameinfo(sockaddr, flags=0)",
+    arguments: [
+      {
+        name: "sockaddr",
+        description:
+          "Кортеж (host, port) для IPv4 или (host, port, flowinfo, scope_id) для IPv6.",
+      },
+      {
+        name: "flags",
+        description:
+          "Флаги из модуля socket (например, socket.NI_NUMERICHOST, socket.NI_NAMEREQD), управляющие поведением разрешения.",
+      },
+    ],
+    example: `import asyncio
+import socket
+
+async def reverse_lookup(ip: str, port: int):
+    loop = asyncio.get_event_loop()
+
+    try:
+        hostname, service = await loop.getnameinfo(
+            (ip, port),
+            socket.NI_NUMERICSERV  # вернуть порт как число, не как имя
+        )
+        print(f'IP: {ip} → Хост: {hostname}')
+        print(f'Порт: {port} → Сервис: {service}')
+    except socket.gaierror as e:
+        print(f'Ошибка разрешения: {e}')
+
+asyncio.run(reverse_lookup('8.8.8.8', 53))`,
+  },
+  {
+    name: "asyncio.loop.add_reader()",
+    description:
+      "Регистрирует callback для вызова, когда файловый дескриптор fd становится доступен для чтения. Является низкоуровневым способом интеграции обычных сокетов или файлов с event loop без использования async/await.",
+    syntax: "loop.add_reader(fd, callback, *args)",
+    arguments: [
+      {
+        name: "fd",
+        description:
+          "Файловый дескриптор (целое число) или объект с методом fileno(), например socket.socket.",
+      },
+      {
+        name: "callback",
+        description:
+          "Обычная (не async) функция, вызываемая когда fd готов к чтению.",
+      },
+      {
+        name: "*args",
+        description:
+          "Позиционные аргументы, передаваемые в callback при вызове.",
+      },
+    ],
+    example: `import asyncio
+import socket
+
+def on_readable(sock: socket.socket, future: asyncio.Future):
+    data = sock.recv(1024)
+    if not future.done():
+        future.set_result(data)
+
+async def read_from_socket(sock: socket.socket) -> bytes:
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    loop.add_reader(sock.fileno(), on_readable, sock, future)
+    try:
+        return await future
+    finally:
+        loop.remove_reader(sock.fileno())
+
+async def main():
+    # Создаём обычный неблокирующий сокет
+    sock = socket.socket()
+    sock.setblocking(False)
+    sock.connect_ex(('127.0.0.1', 8888))
+
+    data = await read_from_socket(sock)
+    print(f'Получено: {data.decode()}')
+    sock.close()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.loop.remove_reader()",
+    description:
+      "Отменяет регистрацию callback для чтения с файлового дескриптора, ранее зарегистрированного через add_reader(). Возвращает True, если callback был успешно удалён, и False если дескриптор не был зарегистрирован.",
+    syntax: "loop.remove_reader(fd)",
+    arguments: [
+      {
+        name: "fd",
+        description:
+          "Файловый дескриптор (целое число) или объект с методом fileno(), регистрация которого должна быть отменена.",
+      },
+    ],
+    example: `import asyncio
+import socket
+
+async def main():
+    loop = asyncio.get_event_loop()
+    sock = socket.socket()
+    sock.setblocking(False)
+    fd = sock.fileno()
+
+    def on_data():
+        print('Данные доступны')
+
+    loop.add_reader(fd, on_data)
+    print('Обработчик зарегистрирован')
+
+    await asyncio.sleep(0.1)
+
+    removed = loop.remove_reader(fd)
+    print(f'Обработчик удалён: {removed}')  # True
+
+    # Повторное удаление вернёт False
+    removed_again = loop.remove_reader(fd)
+    print(f'Повторное удаление: {removed_again}')  # False
+
+    sock.close()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.loop.add_writer()",
+    description:
+      "Регистрирует callback для вызова, когда файловый дескриптор fd становится доступен для записи. Используется для низкоуровневой неблокирующей записи в сокеты и другие файловые объекты без async/await.",
+    syntax: "loop.add_writer(fd, callback, *args)",
+    arguments: [
+      {
+        name: "fd",
+        description:
+          "Файловый дескриптор (целое число) или объект с методом fileno().",
+      },
+      {
+        name: "callback",
+        description:
+          "Обычная (не async) функция, вызываемая когда fd готов к записи.",
+      },
+      {
+        name: "*args",
+        description: "Позиционные аргументы, передаваемые в callback.",
+      },
+    ],
+    example: `import asyncio
+import socket
+
+def on_writable(sock: socket.socket, data: bytes, future: asyncio.Future, loop):
+    try:
+        sent = sock.send(data)
+        if not future.done():
+            future.set_result(sent)
+    except BlockingIOError:
+        pass  # ещё не готов, попробуем снова
+    finally:
+        loop.remove_writer(sock.fileno())
+
+async def send_to_socket(sock: socket.socket, data: bytes) -> int:
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+    loop.add_writer(sock.fileno(), on_writable, sock, data, future, loop)
+    return await future
+
+async def main():
+    sock = socket.socket()
+    sock.setblocking(False)
+    sock.connect_ex(('127.0.0.1', 8888))
+
+    sent = await send_to_socket(sock, b'Привет!\\n')
+    print(f'Отправлено {sent} байт')
+    sock.close()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.loop.remove_writer()",
+    description:
+      "Отменяет регистрацию callback для записи в файловый дескриптор, ранее зарегистрированного через add_writer(). Возвращает True при успешном удалении и False если дескриптор не был зарегистрирован.",
+    syntax: "loop.remove_writer(fd)",
+    arguments: [
+      {
+        name: "fd",
+        description:
+          "Файловый дескриптор (целое число) или объект с методом fileno(), регистрация которого должна быть отменена.",
+      },
+    ],
+    example: `import asyncio
+import socket
+
+async def main():
+    loop = asyncio.get_event_loop()
+    sock = socket.socket()
+    sock.setblocking(False)
+    fd = sock.fileno()
+
+    def on_write():
+        print('Готов к записи')
+
+    loop.add_writer(fd, on_write)
+    print('Обработчик записи зарегистрирован')
+
+    await asyncio.sleep(0.1)
+
+    removed = loop.remove_writer(fd)
+    print(f'Удалён: {removed}')        # True
+
+    removed_again = loop.remove_writer(fd)
+    print(f'Повторно: {removed_again}') # False
+
+    sock.close()
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.CancelledError",
+    description:
+      "Исключение, выбрасываемое в корутине или Task при отмене через task.cancel(). Наследуется от BaseException (не Exception), поэтому не перехватывается голым except Exception. Может быть поймано для выполнения очистки ресурсов, но должно быть повторно поднято или корутина должна завершиться.",
+    syntax: "raise asyncio.CancelledError",
+    arguments: [],
+    example: `import asyncio
+
+async def cancellable_task():
+    try:
+        print('Задача запущена')
+        await asyncio.sleep(10)  # долгая операция
+        print('Задача завершена')
+    except asyncio.CancelledError:
+        print('Задача отменена! Выполняем очистку...')
+        # Освобождаем ресурсы, закрываем соединения...
+        raise  # обязательно повторно поднимаем
+
+async def main():
+    task = asyncio.create_task(cancellable_task())
+    await asyncio.sleep(0.5)
+
+    print('Отменяем задачу...')
+    task.cancel()
+
+    try:
+        await task
+    except asyncio.CancelledError:
+        print(f'Задача отменена: {task.cancelled()}')  # True
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.InvalidStateError",
+    description:
+      "Исключение, выбрасываемое при попытке выполнить недопустимую операцию над объектом Future или Task в его текущем состоянии. Например: вызов set_result() на уже завершённой Future, или вызов result() на ещё не завершённой Future.",
+    syntax: "raise asyncio.InvalidStateError",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+
+    # Корректная установка результата
+    future.set_result(42)
+    print(f'Результат: {future.result()}')  # 42
+
+    # Попытка установить результат повторно — ошибка
+    try:
+        future.set_result(99)
+    except asyncio.InvalidStateError as e:
+        print(f'InvalidStateError: {e}')
+
+    # Попытка получить результат незавершённой Future
+    pending = loop.create_future()
+    try:
+        pending.result()
+    except asyncio.InvalidStateError as e:
+        print(f'Future ещё не завершена: {e}')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.TimeoutError",
+    description:
+      "Исключение, выбрасываемое при истечении тайм-аута в asyncio.wait_for() или asyncio.timeout(). Наследуется от TimeoutError (встроенного). Сигнализирует о том, что операция не завершилась в отведённое время.",
+    syntax: "raise asyncio.TimeoutError",
+    arguments: [],
+    example: `import asyncio
+
+async def slow_operation() -> str:
+    await asyncio.sleep(5)
+    return 'результат'
+
+async def main():
+    # С wait_for
+    try:
+        result = await asyncio.wait_for(slow_operation(), timeout=1.0)
+    except asyncio.TimeoutError:
+        print('wait_for: тайм-аут истёк')
+
+    # С asyncio.timeout (Python 3.11+)
+    try:
+        async with asyncio.timeout(1.0):
+            result = await slow_operation()
+    except asyncio.TimeoutError:
+        print('timeout: тайм-аут истёк')
+
+    # Проверка типа — совместимость с TimeoutError
+    err = asyncio.TimeoutError()
+    print(isinstance(err, TimeoutError))  # True
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.IncompleteReadError",
+    description:
+      "Исключение, выбрасываемое StreamReader.readexactly(), когда соединение закрыто раньше, чем было прочитано запрошенное количество байт. Содержит атрибут partial с байтами, которые были прочитаны до закрытия соединения.",
+    syntax: "asyncio.IncompleteReadError(partial, expected)",
+    arguments: [
+      {
+        name: "partial",
+        description:
+          "Атрибут bytes, содержащий частично прочитанные данные до момента закрытия соединения.",
+      },
+      {
+        name: "expected",
+        description:
+          "Атрибут int или None — ожидаемое количество байт, которое не удалось прочитать.",
+      },
+    ],
+    example: `import asyncio
+
+async def read_fixed_block(reader: asyncio.StreamReader, size: int):
+    try:
+        data = await reader.readexactly(size)
+        return data
+    except asyncio.IncompleteReadError as e:
+        print(f'Ожидалось {e.expected} байт')
+        print(f'Получено только {len(e.partial)} байт: {e.partial}')
+        # Решаем, что делать с частичными данными
+        if len(e.partial) > 0:
+            return e.partial  # используем что есть
+        return b''
+
+async def main():
+    # Имитируем обрыв соединения
+    reader = asyncio.StreamReader()
+    reader.feed_data(b'Hello')  # только 5 байт
+    reader.feed_eof()           # соединение закрыто
+
+    result = await read_fixed_block(reader, 100)
+    print(f'Итог: {result}')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.LimitOverrunError",
+    description:
+      "Исключение, выбрасываемое StreamReader.readuntil(), когда размер накопленных в буфере данных превышает установленный лимит (параметр limit в open_connection/start_server) без обнаружения разделителя. Атрибут consumed содержит количество байт, находящихся в буфере.",
+    syntax: "asyncio.LimitOverrunError(message, consumed)",
+    arguments: [
+      {
+        name: "message",
+        description: "Строка с описанием ошибки.",
+      },
+      {
+        name: "consumed",
+        description:
+          "Атрибут int — количество байт в буфере на момент возникновения ошибки.",
+      },
+    ],
+    example: `import asyncio
+
+async def safe_readline(reader: asyncio.StreamReader) -> bytes | None:
+    try:
+        line = await reader.readuntil(b'\\n')
+        return line
+    except asyncio.LimitOverrunError as e:
+        print(f'Строка слишком длинная: {e.consumed} байт в буфере')
+        # Сбрасываем буфер — читаем и отбрасываем данные
+        await reader.read(e.consumed)
+        return None
+
+async def main():
+    # Лимит буфера — 10 байт
+    reader = asyncio.StreamReader(limit=10)
+    reader.feed_data(b'Эта строка намного длиннее лимита буфера!')
+    reader.feed_eof()
+
+    result = await safe_readline(reader)
+    if result is None:
+        print('Строка отброшена из-за превышения лимита')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.QueueEmpty",
+    description:
+      "Исключение, выбрасываемое asyncio.Queue.get_nowait(), когда очередь пуста в момент вызова. Является неблокирующей альтернативой await queue.get() — вместо ожидания немедленно сигнализирует об отсутствии элементов.",
+    syntax: "asyncio.QueueEmpty",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    queue: asyncio.Queue[int] = asyncio.Queue()
+
+    # Добавляем один элемент
+    await queue.put(42)
+
+    # Успешное получение
+    item = queue.get_nowait()
+    print(f'Получено: {item}')  # 42
+
+    # Попытка получить из пустой очереди
+    try:
+        item = queue.get_nowait()
+    except asyncio.QueueEmpty:
+        print('QueueEmpty: очередь пуста')
+
+    # Безопасный паттерн — проверка перед get_nowait
+    if not queue.empty():
+        item = queue.get_nowait()
+    else:
+        print('Очередь пуста, пропускаем')
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asyncio.QueueFull",
+    description:
+      "Исключение, выбрасываемое asyncio.Queue.put_nowait(), когда очередь заполнена (достигнут maxsize) в момент вызова. Является неблокирующей альтернативой await queue.put() — вместо ожидания немедленно сигнализирует о переполнении.",
+    syntax: "asyncio.QueueFull",
+    arguments: [],
+    example: `import asyncio
+
+async def main():
+    # Очередь максимум на 2 элемента
+    queue: asyncio.Queue[str] = asyncio.Queue(maxsize=2)
+
+    queue.put_nowait('первый')
+    queue.put_nowait('второй')
+    print(f'Размер: {queue.qsize()}')  # 2
+
+    # Попытка добавить в заполненную очередь
+    try:
+        queue.put_nowait('третий')
+    except asyncio.QueueFull:
+        print('QueueFull: очередь заполнена')
+
+    # Безопасный паттерн — проверка перед put_nowait
+    if not queue.full():
+        queue.put_nowait('элемент')
+    else:
+        print('Нет места, используем await put() или отбрасываем')
+
+asyncio.run(main())`,
+  },
 ];
