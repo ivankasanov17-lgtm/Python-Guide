@@ -38004,4 +38004,2876 @@ async def main():
 
 asyncio.run(main())`,
   },
+  {
+    name: "logging.basicConfig()",
+    description:
+      "Выполняет базовую настройку системы логирования: создаёт обработчик (StreamHandler или FileHandler), задаёт форматтер и уровень логирования для корневого логгера. Вызов имеет эффект только если корневой логгер не имеет настроенных обработчиков. Повторные вызовы игнорируются, если не передан force=True.",
+    syntax: "logging.basicConfig(**kwargs)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          "Уровень логирования для корневого логгера: logging.DEBUG, INFO, WARNING, ERROR, CRITICAL или целое число.",
+      },
+      {
+        name: "format",
+        description:
+          'Строка формата сообщений. По умолчанию "%(levelname)s:%(name)s:%(message)s".',
+      },
+      {
+        name: "datefmt",
+        description: "Формат даты/времени, совместимый с time.strftime().",
+      },
+      {
+        name: "filename",
+        description:
+          "Если указан — создаётся FileHandler для записи в файл вместо StreamHandler.",
+      },
+      {
+        name: "filemode",
+        description:
+          'Режим открытия файла: "a" (дозапись, по умолчанию) или "w" (перезапись).',
+      },
+      {
+        name: "handlers",
+        description:
+          "Итерируемый набор готовых обработчиков для добавления к корневому логгеру.",
+      },
+      {
+        name: "force",
+        description:
+          "Если True — удаляет существующие обработчики корневого логгера перед применением настроек.",
+      },
+      {
+        name: "encoding",
+        description:
+          "Кодировка файла (используется вместе с filename, Python 3.9+).",
+      },
+    ],
+    example: `import logging
+
+# Простейшая настройка — вывод в консоль
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
+
+logging.debug('Отладка')
+logging.info('Информация')
+logging.warning('Предупреждение')
+
+# Запись в файл
+logging.basicConfig(
+    filename='app.log',
+    filemode='w',
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s: %(message)s',
+    force=True,  # перезаписать существующие настройки
+)
+
+logging.info('Это запишется в файл app.log')`,
+  },
+  {
+    name: "logging.captureWarnings()",
+    description:
+      'Включает или отключает перехват предупреждений модуля warnings через систему логирования. При capture=True предупреждения (warnings.warn()) направляются в логгер "py.warnings" с уровнем WARNING вместо стандартного вывода. Полезно для централизованной обработки всех предупреждений.',
+    syntax: "logging.captureWarnings(capture)",
+    arguments: [
+      {
+        name: "capture",
+        description:
+          "True — включить перехват предупреждений; False — отключить и вернуть стандартное поведение.",
+      },
+    ],
+    example: `import logging
+import warnings
+
+logging.basicConfig(level=logging.DEBUG, format='%(name)s: %(message)s')
+
+# Включаем перехват warnings
+logging.captureWarnings(True)
+
+# Это предупреждение теперь пройдёт через логгер 'py.warnings'
+warnings.warn('Устаревший API', DeprecationWarning)
+# py.warnings: ...: DeprecationWarning: Устаревший API
+
+# Отключаем перехват — warnings снова идут в stderr
+logging.captureWarnings(False)
+warnings.warn('Это снова в stderr', UserWarning)`,
+  },
+  {
+    name: "logging.critical()",
+    description:
+      "Записывает сообщение с уровнем CRITICAL (50) в корневой логгер. Используется для критических ошибок, после которых программа не может продолжать работу. Является сокращением для logging.getLogger().critical().",
+    syntax: "logging.critical(msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          "Сообщение для логирования. Может содержать спецификаторы формата (например, %s, %d), которые применяются к args.",
+      },
+      {
+        name: "*args",
+        description:
+          "Аргументы для форматирования строки msg через оператор %.",
+      },
+      {
+        name: "exc_info",
+        description:
+          "Если True или экземпляр исключения — добавляет трассировку текущего исключения к сообщению.",
+      },
+      {
+        name: "stack_info",
+        description:
+          "Если True — добавляет информацию о текущем стеке вызовов.",
+      },
+      {
+        name: "extra",
+        description:
+          "Словарь с дополнительными полями для добавления в LogRecord.",
+      },
+    ],
+    example: `import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+
+# Простое сообщение
+logging.critical('Критическая ошибка: сервер недоступен')
+
+# С форматированием
+code = 500
+logging.critical('HTTP %d: внутренняя ошибка сервера', code)
+
+# С трассировкой исключения
+try:
+    result = 1 / 0
+except ZeroDivisionError:
+    logging.critical('Деление на ноль!', exc_info=True)
+
+# Вывод:
+# CRITICAL: Критическая ошибка: сервер недоступен
+# CRITICAL: HTTP 500: внутренняя ошибка сервера
+# CRITICAL: Деление на ноль!
+# Traceback (most recent call last): ...`,
+  },
+  {
+    name: "logging.debug()",
+    description:
+      "Записывает сообщение с уровнем DEBUG (10) в корневой логгер. Используется для детальной отладочной информации, которая обычно отключена в production. Сообщение выводится только если уровень корневого логгера ≤ DEBUG.",
+    syntax: "logging.debug(msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          "Сообщение для логирования. Может содержать спецификаторы %s, %d и т.д.",
+      },
+      {
+        name: "*args",
+        description: "Аргументы для форматирования строки msg.",
+      },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет информацию о текущем исключении.",
+      },
+      {
+        name: "stack_info",
+        description: "Если True — добавляет трассировку текущего стека.",
+      },
+      {
+        name: "extra",
+        description: "Дополнительные поля для LogRecord в виде словаря.",
+      },
+    ],
+    example: `import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+
+def process_item(item_id: int, value: float):
+    logging.debug('Обработка элемента %d, значение=%.2f', item_id, value)
+    result = value * 2
+    logging.debug('Результат для %d: %.2f', item_id, result)
+    return result
+
+items = [(1, 3.14), (2, 2.71), (3, 1.41)]
+for item_id, value in items:
+    process_item(item_id, value)
+
+# DEBUG: Обработка элемента 1, значение=3.14
+# DEBUG: Результат для 1: 6.28
+# DEBUG: Обработка элемента 2, значение=2.71
+# ...`,
+  },
+  {
+    name: "logging.disable()",
+    description:
+      "Устанавливает глобальный порог отключения: все сообщения с уровнем ≤ указанному игнорируются во всех логгерах, независимо от их настроек. Вызов logging.disable(logging.NOTSET) снимает ограничение. Полезно для временного отключения логирования в тестах или production.",
+    syntax: "logging.disable(level=logging.CRITICAL)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          "Уровень отключения. Сообщения с уровнем ≤ этому значению игнорируются. По умолчанию logging.CRITICAL (отключает всё).",
+      },
+    ],
+    example: `import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+
+logging.info('Это будет выведено')
+
+# Отключаем все сообщения уровня INFO и ниже
+logging.disable(logging.INFO)
+logging.debug('Это НЕ будет выведено')  # DEBUG < INFO — игнорируется
+logging.info('Это НЕ будет выведено')   # INFO ≤ INFO — игнорируется
+logging.warning('WARNING появится')     # WARNING > INFO — проходит
+
+# Полное отключение логирования
+logging.disable(logging.CRITICAL)
+logging.critical('Это тоже НЕ выведется')
+
+# Снятие ограничения
+logging.disable(logging.NOTSET)
+logging.info('Снова работает')`,
+  },
+  {
+    name: "logging.error()",
+    description:
+      "Записывает сообщение с уровнем ERROR (40) в корневой логгер. Используется для ошибок, которые нарушают выполнение конкретной операции, но не останавливают программу. Является сокращением для logging.getLogger().error().",
+    syntax: "logging.error(msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          "Сообщение для логирования с опциональными спецификаторами формата.",
+      },
+      {
+        name: "*args",
+        description: "Аргументы для форматирования строки msg.",
+      },
+      {
+        name: "exc_info",
+        description:
+          "Если True — добавляет трассировку текущего исключения к сообщению.",
+      },
+      {
+        name: "stack_info",
+        description:
+          "Если True — добавляет трассировку текущего стека вызовов.",
+      },
+      { name: "extra", description: "Дополнительные поля для LogRecord." },
+    ],
+    example: `import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+
+def load_config(path: str) -> dict:
+    try:
+        with open(path) as f:
+            import json
+            return json.load(f)
+    except FileNotFoundError:
+        logging.error('Файл конфигурации не найден: %s', path)
+        return {}
+    except Exception as e:
+        logging.error('Ошибка загрузки конфига %s: %s', path, e, exc_info=True)
+        return {}
+
+config = load_config('config.json')
+# ERROR: Файл конфигурации не найден: config.json`,
+  },
+  {
+    name: "logging.exception()",
+    description:
+      "Записывает сообщение с уровнем ERROR и автоматически добавляет трассировку текущего исключения (exc_info=True). Должна вызываться только внутри блока except. Является удобным сокращением для logging.error(msg, exc_info=True).",
+    syntax: "logging.exception(msg, *args, exc_info=True, **kwargs)",
+    arguments: [
+      {
+        name: "msg",
+        description: "Сообщение для логирования (описание контекста ошибки).",
+      },
+      {
+        name: "*args",
+        description: "Аргументы для форматирования строки msg.",
+      },
+      {
+        name: "exc_info",
+        description:
+          "По умолчанию True — всегда включает трассировку исключения. Отличает exception() от error().",
+      },
+    ],
+    example: `import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+
+def parse_number(s: str) -> float:
+    try:
+        return float(s)
+    except ValueError:
+        logging.exception('Не удалось преобразовать "%s" в число', s)
+        return 0.0
+
+def fetch_data(url: str):
+    try:
+        # имитация ошибки соединения
+        raise ConnectionError(f'Хост недоступен: {url}')
+    except ConnectionError:
+        logging.exception('Ошибка при запросе к %s', url)
+        return None
+
+parse_number('не_число')
+# ERROR: Не удалось преобразовать "не_число" в число
+# Traceback (most recent call last): ...
+# ValueError: could not convert string to float`,
+  },
+  {
+    name: "logging.fatal()",
+    description:
+      "Псевдоним для logging.critical(). Записывает сообщение с уровнем CRITICAL (50) в корневой логгер. Существует для совместимости с другими языками и фреймворками. В Python рекомендуется использовать logging.critical() как более идиоматичный вариант.",
+    syntax: "logging.fatal(msg, *args, **kwargs)",
+    arguments: [
+      { name: "msg", description: "Сообщение для логирования." },
+      {
+        name: "*args",
+        description: "Аргументы для форматирования строки msg.",
+      },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет трассировку текущего исключения.",
+      },
+    ],
+    example: `import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+
+# fatal() и critical() полностью эквивалентны
+logging.fatal('Критический сбой базы данных')
+logging.critical('Критический сбой базы данных')
+
+# Оба выводят:
+# CRITICAL: Критический сбой базы данных
+
+# Проверка — это один и тот же метод
+import logging as lg
+print(lg.fatal is lg.critical)  # True`,
+  },
+  {
+    name: "logging.getLevelName()",
+    description:
+      'Возвращает текстовое имя уровня по числовому значению, или числовое значение по имени. Если передать неизвестный уровень — возвращает строку "Level %s". Начиная с Python 3.4 для получения числового значения по имени лучше использовать logging.getLevelNamesMapping().',
+    syntax: "logging.getLevelName(level)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          "Целое число (уровень логирования) → возвращает строку-имя. Строка (имя уровня) → возвращает целое число.",
+      },
+    ],
+    example: `import logging
+
+# Число → имя
+print(logging.getLevelName(10))   # DEBUG
+print(logging.getLevelName(20))   # INFO
+print(logging.getLevelName(30))   # WARNING
+print(logging.getLevelName(40))   # ERROR
+print(logging.getLevelName(50))   # CRITICAL
+
+# Имя → число
+print(logging.getLevelName('DEBUG'))    # 10
+print(logging.getLevelName('WARNING'))  # 30
+
+# Неизвестный уровень
+print(logging.getLevelName(99))         # Level 99
+print(logging.getLevelName('VERBOSE'))  # Level VERBOSE
+
+# Добавление пользовательского уровня
+logging.addLevelName(15, 'VERBOSE')
+print(logging.getLevelName(15))         # VERBOSE
+print(logging.getLevelName('VERBOSE'))  # 15`,
+  },
+  {
+    name: "logging.getLogger()",
+    description:
+      'Возвращает логгер с указанным именем. Если логгер с таким именем уже существует — возвращает тот же объект (логгеры кешируются). Имена образуют иерархию через точку: "app.db" является дочерним для "app". Если name=None или не передан — возвращает корневой логгер.',
+    syntax: "logging.getLogger(name=None)",
+    arguments: [
+      {
+        name: "name",
+        description:
+          'Имя логгера. Принято использовать __name__ для привязки к модулю. Иерархия задаётся точками: "myapp.models.user".',
+      },
+    ],
+    example: `import logging
+
+# Корневой логгер
+root = logging.getLogger()
+root.setLevel(logging.WARNING)
+
+# Логгер для модуля (стандартная практика)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Иерархия: дочерний логгер наследует настройки родителя
+app_logger = logging.getLogger('myapp')
+db_logger = logging.getLogger('myapp.db')    # дочерний к myapp
+api_logger = logging.getLogger('myapp.api')  # дочерний к myapp
+
+# Один и тот же объект — логгеры кешируются
+logger_a = logging.getLogger('myapp')
+logger_b = logging.getLogger('myapp')
+print(logger_a is logger_b)  # True
+
+db_logger.debug('SQL-запрос выполнен')`,
+  },
+  {
+    name: "logging.getLoggerClass()",
+    description:
+      "Возвращает текущий класс, используемый для создания новых логгеров. По умолчанию возвращает logging.Logger. Используется для проверки текущего класса перед установкой нового через logging.setLoggerClass().",
+    syntax: "logging.getLoggerClass()",
+    arguments: [],
+    example: `import logging
+
+# Получаем текущий класс логгеров
+current_class = logging.getLoggerClass()
+print(current_class)  # <class 'logging.Logger'>
+
+# Создаём кастомный класс логгера
+class AppLogger(logging.Logger):
+    def success(self, msg, *args, **kwargs):
+        """Дополнительный уровень SUCCESS"""
+        if self.isEnabledFor(25):
+            self._log(25, msg, args, **kwargs)
+
+# Регистрируем и проверяем
+logging.addLevelName(25, 'SUCCESS')
+logging.setLoggerClass(AppLogger)
+
+print(logging.getLoggerClass())  # <class '__main__.AppLogger'>
+
+# Новые логгеры теперь экземпляры AppLogger
+logger = logging.getLogger('myapp')
+print(type(logger))  # <class '__main__.AppLogger'>`,
+  },
+  {
+    name: "logging.getLogRecordFactory()",
+    description:
+      "Возвращает текущую фабрику для создания объектов LogRecord. По умолчанию возвращает класс logging.LogRecord. Используется для проверки текущей фабрики перед её заменой через logging.setLogRecordFactory().",
+    syntax: "logging.getLogRecordFactory()",
+    arguments: [],
+    example: `import logging
+
+# Получаем текущую фабрику
+factory = logging.getLogRecordFactory()
+print(factory)  # <class 'logging.LogRecord'>
+
+# Создаём кастомную фабрику с дополнительными полями
+old_factory = logging.getLogRecordFactory()
+
+def custom_factory(*args, **kwargs):
+    record = old_factory(*args, **kwargs)
+    record.app_version = '1.2.3'
+    record.environment = 'production'
+    return record
+
+logging.setLogRecordFactory(custom_factory)
+
+# Проверяем что фабрика изменилась
+print(logging.getLogRecordFactory())  # <function custom_factory at ...>
+
+logging.basicConfig(
+    format='%(levelname)s [v%(app_version)s] %(env)s: %(message)s',
+    level=logging.INFO,
+)
+logging.info('Сервер запущен')`,
+  },
+  {
+    name: "logging.info()",
+    description:
+      "Записывает сообщение с уровнем INFO (20) в корневой логгер. Используется для информационных сообщений о нормальном ходе выполнения программы: запуск/остановка сервисов, обработка запросов, ключевые события. Является сокращением для logging.getLogger().info().",
+    syntax: "logging.info(msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          "Информационное сообщение с опциональными спецификаторами формата.",
+      },
+      {
+        name: "*args",
+        description: "Аргументы для форматирования строки msg.",
+      },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет трассировку текущего исключения.",
+      },
+      {
+        name: "extra",
+        description: "Словарь с дополнительными полями для LogRecord.",
+      },
+    ],
+    example: `import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
+
+def start_server(host: str, port: int):
+    logging.info('Запуск сервера на %s:%d', host, port)
+
+def process_request(method: str, path: str, status: int):
+    logging.info('%s %s → %d', method, path, status)
+
+def shutdown():
+    logging.info('Сервер остановлен. Соединений обработано: %d', 42)
+
+start_server('0.0.0.0', 8080)
+process_request('GET', '/api/users', 200)
+process_request('POST', '/api/orders', 201)
+shutdown()
+# 2024-01-15 12:00:00 INFO: Запуск сервера на 0.0.0.0:8080
+# 2024-01-15 12:00:01 INFO: GET /api/users → 200`,
+  },
+  {
+    name: "logging.log()",
+    description:
+      "Записывает сообщение с произвольным числовым уровнем в корневой логгер. Используется когда уровень задаётся динамически (из конфигурации или переменной), а не одним из стандартных. Является обобщением методов debug(), info(), warning() и т.д.",
+    syntax: "logging.log(level, msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          "Числовой уровень логирования (например, logging.DEBUG, logging.INFO или произвольное целое число).",
+      },
+      {
+        name: "msg",
+        description:
+          "Сообщение для логирования с опциональными спецификаторами формата.",
+      },
+      {
+        name: "*args",
+        description: "Аргументы для форматирования строки msg.",
+      },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет трассировку текущего исключения.",
+      },
+    ],
+    example: `import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+
+# Динамический уровень из конфига
+config_level = 'WARNING'
+level = logging.getLevelName(config_level)
+logging.log(level, 'Уровень задан из конфигурации: %s', config_level)
+
+# Пользовательский уровень
+VERBOSE = 15
+logging.addLevelName(VERBOSE, 'VERBOSE')
+logging.log(VERBOSE, 'Подробный вывод: %s', 'детали операции')
+
+# Условное логирование в зависимости от серьёзности
+def log_event(severity: str, message: str):
+    lvl = logging.getLevelName(severity.upper())
+    if isinstance(lvl, int):
+        logging.log(lvl, message)
+
+log_event('error', 'Ошибка подключения к БД')
+log_event('info', 'Запрос выполнен успешно')`,
+  },
+  {
+    name: "logging.makeLogRecord()",
+    description:
+      "Создаёт объект LogRecord из словаря атрибутов. Используется для воссоздания записей логов, полученных по сети (например, через SocketHandler) или из сериализованного формата. Позволяет создавать LogRecord без прохождения через стандартный механизм логирования.",
+    syntax: "logging.makeLogRecord(dict)",
+    arguments: [
+      {
+        name: "dict",
+        description:
+          "Словарь с атрибутами LogRecord: name, levelno, levelname, pathname, lineno, msg, args, exc_info и другие.",
+      },
+    ],
+    example: `import logging
+import json
+
+logging.basicConfig(level=logging.DEBUG, format='%(name)s %(levelname)s: %(message)s')
+
+# Воссоздание записи из словаря (например, полученной по сети)
+record_data = {
+    'name': 'remote.service',
+    'levelno': logging.ERROR,
+    'levelname': 'ERROR',
+    'pathname': '/app/service.py',
+    'lineno': 42,
+    'msg': 'Ошибка обработки запроса: %s',
+    'args': ('таймаут',),
+    'exc_info': None,
+    'funcName': 'handle_request',
+}
+
+record = logging.makeLogRecord(record_data)
+print(f'Логгер: {record.name}')     # remote.service
+print(f'Уровень: {record.levelname}')  # ERROR
+print(f'Сообщение: {record.getMessage()}')  # Ошибка обработки запроса: таймаут
+
+# Передаём запись в обработчик
+logger = logging.getLogger(record.name)
+logger.handle(record)`,
+  },
+  {
+    name: "logging.setLogRecordFactory()",
+    description:
+      "Устанавливает пользовательскую фабрику для создания объектов LogRecord. Фабрика вызывается с теми же аргументами, что и конструктор LogRecord. Позволяет автоматически добавлять дополнительные поля (request_id, user_id и т.д.) ко всем записям логов.",
+    syntax: "logging.setLogRecordFactory(factory)",
+    arguments: [
+      {
+        name: "factory",
+        description:
+          "Вызываемый объект с сигнатурой factory(name, level, fn, lno, msg, args, exc_info, func, extra, sinfo) → LogRecord.",
+      },
+    ],
+    example: `import logging
+import uuid
+
+# Сохраняем оригинальную фабрику для цепочки вызовов
+original_factory = logging.getLogRecordFactory()
+
+def record_factory(name, level, fn, lno, msg, args, exc_info, func=None, extra=None, sinfo=None):
+    record = original_factory(name, level, fn, lno, msg, args, exc_info, func, extra, sinfo)
+    # Добавляем поля к каждой записи
+    record.request_id = getattr(record_factory, '_request_id', 'no-request')
+    record.app_name = 'MyApp'
+    return record
+
+logging.setLogRecordFactory(record_factory)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(request_id)s] %(levelname)s %(name)s: %(message)s',
+)
+
+record_factory._request_id = str(uuid.uuid4())[:8]
+logging.info('Обработка запроса /api/users')
+logging.info('Запрос завершён')`,
+  },
+  {
+    name: "logging.setLoggerClass()",
+    description:
+      "Устанавливает класс, который будет использоваться при создании новых логгеров. Класс должен быть подклассом logging.Logger. Влияет только на логгеры, созданные ПОСЛЕ вызова этой функции. Используется для добавления пользовательских методов или поведения ко всем логгерам приложения.",
+    syntax: "logging.setLoggerClass(klass)",
+    arguments: [
+      {
+        name: "klass",
+        description:
+          "Класс логгера — подкласс logging.Logger с дополнительными методами или переопределённым поведением.",
+      },
+    ],
+    example: `import logging
+
+# Пользовательский класс с дополнительными уровнями
+class AppLogger(logging.Logger):
+    SUCCESS_LEVEL = 25
+
+    def __init__(self, name, level=logging.NOTSET):
+        super().__init__(name, level)
+        logging.addLevelName(self.SUCCESS_LEVEL, 'SUCCESS')
+
+    def success(self, msg, *args, **kwargs):
+        if self.isEnabledFor(self.SUCCESS_LEVEL):
+            self._log(self.SUCCESS_LEVEL, msg, args, **kwargs)
+
+    def audit(self, msg, *args, **kwargs):
+        """Специальный уровень для аудита действий пользователей"""
+        self._log(logging.WARNING, f'[AUDIT] {msg}', args, **kwargs)
+
+# Регистрируем до создания логгеров
+logging.setLoggerClass(AppLogger)
+
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+
+logger = logging.getLogger('myapp')
+logger.success('Пользователь успешно аутентифицирован')
+logger.audit('user:42 удалил запись #100')`,
+  },
+  {
+    name: "logging.shutdown()",
+    description:
+      "Выполняет корректное завершение работы системы логирования: сбрасывает буферы и закрывает все обработчики. Вызывается автоматически при завершении интерпретатора Python через atexit. Следует вызывать вручную в приложениях, которые завершаются нестандартным способом.",
+    syntax: "logging.shutdown(handlerList=_handlerList)",
+    arguments: [
+      {
+        name: "handlerList",
+        description:
+          "Список слабых ссылок на обработчики для завершения. По умолчанию — внутренний глобальный список всех созданных обработчиков.",
+      },
+    ],
+    example: `import logging
+import atexit
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+# Создаём обработчик с файловым буфером
+file_handler = logging.FileHandler('app.log')
+file_handler.setLevel(logging.DEBUG)
+logging.getLogger().addHandler(file_handler)
+
+logger = logging.getLogger('myapp')
+
+try:
+    logger.info('Приложение запущено')
+    # ... работа приложения ...
+    logger.info('Завершение работы')
+finally:
+    # Явный вызов для гарантированной записи буферов
+    logging.shutdown()
+    # После shutdown() логирование не рекомендуется
+
+# Автоматически вызывается при выходе (через atexit),
+# но явный вызов гарантирует запись даже при исключениях`,
+  },
+  {
+    name: "logging.warning()",
+    description:
+      "Записывает сообщение с уровнем WARNING (30) в корневой логгер. Используется для предупреждений о потенциальных проблемах, которые не нарушают текущую работу, но требуют внимания. Является уровнем по умолчанию при базовой настройке логирования.",
+    syntax: "logging.warning(msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          "Сообщение-предупреждение с опциональными спецификаторами формата.",
+      },
+      {
+        name: "*args",
+        description: "Аргументы для форматирования строки msg.",
+      },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет трассировку текущего исключения.",
+      },
+      { name: "extra", description: "Дополнительные поля для LogRecord." },
+    ],
+    example: `import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+
+def connect_db(host: str, port: int, retries: int = 3):
+    for attempt in range(1, retries + 1):
+        try:
+            # имитация подключения
+            if attempt < retries:
+                raise ConnectionError('Соединение сброшено')
+            logging.info('Подключение к БД установлено')
+            return True
+        except ConnectionError as e:
+            logging.warning(
+                'Попытка %d/%d не удалась: %s. Повтор...',
+                attempt, retries, e
+            )
+    logging.error('Не удалось подключиться к БД %s:%d', host, port)
+    return False
+
+connect_db('localhost', 5432)
+# WARNING: Попытка 1/3 не удалась: ...
+# WARNING: Попытка 2/3 не удалась: ...
+# INFO: Подключение к БД установлено`,
+  },
+  {
+    name: "logging.warn()",
+    description:
+      "Устаревший псевдоним для logging.warning(). Функционально идентичен logging.warning(), но помечен как deprecated начиная с Python 3.2 и может быть удалён в будущих версиях. В новом коде следует использовать logging.warning().",
+    syntax: "logging.warn(msg, *args, **kwargs)",
+    arguments: [
+      { name: "msg", description: "Сообщение для логирования." },
+      {
+        name: "*args",
+        description: "Аргументы для форматирования строки msg.",
+      },
+    ],
+    example: `import logging
+
+logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+
+# warn() — устаревший вариант (не используйте в новом коде)
+logging.warn('Это устаревший вызов')
+
+# Эквивалентный современный вариант:
+logging.warning('Используйте warning() вместо warn()')
+
+# Проверка — оба метода ссылаются на одну реализацию
+# (warn() вызывает warning() внутри с предупреждением о deprecated)
+
+# Вывод:
+# WARNING: Это устаревший вызов
+# WARNING: Используйте warning() вместо warn()`,
+  },
+  {
+    name: "logging.addLevelName()",
+    description:
+      "Регистрирует пользовательский уровень логирования: связывает числовое значение с текстовым именем. После регистрации новый уровень можно использовать в getLevelName(), setLevel() и методах логирования с явным указанием уровня. Также позволяет переименовать стандартные уровни.",
+    syntax: "logging.addLevelName(level, levelName)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          "Числовое значение уровня. Принято выбирать между стандартными: DEBUG=10, INFO=20, WARNING=30, ERROR=40, CRITICAL=50.",
+      },
+      {
+        name: "levelName",
+        description:
+          'Строковое имя уровня (например, "VERBOSE", "TRACE", "SUCCESS"). Используется в форматировании как %(levelname)s.',
+      },
+    ],
+    example: `import logging
+
+# Регистрируем пользовательские уровни
+TRACE = 5
+VERBOSE = 15
+SUCCESS = 25
+
+logging.addLevelName(TRACE, 'TRACE')
+logging.addLevelName(VERBOSE, 'VERBOSE')
+logging.addLevelName(SUCCESS, 'SUCCESS')
+
+# Добавляем методы к классу Logger
+def trace(self, msg, *args, **kwargs):
+    if self.isEnabledFor(TRACE):
+        self._log(TRACE, msg, args, **kwargs)
+
+def success(self, msg, *args, **kwargs):
+    if self.isEnabledFor(SUCCESS):
+        self._log(SUCCESS, msg, args, **kwargs)
+
+logging.Logger.trace = trace
+logging.Logger.success = success
+
+logging.basicConfig(level=TRACE, format='%(levelname)-8s: %(message)s')
+logger = logging.getLogger('myapp')
+
+logger.trace('Очень подробная трассировка')
+logger.debug('Отладка')
+logger.verbose = lambda m, *a: logger.log(VERBOSE, m, *a)
+logger.success('Операция выполнена успешно')`,
+  },
+  {
+    name: "logging.Logger.addFilter()",
+    description:
+      "Добавляет фильтр к логгеру. Фильтр проверяется перед передачей записи обработчикам: если хотя бы один фильтр отклоняет запись — она не логируется. Фильтром может быть объект с методом filter(record), экземпляр logging.Filter или callable(record) → bool.",
+    syntax: "logger.addFilter(filter)",
+    arguments: [
+      {
+        name: "filter",
+        description:
+          "Фильтр: объект с методом filter(record) → bool/int, или callable(record) → bool. Возврат False/0 отклоняет запись.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+# Фильтр как класс
+class SensitiveDataFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Блокируем записи содержащие пароли
+        msg = record.getMessage()
+        return 'password' not in msg.lower() and 'secret' not in msg.lower()
+
+# Фильтр как функция
+def production_only(record: logging.LogRecord) -> bool:
+    return record.levelno >= logging.WARNING
+
+logger.addFilter(SensitiveDataFilter())
+
+logger.info('Пользователь вошёл в систему')        # пройдёт
+logger.info('password=12345 в запросе')            # заблокировано фильтром
+logger.warning('Ошибка авторизации для user:42')   # пройдёт`,
+  },
+  {
+    name: "logging.Logger.addHandler()",
+    description:
+      "Добавляет обработчик к логгеру. Один логгер может иметь несколько обработчиков: например, одновременно выводить в консоль и записывать в файл. Один обработчик может быть добавлен к нескольким логгерам.",
+    syntax: "logger.addHandler(hdlr)",
+    arguments: [
+      {
+        name: "hdlr",
+        description:
+          "Объект-обработчик (Handler): StreamHandler, FileHandler, RotatingFileHandler, SMTPHandler и т.д.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+
+# Обработчик для вывода в консоль (INFO и выше)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+# Обработчик для записи в файл (DEBUG и выше)
+file_handler = logging.FileHandler('debug.log')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(
+    logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s')
+)
+
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
+
+logger.debug('Только в файл')    # → debug.log
+logger.info('В консоль и файл') # → консоль + debug.log
+logger.error('Ошибка!')          # → консоль + debug.log`,
+  },
+  {
+    name: "logging.Logger.callHandlers()",
+    description:
+      "Передаёт запись LogRecord всем обработчикам данного логгера и его родителей в иерархии (если propagate=True). Вызывается автоматически методом handle(). Обход вверх по иерархии продолжается до корневого логгера или до первого логгера с propagate=False.",
+    syntax: "logger.callHandlers(record)",
+    arguments: [
+      {
+        name: "record",
+        description: "Объект LogRecord для передачи обработчикам.",
+      },
+    ],
+    example: `import logging
+
+# Демонстрация работы callHandlers через иерархию
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+root_logger.addHandler(logging.StreamHandler())
+
+app_logger = logging.getLogger('myapp')
+app_logger.setLevel(logging.DEBUG)
+
+child_logger = logging.getLogger('myapp.db')
+child_logger.addHandler(logging.StreamHandler())
+# child_logger.propagate = True  (по умолчанию)
+
+# При вызове child_logger.info():
+# 1. child_logger.callHandlers() → обработчик child_logger
+# 2. propagate=True → переходим к app_logger (без обработчиков)
+# 3. propagate=True → переходим к root_logger → обработчик root
+child_logger.info('Это сообщение обработают 2 обработчика')`,
+  },
+  {
+    name: "logging.Logger.critical()",
+    description:
+      "Записывает сообщение с уровнем CRITICAL (50) через данный именованный логгер. В отличие от logging.critical(), использует конкретный логгер, что позволяет применять его настройки уровня, обработчиков и фильтров.",
+    syntax: "logger.critical(msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          "Сообщение с опциональными спецификаторами формата (%s, %d и т.д.).",
+      },
+      {
+        name: "*args",
+        description: "Аргументы для форматирования msg через оператор %.",
+      },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет трассировку текущего исключения.",
+      },
+      {
+        name: "stack_info",
+        description: "Если True — добавляет трассировку текущего стека.",
+      },
+      {
+        name: "extra",
+        description: "Словарь с дополнительными полями для LogRecord.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp.core')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+def check_disk_space(path: str, threshold_gb: float):
+    import shutil
+    total, used, free = shutil.disk_usage(path)
+    free_gb = free / (1024 ** 3)
+    if free_gb < threshold_gb:
+        logger.critical(
+            'Критически мало места на диске %s: %.1f ГБ (порог: %.1f ГБ)',
+            path, free_gb, threshold_gb
+        )
+        return False
+    return True
+
+check_disk_space('/', 1.0)
+# CRITICAL: Критически мало места на диске /: 0.3 ГБ (порог: 1.0 ГБ)`,
+  },
+  {
+    name: "logging.Logger.debug()",
+    description:
+      "Записывает сообщение с уровнем DEBUG (10) через данный именованный логгер. Сообщение выводится только если effectiveLevel логгера ≤ 10. Стандартная практика — использовать именованный логгер модуля вместо корневого для детального управления выводом.",
+    syntax: "logger.debug(msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "msg",
+        description: "Сообщение с опциональными спецификаторами формата.",
+      },
+      { name: "*args", description: "Аргументы для форматирования msg." },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет трассировку текущего исключения.",
+      },
+      { name: "extra", description: "Дополнительные поля для LogRecord." },
+    ],
+    example: `import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+def parse_config(data: dict) -> dict:
+    logger.debug('Разбираем конфиг: %d ключей', len(data))
+    result = {}
+    for key, value in data.items():
+        logger.debug('  %s = %r', key, value)
+        result[key] = str(value).strip()
+    logger.debug('Конфиг готов: %r', result)
+    return result
+
+config = parse_config({'host': 'localhost', 'port': '5432', 'db': 'mydb'})
+# DEBUG: Разбираем конфиг: 3 ключей
+# DEBUG:   host = 'localhost'
+# ...`,
+  },
+  {
+    name: "logging.Logger.error()",
+    description:
+      "Записывает сообщение с уровнем ERROR (40) через данный именованный логгер. Используется для ошибок, нарушающих выполнение конкретной операции. Именованный логгер позволяет точечно настроить уровень и обработчики для конкретного компонента.",
+    syntax: "logger.error(msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "msg",
+        description: "Сообщение с опциональными спецификаторами формата.",
+      },
+      { name: "*args", description: "Аргументы для форматирования msg." },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет трассировку текущего исключения.",
+      },
+      { name: "extra", description: "Дополнительные поля для LogRecord." },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp.api')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+def call_external_api(endpoint: str, payload: dict):
+    import random
+    try:
+        # имитация HTTP запроса
+        if random.random() < 0.5:
+            raise TimeoutError(f'Таймаут запроса к {endpoint}')
+        return {'status': 'ok'}
+    except TimeoutError as e:
+        logger.error('API недоступен: %s (endpoint=%s)', e, endpoint)
+        return None
+
+result = call_external_api('/api/v1/users', {'id': 42})
+# ERROR: API недоступен: Таймаут запроса к /api/v1/users (endpoint=/api/v1/users)`,
+  },
+  {
+    name: "logging.Logger.exception()",
+    description:
+      "Записывает сообщение с уровнем ERROR и автоматически добавляет полную трассировку текущего исключения. Должна вызываться в блоке except. Является сокращением для logger.error(msg, exc_info=True) с именованным логгером.",
+    syntax: "logger.exception(msg, *args, exc_info=True, **kwargs)",
+    arguments: [
+      { name: "msg", description: "Описание контекста ошибки." },
+      { name: "*args", description: "Аргументы для форматирования msg." },
+      {
+        name: "exc_info",
+        description:
+          "По умолчанию True. Включает трассировку текущего исключения.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp.db')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+def execute_query(sql: str, params: tuple = ()):
+    try:
+        # имитация ошибки БД
+        raise RuntimeError('Соединение с БД потеряно')
+    except Exception:
+        logger.exception('Ошибка при выполнении запроса: %s', sql)
+        return None
+
+def get_user(user_id: int):
+    result = execute_query('SELECT * FROM users WHERE id = %s', (user_id,))
+    if result is None:
+        logger.error('Не удалось получить пользователя %d', user_id)
+    return result
+
+get_user(42)
+# ERROR: Ошибка при выполнении запроса: SELECT * FROM users WHERE id = %s
+# Traceback (most recent call last): ...`,
+  },
+  {
+    name: "logging.Logger.fatal()",
+    description:
+      "Псевдоним для logger.critical(). Записывает сообщение с уровнем CRITICAL через данный логгер. Существует для совместимости. В новом коде рекомендуется использовать logger.critical().",
+    syntax: "logger.fatal(msg, *args, **kwargs)",
+    arguments: [
+      { name: "msg", description: "Сообщение для логирования." },
+      { name: "*args", description: "Аргументы для форматирования msg." },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет трассировку текущего исключения.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+# fatal() и critical() эквивалентны
+logger.fatal('Неустранимая ошибка: %s', 'отказ диска')
+logger.critical('Неустранимая ошибка: %s', 'отказ диска')
+
+# Оба выводят: CRITICAL: Неустранимая ошибка: отказ диска
+print(logger.fatal is logger.critical)  # True`,
+  },
+  {
+    name: "logging.Logger.filter()",
+    description:
+      "Применяет все фильтры, добавленные к данному логгеру, к объекту LogRecord. Возвращает True если запись прошла все фильтры, False если хотя бы один фильтр её отклонил. Вызывается автоматически в методе handle() перед передачей записи обработчикам.",
+    syntax: "logger.filter(record)",
+    arguments: [
+      {
+        name: "record",
+        description: "Объект LogRecord для проверки фильтрами.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+
+# Добавляем фильтр
+class LevelRangeFilter(logging.Filter):
+    def __init__(self, min_level: int, max_level: int):
+        super().__init__()
+        self.min_level = min_level
+        self.max_level = max_level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return self.min_level <= record.levelno <= self.max_level
+
+logger.addFilter(LevelRangeFilter(logging.INFO, logging.WARNING))
+
+# Тест фильтров вручную
+test_record = logging.LogRecord(
+    name='test', level=logging.INFO,
+    pathname='', lineno=0, msg='тест', args=(), exc_info=None
+)
+print(logger.filter(test_record))  # True
+
+test_record.levelno = logging.ERROR
+print(logger.filter(test_record))  # False — выше max_level`,
+  },
+  {
+    name: "logging.Logger.findCaller()",
+    description:
+      "Определяет имя файла, номер строки и имя функции, из которой был сделан вызов метода логирования. Используется внутри библиотеки для заполнения полей pathname, lineno и funcName в LogRecord. Параметр stacklevel позволяет подняться на нужный уровень в стеке вызовов.",
+    syntax: "logger.findCaller(stack_info=False, stacklevel=1)",
+    arguments: [
+      {
+        name: "stack_info",
+        description:
+          "Если True — дополнительно возвращает текстовое представление текущего стека вызовов.",
+      },
+      {
+        name: "stacklevel",
+        description:
+          "Число уровней стека для подъёма. 1 — непосредственный вызывающий, 2 — его вызывающий и т.д. Используется в обёртках над методами логирования.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+# Внутреннее использование — findCaller вызывается автоматически
+# Но можно вызвать напрямую для диагностики
+filename, lineno, funcname, sinfo = logger.findCaller(stack_info=False)
+print(f'Файл: {filename}, строка: {lineno}, функция: {funcname}')
+
+# Практический случай: обёртка с корректным указанием источника
+def log_with_context(msg: str, level: int = logging.INFO):
+    """Обёртка, сообщающая logger-у подняться на 1 уровень вверх"""
+    logger.log(level, msg, stacklevel=2)  # stacklevel=2 → вызывающий
+
+log_with_context('Из вызывающего кода')  # покажет эту строку, не обёртку`,
+  },
+  {
+    name: "logging.Logger.getChild()",
+    description:
+      'Возвращает дочерний логгер с именем, расширенным через точку. Удобен для создания иерархии логгеров без явного указания полного имени. Эквивалентен logging.getLogger(logger.name + "." + suffix).',
+    syntax: "logger.getChild(suffix)",
+    arguments: [
+      {
+        name: "suffix",
+        description:
+          "Суффикс для имени дочернего логгера. Может содержать точки для создания вложенной иерархии.",
+      },
+    ],
+    example: `import logging
+
+# Базовый логгер приложения
+app = logging.getLogger('myapp')
+app.setLevel(logging.DEBUG)
+app.addHandler(logging.StreamHandler())
+
+# Дочерние логгеры через getChild
+db = app.getChild('db')           # 'myapp.db'
+api = app.getChild('api')         # 'myapp.api'
+auth = api.getChild('auth')       # 'myapp.api.auth'
+
+print(db.name)    # myapp.db
+print(api.name)   # myapp.api
+print(auth.name)  # myapp.api.auth
+
+# Эквивалентные записи:
+db2 = logging.getLogger('myapp.db')
+print(db is db2)  # True — один и тот же объект
+
+# Иерархия наследования уровней
+db.info('Запрос к БД')    # использует уровень myapp (DEBUG)
+auth.warning('Подозрительный вход')  # → myapp.api → myapp`,
+  },
+  {
+    name: "logging.Logger.getEffectiveLevel()",
+    description:
+      "Возвращает эффективный уровень логгера. Если уровень установлен явно — возвращает его. Иначе поднимается по иерархии родителей до первого логгера с явно установленным уровнем. Если ни один родитель не имеет уровня — возвращает уровень корневого логгера (WARNING по умолчанию).",
+    syntax: "logger.getEffectiveLevel()",
+    arguments: [],
+    example: `import logging
+
+root = logging.getLogger()
+root.setLevel(logging.WARNING)
+
+app = logging.getLogger('myapp')
+# app.level == NOTSET (0) — не установлен явно
+
+db = logging.getLogger('myapp.db')
+db.setLevel(logging.DEBUG)
+
+cache = logging.getLogger('myapp.cache')
+# cache.level == NOTSET
+
+print(app.level)                  # 0 (NOTSET)
+print(app.getEffectiveLevel())    # 30 (WARNING) — от root
+
+print(db.level)                   # 10 (DEBUG)
+print(db.getEffectiveLevel())     # 10 (DEBUG) — собственный
+
+print(cache.level)                # 0 (NOTSET)
+print(cache.getEffectiveLevel())  # 30 (WARNING) — от root (пропускает app)`,
+  },
+  {
+    name: "logging.Logger.handle()",
+    description:
+      "Передаёт запись LogRecord в систему обработки: сначала применяет фильтры логгера, затем вызывает callHandlers(). Является точкой входа для обработки записи. Вызывается автоматически из методов debug(), info() и т.д., но можно вызвать вручную для повторной обработки записи.",
+    syntax: "logger.handle(record)",
+    arguments: [
+      {
+        name: "record",
+        description:
+          "Объект LogRecord для обработки. Если не прошёл фильтры — игнорируется.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+# Создаём запись вручную и передаём в handle()
+record = logging.LogRecord(
+    name='myapp',
+    level=logging.WARNING,
+    pathname=__file__,
+    lineno=42,
+    msg='Ручная запись: %s',
+    args=('тест',),
+    exc_info=None,
+)
+logger.handle(record)
+# WARNING: Ручная запись: тест
+
+# Практический случай: повторная обработка сохранённой записи
+saved_record = None
+
+class CapturingHandler(logging.Handler):
+    def emit(self, record):
+        global saved_record
+        saved_record = record
+
+logger.addHandler(CapturingHandler())
+logger.info('Сохраняем запись')
+logger.handle(saved_record)  # повторная обработка`,
+  },
+  {
+    name: "logging.Logger.hasHandlers()",
+    description:
+      "Возвращает True если данный логгер или любой из его родителей в иерархии имеет хотя бы один обработчик. Используется для проверки наличия настроенных обработчиков перед выполнением дорогостоящих операций подготовки сообщения.",
+    syntax: "logger.hasHandlers()",
+    arguments: [],
+    example: `import logging
+
+root = logging.getLogger()
+app = logging.getLogger('myapp')
+db = logging.getLogger('myapp.db')
+
+# До добавления обработчиков
+print(root.hasHandlers())  # False
+print(app.hasHandlers())   # False
+print(db.hasHandlers())    # False
+
+# Добавляем обработчик только к root
+root.addHandler(logging.StreamHandler())
+
+# Все дочерние видят обработчик через propagate
+print(root.hasHandlers())  # True
+print(app.hasHandlers())   # True  — через parent (root)
+print(db.hasHandlers())    # True  — через parent chain
+
+# Практическое использование
+def expensive_log(logger: logging.Logger, level: int, data):
+    if logger.hasHandlers() and logger.isEnabledFor(level):
+        msg = str(data)  # дорогое преобразование
+        logger.log(level, msg)`,
+  },
+  {
+    name: "logging.Logger.info()",
+    description:
+      "Записывает сообщение с уровнем INFO (20) через данный именованный логгер. Используется для ключевых событий нормальной работы приложения. Именованный логгер позволяет раздельно управлять уровнем вывода для разных компонентов системы.",
+    syntax: "logger.info(msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          "Информационное сообщение с опциональными спецификаторами формата.",
+      },
+      { name: "*args", description: "Аргументы для форматирования msg." },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет трассировку текущего исключения.",
+      },
+      { name: "extra", description: "Дополнительные поля для LogRecord." },
+    ],
+    example: `import logging
+import time
+
+logger = logging.getLogger('myapp.worker')
+logger.setLevel(logging.INFO)
+logger.addHandler(logging.StreamHandler())
+
+def process_batch(items: list) -> int:
+    logger.info('Начало обработки батча: %d элементов', len(items))
+    start = time.monotonic()
+    processed = 0
+    for item in items:
+        processed += 1
+    elapsed = time.monotonic() - start
+    logger.info(
+        'Батч обработан: %d/%d элементов за %.2f сек',
+        processed, len(items), elapsed
+    )
+    return processed
+
+process_batch(list(range(1000)))
+# INFO: Начало обработки батча: 1000 элементов
+# INFO: Батч обработан: 1000/1000 элементов за 0.00 сек`,
+  },
+  {
+    name: "logging.Logger.isEnabledFor()",
+    description:
+      "Возвращает True если сообщение с указанным уровнем будет обработано данным логгером с учётом его эффективного уровня. Позволяет избежать дорогостоящего формирования сообщения, когда оно всё равно будет отброшено из-за уровня логгера.",
+    syntax: "logger.isEnabledFor(level)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          "Числовой уровень логирования для проверки (например, logging.DEBUG, logging.INFO).",
+      },
+    ],
+    example: `import logging
+import json
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.INFO)
+logger.addHandler(logging.StreamHandler())
+
+def process_data(data: dict):
+    # Дорогое форматирование только если DEBUG активен
+    if logger.isEnabledFor(logging.DEBUG):
+        formatted = json.dumps(data, indent=2, ensure_ascii=False)
+        logger.debug('Данные для обработки:\\n%s', formatted)
+
+    logger.info('Обработка %d записей', len(data))
+
+print(logger.isEnabledFor(logging.DEBUG))    # False (level=INFO)
+print(logger.isEnabledFor(logging.INFO))     # True
+print(logger.isEnabledFor(logging.WARNING))  # True
+
+process_data({'user': 'Иван', 'age': 30})`,
+  },
+  {
+    name: "logging.Logger.log()",
+    description:
+      "Записывает сообщение с произвольным числовым уровнем через данный именованный логгер. Позволяет использовать уровень, определяемый динамически — например из конфигурации или пользовательского параметра.",
+    syntax: "logger.log(level, msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          "Числовой уровень логирования. Можно использовать константы logging.DEBUG/INFO/WARNING/ERROR/CRITICAL или произвольное целое число.",
+      },
+      {
+        name: "msg",
+        description: "Сообщение с опциональными спецификаторами формата.",
+      },
+      { name: "*args", description: "Аргументы для форматирования msg." },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет трассировку текущего исключения.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+# Динамический уровень из конфигурации
+def notify(message: str, severity: str = 'INFO'):
+    level = logging.getLevelName(severity.upper())
+    if not isinstance(level, int):
+        level = logging.INFO
+    logger.log(level, '[%s] %s', severity, message)
+
+notify('Сервер запущен', 'INFO')
+notify('Место на диске заканчивается', 'WARNING')
+notify('База данных недоступна', 'ERROR')
+
+# Пользовательский уровень
+AUDIT = 35
+logging.addLevelName(AUDIT, 'AUDIT')
+logger.log(AUDIT, 'Пользователь %s удалил запись #%d', 'admin', 42)`,
+  },
+  {
+    name: "logging.Logger.makeRecord()",
+    description:
+      "Создаёт объект LogRecord с заданными параметрами. Вызывается внутри методов debug(), info() и т.д. Можно переопределить в подклассе Logger для создания LogRecord с дополнительными атрибутами без замены глобальной фабрики.",
+    syntax:
+      "logger.makeRecord(name, level, fn, lno, msg, args, exc_info, func=None, extra=None, sinfo=None)",
+    arguments: [
+      { name: "name", description: "Имя логгера." },
+      { name: "level", description: "Числовой уровень сообщения." },
+      { name: "fn", description: "Полный путь к файлу исходного кода." },
+      { name: "lno", description: "Номер строки в файле исходного кода." },
+      { name: "msg", description: "Шаблон сообщения." },
+      { name: "args", description: "Аргументы для форматирования шаблона." },
+      {
+        name: "exc_info",
+        description: "Кортеж (type, value, traceback) или None.",
+      },
+      { name: "func", description: "Имя вызвавшей функции." },
+      {
+        name: "extra",
+        description: "Словарь с дополнительными полями для LogRecord.",
+      },
+      { name: "sinfo", description: "Строка со стеком вызовов или None." },
+    ],
+    example: `import logging
+
+# Подкласс с переопределением makeRecord для добавления полей
+class ContextLogger(logging.Logger):
+    _context: dict = {}
+
+    @classmethod
+    def set_context(cls, **kwargs):
+        cls._context.update(kwargs)
+
+    def makeRecord(self, name, level, fn, lno, msg, args, exc_info,
+                   func=None, extra=None, sinfo=None):
+        record = super().makeRecord(
+            name, level, fn, lno, msg, args, exc_info, func, extra, sinfo
+        )
+        for key, value in self._context.items():
+            setattr(record, key, value)
+        return record
+
+logging.setLoggerClass(ContextLogger)
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+ContextLogger.set_context(request_id='req-42', user_id='user-7')
+logger.info('Запрос обработан')`,
+  },
+  {
+    name: "logging.Logger.removeFilter()",
+    description:
+      "Удаляет ранее добавленный фильтр из логгера. После удаления записи, которые отклонялись этим фильтром, снова начинают обрабатываться. Если фильтр не найден — ничего не происходит.",
+    syntax: "logger.removeFilter(filter)",
+    arguments: [
+      {
+        name: "filter",
+        description:
+          "Объект фильтра, ранее добавленный через addFilter(). Должен быть тем же объектом (сравнение по идентичности).",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+class DebugOnlyFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno == logging.DEBUG
+
+f = DebugOnlyFilter()
+logger.addFilter(f)
+
+logger.debug('Только DEBUG — пройдёт')    # выводится
+logger.info('INFO — заблокировано')       # заблокировано
+
+# Удаляем фильтр
+logger.removeFilter(f)
+
+logger.debug('DEBUG без фильтра')         # выводится
+logger.info('INFO без фильтра — пройдёт') # выводится`,
+  },
+  {
+    name: "logging.Logger.removeHandler()",
+    description:
+      "Удаляет обработчик из логгера. После удаления записи больше не будут передаваться этому обработчику. Обработчик не закрывается автоматически — при необходимости вызовите handler.close() вручную для освобождения ресурсов.",
+    syntax: "logger.removeHandler(hdlr)",
+    arguments: [
+      {
+        name: "hdlr",
+        description:
+          "Объект обработчика, ранее добавленный через addHandler(). Если обработчик не найден — ничего не происходит.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+
+console = logging.StreamHandler()
+file_h = logging.FileHandler('app.log')
+
+logger.addHandler(console)
+logger.addHandler(file_h)
+
+logger.info('В консоль и файл')  # оба обработчика
+
+# Удаляем файловый обработчик
+logger.removeHandler(file_h)
+file_h.close()  # закрываем файл явно
+
+logger.info('Только в консоль')  # только StreamHandler
+
+print(len(logger.handlers))  # 1`,
+  },
+  {
+    name: "logging.Logger.setLevel()",
+    description:
+      "Устанавливает пороговый уровень логгера. Сообщения ниже этого уровня игнорируются без передачи обработчикам. Принимает числовое значение или строковое имя уровня. logging.NOTSET (0) означает использование уровня родительского логгера.",
+    syntax: "logger.setLevel(level)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          'Числовое значение (logging.DEBUG=10, INFO=20, WARNING=30, ERROR=40, CRITICAL=50) или строка ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"). logging.NOTSET (0) сбрасывает до наследования от родителя.',
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.addHandler(logging.StreamHandler())
+
+# Строковое имя уровня
+logger.setLevel('DEBUG')
+logger.debug('Отладка видна')     # выводится
+logger.info('Информация видна')   # выводится
+
+# Числовое значение
+logger.setLevel(logging.WARNING)
+logger.debug('Отладка скрыта')    # игнорируется
+logger.info('Информация скрыта')  # игнорируется
+logger.warning('Предупреждение')  # выводится
+
+# Динамическое изменение из конфигурации
+import os
+level_name = os.environ.get('LOG_LEVEL', 'INFO')
+logger.setLevel(level_name)
+print(f'Уровень: {logging.getLevelName(logger.level)}')`,
+  },
+  {
+    name: "logging.Logger.warning()",
+    description:
+      "Записывает сообщение с уровнем WARNING (30) через данный именованный логгер. Используется для предупреждений о потенциальных проблемах, которые не нарушают текущую работу. WARNING является уровнем по умолчанию при базовой настройке логирования.",
+    syntax: "logger.warning(msg, *args, **kwargs)",
+    arguments: [
+      {
+        name: "msg",
+        description:
+          "Сообщение-предупреждение с опциональными спецификаторами формата.",
+      },
+      { name: "*args", description: "Аргументы для форматирования msg." },
+      {
+        name: "exc_info",
+        description: "Если True — добавляет трассировку текущего исключения.",
+      },
+      { name: "extra", description: "Дополнительные поля для LogRecord." },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp.cache')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+class Cache:
+    def __init__(self, max_size: int):
+        self.max_size = max_size
+        self.data: dict = {}
+
+    def set(self, key: str, value):
+        if len(self.data) >= self.max_size * 0.9:
+            logger.warning(
+                'Кэш заполнен на %.0f%% (%d/%d записей)',
+                len(self.data) / self.max_size * 100,
+                len(self.data), self.max_size
+            )
+        self.data[key] = value
+
+cache = Cache(max_size=100)
+for i in range(92):
+    cache.set(f'key_{i}', i)
+# WARNING: Кэш заполнен на 90% (90/100 записей)`,
+  },
+  {
+    name: "logging.Logger.warn()",
+    description:
+      "Устаревший псевдоним для logger.warning(). Функционально идентичен, но помечен как deprecated начиная с Python 3.2. В новом коде следует использовать logger.warning().",
+    syntax: "logger.warn(msg, *args, **kwargs)",
+    arguments: [
+      { name: "msg", description: "Сообщение для логирования." },
+      { name: "*args", description: "Аргументы для форматирования msg." },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+# Устаревший вариант — не использовать в новом коде
+logger.warn('Устаревший вызов warn()')
+
+# Современный эквивалент
+logger.warning('Используйте warning() вместо warn()')
+
+# Оба выводят WARNING — функционально идентичны
+print(logger.warn is logger.warning)  # True`,
+  },
+  {
+    name: "logging.Logger.name",
+    description:
+      'Атрибут, содержащий имя логгера, указанное при его создании через logging.getLogger(name). Имена образуют иерархию через точку: "myapp.db" является дочерним для "myapp". Корневой логгер имеет имя "root".',
+    syntax: "logger.name",
+    arguments: [],
+    example: `import logging
+
+root = logging.getLogger()
+print(root.name)              # root
+
+app = logging.getLogger('myapp')
+print(app.name)               # myapp
+
+db = logging.getLogger('myapp.db')
+print(db.name)                # myapp.db
+
+# Стандартная практика — использовать __name__
+logger = logging.getLogger(__name__)
+print(logger.name)            # имя текущего модуля (например, '__main__')
+
+# Имя можно использовать в форматировании
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('%(name)s: %(message)s'))
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.info('Сообщение')      # __main__: Сообщение`,
+  },
+  {
+    name: "logging.Logger.level",
+    description:
+      "Атрибут, хранящий числовой пороговый уровень логгера, установленный через setLevel(). Значение 0 (logging.NOTSET) означает, что уровень не задан явно и наследуется от родителя. Для получения фактического активного уровня следует использовать getEffectiveLevel().",
+    syntax: "logger.level",
+    arguments: [],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+
+# По умолчанию NOTSET (0) — уровень не установлен
+print(logger.level)               # 0
+print(logger.getEffectiveLevel()) # 30 (WARNING от root)
+
+logger.setLevel(logging.DEBUG)
+print(logger.level)               # 10
+print(logging.getLevelName(logger.level))  # DEBUG
+
+logger.setLevel('INFO')
+print(logger.level)               # 20
+
+# Сброс до наследования от родителя
+logger.setLevel(logging.NOTSET)
+print(logger.level)               # 0`,
+  },
+  {
+    name: "logging.Logger.parent",
+    description:
+      'Атрибут, ссылающийся на родительский логгер в иерархии. Для логгера "myapp.db" родителем является "myapp", для "myapp" — корневой логгер (root). Используется при обходе иерархии в callHandlers() и getEffectiveLevel(). Устанавливается автоматически.',
+    syntax: "logger.parent",
+    arguments: [],
+    example: `import logging
+
+root = logging.getLogger()
+app = logging.getLogger('myapp')
+db = logging.getLogger('myapp.db')
+
+print(db.parent)       # <Logger myapp (WARNING)>
+print(db.parent.name)  # myapp
+
+print(app.parent)      # <RootLogger root (WARNING)>
+print(app.parent.name) # root
+
+print(root.parent)     # None — корневой не имеет родителя
+
+# Иерархия определяет путь распространения записей
+# db → app → root (при propagate=True на каждом уровне)`,
+  },
+  {
+    name: "logging.Logger.propagate",
+    description:
+      "Булев атрибут, определяющий, передаются ли записи из данного логгера в обработчики родительских логгеров. По умолчанию True. Установка в False предотвращает дублирование сообщений когда и дочерний, и родительский логгеры имеют обработчики.",
+    syntax: "logger.propagate",
+    arguments: [],
+    example: `import logging
+
+logging.basicConfig(level=logging.DEBUG, format='ROOT: %(message)s')
+
+app = logging.getLogger('myapp')
+app.setLevel(logging.DEBUG)
+
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('APP: %(message)s'))
+app.addHandler(handler)
+
+# propagate=True (по умолчанию) — сообщение идёт и в app, и в root
+app.info('Дублируется')
+# APP: Дублируется
+# ROOT: Дублируется  ← дублирование!
+
+# Отключаем дублирование
+app.propagate = False
+app.info('Только в app')
+# APP: Только в app  ← без дублирования`,
+  },
+  {
+    name: "logging.Logger.handlers",
+    description:
+      "Список обработчиков (Handler), прикреплённых непосредственно к данному логгеру. Можно читать для проверки текущих обработчиков. Изменять напрямую не рекомендуется — используйте addHandler() и removeHandler().",
+    syntax: "logger.handlers",
+    arguments: [],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+print(logger.handlers)   # [] — пусто по умолчанию
+
+console = logging.StreamHandler()
+file_h = logging.FileHandler('app.log')
+logger.addHandler(console)
+logger.addHandler(file_h)
+
+print(len(logger.handlers))    # 2
+print(logger.handlers[0])      # <StreamHandler ...>
+
+# Проверка типов обработчиков
+for h in logger.handlers:
+    print(type(h).__name__, h.level)
+
+# Очистка всех обработчиков
+for h in logger.handlers[:]:   # копия списка для безопасного удаления
+    logger.removeHandler(h)
+    h.close()
+print(logger.handlers)         # []`,
+  },
+  {
+    name: "logging.Logger.disabled",
+    description:
+      "Булев атрибут, полностью отключающий логгер при значении True. Когда disabled=True, логгер игнорирует все входящие сообщения независимо от их уровня. Обычно не устанавливается вручную — управляется через logging.disable().",
+    syntax: "logger.disabled",
+    arguments: [],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+logger.info('Нормальная работа')   # выводится
+print(logger.disabled)             # False
+
+# Отключаем логгер напрямую
+logger.disabled = True
+logger.info('Это НЕ выведется')    # игнорируется
+logger.critical('И это тоже')      # игнорируется
+
+# Включаем обратно
+logger.disabled = False
+logger.info('Снова работает')      # выводится
+
+# Примечание: logging.disable(level) устанавливает глобальный
+# порог для всех логгеров, а не использует атрибут disabled`,
+  },
+  {
+    name: "logging.Logger.filters",
+    description:
+      "Список фильтров, прикреплённых непосредственно к данному логгеру. Каждая запись проверяется всеми фильтрами перед обработкой. Изменять напрямую не рекомендуется — используйте addFilter() и removeFilter().",
+    syntax: "logger.filters",
+    arguments: [],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+print(logger.filters)   # [] — пусто по умолчанию
+
+class ModuleFilter(logging.Filter):
+    def __init__(self, module: str):
+        super().__init__()
+        self.module = module
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.name.startswith(self.module)
+
+f1 = ModuleFilter('myapp')
+f2 = lambda r: r.levelno >= logging.WARNING
+
+logger.addFilter(f1)
+logger.addFilter(f2)
+
+print(len(logger.filters))   # 2
+
+# Проверка текущих фильтров
+for f in logger.filters:
+    print(f)
+
+# Удаление всех фильтров
+logger.filters.clear()       # или через removeFilter() для каждого`,
+  },
+  {
+    name: "logging.Handler",
+    description:
+      "Базовый класс для всех обработчиков логирования. Определяет общий интерфейс: emit() для записи, setLevel() для порогового уровня, setFormatter() для формата, addFilter()/removeFilter() для фильтрации. Не используется напрямую — создаются подклассы: StreamHandler, FileHandler, RotatingFileHandler и др.",
+    syntax: "logging.Handler(level=logging.NOTSET)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          "Пороговый уровень обработчика. Записи ниже этого уровня не передаются в emit(). По умолчанию NOTSET (0) — обрабатываются все записи.",
+      },
+    ],
+    example: `import logging
+
+# Создание подкласса Handler
+class ListHandler(logging.Handler):
+    """Обработчик, сохраняющий записи в список (полезно для тестов)"""
+    def __init__(self, level=logging.NOTSET):
+        super().__init__(level)
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord):
+        self.records.append(record)
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+
+handler = ListHandler(level=logging.WARNING)
+logger.addHandler(handler)
+
+logger.debug('Ниже порога — не попадёт')
+logger.warning('Предупреждение')
+logger.error('Ошибка')
+
+print(len(handler.records))              # 2
+print(handler.records[0].getMessage())  # Предупреждение`,
+  },
+  {
+    name: "logging.Handler.acquire()",
+    description:
+      "Захватывает внутреннюю блокировку (threading.RLock) обработчика. Используется для потокобезопасного доступа к ресурсам обработчика. Вызывается автоматически в методе handle() перед вызовом emit(). Всегда используется в паре с release().",
+    syntax: "handler.acquire()",
+    arguments: [],
+    example: `import logging
+import threading
+
+class SafeCountingHandler(logging.Handler):
+    """Потокобезопасный обработчик со счётчиком"""
+    def __init__(self):
+        super().__init__()
+        self.count = 0
+
+    def emit(self, record: logging.LogRecord):
+        # acquire/release вызываются автоматически через handle()
+        # Здесь блокировка уже захвачена
+        self.count += 1
+        print(f'[{self.count}] {self.format(record)}')
+
+    def get_count_safe(self) -> int:
+        """Безопасное чтение счётчика из другого потока"""
+        self.acquire()  # захватываем блокировку вручную
+        try:
+            return self.count
+        finally:
+            self.release()  # всегда освобождаем
+
+handler = SafeCountingHandler()
+logger = logging.getLogger('demo')
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.info('Первое сообщение')
+logger.warning('Второе')
+print(handler.get_count_safe())  # 2`,
+  },
+  {
+    name: "logging.Handler.addFilter()",
+    description:
+      "Добавляет фильтр к обработчику. Фильтры обработчика проверяются в методе handle() — если запись не прошла фильтр, emit() не вызывается. Позволяет выборочно направлять только часть записей в данный обработчик.",
+    syntax: "handler.addFilter(filter)",
+    arguments: [
+      {
+        name: "filter",
+        description:
+          "Объект с методом filter(record) → bool, экземпляр logging.Filter, или callable(record) → bool.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+
+# Обработчик для консоли — только WARNING и выше
+console = logging.StreamHandler()
+console.setLevel(logging.DEBUG)
+console.setFormatter(logging.Formatter('CONSOLE %(levelname)s: %(message)s'))
+
+# Фильтр: только WARNING+ в консоль
+console.addFilter(lambda r: r.levelno >= logging.WARNING)
+
+# Обработчик для файла — все уровни
+file_h = logging.FileHandler('all.log')
+file_h.setFormatter(logging.Formatter('FILE %(levelname)s: %(message)s'))
+
+logger.addHandler(console)
+logger.addHandler(file_h)
+
+logger.debug('debug')    # → только файл
+logger.info('info')      # → только файл
+logger.warning('warn')   # → консоль + файл
+logger.error('error')    # → консоль + файл`,
+  },
+  {
+    name: "logging.Handler.close()",
+    description:
+      "Освобождает ресурсы обработчика и удаляет его из внутреннего реестра обработчиков. Для обработчиков с файлами, сокетами или другими внешними ресурсами — закрывает их. Вызывается автоматически при logging.shutdown(), но рекомендуется вызывать явно после removeHandler().",
+    syntax: "handler.close()",
+    arguments: [],
+    example: `import logging
+import os
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.INFO)
+
+file_handler = logging.FileHandler('temp.log')
+logger.addHandler(file_handler)
+
+logger.info('Запись в файл')
+
+# Корректное завершение работы с обработчиком
+logger.removeHandler(file_handler)
+file_handler.close()   # закрываем файл и освобождаем ресурсы
+
+# После close() файл освобождён
+os.remove('temp.log')  # можно удалить
+
+# Автоматическое закрытие через контекстный менеджер (Python 3.12+)
+# или вручную в блоке try/finally
+try:
+    h = logging.FileHandler('app.log')
+    logger.addHandler(h)
+    logger.info('Сообщение')
+finally:
+    logger.removeHandler(h)
+    h.close()`,
+  },
+  {
+    name: "logging.Handler.createLock()",
+    description:
+      "Создаёт внутреннюю блокировку threading.RLock, используемую для потокобезопасного доступа в методах acquire() и release(). Вызывается автоматически в конструкторе Handler.__init__(). Переопределяется в подклассах, не нуждающихся в блокировке (например, QueueHandler).",
+    syntax: "handler.createLock()",
+    arguments: [],
+    example: `import logging
+import threading
+
+class NoLockHandler(logging.Handler):
+    """Обработчик без блокировки для однопоточных приложений"""
+    def createLock(self):
+        # Не создаём блокировку — экономим ресурсы
+        self.lock = None
+
+    def acquire(self):
+        pass  # нет блокировки — ничего не делаем
+
+    def release(self):
+        pass
+
+    def emit(self, record: logging.LogRecord):
+        print(self.format(record))
+
+# Стандартный обработчик создаёт RLock в __init__
+h = logging.StreamHandler()
+print(type(h.lock))  # <class '_thread.RLock'>
+
+# Обработчик без блокировки
+no_lock_h = NoLockHandler()
+print(no_lock_h.lock)  # None`,
+  },
+  {
+    name: "logging.Handler.emit()",
+    description:
+      "Абстрактный метод, выполняющий фактическую запись/отправку записи LogRecord. Должен быть переопределён в каждом подклассе Handler. Вызывается из handle() после проверки уровня и фильтров. В реализации следует вызывать handleError() при возникновении исключений.",
+    syntax: "handler.emit(record)",
+    arguments: [
+      {
+        name: "record",
+        description: "Объект LogRecord, прошедший проверку уровня и фильтров.",
+      },
+    ],
+    example: `import logging
+import json
+from datetime import datetime
+
+class JsonHandler(logging.Handler):
+    """Обработчик, записывающий логи в JSON-формате"""
+    def __init__(self, filename: str, level=logging.NOTSET):
+        super().__init__(level)
+        self.filename = filename
+
+    def emit(self, record: logging.LogRecord):
+        try:
+            entry = {
+                'timestamp': datetime.utcnow().isoformat(),
+                'level': record.levelname,
+                'logger': record.name,
+                'message': self.format(record),
+                'module': record.module,
+                'line': record.lineno,
+            }
+            with open(self.filename, 'a') as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + '\\n')
+        except Exception:
+            self.handleError(record)  # стандартная обработка ошибок
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(JsonHandler('logs.jsonl'))
+logger.info('Пользователь вошёл в систему')`,
+  },
+  {
+    name: "logging.Handler.filter()",
+    description:
+      "Применяет все фильтры обработчика к записи LogRecord. Возвращает True если запись прошла все фильтры, False если хотя бы один фильтр отклонил запись. Вызывается автоматически в handle() перед вызовом emit().",
+    syntax: "handler.filter(record)",
+    arguments: [
+      {
+        name: "record",
+        description: "Объект LogRecord для проверки фильтрами обработчика.",
+      },
+    ],
+    example: `import logging
+
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+
+# Добавляем два фильтра
+handler.addFilter(lambda r: r.levelno != logging.DEBUG)       # не DEBUG
+handler.addFilter(lambda r: 'password' not in r.getMessage()) # без паролей
+
+# Ручная проверка фильтров
+def make_record(level, msg):
+    return logging.LogRecord(
+        'test', level, '', 0, msg, (), None
+    )
+
+print(handler.filter(make_record(logging.INFO, 'ok')))         # True
+print(handler.filter(make_record(logging.DEBUG, 'отладка')))   # False (DEBUG)
+print(handler.filter(make_record(logging.INFO, 'password=x'))) # False (пароль)
+
+# В реальной работе filter() вызывается автоматически из handle()`,
+  },
+  {
+    name: "logging.Handler.flush()",
+    description:
+      "Сбрасывает буфер обработчика, гарантируя запись всех накопленных данных. В базовом StreamHandler делегирует вызов stream.flush(). Для буферизованных обработчиков (MemoryHandler) сбрасывает накопленные записи в целевой обработчик. Вызывается при shutdown().",
+    syntax: "handler.flush()",
+    arguments: [],
+    example: `import logging
+import sys
+
+# StreamHandler оборачивает sys.stderr (или stdout)
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+
+logger.info('Первое сообщение')
+
+# Явный сброс буфера — гарантирует запись в stdout
+handler.flush()
+
+# Практически важно при перенаправлении вывода в файл:
+# python script.py > output.txt
+# Без flush() часть данных может остаться в буфере
+
+# MemoryHandler буферизует записи и сбрасывает пакетами
+memory_h = logging.handlers.MemoryHandler(capacity=10, target=handler)
+# memory_h.flush() — сбрасывает все накопленные записи в target`,
+  },
+  {
+    name: "logging.Handler.format()",
+    description:
+      "Форматирует объект LogRecord в строку с помощью прикреплённого Formatter. Если Formatter не задан — использует последний форматтер по умолчанию (logging.BASIC_FORMAT). Вызывается из emit() для получения финальной строки сообщения.",
+    syntax: "handler.format(record)",
+    arguments: [
+      {
+        name: "record",
+        description: "Объект LogRecord для форматирования в строку.",
+      },
+    ],
+    example: `import logging
+
+handler = logging.StreamHandler()
+
+# Без форматтера — используется базовый формат
+record = logging.LogRecord(
+    name='myapp', level=logging.INFO,
+    pathname='app.py', lineno=10,
+    msg='Привет, %s!', args=('мир',), exc_info=None
+)
+print(handler.format(record))  # INFO:myapp:Привет, мир!
+
+# С пользовательским форматтером
+fmt = logging.Formatter(
+    fmt='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%H:%M:%S'
+)
+handler.setFormatter(fmt)
+print(handler.format(record))  # 12:34:56 [INFO] myapp: Привет, мир!
+
+# Проверка прикреплённого форматтера
+print(handler.formatter)  # <Formatter ...>`,
+  },
+  {
+    name: "logging.Handler.get_name()",
+    description:
+      "Возвращает имя обработчика, установленное через set_name() или атрибут name. По умолчанию обработчики не имеют имени (возвращает None). Имя используется для идентификации конкретного обработчика в конфигурации через logging.config.",
+    syntax: "handler.get_name()",
+    arguments: [],
+    example: `import logging
+
+# По умолчанию имя не установлено
+handler = logging.StreamHandler()
+print(handler.get_name())   # None
+
+# Установка имени
+handler.set_name('console')
+print(handler.get_name())   # console
+
+# Другой способ — через атрибут name напрямую
+handler2 = logging.FileHandler('app.log')
+handler2.name = 'file'
+print(handler2.get_name())  # file
+handler2.close()
+
+# Практическое использование: поиск обработчика по имени
+logger = logging.getLogger('myapp')
+logger.addHandler(handler)
+
+for h in logger.handlers:
+    if h.get_name() == 'console':
+        print(f'Найден консольный обработчик: {h}')
+        break`,
+  },
+  {
+    name: "logging.Handler.handle()",
+    description:
+      "Обрабатывает запись LogRecord: захватывает блокировку (acquire), применяет фильтры (filter), при успехе вызывает emit(), затем освобождает блокировку (release). Является центральным методом обработчика. Вызывается из logger.callHandlers().",
+    syntax: "handler.handle(record)",
+    arguments: [
+      { name: "record", description: "Объект LogRecord для обработки." },
+    ],
+    example: `import logging
+
+class TracingHandler(logging.Handler):
+    """Обработчик с трассировкой вызовов"""
+    def handle(self, record: logging.LogRecord):
+        print(f'handle() вызван: {record.levelname} {record.getMessage()[:30]}')
+        result = super().handle(record)  # acquire → filter → emit → release
+        print(f'handle() завершён, emit вызван: {result}')
+        return result
+
+    def emit(self, record: logging.LogRecord):
+        print(f'  emit(): {self.format(record)}')
+
+logger = logging.getLogger('demo')
+logger.setLevel(logging.DEBUG)
+h = TracingHandler()
+h.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+logger.addHandler(h)
+
+logger.info('Тест трассировки')
+# handle() вызван: INFO Тест трассировки
+#   emit(): INFO: Тест трассировки
+# handle() завершён`,
+  },
+  {
+    name: "logging.Handler.handleError()",
+    description:
+      "Вызывается из emit() при возникновении исключения во время обработки записи. По умолчанию выводит трассировку в sys.stderr и продолжает работу (не прерывает логирование). Можно переопределить для другого поведения при ошибках обработчика.",
+    syntax: "handler.handleError(record)",
+    arguments: [
+      {
+        name: "record",
+        description:
+          "Объект LogRecord, при обработке которого возникло исключение.",
+      },
+    ],
+    example: `import logging
+import sys
+
+class ResilientHandler(logging.Handler):
+    """Обработчик с кастомной обработкой ошибок"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.error_count = 0
+
+    def emit(self, record: logging.LogRecord):
+        try:
+            msg = self.format(record)
+            # Имитируем периодическую ошибку
+            if 'fail' in msg:
+                raise IOError('Ошибка записи')
+            print(msg)
+        except Exception:
+            self.handleError(record)  # стандартная обработка
+
+    def handleError(self, record: logging.LogRecord):
+        self.error_count += 1
+        # Переопределяем: пишем в stderr без прерывания
+        print(f'[HANDLER ERROR #{self.error_count}] '
+              f'Не удалось обработать: {record.getMessage()}',
+              file=sys.stderr)
+
+h = ResilientHandler()
+logger = logging.getLogger('demo')
+logger.addHandler(h)
+logger.setLevel(logging.DEBUG)
+
+logger.info('Нормальное сообщение')
+logger.info('Это fail провоцирует ошибку')`,
+  },
+  {
+    name: "logging.Handler.release()",
+    description:
+      "Освобождает внутреннюю блокировку (threading.RLock), ранее захваченную через acquire(). Вызывается автоматически в методе handle() после завершения emit(). Всегда используется в паре с acquire() в блоке try/finally.",
+    syntax: "handler.release()",
+    arguments: [],
+    example: `import logging
+
+class ManualLockHandler(logging.Handler):
+    """Демонстрация явного использования acquire/release"""
+    def emit(self, record: logging.LogRecord):
+        # В обычном коде acquire/release вызываются через handle()
+        # Здесь только для демонстрации
+        print(self.format(record))
+
+    def safe_flush_and_emit(self, record: logging.LogRecord):
+        """Пример ручного управления блокировкой"""
+        self.acquire()
+        try:
+            self.flush()
+            self.emit(record)
+        finally:
+            self.release()  # всегда освобождаем, даже при исключении
+
+h = ManualLockHandler()
+h.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+record = logging.LogRecord(
+    'demo', logging.INFO, '', 0, 'Тестовая запись', (), None
+)
+h.safe_flush_and_emit(record)`,
+  },
+  {
+    name: "logging.Handler.removeFilter()",
+    description:
+      "Удаляет ранее добавленный фильтр из обработчика. После удаления записи, ранее блокируемые этим фильтром, снова начинают передаваться в emit(). Если фильтр не найден — ничего не происходит.",
+    syntax: "handler.removeFilter(filter)",
+    arguments: [
+      {
+        name: "filter",
+        description:
+          "Объект фильтра для удаления — тот же объект, что был передан в addFilter().",
+      },
+    ],
+    example: `import logging
+
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+
+# Фильтр: только WARNING и выше
+warn_filter = lambda r: r.levelno >= logging.WARNING
+handler.addFilter(warn_filter)
+
+logger.info('INFO скрыта фильтром')    # заблокировано
+logger.warning('WARNING проходит')     # выводится
+
+# Удаляем фильтр
+handler.removeFilter(warn_filter)
+
+logger.info('INFO теперь видна')       # выводится
+logger.debug('DEBUG тоже')             # выводится`,
+  },
+  {
+    name: "logging.Handler.setFormatter()",
+    description:
+      'Устанавливает объект Formatter для обработчика. Определяет, как будет выглядеть итоговая строка лога. Если Formatter не задан — используется базовый формат "%(levelname)s:%(name)s:%(message)s". Один Formatter может быть использован в нескольких обработчиках.',
+    syntax: "handler.setFormatter(fmt)",
+    arguments: [
+      {
+        name: "fmt",
+        description:
+          "Объект logging.Formatter или None для сброса к формату по умолчанию.",
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+
+# Простой формат для консоли
+console = logging.StreamHandler()
+console.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+# Детальный формат для файла
+file_h = logging.FileHandler('app.log')
+file_h.setFormatter(logging.Formatter(
+    fmt='%(asctime)s %(name)s [%(levelname)s] %(funcName)s:%(lineno)d — %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+logger.addHandler(console)
+logger.addHandler(file_h)
+
+logger.info('Запрос обработан')
+# Консоль: INFO: Запрос обработан
+# Файл:   2024-01-15 12:00:00 myapp [INFO] main:42 — Запрос обработан
+
+# Сброс форматтера
+console.setFormatter(None)  # вернуть к формату по умолчанию
+file_h.close()`,
+  },
+  {
+    name: "logging.Handler.setLevel()",
+    description:
+      "Устанавливает пороговый уровень обработчика. Записи ниже этого уровня не передаются в emit() даже если логгер их пропустил. Позволяет направлять разные уровни в разные обработчики: DEBUG в файл, WARNING в консоль, CRITICAL на почту.",
+    syntax: "handler.setLevel(level)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          'Числовое значение (logging.DEBUG=10, INFO=20, WARNING=30, ERROR=40, CRITICAL=50) или строка ("DEBUG", "WARNING" и т.д.).',
+      },
+    ],
+    example: `import logging
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)  # пропускаем всё
+
+# Консоль получает только WARNING+
+console = logging.StreamHandler()
+console.setLevel(logging.WARNING)
+console.setFormatter(logging.Formatter('CONSOLE %(levelname)s: %(message)s'))
+
+# Файл получает всё начиная с DEBUG
+file_h = logging.FileHandler('debug.log')
+file_h.setLevel(logging.DEBUG)
+file_h.setFormatter(logging.Formatter('FILE %(levelname)s: %(message)s'))
+
+logger.addHandler(console)
+logger.addHandler(file_h)
+
+logger.debug('debug')    # → только файл
+logger.info('info')      # → только файл
+logger.warning('warn')   # → консоль + файл
+logger.error('error')    # → консоль + файл
+file_h.close()`,
+  },
+  {
+    name: "logging.Handler.set_name()",
+    description:
+      "Устанавливает имя обработчика. Имя используется для идентификации обработчика при конфигурировании через словарь (dictConfig) или файл конфигурации. Обновляет атрибут name и внутренний реестр обработчиков.",
+    syntax: "handler.set_name(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Строковое имя обработчика для идентификации.",
+      },
+    ],
+    example: `import logging
+
+# Создаём и именуем обработчики
+console = logging.StreamHandler()
+console.set_name('console')
+console.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+file_h = logging.FileHandler('app.log')
+file_h.set_name('file')
+
+print(console.get_name())  # console
+print(file_h.get_name())   # file
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(console)
+logger.addHandler(file_h)
+
+# Поиск обработчика по имени
+def get_handler(lgr: logging.Logger, name: str):
+    return next((h for h in lgr.handlers if h.get_name() == name), None)
+
+h = get_handler(logger, 'console')
+if h:
+    h.setLevel(logging.ERROR)  # динамически меняем уровень
+
+file_h.close()`,
+  },
+  {
+    name: "logging.Handler.level",
+    description:
+      "Атрибут, хранящий числовой пороговый уровень обработчика. Записи ниже этого уровня не передаются в emit(). Значение 0 (NOTSET) означает, что обработчик принимает все записи (фильтрация только по уровню логгера). Устанавливается через setLevel().",
+    syntax: "handler.level",
+    arguments: [],
+    example: `import logging
+
+handler = logging.StreamHandler()
+print(handler.level)  # 0 (NOTSET) — принимает всё
+
+handler.setLevel(logging.WARNING)
+print(handler.level)                      # 30
+print(logging.getLevelName(handler.level)) # WARNING
+
+# Проверка: пройдёт ли запись по уровню обработчика
+record = logging.LogRecord('test', logging.INFO, '', 0, 'msg', (), None)
+print(handler.level <= record.levelno)  # False (30 > 20)
+
+record2 = logging.LogRecord('test', logging.ERROR, '', 0, 'msg', (), None)
+print(handler.level <= record2.levelno)  # True (30 ≤ 40)
+
+# Можно читать напрямую для диагностики
+logger = logging.getLogger('myapp')
+logger.addHandler(handler)
+for h in logger.handlers:
+    print(f'{type(h).__name__}: level={logging.getLevelName(h.level)}')`,
+  },
+  {
+    name: "logging.Handler.formatter",
+    description:
+      "Атрибут, ссылающийся на объект Formatter, прикреплённый к обработчику. None если форматтер не задан — в этом случае используется базовый формат. Устанавливается через setFormatter(). Можно читать напрямую для проверки или смены форматтера.",
+    syntax: "handler.formatter",
+    arguments: [],
+    example: `import logging
+
+handler = logging.StreamHandler()
+print(handler.formatter)  # None — форматтер не задан
+
+# Установка форматтера
+fmt = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+handler.setFormatter(fmt)
+print(handler.formatter)   # <Formatter object>
+print(handler.formatter is fmt)  # True — тот же объект
+
+# Динамическая смена форматтера
+def switch_to_json_format(h: logging.Handler):
+    h.setFormatter(logging.Formatter('{"level":"%(levelname)s","msg":"%(message)s"}'))
+
+switch_to_json_format(handler)
+print(handler.formatter._fmt)  # {"level":"%(levelname)s","msg":"%(message)s"}
+
+# Сброс форматтера
+handler.setFormatter(None)
+print(handler.formatter)  # None`,
+  },
+  {
+    name: "logging.Handler.filters",
+    description:
+      "Список фильтров, прикреплённых к обработчику. Каждая запись проверяется всеми фильтрами в методе handle() перед вызовом emit(). Изменять напрямую не рекомендуется — используйте addFilter() и removeFilter().",
+    syntax: "handler.filters",
+    arguments: [],
+    example: `import logging
+
+handler = logging.StreamHandler()
+print(handler.filters)  # [] — пусто
+
+# Добавляем фильтры
+f1 = logging.Filter('myapp')          # только записи логгера myapp.*
+f2 = lambda r: 'secret' not in r.getMessage()
+
+handler.addFilter(f1)
+handler.addFilter(f2)
+
+print(len(handler.filters))  # 2
+
+# Проверка текущих фильтров
+for f in handler.filters:
+    print(type(f).__name__ if hasattr(f, 'filter') else 'lambda')
+
+# Очистка всех фильтров через прямой доступ к списку
+handler.filters.clear()
+print(handler.filters)  # []`,
+  },
+  {
+    name: "logging.Handler.lock",
+    description:
+      "Атрибут, содержащий объект threading.RLock, обеспечивающий потокобезопасность обработчика. Создаётся автоматически в конструкторе через createLock(). Используется в acquire() и release() вокруг вызова emit(). Может быть None в подклассах без блокировки.",
+    syntax: "handler.lock",
+    arguments: [],
+    example: `import logging
+import threading
+
+handler = logging.StreamHandler()
+print(type(handler.lock))   # <class '_thread.RLock'>
+print(handler.lock)         # <unlocked _thread.RLock object>
+
+# Демонстрация потокобезопасности
+def log_from_thread(name: str, h: logging.Handler):
+    record = logging.LogRecord(name, logging.INFO, '', 0, f'Поток {name}', (), None)
+    h.handle(record)  # автоматически использует lock
+
+threads = [threading.Thread(target=log_from_thread, args=(f't{i}', handler))
+           for i in range(5)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+
+# Ручной захват блокировки (редко нужно)
+with handler.lock:
+    # эксклюзивный доступ к ресурсам обработчика
+    print('Блокировка захвачена напрямую')`,
+  },
+  {
+    name: "logging.Handler.name",
+    description:
+      "Атрибут, хранящий имя обработчика. По умолчанию None. Устанавливается через set_name() или напрямую. Используется для идентификации обработчиков при конфигурации через dictConfig и для поиска обработчика среди нескольких прикреплённых к логгеру.",
+    syntax: "handler.name",
+    arguments: [],
+    example: `import logging
+
+handler = logging.StreamHandler()
+print(handler.name)   # None — по умолчанию
+
+# Установка имени
+handler.set_name('console')
+print(handler.name)   # console
+
+# Прямое присваивание
+handler.name = 'stdout-handler'
+print(handler.name)   # stdout-handler
+
+# Практическое использование: конфигурация через dictConfig
+import logging.config
+logging.config.dictConfig({
+    'version': 1,
+    'handlers': {
+        'console': {          # ← это и будет handler.name
+            'class': 'logging.StreamHandler',
+            'level': 'INFO',
+            'stream': 'ext://sys.stdout',
+        }
+    },
+    'root': {'level': 'DEBUG', 'handlers': ['console']}
+})`,
+  },
+  {
+    name: "logging.StreamHandler",
+    description:
+      'Обработчик, выводящий записи логов в поток (stream): по умолчанию в sys.stderr. Один из наиболее часто используемых обработчиков. Поддерживает потокобезопасную запись через внутреннюю блокировку. Завершает каждую запись символом из атрибута terminator (по умолчанию "\\n").',
+    syntax: "logging.StreamHandler(stream=None)",
+    arguments: [
+      {
+        name: "stream",
+        description:
+          "Поток для записи (объект с методами write() и flush()). По умолчанию None — используется sys.stderr. Можно передать sys.stdout или любой файлоподобный объект.",
+      },
+    ],
+    example: `import logging
+import sys
+
+# Вывод в stderr (по умолчанию)
+stderr_handler = logging.StreamHandler()
+
+# Вывод в stdout
+stdout_handler = logging.StreamHandler(sys.stdout)
+stdout_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+stdout_handler.setLevel(logging.INFO)
+
+# Запись в StringIO (полезно для тестов)
+import io
+buffer = io.StringIO()
+buffer_handler = logging.StreamHandler(buffer)
+buffer_handler.setFormatter(logging.Formatter('%(message)s'))
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(stdout_handler)
+logger.addHandler(buffer_handler)
+
+logger.info('Сообщение для теста')
+
+# Получаем содержимое буфера
+output = buffer.getvalue()
+print(repr(output))  # 'Сообщение для теста\\n'`,
+  },
+  {
+    name: "logging.StreamHandler.emit()",
+    description:
+      "Форматирует запись LogRecord и записывает результирующую строку в поток, добавляя terminator. При возникновении исключения вызывает handleError(). Перед записью и после вызывает flush() для гарантированной доставки данных.",
+    syntax: "handler.emit(record)",
+    arguments: [
+      { name: "record", description: "Объект LogRecord для записи в поток." },
+    ],
+    example: `import logging
+import io
+
+# Кастомный StreamHandler с подсчётом записей
+class CountingStreamHandler(logging.StreamHandler):
+    def __init__(self, stream=None):
+        super().__init__(stream)
+        self.emit_count = 0
+
+    def emit(self, record: logging.LogRecord):
+        self.emit_count += 1
+        super().emit(record)  # стандартное форматирование и запись
+
+buffer = io.StringIO()
+handler = CountingStreamHandler(buffer)
+handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+logger = logging.getLogger('demo')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+logger.propagate = False
+
+logger.debug('Один')
+logger.info('Два')
+logger.warning('Три')
+
+print(handler.emit_count)        # 3
+print(buffer.getvalue())
+# DEBUG: Один
+# INFO: Два
+# WARNING: Три`,
+  },
+  {
+    name: "logging.StreamHandler.flush()",
+    description:
+      "Сбрасывает внутренний буфер потока, вызывая stream.flush(). Гарантирует немедленную запись данных из буфера операционной системы. Вызывается автоматически после каждого emit(). Особенно важно при записи в файловые потоки или при перенаправлении вывода.",
+    syntax: "handler.flush()",
+    arguments: [],
+    example: `import logging
+import sys
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter('%(message)s'))
+
+logger = logging.getLogger('demo')
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+logger.propagate = False
+
+logger.info('Первое сообщение')
+# flush() вызван автоматически после emit()
+
+# Явный вызов flush() — например перед завершением программы
+logger.info('Последнее сообщение')
+handler.flush()   # гарантируем запись в stdout перед выходом
+
+# Полезно при использовании буферизованного stdout:
+# python -u script.py  — отключает буферизацию
+# или явный flush() после критических сообщений
+logger.critical('Критическая ошибка!')
+handler.flush()   # немедленно доставить в терминал`,
+  },
+  {
+    name: "logging.StreamHandler.setStream()",
+    description:
+      "Заменяет поток, в который пишет обработчик, на новый. Перед заменой сбрасывает буфер старого потока (flush). Позволяет динамически переключать вывод без пересоздания обработчика. Возвращает старый поток.",
+    syntax: "handler.setStream(stream)",
+    arguments: [
+      {
+        name: "stream",
+        description:
+          "Новый поток для записи — объект с методами write() и flush() (например, sys.stdout, открытый файл, io.StringIO).",
+      },
+    ],
+    example: `import logging
+import sys
+import io
+
+handler = logging.StreamHandler(sys.stderr)
+handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+
+logger = logging.getLogger('demo')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+logger.propagate = False
+
+logger.info('В stderr')
+
+# Переключаем на stdout
+old_stream = handler.setStream(sys.stdout)
+print(f'Старый поток: {old_stream}')   # <_io.TextIOWrapper name='<stderr>'>
+logger.info('Теперь в stdout')
+
+# Переключаем на буфер (для захвата вывода в тестах)
+buffer = io.StringIO()
+handler.setStream(buffer)
+logger.warning('В буфер')
+logger.error('Тоже в буфер')
+
+print(buffer.getvalue())
+# WARNING: В буфер
+# ERROR: Тоже в буфер`,
+  },
+  {
+    name: "logging.StreamHandler.terminator",
+    description:
+      'Атрибут класса, определяющий строку-разделитель, добавляемую в конец каждой записи при выводе в поток. По умолчанию "\\n" (перевод строки). Можно изменить для специальных форматов вывода: например, "\\r\\n" для Windows-совместимости или "" для вывода без переносов строк.',
+    syntax: "handler.terminator",
+    arguments: [],
+    example: `import logging
+import sys
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter('%(message)s'))
+
+print(repr(handler.terminator))   # '\\n' — по умолчанию
+
+logger = logging.getLogger('demo')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+logger.propagate = False
+
+logger.info('Строка 1')   # → 'Строка 1\\n'
+logger.info('Строка 2')   # → 'Строка 2\\n'
+
+# Убираем перенос строки — все записи в одну строку
+handler.terminator = ' | '
+logger.info('A')
+logger.info('B')
+logger.info('C')
+# → A | B | C |
+
+# CRLF для совместимости с Windows
+handler.terminator = '\\r\\n'`,
+  },
+  {
+    name: "logging.FileHandler",
+    description:
+      "Обработчик, записывающий логи в указанный файл. Открывает файл при создании (или при первой записи, если delay=True) и закрывает при вызове close(). Наследует всё поведение StreamHandler. Поддерживает выбор режима открытия, кодировки и обработки ошибок.",
+    syntax:
+      "logging.FileHandler(filename, mode='a', encoding=None, delay=False, errors=None)",
+    arguments: [
+      {
+        name: "filename",
+        description:
+          "Путь к файлу лога. Если файл не существует — создаётся автоматически.",
+      },
+      {
+        name: "mode",
+        description:
+          'Режим открытия файла: "a" (дозапись, по умолчанию) или "w" (перезапись при каждом запуске).',
+      },
+      {
+        name: "encoding",
+        description:
+          'Кодировка файла (например, "utf-8"). По умолчанию None — используется кодировка платформы.',
+      },
+      {
+        name: "delay",
+        description:
+          "Если True — файл открывается не при создании обработчика, а при первой записи. Полезно когда файл может не понадобиться.",
+      },
+      {
+        name: "errors",
+        description:
+          'Режим обработки ошибок кодировки: "strict", "ignore", "replace" и др. (Python 3.9+).',
+      },
+    ],
+    example: `import logging
+import os
+
+# Дозапись в файл (режим 'a' по умолчанию)
+file_handler = logging.FileHandler('app.log', encoding='utf-8')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(
+    logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+)
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(file_handler)
+
+logger.info('Приложение запущено')
+logger.warning('Предупреждение в файл')
+logger.error('Ошибка в файл')
+
+# Перезапись файла при каждом старте (mode='w')
+fresh_handler = logging.FileHandler('session.log', mode='w', encoding='utf-8')
+
+# Отложенное открытие — файл создаётся при первой записи
+lazy_handler = logging.FileHandler('lazy.log', delay=True)
+
+# Закрываем обработчики после использования
+file_handler.close()
+fresh_handler.close()
+lazy_handler.close()`,
+  },
 ];
