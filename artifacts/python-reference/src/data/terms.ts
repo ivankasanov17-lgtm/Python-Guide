@@ -40876,4 +40876,593 @@ file_handler.close()
 fresh_handler.close()
 lazy_handler.close()`,
   },
+  {
+    name: "logging.FileHandler.close",
+    description:
+      "Метод класса FileHandler модуля logging. Закрывает файл, связанный с обработчиком, и освобождает ресурс. Вызывает родительский метод StreamHandler.close(), который выполняет сброс буфера и снимает обработчик с внутреннего реестра. Необходимо вызывать явно при завершении работы с логгером, либо использовать менеджер контекста.",
+    syntax: "handler.close()",
+    arguments: [],
+    example: `import logging
+
+# Создание обработчика:
+handler = logging.FileHandler('app.log', encoding='utf-8')
+handler.setLevel(logging.DEBUG)
+
+logger = logging.getLogger('myapp')
+logger.addHandler(handler)
+
+logger.info('Сообщение записано в файл')
+
+# Явное закрытие:
+handler.close()
+logger.removeHandler(handler)
+
+# Предпочтительный способ — через logging.shutdown():
+import atexit
+atexit.register(logging.shutdown)   # Закроет все обработчики при выходе
+
+# Или через контекстный менеджер (Python 3.11+):
+# with logging.FileHandler('app.log') as handler:
+#     logger.addHandler(handler)
+#     logger.info('Запись')`,
+  },
+  {
+    name: "logging.FileHandler.emit",
+    description:
+      "Метод класса FileHandler модуля logging. Записывает отформатированную запись лога в файл. Вызывается автоматически при обработке записи — не следует вызывать напрямую в прикладном коде. При ошибке записи вызывает handleError(record).",
+    syntax: "handler.emit(record)",
+    arguments: [
+      {
+        name: "record",
+        description:
+          "Объект LogRecord с данными лог-записи: уровень, сообщение, время, имя логгера и т.д.",
+      },
+    ],
+    example: `import logging
+
+handler = logging.FileHandler('debug.log', encoding='utf-8')
+formatter = logging.Formatter('%(asctime)s — %(levelname)s — %(message)s')
+handler.setFormatter(formatter)
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+
+# emit() вызывается автоматически при логировании:
+logger.debug('Отладочное сообщение')    # → handler.emit(record)
+logger.info('Информационное')
+logger.warning('Предупреждение')
+
+# Ручной вызов (нетипично, используется при создании кастомных обработчиков):
+record = logging.LogRecord(
+    name='myapp', level=logging.INFO,
+    pathname=__file__, lineno=10,
+    msg='Ручная запись', args=(), exc_info=None,
+)
+handler.emit(record)
+handler.close()`,
+  },
+  {
+    name: "logging.NullHandler",
+    description:
+      'Класс модуля logging. Обработчик-заглушка, который не выполняет никаких действий с записями лога. Используется в библиотеках для предотвращения предупреждения "No handlers could be found for logger". Рекомендуемая практика: каждая библиотека должна добавлять NullHandler к своему логгеру, оставляя настройку обработчиков пользователям библиотеки.',
+    syntax: "handler = logging.NullHandler(level=logging.NOTSET)",
+    arguments: [
+      {
+        name: "level",
+        description:
+          "Минимальный уровень обрабатываемых записей. По умолчанию NOTSET (0) — обрабатывает все записи.",
+      },
+    ],
+    example: `import logging
+
+# Рекомендуемый паттерн для библиотек:
+# В файле mylib/__init__.py или mylib/core.py:
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+
+# Теперь при использовании библиотеки без настройки логирования
+# не будет предупреждений "No handlers could be found"
+
+# Пример библиотечного модуля:
+class MyLibrary:
+    def __init__(self):
+        self.logger = logging.getLogger('mylib.MyLibrary')
+
+    def do_work(self):
+        self.logger.info('Выполняется работа')   # Без NullHandler → предупреждение
+        return 'результат'
+
+# Пользователь библиотеки сам настраивает обработчики:
+logging.basicConfig(level=logging.INFO)
+lib = MyLibrary()
+lib.do_work()`,
+  },
+  {
+    name: "logging.NullHandler.createLock",
+    description:
+      "Метод класса NullHandler модуля logging. Устанавливает блокировку (lock) в None вместо создания реального объекта threading.Lock. Поскольку NullHandler не выполняет никаких операций ввода-вывода, блокировка ему не нужна, что делает его максимально лёгким.",
+    syntax: "handler.createLock()",
+    arguments: [],
+    example: `import logging
+
+handler = logging.NullHandler()
+
+# createLock() вызывается автоматически в __init__:
+# Устанавливает self.lock = None (без реального мьютекса)
+print(handler.lock)   # None
+
+# В отличие от других обработчиков:
+file_handler = logging.FileHandler('app.log')
+print(file_handler.lock)   # <unlocked _thread.lock object ...>
+file_handler.close()
+
+# Это важно для использования в многопоточных приложениях:
+# NullHandler безопасен без блокировки, т.к. не делает ничего
+logger = logging.getLogger('mylib')
+logger.addHandler(handler)
+logger.info('Это сообщение просто игнорируется')`,
+  },
+  {
+    name: "logging.NullHandler.emit",
+    description:
+      "Метод класса NullHandler модуля logging. Ничего не делает — намеренно пустая реализация. Переопределяет абстрактный метод emit() базового класса Handler. Все записи лога, переданные этому обработчику, молча отбрасываются.",
+    syntax: "handler.emit(record)",
+    arguments: [
+      {
+        name: "record",
+        description:
+          "Объект LogRecord. Принимается, но полностью игнорируется.",
+      },
+    ],
+    example: `import logging
+
+handler = logging.NullHandler()
+
+# emit() просто ничего не делает:
+record = logging.LogRecord(
+    name='test', level=logging.WARNING,
+    pathname=__file__, lineno=1,
+    msg='Это сообщение будет отброшено', args=(), exc_info=None,
+)
+handler.emit(record)   # Тишина, никаких действий
+
+# На практике emit() вызывается автоматически:
+logger = logging.getLogger('mylib')
+logger.addHandler(handler)
+
+logger.warning('Игнорируется')  # → handler.emit(record) → ничего
+logger.error('Тоже игнорируется')`,
+  },
+  {
+    name: "logging.NullHandler.handle",
+    description:
+      "Метод класса NullHandler модуля logging. Обрабатывает запись лога без захвата блокировки (поскольку lock=None). Вызывает emit(), который ничего не делает. Переопределяет метод базового класса Handler для оптимизации: пропускает лишние операции с блокировкой.",
+    syntax: "handler.handle(record)",
+    arguments: [
+      {
+        name: "record",
+        description: "Объект LogRecord для обработки. Полностью игнорируется.",
+      },
+    ],
+    example: `import logging
+
+handler = logging.NullHandler()
+
+record = logging.LogRecord(
+    name='test', level=logging.INFO,
+    pathname=__file__, lineno=1,
+    msg='Тестовая запись', args=(), exc_info=None,
+)
+
+# handle() вызывает emit() без блокировки:
+handler.handle(record)   # Ничего не происходит
+
+# Сравнение с обычным обработчиком:
+import io
+stream_handler = logging.StreamHandler(io.StringIO())
+stream_handler.handle(record)   # Захватывает lock → вызывает emit() → пишет в поток
+
+# NullHandler.handle() — максимально лёгкий путь:
+# 1. Нет захвата блокировки (lock=None)
+# 2. Нет форматирования
+# 3. Нет записи`,
+  },
+  {
+    name: "logging.Formatter",
+    description:
+      "Класс модуля logging. Определяет формат вывода лог-записей. Преобразует объект LogRecord в строку с заданным шаблоном, форматом даты и стилем подстановки переменных. Присваивается обработчикам через handler.setFormatter(). Может быть расширен для создания кастомного форматирования.",
+    syntax:
+      "formatter = logging.Formatter(fmt=None, datefmt=None, style='%', validate=True, defaults=None)",
+    arguments: [
+      {
+        name: "fmt",
+        description:
+          'Строка формата. По умолчанию None — выводится только сообщение. Пример: "%(asctime)s — %(levelname)s — %(message)s".',
+      },
+      {
+        name: "datefmt",
+        description:
+          'Формат даты и времени для %(asctime)s. По умолчанию None — используется ISO 8601: "2024-01-15 10:30:00,123".',
+      },
+      {
+        name: "style",
+        description:
+          'Стиль подстановки: "%" (по умолчанию, %(name)s), "{" (str.format, {name}), "$" (string.Template, ${name}).',
+      },
+      {
+        name: "validate",
+        description:
+          "Проверять корректность строки формата при создании. По умолчанию True. False — отключить проверку.",
+      },
+      {
+        name: "defaults",
+        description:
+          "Словарь дополнительных атрибутов для подстановки в fmt. Добавлено в Python 3.10.",
+      },
+    ],
+    example: `import logging
+
+# Базовый форматтер:
+formatter = logging.Formatter(
+    fmt='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
+
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+
+logger = logging.getLogger('myapp')
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+
+logger.info('Запуск приложения')
+# 2024-01-15 10:30:00 [INFO] myapp: Запуск приложения
+
+# Стиль { (str.format):
+formatter2 = logging.Formatter(
+    fmt='{asctime} [{levelname}] {name}: {message}',
+    style='{',
+)
+
+# Кастомный форматтер:
+class JsonFormatter(logging.Formatter):
+    def format(self, record):
+        import json
+        return json.dumps({
+            'time': self.formatTime(record),
+            'level': record.levelname,
+            'message': record.getMessage(),
+        })`,
+  },
+  {
+    name: "logging.Formatter.converter",
+    description:
+      "Атрибут класса Formatter модуля logging. Функция преобразования временной метки (timestamp) в struct_time для форматирования времени. По умолчанию равна time.localtime — время в локальном часовом поясе. Замените на time.gmtime для вывода времени в UTC.",
+    syntax: "Formatter.converter = time.localtime",
+    arguments: [
+      {
+        name: "timestamp",
+        description:
+          "Временная метка в секундах (float), полученная из LogRecord.created.",
+      },
+    ],
+    example: `import logging
+import time
+
+# Стандартное поведение — локальное время:
+formatter = logging.Formatter('%(asctime)s — %(message)s')
+# formatter.converter == time.localtime (по умолчанию)
+
+# Переключение на UTC для конкретного форматтера:
+formatter_utc = logging.Formatter('%(asctime)s UTC — %(message)s')
+formatter_utc.converter = time.gmtime
+
+handler = logging.StreamHandler()
+handler.setFormatter(formatter_utc)
+
+logger = logging.getLogger('myapp')
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.info('Запись в UTC')
+# 2024-01-15 07:30:00,123 UTC — Запись в UTC
+
+# Глобальное переключение на UTC для всех форматтеров:
+logging.Formatter.converter = time.gmtime`,
+  },
+  {
+    name: "logging.Formatter.default_msec_format",
+    description:
+      'Атрибут класса Formatter модуля logging. Строка формата для добавления миллисекунд к строке времени. По умолчанию "%s,%03d" — разделитель запятая между секундами и миллисекундами (пример: "10:30:00,123"). Переопределите для изменения разделителя (например, точка вместо запятой).',
+    syntax: "Formatter.default_msec_format",
+    arguments: [],
+    example: `import logging
+
+# Стандартный формат с запятой:
+formatter = logging.Formatter('%(asctime)s — %(message)s')
+print(formatter.default_msec_format)   # '%s,%03d'
+# Вывод: 2024-01-15 10:30:00,123
+
+# Переопределение для использования точки (ISO 8601):
+class ISOFormatter(logging.Formatter):
+    default_msec_format = '%s.%03d'
+
+formatter_iso = ISOFormatter('%(asctime)s — %(message)s')
+
+handler = logging.StreamHandler()
+handler.setFormatter(formatter_iso)
+
+logger = logging.getLogger('myapp')
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.debug('Тест')
+# 2024-01-15 10:30:00.123 — Тест`,
+  },
+  {
+    name: "logging.Formatter.default_time_format",
+    description:
+      'Атрибут класса Formatter модуля logging. Строка формата времени для strftime(), применяемая в formatTime() когда datefmt не задан. По умолчанию "%Y-%m-%d %H:%M:%S". Переопределите на уровне класса или экземпляра для изменения базового формата времени.',
+    syntax: "Formatter.default_time_format",
+    arguments: [],
+    example: `import logging
+
+formatter = logging.Formatter('%(asctime)s — %(message)s')
+print(formatter.default_time_format)   # '%Y-%m-%d %H:%M:%S'
+# Вывод: 2024-01-15 10:30:00,123
+
+# Переопределение формата времени:
+class ShortTimeFormatter(logging.Formatter):
+    default_time_format = '%H:%M:%S'          # Только время
+    default_msec_format = '%s.%03d'           # С точкой
+
+formatter_short = ShortTimeFormatter('%(asctime)s [%(levelname)s] %(message)s')
+
+handler = logging.StreamHandler()
+handler.setFormatter(formatter_short)
+
+logger = logging.getLogger('myapp')
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.info('Короткое время')
+# 10:30:00.123 [INFO] Короткое время`,
+  },
+  {
+    name: "logging.Formatter.format",
+    description:
+      "Метод класса Formatter модуля logging. Преобразует объект LogRecord в итоговую строку лога. Устанавливает атрибуты record.message и record.asctime, применяет fmt-шаблон, при необходимости добавляет информацию об исключении (exc_text) и трассировке стека (stack_info). Вызывается обработчиком автоматически.",
+    syntax: "formatted_string = formatter.format(record)",
+    arguments: [
+      {
+        name: "record",
+        description: "Объект LogRecord с данными записи лога.",
+      },
+    ],
+    example: `import logging
+
+formatter = logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%H:%M:%S',
+)
+
+# Прямое использование:
+record = logging.LogRecord(
+    name='myapp', level=logging.ERROR,
+    pathname=__file__, lineno=42,
+    msg='Ошибка соединения: %s', args=('timeout',), exc_info=None,
+)
+print(formatter.format(record))
+# 10:30:00 [ERROR] myapp: Ошибка соединения: timeout
+
+# Кастомный форматтер с переопределением format():
+class RequestFormatter(logging.Formatter):
+    def format(self, record):
+        record.request_id = getattr(record, 'request_id', '-')
+        return super().format(record)
+
+formatter2 = RequestFormatter(
+    '%(asctime)s [%(request_id)s] %(levelname)s: %(message)s'
+)`,
+  },
+  {
+    name: "logging.Formatter.formatException",
+    description:
+      "Метод класса Formatter модуля logging. Форматирует информацию об исключении (exc_info) в строку. Принимает кортеж (type, value, traceback) — тот же формат, что возвращает sys.exc_info(). Результат кэшируется в record.exc_text для повторного использования.",
+    syntax: "text = formatter.formatException(exc_info)",
+    arguments: [
+      {
+        name: "exc_info",
+        description:
+          "Кортеж (exc_type, exc_value, exc_traceback) из sys.exc_info(), или None.",
+      },
+    ],
+    example: `import logging
+import sys
+import traceback
+
+formatter = logging.Formatter('%(asctime)s — %(message)s')
+
+# Прямое форматирование исключения:
+try:
+    1 / 0
+except ZeroDivisionError:
+    exc_info = sys.exc_info()
+    exc_text = formatter.formatException(exc_info)
+    print(exc_text)
+    # Traceback (most recent call last):
+    #   File "...", line N, in <module>
+    #     1 / 0
+    # ZeroDivisionError: division by zero
+
+# Автоматически при логировании с exc_info:
+logger = logging.getLogger('myapp')
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+try:
+    result = int('не число')
+except ValueError:
+    logger.error('Ошибка преобразования', exc_info=True)
+    # formatException() вызывается автоматически`,
+  },
+  {
+    name: "logging.Formatter.formatMessage",
+    description:
+      "Метод класса Formatter модуля logging. Применяет fmt-шаблон к атрибутам объекта LogRecord, возвращая итоговую строку сообщения без информации об исключении и трассировке стека. Вызывается внутри format() как основной шаг форматирования.",
+    syntax: "message = formatter.formatMessage(record)",
+    arguments: [
+      {
+        name: "record",
+        description:
+          "Объект LogRecord с установленными атрибутами (включая message, asctime и другие поля шаблона).",
+      },
+    ],
+    example: `import logging
+
+formatter = logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+)
+
+record = logging.LogRecord(
+    name='myapp', level=logging.INFO,
+    pathname=__file__, lineno=1,
+    msg='Пользователь %s вошёл', args=('Иван',), exc_info=None,
+)
+# Устанавливаем message (обычно делает format()):
+record.message = record.getMessage()
+
+result = formatter.formatMessage(record)
+print(result)
+# 2024-01-15 10:30:00,123 [INFO] myapp: Пользователь Иван вошёл
+
+# Используется при переопределении format() в кастомных форматтерах:
+class PrefixFormatter(logging.Formatter):
+    def format(self, record):
+        record.message = record.getMessage()
+        record.asctime = self.formatTime(record, self.datefmt)
+        s = self.formatMessage(record)
+        return f'>>> {s}'`,
+  },
+  {
+    name: "logging.Formatter.formatStack",
+    description:
+      "Метод класса Formatter модуля logging. Форматирует информацию о трассировке стека (stack_info) в строку. Принимает строку с трассировкой, возвращённую traceback.print_stack(). Используется при передаче параметра stack_info=True в вызов логгера.",
+    syntax: "text = formatter.formatStack(stack_info)",
+    arguments: [
+      {
+        name: "stack_info",
+        description:
+          "Строка с трассировкой стека из traceback.print_stack(), или None.",
+      },
+    ],
+    example: `import logging
+
+formatter = logging.Formatter('%(asctime)s — %(message)s')
+
+logger = logging.getLogger('myapp')
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+# stack_info=True — добавляет трассировку текущего стека вызовов:
+def level3():
+    logger.debug('Вызов из level3', stack_info=True)
+    # formatStack() вызывается автоматически
+
+def level2():
+    level3()
+
+def level1():
+    level2()
+
+level1()
+# Вывод включит полный стек вызовов:
+# 10:30:00,123 — Вызов из level3
+# Stack (most recent call last):
+#   File "...", line N, in level1 ...
+
+# Прямой вызов:
+import io, traceback
+buf = io.StringIO()
+traceback.print_stack(file=buf)
+print(formatter.formatStack(buf.getvalue()))`,
+  },
+  {
+    name: "logging.Formatter.formatTime",
+    description:
+      "Метод класса Formatter модуля logging. Форматирует временную метку записи (record.created) в строку даты-времени. Использует converter для преобразования в struct_time, затем strftime() с datefmt или default_time_format. Результат используется в поле %(asctime)s.",
+    syntax: "time_string = formatter.formatTime(record, datefmt=None)",
+    arguments: [
+      {
+        name: "record",
+        description:
+          "Объект LogRecord с атрибутом created (временная метка создания).",
+      },
+      {
+        name: "datefmt",
+        description:
+          "Строка формата для strftime(). Если None — используется default_time_format + default_msec_format.",
+      },
+    ],
+    example: `import logging
+
+formatter = logging.Formatter()
+
+record = logging.LogRecord(
+    name='test', level=logging.INFO,
+    pathname=__file__, lineno=1,
+    msg='Тест', args=(), exc_info=None,
+)
+
+# Стандартный формат (с миллисекундами):
+print(formatter.formatTime(record))
+# 2024-01-15 10:30:00,123
+
+# Кастомный формат:
+print(formatter.formatTime(record, datefmt='%d.%m.%Y %H:%M'))
+# 15.01.2024 10:30
+
+# Переопределение для ISO 8601:
+class ISO8601Formatter(logging.Formatter):
+    def formatTime(self, record, datefmt=None):
+        import datetime
+        dt = datetime.datetime.fromtimestamp(record.created)
+        return dt.isoformat(timespec='milliseconds')
+
+formatter_iso = ISO8601Formatter('%(asctime)s — %(message)s')
+# Вывод: 2024-01-15T10:30:00.123 — сообщение`,
+  },
+  {
+    name: "logging.Formatter.usesTime",
+    description:
+      "Метод класса Formatter модуля logging. Возвращает True, если строка формата fmt содержит поле %(asctime)s, иначе False. Используется внутри format() для определения необходимости вызова formatTime() — если %(asctime)s не нужен, форматирование времени пропускается для экономии ресурсов.",
+    syntax: "result = formatter.usesTime()",
+    arguments: [],
+    example: `import logging
+
+# Форматтер с %(asctime)s:
+formatter_with_time = logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(message)s'
+)
+print(formatter_with_time.usesTime())   # True
+
+# Форматтер без %(asctime)s:
+formatter_no_time = logging.Formatter(
+    '[%(levelname)s] %(name)s: %(message)s'
+)
+print(formatter_no_time.usesTime())   # False
+
+# Используется в кастомных форматтерах при переопределении format():
+class OptimizedFormatter(logging.Formatter):
+    def format(self, record):
+        if self.usesTime():
+            record.asctime = self.formatTime(record, self.datefmt)
+        record.message = record.getMessage()
+        return self.formatMessage(record)
+
+# Стиль "{":
+formatter_brace = logging.Formatter('{asctime} {message}', style='{')
+print(formatter_brace.usesTime())   # True`,
+  },
 ];
