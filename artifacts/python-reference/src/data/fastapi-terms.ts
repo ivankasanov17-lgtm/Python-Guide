@@ -5210,4 +5210,3013 @@ def create_order(product_id: int, response: Response):
 # Важно: задача выполняется в том же event loop
 # Для тяжёлых синхронных операций используйте asyncio.get_event_loop().run_in_executor()`,
     },
+
+    // ─── WebSocket ────────────────────────────────────────────────────────────
+    {
+        category: "WebSocket",
+        name: "WebSocket()",
+        description:
+            "Класс для работы с WebSocket-соединениями в FastAPI. Представляет двустороннее постоянное соединение между клиентом и сервером. Маршрут объявляется декоратором @app.websocket(), а объект WebSocket передаётся в функцию как параметр. Соединение необходимо принять через accept() перед обменом данными и закрыть через close() по завершении.",
+        syntax: `WebSocket(scope, receive, send)`,
+        arguments: [
+            {
+                name: "scope",
+                description:
+                    "ASGI scope — словарь с метаданными соединения (тип, заголовки, путь и др.). Заполняется ASGI-сервером автоматически.",
+            },
+            {
+                name: "receive",
+                description:
+                    "ASGI callable для получения входящих сообщений от клиента. Управляется сервером.",
+            },
+            {
+                name: "send",
+                description:
+                    "ASGI callable для отправки сообщений клиенту. Управляется сервером.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+app = FastAPI()
+
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: int):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await websocket.send_text(f"[{client_id}] получено: {data}")
+    except WebSocketDisconnect:
+        print(f"Клиент {client_id} отключился")`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.url",
+        description:
+            "Полный URL WebSocket-соединения в виде объекта URL (из Starlette). Содержит все составляющие адреса: схему, хост, путь, строку запроса. Для доступа к отдельным частям используйте дочерние атрибуты: url.path, url.query, url.scheme и др.",
+        syntax: `websocket.url`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    await websocket.accept()
+    print(str(websocket.url))          # ws://localhost:8000/ws?token=abc
+    print(websocket.url.path)          # /ws
+    print(websocket.url.query)         # token=abc
+    print(websocket.url.scheme)        # ws или wss
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.url.path",
+        description:
+            "Путь URL без хоста и строки запроса. Аналогичен request.url.path в обычных HTTP-запросах. Тип str.",
+        syntax: `websocket.url.path`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/chat/{room}")
+async def chat(websocket: WebSocket, room: str):
+    await websocket.accept()
+    # websocket.url.path → "/chat/general"
+    await websocket.send_text(f"Подключились к комнате по пути: {websocket.url.path}")
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.url.query",
+        description:
+            "Строка запроса URL без знака «?». Тип str. Для удобного доступа к отдельным параметрам используйте websocket.query_params.",
+        syntax: `websocket.url.query`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    await websocket.accept()
+    # URL: ws://localhost/ws?token=abc&room=42
+    print(websocket.url.query)         # token=abc&room=42
+    print(websocket.query_params["token"])  # abc
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.url.scheme",
+        description:
+            "Схема протокола WebSocket-соединения. Возвращает \"ws\" для незащищённых соединений и \"wss\" для защищённых (TLS). Тип str.",
+        syntax: `websocket.url.scheme`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    await websocket.accept()
+    if websocket.url.scheme != "wss":
+        await websocket.close(code=1008, reason="Требуется защищённое соединение (wss)")
+        return
+    await websocket.send_text("Соединение защищено")
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.headers",
+        description:
+            "HTTP-заголовки рукопожатия (handshake) WebSocket-соединения. Объект типа Headers (из Starlette) — регистронезависимый, доступ по имени заголовка. Содержит стандартные заголовки: Host, Upgrade, Connection, Sec-WebSocket-Key и пользовательские заголовки клиента.",
+        syntax: `websocket.headers`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    await websocket.accept()
+    token = websocket.headers.get("authorization", "")
+    user_agent = websocket.headers.get("user-agent", "unknown")
+    print(f"User-Agent: {user_agent}")
+    if not token.startswith("Bearer "):
+        await websocket.close(code=1008, reason="Не авторизован")
+        return
+    await websocket.send_text("Добро пожаловать!")
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.query_params",
+        description:
+            "Параметры строки запроса URL в виде объекта QueryParams (из Starlette). Поддерживает доступ по ключу, метод get() со значением по умолчанию и итерацию. Удобен для передачи токенов аутентификации и других параметров при установке соединения.",
+        syntax: `websocket.query_params`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    # URL: ws://localhost/ws?token=secret&room=42
+    token = websocket.query_params.get("token")
+    room = websocket.query_params.get("room", "general")
+
+    if token != "secret":
+        await websocket.close(code=1008, reason="Неверный токен")
+        return
+
+    await websocket.accept()
+    await websocket.send_text(f"Вы в комнате: {room}")
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.path_params",
+        description:
+            "Параметры пути URL, извлечённые из шаблона маршрута. Словарь {имя_параметра: значение}. Дублирует параметры, которые FastAPI также передаёт как аргументы функции маршрута.",
+        syntax: `websocket.path_params`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws/{room_id}/{user_id}")
+async def ws(websocket: WebSocket, room_id: str, user_id: int):
+    await websocket.accept()
+    # Доступ через аргументы функции (рекомендуется):
+    print(room_id, user_id)
+    # Доступ через атрибут (альтернативно):
+    print(websocket.path_params)  # {"room_id": "general", "user_id": "42"}
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.cookies",
+        description:
+            "Cookies, переданные клиентом при установке WebSocket-соединения. Словарь {имя: значение}. Могут использоваться для сессионной аутентификации, если cookie выставлен ранее HTTP-ответом.",
+        syntax: `websocket.cookies`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    session_id = websocket.cookies.get("session_id")
+    if not session_id:
+        await websocket.close(code=1008, reason="Сессия не найдена")
+        return
+    await websocket.accept()
+    await websocket.send_text(f"Сессия: {session_id}")
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.client",
+        description:
+            "Адрес клиента WebSocket-соединения. Объект типа Address с двумя атрибутами: host (IP-адрес клиента, str) и port (порт клиента, int). Может быть None, если сервер не предоставляет эту информацию.",
+        syntax: `websocket.client`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+BANNED_IPS = {"192.168.1.100"}
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    if websocket.client and websocket.client.host in BANNED_IPS:
+        await websocket.close(code=1008, reason="Доступ запрещён")
+        return
+    await websocket.accept()
+    client_info = f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown"
+    await websocket.send_text(f"Ваш адрес: {client_info}")
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.client.host",
+        description:
+            "IP-адрес клиента WebSocket-соединения в виде строки (например, \"127.0.0.1\" или \"::1\" для IPv6). Доступен через атрибут client объекта WebSocket. Тип str или None.",
+        syntax: `websocket.client.host`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+import logging
+
+app = FastAPI()
+logger = logging.getLogger(__name__)
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    await websocket.accept()
+    ip = websocket.client.host if websocket.client else "unknown"
+    logger.info(f"Новое WS-соединение от {ip}")
+    await websocket.send_text(f"Ваш IP: {ip}")
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.client.port",
+        description:
+            "Порт клиента WebSocket-соединения. Тип int или None. Эфемерный порт, выделённый операционной системой клиента для данного TCP-соединения. Используется редко — в основном для диагностики и логирования.",
+        syntax: `websocket.client.port`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    await websocket.accept()
+    if websocket.client:
+        info = f"{websocket.client.host}:{websocket.client.port}"
+    else:
+        info = "адрес неизвестен"
+    await websocket.send_text(f"Подключено с: {info}")
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.state",
+        description:
+            "Объект для хранения произвольных данных, привязанных к конкретному WebSocket-соединению. Аналог request.state в HTTP-запросах. Атрибуты устанавливаются динамически и доступны на протяжении всей жизни соединения. Удобен для передачи данных между middleware и обработчиком.",
+        syntax: `websocket.state`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+from starlette.middleware.base import BaseHTTPMiddleware
+
+app = FastAPI()
+
+# Установка данных в middleware (через ASGI напрямую):
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    await websocket.accept()
+    # Сохраняем данные пользователя в state
+    websocket.state.user_id = 42
+    websocket.state.role = "admin"
+
+    print(websocket.state.user_id)  # 42
+    print(websocket.state.role)     # admin
+
+    await websocket.send_text(f"Роль: {websocket.state.role}")
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket.app",
+        description:
+            "Ссылка на ASGI-приложение FastAPI, обрабатывающее данное соединение. Тип Any. Даёт доступ к глобальному состоянию приложения (app.state), маршрутизатору и другим компонентам из контекста WebSocket-соединения.",
+        syntax: `websocket.app`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+app.state.connected_users: set[int] = set()
+
+@app.websocket("/ws/{user_id}")
+async def ws(websocket: WebSocket, user_id: int):
+    await websocket.accept()
+    # Доступ к глобальному состоянию приложения через websocket.app
+    websocket.app.state.connected_users.add(user_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            count = len(websocket.app.state.connected_users)
+            await websocket.send_text(f"Онлайн: {count} | Сообщение: {data}")
+    except Exception:
+        websocket.app.state.connected_users.discard(user_id)`,
+    },
+
+    // ─── Безопасность ─────────────────────────────────────────────────────────
+    {
+        category: "Безопасность",
+        name: "OAuth2()",
+        description:
+            "Базовый класс схемы безопасности OAuth2 для FastAPI. Используется как зависимость (Depends) и извлекает токен из заголовка Authorization. Служит основой для более специализированных классов OAuth2PasswordBearer и OAuth2AuthorizationCodeBearer. Описывает доступные OAuth2-потоки (flows) в схеме OpenAPI, что позволяет Swagger UI отображать кнопку авторизации.",
+        syntax: `OAuth2(
+    *,
+    flows=OAuthFlows(),
+    scheme_name=None,
+    description=None,
+    auto_error=True,
+)`,
+        arguments: [
+            {
+                name: "flows",
+                description:
+                    "Объект OAuthFlows, описывающий один или несколько OAuth2-потоков (password, authorizationCode, clientCredentials, implicit). Определяет, как именно получается токен.",
+            },
+            {
+                name: "scheme_name",
+                description:
+                    "Имя схемы безопасности в схеме OpenAPI. По умолчанию — имя класса.",
+            },
+            {
+                name: "description",
+                description:
+                    "Описание схемы безопасности, отображаемое в документации Swagger UI и ReDoc.",
+            },
+            {
+                name: "auto_error",
+                description:
+                    "Если True (по умолчанию), автоматически возвращает 403, когда токен не найден. Если False — возвращает None, позволяя обработать отсутствие токена вручную.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends, Security
+from fastapi.security import OAuth2
+from fastapi.security.oauth2 import OAuthFlows, OAuthFlowPassword
+
+app = FastAPI()
+
+# Кастомная OAuth2-схема с явным описанием потока
+oauth2_scheme = OAuth2(
+    flows=OAuthFlows(
+        password=OAuthFlowPassword(tokenUrl="/auth/token")
+    ),
+    description="Bearer-токен, полученный через /auth/token",
+)
+
+@app.get("/me")
+def get_me(token: str = Depends(oauth2_scheme)):
+    # token содержит значение из заголовка Authorization: Bearer <token>
+    return {"token": token}`,
+    },
+    {
+        category: "Безопасность",
+        name: "OAuth2PasswordBearer()",
+        description:
+            "Наиболее распространённая схема OAuth2 для FastAPI — реализует поток «Resource Owner Password». Используется как зависимость: извлекает Bearer-токен из заголовка Authorization и возвращает его строкой. Регистрирует URL получения токена в схеме OpenAPI, что позволяет Swagger UI выполнять авторизацию прямо из документации.",
+        syntax: `OAuth2PasswordBearer(
+    tokenUrl,
+    *,
+    scheme_name=None,
+    scopes=None,
+    description=None,
+    auto_error=True,
+)`,
+        arguments: [
+            {
+                name: "tokenUrl",
+                description:
+                    "URL эндпоинта для получения токена (относительный или абсолютный). Например, \"/auth/token\". Отображается в Swagger UI для авторизации.",
+            },
+            {
+                name: "scheme_name",
+                description:
+                    "Имя схемы в OpenAPI. По умолчанию — имя класса или переменной.",
+            },
+            {
+                name: "scopes",
+                description:
+                    "Словарь {scope: описание} — области доступа OAuth2, доступные в этой схеме. Например, {\"read\": \"Чтение данных\", \"write\": \"Запись данных\"}.",
+            },
+            {
+                name: "description",
+                description:
+                    "Описание схемы безопасности для документации.",
+            },
+            {
+                name: "auto_error",
+                description:
+                    "Если True — возвращает 401, когда токен отсутствует. Если False — возвращает None (позволяет поддерживать необязательную аутентификацию).",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pydantic import BaseModel
+
+app = FastAPI()
+
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/auth/token",
+    scopes={"read": "Чтение данных", "write": "Запись данных"},
+)
+
+FAKE_USERS = {"alice": {"password": "secret", "name": "Alice"}}
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+@app.post("/auth/token", response_model=Token)
+def login(form: OAuth2PasswordRequestForm = Depends()):
+    user = FAKE_USERS.get(form.username)
+    if not user or user["password"] != form.password:
+        raise HTTPException(status_code=401, detail="Неверные учётные данные")
+    # В реальном приложении — генерируйте JWT
+    return {"access_token": f"token-for-{form.username}", "token_type": "bearer"}
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    # Здесь должна быть проверка и декодирование JWT
+    if not token.startswith("token-for-"):
+        raise HTTPException(status_code=401, detail="Недействительный токен")
+    return {"username": token.replace("token-for-", "")}
+
+@app.get("/users/me")
+def read_me(user: dict = Depends(get_current_user)):
+    return user`,
+    },
+    {
+        category: "Безопасность",
+        name: "OAuth2AuthorizationCodeBearer()",
+        description:
+            "Схема OAuth2 для потока Authorization Code — стандартного трёхстороннего OAuth2, используемого при интеграции со сторонними провайдерами (Google, GitHub, Microsoft и др.). Клиент перенаправляется на authorizationUrl для входа, получает code, обменивает его на токен через tokenUrl. FastAPI извлекает Bearer-токен из заголовка Authorization.",
+        syntax: `OAuth2AuthorizationCodeBearer(
+    authorizationUrl,
+    tokenUrl,
+    refreshUrl=None,
+    scheme_name=None,
+    scopes=None,
+    description=None,
+    auto_error=True,
+)`,
+        arguments: [
+            {
+                name: "authorizationUrl",
+                description:
+                    "URL страницы авторизации провайдера, на которую перенаправляется пользователь для входа. Например, \"https://accounts.google.com/o/oauth2/auth\".",
+            },
+            {
+                name: "tokenUrl",
+                description:
+                    "URL для обмена кода авторизации на access-токен. Например, \"https://oauth2.googleapis.com/token\".",
+            },
+            {
+                name: "refreshUrl",
+                description:
+                    "URL для обновления истёкшего access-токена с помощью refresh-токена. Тип str или None.",
+            },
+            {
+                name: "scheme_name",
+                description:
+                    "Имя схемы в OpenAPI. По умолчанию — имя переменной или класса.",
+            },
+            {
+                name: "scopes",
+                description:
+                    "Словарь {scope: описание} — области доступа OAuth2. Например, {\"openid\": \"OpenID Connect\", \"email\": \"Доступ к email\"}.",
+            },
+            {
+                name: "description",
+                description:
+                    "Описание схемы безопасности для документации.",
+            },
+            {
+                name: "auto_error",
+                description:
+                    "Если True — возвращает 401 при отсутствии токена. Если False — возвращает None.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import OAuth2AuthorizationCodeBearer
+
+app = FastAPI()
+
+# Интеграция с GitHub OAuth2
+github_oauth2 = OAuth2AuthorizationCodeBearer(
+    authorizationUrl="https://github.com/login/oauth/authorize",
+    tokenUrl="https://github.com/login/oauth/access_token",
+    scopes={
+        "read:user": "Чтение профиля пользователя",
+        "user:email": "Доступ к email пользователя",
+    },
+    description="GitHub OAuth2 Authorization Code Flow",
+)
+
+async def get_github_user(token: str = Depends(github_oauth2)):
+    # Используем токен для запроса к GitHub API
+    import httpx
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://api.github.com/user",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Недействительный GitHub-токен")
+    return resp.json()
+
+@app.get("/github/me")
+async def github_profile(user: dict = Depends(get_github_user)):
+    return {"login": user["login"], "name": user.get("name"), "email": user.get("email")}`,
+    },
+
+    {
+        category: "Безопасность",
+        name: "OAuth2PasswordRequestForm()",
+        description:
+            "Зависимость для разбора тела запроса на получение токена в формате application/x-www-form-urlencoded (стандарт OAuth2). Используется как параметр эндпоинта /token — FastAPI автоматически извлекает и валидирует поля формы. grant_type необязателен и принимает любое значение (в отличие от строгой версии).",
+        syntax: `OAuth2PasswordRequestForm(
+    *,
+    grant_type=None,
+    username,
+    password,
+    scope="",
+    client_id=None,
+    client_secret=None,
+)`,
+        arguments: [
+            {
+                name: "grant_type",
+                description:
+                    "Тип предоставления OAuth2. Необязателен — принимает любое строковое значение или None. Для строгой проверки (только \"password\") используйте OAuth2PasswordRequestFormStrict.",
+            },
+            {
+                name: "username",
+                description:
+                    "Имя пользователя из тела формы. Обязательное поле.",
+            },
+            {
+                name: "password",
+                description:
+                    "Пароль пользователя из тела формы. Обязательное поле.",
+            },
+            {
+                name: "scope",
+                description:
+                    "Строка запрашиваемых областей доступа, разделённых пробелом (например, \"read write\"). Доступна как список через атрибут form.scopes. По умолчанию пустая строка.",
+            },
+            {
+                name: "client_id",
+                description:
+                    "Идентификатор клиента OAuth2 (опционально). Передаётся, если авторизация выполняется от имени OAuth2-клиента, а не напрямую пользователем.",
+            },
+            {
+                name: "client_secret",
+                description:
+                    "Секрет клиента OAuth2 (опционально). Используется совместно с client_id для аутентификации OAuth2-клиента.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
+app = FastAPI()
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
+
+FAKE_USERS = {
+    "alice": {"password": "wonderland", "scopes": ["read", "write"]},
+    "bob":   {"password": "builder",    "scopes": ["read"]},
+}
+
+@app.post("/token")
+def login(form: OAuth2PasswordRequestForm = Depends()):
+    user = FAKE_USERS.get(form.username)
+    if not user or user["password"] != form.password:
+        raise HTTPException(status_code=400, detail="Неверные учётные данные")
+
+    # form.scopes — список запрошенных областей доступа
+    granted = [s for s in form.scopes if s in user["scopes"]]
+    return {
+        "access_token": f"token-{form.username}",
+        "token_type": "bearer",
+        "scope": " ".join(granted),
+    }
+
+@app.get("/me")
+def read_me(token: str = Depends(oauth2_scheme)):
+    return {"token": token}`,
+    },
+    {
+        category: "Безопасность",
+        name: "OAuth2PasswordRequestFormStrict()",
+        description:
+            "Строгая версия OAuth2PasswordRequestForm. Отличается тем, что поле grant_type обязательно и должно иметь точное значение \"password\" (валидируется через Pydantic). Соответствует спецификации OAuth2 RFC 6749 — используется, когда важна строгая совместимость со стандартом.",
+        syntax: `OAuth2PasswordRequestFormStrict(
+    *,
+    grant_type,
+    username,
+    password,
+    scope="",
+    client_id=None,
+    client_secret=None,
+)`,
+        arguments: [
+            {
+                name: "grant_type",
+                description:
+                    "Тип предоставления OAuth2. Обязательное поле. Должно быть строго равно \"password\" — любое другое значение вызовет ошибку валидации 422.",
+            },
+            {
+                name: "username",
+                description:
+                    "Имя пользователя из тела формы. Обязательное поле.",
+            },
+            {
+                name: "password",
+                description:
+                    "Пароль пользователя из тела формы. Обязательное поле.",
+            },
+            {
+                name: "scope",
+                description:
+                    "Строка запрашиваемых областей доступа, разделённых пробелом. Доступна как список через form.scopes. По умолчанию пустая строка.",
+            },
+            {
+                name: "client_id",
+                description:
+                    "Идентификатор OAuth2-клиента. Опциональный параметр.",
+            },
+            {
+                name: "client_secret",
+                description:
+                    "Секрет OAuth2-клиента. Опциональный параметр.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
+from fastapi.security.oauth2 import OAuth2PasswordRequestFormStrict
+
+app = FastAPI()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
+
+@app.post("/token")
+def strict_login(form: OAuth2PasswordRequestFormStrict = Depends()):
+    # grant_type гарантированно равен "password"
+    # Запрос без grant_type="password" вернёт 422 автоматически
+    if form.username != "admin" or form.password != "secret":
+        raise HTTPException(status_code=400, detail="Неверные учётные данные")
+    return {
+        "access_token": "admin-token",
+        "token_type": "bearer",
+        "grant_type_received": form.grant_type,  # всегда "password"
+    }
+
+# Запрос с grant_type="client_credentials" → 422 Unprocessable Entity
+# Запрос с grant_type="password" и верными данными → токен`,
+    },
+    {
+        category: "Безопасность",
+        name: "HTTPBasic()",
+        description:
+            "Схема HTTP Basic Authentication. Извлекает имя пользователя и пароль из заголовка Authorization: Basic <base64(username:password)> и возвращает объект HTTPBasicCredentials с полями username и password. При отсутствии заголовка браузер показывает встроенный диалог входа. Подходит для простой защиты внутренних инструментов и admin-панелей.",
+        syntax: `HTTPBasic(
+    *,
+    scheme_name=None,
+    realm=None,
+    description=None,
+    auto_error=True,
+)`,
+        arguments: [
+            {
+                name: "scheme_name",
+                description:
+                    "Имя схемы безопасности в OpenAPI. По умолчанию — имя класса.",
+            },
+            {
+                name: "realm",
+                description:
+                    "Область защиты (realm) для заголовка WWW-Authenticate. Отображается браузером в диалоге входа. Тип str или None.",
+            },
+            {
+                name: "description",
+                description:
+                    "Описание схемы безопасности для документации Swagger UI и ReDoc.",
+            },
+            {
+                name: "auto_error",
+                description:
+                    "Если True (по умолчанию) — возвращает 401 с заголовком WWW-Authenticate при отсутствии учётных данных. Если False — возвращает None.",
+            },
+        ],
+        example: `import secrets
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+
+app = FastAPI()
+security = HTTPBasic(realm="Панель администратора")
+
+VALID_USERS = {
+    "admin": "supersecret",
+    "viewer": "readonly123",
+}
+
+def get_current_user(credentials: HTTPBasicCredentials = Depends(security)):
+    stored_password = VALID_USERS.get(credentials.username)
+    # secrets.compare_digest защищает от timing attacks
+    password_ok = stored_password is not None and secrets.compare_digest(
+        credentials.password.encode(), stored_password.encode()
+    )
+    if not password_ok:
+        raise HTTPException(
+            status_code=401,
+            detail="Неверное имя пользователя или пароль",
+            headers={"WWW-Authenticate": "Basic realm=\"Панель администратора\""},
+        )
+    return credentials.username
+
+@app.get("/admin/stats")
+def admin_stats(user: str = Depends(get_current_user)):
+    return {"user": user, "stats": {"requests": 1024, "errors": 3}}`,
+    },
+
+    {
+        category: "Безопасность",
+        name: "HTTPBearer()",
+        description:
+            "Схема HTTP Bearer Authentication. Извлекает Bearer-токен из заголовка Authorization: Bearer <token> и возвращает объект HTTPAuthorizationCredentials с полями scheme и credentials. Наиболее распространённый способ передачи JWT-токенов в REST API. При отсутствии или некорректном формате заголовка — возвращает 403 (auto_error=True).",
+        syntax: `HTTPBearer(
+    *,
+    bearerFormat=None,
+    scheme_name=None,
+    description=None,
+    auto_error=True,
+)`,
+        arguments: [
+            {
+                name: "bearerFormat",
+                description:
+                    "Hint для клиентов о формате Bearer-токена, например \"JWT\". Используется только в документации OpenAPI, не влияет на логику валидации.",
+            },
+            {
+                name: "scheme_name",
+                description:
+                    "Имя схемы безопасности в OpenAPI. По умолчанию — имя класса.",
+            },
+            {
+                name: "description",
+                description:
+                    "Описание схемы для документации Swagger UI и ReDoc.",
+            },
+            {
+                name: "auto_error",
+                description:
+                    "Если True — возвращает 403 при отсутствии или неверном формате заголовка Authorization. Если False — возвращает None (необязательная аутентификация).",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import jwt  # pip install pyjwt
+
+app = FastAPI()
+bearer = HTTPBearer(bearerFormat="JWT", description="JWT access token")
+
+SECRET = "super-secret"
+
+def get_current_user(creds: HTTPAuthorizationCredentials = Depends(bearer)):
+    try:
+        payload = jwt.decode(creds.credentials, SECRET, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Токен истёк")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Недействительный токен")
+
+@app.get("/profile")
+def profile(user: dict = Depends(get_current_user)):
+    return {"user_id": user.get("sub"), "email": user.get("email")}`,
+    },
+    {
+        category: "Безопасность",
+        name: "HTTPDigest()",
+        description:
+            "Схема HTTP Digest Authentication. Указывает, что API использует Digest-аутентификацию (RFC 7616) — более безопасный вариант Basic Auth с хешированием пароля. FastAPI регистрирует схему в OpenAPI, но сам не реализует challenge-response — это обычно выполняется на уровне сервера или middleware. Используется редко.",
+        syntax: `HTTPDigest(
+    *,
+    scheme_name=None,
+    description=None,
+    auto_error=True,
+)`,
+        arguments: [
+            {
+                name: "scheme_name",
+                description:
+                    "Имя схемы безопасности в OpenAPI. По умолчанию — имя класса.",
+            },
+            {
+                name: "description",
+                description:
+                    "Описание схемы для документации.",
+            },
+            {
+                name: "auto_error",
+                description:
+                    "Если True — возвращает 403 при отсутствии заголовка Authorization. Если False — возвращает None.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends
+from fastapi.security import HTTPDigest, HTTPAuthorizationCredentials
+
+app = FastAPI()
+digest = HTTPDigest(description="HTTP Digest Authentication (RFC 7616)")
+
+@app.get("/secure")
+def secure_resource(creds: HTTPAuthorizationCredentials = Depends(digest)):
+    # creds.scheme == "digest"
+    # creds.credentials содержит raw значение заголовка Authorization
+    # Реальная проверка Digest выполняется на уровне сервера/прокси
+    return {"scheme": creds.scheme}`,
+    },
+    {
+        category: "Безопасность",
+        name: "HTTPAuthorizationCredentials()",
+        description:
+            "Модель данных, возвращаемая схемами HTTPBearer, HTTPBasic и HTTPDigest при успешном извлечении учётных данных из заголовка Authorization. Содержит два поля: scheme (название схемы, например \"bearer\" или \"basic\") и credentials (значение после схемы — сам токен или base64-строка).",
+        syntax: `HTTPAuthorizationCredentials(scheme, credentials)`,
+        arguments: [
+            {
+                name: "scheme",
+                description:
+                    "Название схемы аутентификации из заголовка Authorization. Например: \"bearer\", \"basic\", \"digest\". Тип str.",
+            },
+            {
+                name: "credentials",
+                description:
+                    "Значение учётных данных — всё, что следует после названия схемы в заголовке. Для Bearer — сам токен, для Basic — base64-строка \"username:password\". Тип str.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import base64
+
+app = FastAPI()
+bearer = HTTPBearer()
+
+@app.get("/token-info")
+def token_info(creds: HTTPAuthorizationCredentials = Depends(bearer)):
+    # creds.scheme    → "bearer"
+    # creds.credentials → "<raw_token_string>"
+    return {
+        "scheme": creds.scheme,
+        "token_preview": creds.credentials[:10] + "...",
+    }
+
+# Пример с Basic для декодирования вручную
+from fastapi.security import HTTPBasic
+basic = HTTPBasic()
+
+@app.get("/basic-info")
+def basic_info(creds: HTTPAuthorizationCredentials = Depends(basic)):
+    # creds.scheme      → "basic"
+    # creds.credentials → "YWxpY2U6c2VjcmV0"  (base64)
+    decoded = base64.b64decode(creds.credentials).decode()
+    username, _, password = decoded.partition(":")
+    return {"username": username}`,
+    },
+    {
+        category: "Безопасность",
+        name: "APIKeyQuery()",
+        description:
+            "Схема аутентификации по API-ключу, передаваемому в параметре строки запроса URL. Используется как зависимость: извлекает значение параметра с заданным именем и возвращает его строкой. Если ключ отсутствует — возвращает 403 (auto_error=True). Менее безопасен, чем APIKeyHeader, так как ключ может попасть в логи сервера и историю браузера.",
+        syntax: `APIKeyQuery(
+    *,
+    name,
+    scheme_name=None,
+    description=None,
+    auto_error=True,
+)`,
+        arguments: [
+            {
+                name: "name",
+                description:
+                    "Имя параметра строки запроса, содержащего API-ключ. Например, \"api_key\" или \"token\". Обязательный параметр.",
+            },
+            {
+                name: "scheme_name",
+                description:
+                    "Имя схемы безопасности в OpenAPI. По умолчанию — имя переменной.",
+            },
+            {
+                name: "description",
+                description:
+                    "Описание схемы для документации.",
+            },
+            {
+                name: "auto_error",
+                description:
+                    "Если True — возвращает 403 при отсутствии ключа. Если False — возвращает None.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends, HTTPException, Security
+from fastapi.security import APIKeyQuery
+
+app = FastAPI()
+
+API_KEYS = {"key-abc-123", "key-xyz-789"}
+
+api_key_query = APIKeyQuery(name="api_key", description="API-ключ в строке запроса")
+
+def verify_key(key: str = Security(api_key_query)):
+    if key not in API_KEYS:
+        raise HTTPException(status_code=403, detail="Недействительный API-ключ")
+    return key
+
+@app.get("/data")
+def get_data(key: str = Depends(verify_key)):
+    return {"data": "секретные данные", "key_used": key[:4] + "..."}
+
+# GET /data?api_key=key-abc-123  →  200
+# GET /data                      →  403`,
+    },
+    {
+        category: "Безопасность",
+        name: "APIKeyHeader()",
+        description:
+            "Схема аутентификации по API-ключу, передаваемому в HTTP-заголовке. Предпочтительнее APIKeyQuery — ключ не попадает в URL, логи и историю браузера. Используется как зависимость: извлекает значение заголовка с заданным именем. Типичные имена заголовков: X-API-Key, Authorization, X-Token.",
+        syntax: `APIKeyHeader(
+    *,
+    name,
+    scheme_name=None,
+    description=None,
+    auto_error=True,
+)`,
+        arguments: [
+            {
+                name: "name",
+                description:
+                    "Имя HTTP-заголовка, содержащего API-ключ. Например, \"X-API-Key\" или \"X-Token\". Обязательный параметр.",
+            },
+            {
+                name: "scheme_name",
+                description:
+                    "Имя схемы безопасности в OpenAPI. По умолчанию — имя переменной.",
+            },
+            {
+                name: "description",
+                description:
+                    "Описание схемы для документации Swagger UI и ReDoc.",
+            },
+            {
+                name: "auto_error",
+                description:
+                    "Если True — возвращает 403 при отсутствии заголовка. Если False — возвращает None.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends, HTTPException, Security
+from fastapi.security import APIKeyHeader
+
+app = FastAPI()
+
+API_KEYS = {"prod-key-abc": "service-a", "prod-key-xyz": "service-b"}
+
+api_key_header = APIKeyHeader(
+    name="X-API-Key",
+    description="API-ключ в заголовке X-API-Key",
+)
+
+def get_service(key: str = Security(api_key_header)):
+    service = API_KEYS.get(key)
+    if not service:
+        raise HTTPException(status_code=403, detail="Недействительный API-ключ")
+    return service
+
+@app.get("/api/resource")
+def get_resource(service: str = Depends(get_service)):
+    return {"resource": "данные", "accessed_by": service}
+
+# curl -H "X-API-Key: prod-key-abc" http://localhost:8000/api/resource`,
+    },
+    {
+        category: "Безопасность",
+        name: "APIKeyCookie()",
+        description:
+            "Схема аутентификации по API-ключу, хранящемуся в cookie. Используется как зависимость: извлекает значение cookie с заданным именем. Удобна для веб-приложений, где ключ выставляется сервером при входе и автоматически передаётся браузером при каждом запросе. Для защиты от CSRF следует комбинировать с SameSite и CSRF-токеном.",
+        syntax: `APIKeyCookie(
+    *,
+    name,
+    scheme_name=None,
+    description=None,
+    auto_error=True,
+)`,
+        arguments: [
+            {
+                name: "name",
+                description:
+                    "Имя cookie, содержащего API-ключ или токен сессии. Например, \"access_token\" или \"session\". Обязательный параметр.",
+            },
+            {
+                name: "scheme_name",
+                description:
+                    "Имя схемы безопасности в OpenAPI. По умолчанию — имя переменной.",
+            },
+            {
+                name: "description",
+                description:
+                    "Описание схемы для документации.",
+            },
+            {
+                name: "auto_error",
+                description:
+                    "Если True — возвращает 403 при отсутствии cookie. Если False — возвращает None.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends, HTTPException, Response, Security
+from fastapi.security import APIKeyCookie
+
+app = FastAPI()
+
+SESSIONS: dict[str, str] = {}  # token → username
+
+cookie_scheme = APIKeyCookie(name="access_token", description="Токен в cookie access_token")
+
+def get_current_user(token: str = Security(cookie_scheme)):
+    username = SESSIONS.get(token)
+    if not username:
+        raise HTTPException(status_code=403, detail="Сессия не найдена или истекла")
+    return username
+
+@app.post("/login")
+def login(response: Response, username: str, password: str):
+    if password != "secret":
+        raise HTTPException(status_code=401, detail="Неверный пароль")
+    token = f"tok-{username}-xyz"
+    SESSIONS[token] = username
+    response.set_cookie("access_token", token, httponly=True, samesite="lax")
+    return {"status": "logged in"}
+
+@app.get("/dashboard")
+def dashboard(user: str = Depends(get_current_user)):
+    return {"welcome": user}
+
+@app.post("/logout")
+def logout(response: Response, user: str = Depends(get_current_user)):
+    response.delete_cookie("access_token")
+    return {"status": "logged out"}`,
+    },
+
+    {
+        category: "Безопасность",
+        name: "OpenIdConnect()",
+        description:
+            "Схема безопасности OpenID Connect (OIDC) — надстройка над OAuth2, добавляющая стандартизированную аутентификацию личности через id_token (JWT). FastAPI регистрирует URL конфигурации провайдера (discovery endpoint) в схеме OpenAPI. Извлекает Bearer-токен из заголовка Authorization и возвращает его строкой. Используется с провайдерами Auth0, Keycloak, Google Identity, Azure AD и др.",
+        syntax: `OpenIdConnect(
+    *,
+    openIdConnectUrl,
+    scheme_name=None,
+    description=None,
+    auto_error=True,
+)`,
+        arguments: [
+            {
+                name: "openIdConnectUrl",
+                description:
+                    "URL OpenID Connect discovery-документа провайдера (/.well-known/openid-configuration). Например, \"https://accounts.google.com/.well-known/openid-configuration\" или \"https://my-app.auth0.com/.well-known/openid-configuration\". FastAPI включает этот URL в схему OpenAPI.",
+            },
+            {
+                name: "scheme_name",
+                description:
+                    "Имя схемы безопасности в OpenAPI. По умолчанию — имя переменной или класса.",
+            },
+            {
+                name: "description",
+                description:
+                    "Описание схемы для документации Swagger UI и ReDoc.",
+            },
+            {
+                name: "auto_error",
+                description:
+                    "Если True — возвращает 403 при отсутствии заголовка Authorization. Если False — возвращает None (необязательная аутентификация).",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import OpenIdConnect
+import httpx
+import jwt  # pip install pyjwt[crypto]
+
+app = FastAPI()
+
+# Keycloak как OIDC-провайдер
+oidc = OpenIdConnect(
+    openIdConnectUrl=(
+        "https://keycloak.example.com/realms/myrealm"
+        "/.well-known/openid-configuration"
+    ),
+    description="Keycloak OpenID Connect",
+)
+
+OIDC_ISSUER = "https://keycloak.example.com/realms/myrealm"
+AUDIENCE    = "my-fastapi-app"
+
+async def get_oidc_public_keys():
+    """Загружает публичные ключи провайдера через JWKS URI."""
+    async with httpx.AsyncClient() as client:
+        cfg  = (await client.get(f"{OIDC_ISSUER}/.well-known/openid-configuration")).json()
+        keys = (await client.get(cfg["jwks_uri"])).json()
+    return keys
+
+async def get_current_user(token: str = Depends(oidc)):
+    try:
+        # Получаем JWKS и декодируем id_token / access_token
+        jwks = await get_oidc_public_keys()
+        signing_key = jwt.PyJWKClient(
+            f"{OIDC_ISSUER}/protocol/openid-connect/certs"
+        ).get_signing_key_from_jwt(token).key
+
+        payload = jwt.decode(
+            token,
+            signing_key,
+            algorithms=["RS256"],
+            audience=AUDIENCE,
+            issuer=OIDC_ISSUER,
+        )
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Токен истёк")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Недействительный токен: {e}")
+
+@app.get("/me")
+async def read_me(user: dict = Depends(get_current_user)):
+    return {
+        "sub":   user.get("sub"),
+        "email": user.get("email"),
+        "name":  user.get("name"),
+        "roles": user.get("realm_access", {}).get("roles", []),
+    }`,
+    },
+
+    // ─── Middleware ───────────────────────────────────────────────────────────
+    {
+        category: "Middleware",
+        name: "CORSMiddleware()",
+        description:
+            "Middleware для настройки политики Cross-Origin Resource Sharing (CORS). Управляет тем, каким доменам, методам и заголовкам разрешено обращаться к API из браузера. Необходим при работе фронтенда на одном домене, а API — на другом. Подключается через app.add_middleware().",
+        syntax: `CORSMiddleware(
+    app,
+    allow_origins=(),
+    allow_methods=("GET",),
+    allow_headers=(),
+    allow_credentials=False,
+    allow_origin_regex=None,
+    expose_headers=(),
+    max_age=600,
+)`,
+        arguments: [
+            {
+                name: "app",
+                description:
+                    "ASGI-приложение. Передаётся автоматически при использовании app.add_middleware().",
+            },
+            {
+                name: "allow_origins",
+                description:
+                    "Список разрешённых источников (origins), например [\"https://example.com\"]. Используйте [\"*\"] для разрешения всех источников (не совместимо с allow_credentials=True).",
+            },
+            {
+                name: "allow_methods",
+                description:
+                    "Список разрешённых HTTP-методов, например [\"GET\", \"POST\", \"PUT\", \"DELETE\"]. [\"*\"] разрешает все методы. По умолчанию только [\"GET\"].",
+            },
+            {
+                name: "allow_headers",
+                description:
+                    "Список разрешённых заголовков запроса, например [\"Authorization\", \"Content-Type\"]. [\"*\"] разрешает все заголовки. По умолчанию пусто.",
+            },
+            {
+                name: "allow_credentials",
+                description:
+                    "Разрешить передачу cookies и заголовков авторизации (credentials). При True нельзя использовать allow_origins=[\"*\"] — необходимо указывать конкретные домены. По умолчанию False.",
+            },
+            {
+                name: "allow_origin_regex",
+                description:
+                    "Регулярное выражение для динамического сопоставления источников, например r\"https://.*\\.example\\.com\". Применяется в дополнение к allow_origins.",
+            },
+            {
+                name: "expose_headers",
+                description:
+                    "Заголовки ответа, которые браузер должен сделать доступными для JavaScript-кода. По умолчанию браузер скрывает большинство заголовков ответа.",
+            },
+            {
+                name: "max_age",
+                description:
+                    "Время кэширования preflight-ответа браузером в секундах. По умолчанию 600 (10 минут).",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",   # локальный фронтенд
+        "https://myapp.com",       # продакшн фронтенд
+    ],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_credentials=True,
+    expose_headers=["X-Total-Count", "X-Request-ID"],
+    max_age=3600,
+)
+
+@app.get("/api/data")
+def get_data():
+    return {"data": "Доступно с разрешённых источников"}`,
+    },
+    {
+        category: "Middleware",
+        name: "GZipMiddleware()",
+        description:
+            "Middleware для автоматического сжатия HTTP-ответов алгоритмом GZip. Применяется только если клиент поддерживает сжатие (заголовок Accept-Encoding: gzip) и размер ответа превышает minimum_size. Существенно сокращает объём передаваемых данных для текстовых ответов (JSON, HTML, CSS).",
+        syntax: `GZipMiddleware(app, minimum_size=500, compresslevel=9)`,
+        arguments: [
+            {
+                name: "app",
+                description:
+                    "ASGI-приложение. Передаётся автоматически при использовании app.add_middleware().",
+            },
+            {
+                name: "minimum_size",
+                description:
+                    "Минимальный размер ответа в байтах, при котором применяется сжатие. Ответы меньше этого размера передаются без сжатия. По умолчанию 500.",
+            },
+            {
+                name: "compresslevel",
+                description:
+                    "Уровень сжатия GZip от 1 (быстрее, хуже) до 9 (медленнее, лучше). По умолчанию 9.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
+
+app = FastAPI()
+
+# Сжимать ответы размером от 1 КБ
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+
+@app.get("/data/large")
+def large_response():
+    # Большой JSON-ответ будет автоматически сжат
+    return {"items": [{"id": i, "value": f"item_{i}"} for i in range(1000)]}`,
+    },
+    {
+        category: "Middleware",
+        name: "HTTPSRedirectMiddleware()",
+        description:
+            "Middleware, которое автоматически перенаправляет все HTTP-запросы на HTTPS (301 Permanent Redirect), а WS — на WSS. Обеспечивает обязательное использование защищённого соединения в продакшне. Рекомендуется использовать только в боевом окружении — в разработке с localhost HTTPS обычно не настроен.",
+        syntax: `HTTPSRedirectMiddleware(app)`,
+        arguments: [
+            {
+                name: "app",
+                description:
+                    "ASGI-приложение. Передаётся автоматически при использовании app.add_middleware().",
+            },
+        ],
+        example: `import os
+from fastapi import FastAPI
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
+
+app = FastAPI()
+
+# Включаем только в продакшне
+if os.getenv("ENVIRONMENT") == "production":
+    app.add_middleware(HTTPSRedirectMiddleware)
+
+@app.get("/")
+def root():
+    return {"message": "Безопасное соединение"}
+
+# HTTP GET http://myapp.com/  →  301  →  https://myapp.com/`,
+    },
+    {
+        category: "Middleware",
+        name: "TrustedHostMiddleware()",
+        description:
+            "Middleware для защиты от атак подмены заголовка Host (Host Header Injection). Проверяет, что заголовок Host входящего запроса совпадает с одним из разрешённых хостов. Запросы с недопустимым Host-заголовком отклоняются ответом 400 Bad Request.",
+        syntax: `TrustedHostMiddleware(app, allowed_hosts=None, www_redirect=True)`,
+        arguments: [
+            {
+                name: "app",
+                description:
+                    "ASGI-приложение. Передаётся автоматически при использовании app.add_middleware().",
+            },
+            {
+                name: "allowed_hosts",
+                description:
+                    "Список допустимых значений заголовка Host. Поддерживает wildcard-домены: \"*.example.com\" разрешает любые поддомены. None или [\"*\"] — пропустить проверку (не рекомендуется в продакшне).",
+            },
+            {
+                name: "www_redirect",
+                description:
+                    "Если True, запросы к example.com автоматически перенаправляются на www.example.com (при наличии в allowed_hosts). По умолчанию True.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
+app = FastAPI()
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=[
+        "myapp.com",
+        "www.myapp.com",
+        "*.myapp.com",    # все поддомены
+        "localhost",      # для локальной разработки
+    ],
+    www_redirect=True,
+)
+
+@app.get("/")
+def root():
+    return {"host": "проверен и допустим"}
+
+# Запрос с Host: evil.com → 400 Bad Request`,
+    },
+    {
+        category: "Middleware",
+        name: "SessionMiddleware()",
+        description:
+            "Middleware для работы с серверными сессиями на основе подписанных cookie. Хранит данные сессии в зашифрованном cookie на стороне клиента (не в БД). Данные доступны через request.session — обычный dict. Требует установки пакета itsdangerous. Подходит для небольшого объёма данных сессии.",
+        syntax: `SessionMiddleware(
+    app,
+    secret_key,
+    session_cookie="session",
+    max_age=14 * 24 * 60 * 60,
+    same_site="lax",
+    https_only=False,
+    path="/",
+)`,
+        arguments: [
+            {
+                name: "secret_key",
+                description:
+                    "Секретный ключ для подписи cookie. Обязательный параметр. Должен быть длинным случайным значением, хранящимся в переменных окружения. Компрометация ключа позволяет подделать сессию.",
+            },
+            {
+                name: "session_cookie",
+                description:
+                    "Имя cookie сессии. По умолчанию \"session\".",
+            },
+            {
+                name: "max_age",
+                description:
+                    "Время жизни cookie сессии в секундах. По умолчанию 14 дней (14 * 24 * 60 * 60).",
+            },
+            {
+                name: "same_site",
+                description:
+                    "Политика SameSite cookie: \"lax\" (по умолчанию) — защита от CSRF при переходах, \"strict\" — максимальная защита, \"none\" — разрешить кросс-сайтовые запросы (требует https_only=True).",
+            },
+            {
+                name: "https_only",
+                description:
+                    "Если True, устанавливает флаг Secure на cookie — браузер отправляет её только по HTTPS. По умолчанию False.",
+            },
+            {
+                name: "path",
+                description:
+                    "Путь, для которого действует cookie сессии. По умолчанию \"/\" — весь сайт.",
+            },
+        ],
+        example: `import os
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
+
+app = FastAPI()
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ["SESSION_SECRET_KEY"],
+    session_cookie="app_session",
+    max_age=3600,          # 1 час
+    same_site="lax",
+    https_only=True,       # только HTTPS в продакшне
+)
+
+@app.post("/login")
+async def login(request: Request):
+    data = await request.json()
+    if data.get("password") == "secret":
+        request.session["user_id"] = 42
+        request.session["role"] = "admin"
+        return {"status": "logged in"}
+    return JSONResponse({"error": "Неверный пароль"}, status_code=401)
+
+@app.get("/profile")
+def profile(request: Request):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse({"error": "Не авторизован"}, status_code=401)
+    return {"user_id": user_id, "role": request.session.get("role")}
+
+@app.post("/logout")
+def logout(request: Request):
+    request.session.clear()
+    return {"status": "logged out"}`,
+    },
+
+    // ─── Исключения ───────────────────────────────────────────────────────────
+    {
+        category: "Исключения",
+        name: "HTTPException()",
+        description:
+            "Стандартное исключение FastAPI для возврата HTTP-ошибок клиенту. При выбросе прерывает выполнение обработчика и отправляет JSON-ответ с указанным статус-кодом и описанием ошибки. Может быть перехвачено кастомным обработчиком через @app.exception_handler(HTTPException).",
+        syntax: `HTTPException(status_code, detail=None, headers=None)`,
+        arguments: [
+            {
+                name: "status_code",
+                description:
+                    "HTTP-код статуса ошибки (например, 400, 401, 403, 404, 422, 500). Обязательный параметр.",
+            },
+            {
+                name: "detail",
+                description:
+                    "Описание ошибки, включаемое в тело ответа в поле detail. Может быть строкой, словарём, списком или любым JSON-сериализуемым объектом. По умолчанию None.",
+            },
+            {
+                name: "headers",
+                description:
+                    "Словарь дополнительных HTTP-заголовков для включения в ответ с ошибкой. Полезен для WWW-Authenticate при ошибке 401.",
+            },
+        ],
+        example: `from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBearer
+
+app = FastAPI()
+security = HTTPBearer()
+
+fake_db = {1: {"name": "Widget"}, 2: {"name": "Gadget"}}
+
+@app.get("/items/{item_id}")
+def get_item(item_id: int):
+    if item_id not in fake_db:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Товар с id={item_id} не найден",
+        )
+    return fake_db[item_id]
+
+@app.get("/secure")
+def secure_route(token: str = Depends(security)):
+    if token.credentials != "secret":
+        raise HTTPException(
+            status_code=401,
+            detail="Неверный токен",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return {"access": "granted"}
+
+# Кастомный обработчик HTTPException
+from fastapi.requests import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail, "path": request.url.path},
+    )`,
+    },
+    {
+        category: "Исключения",
+        name: "RequestValidationError()",
+        description:
+            "Исключение, автоматически выбрасываемое FastAPI при несоответствии входящих данных запроса объявленным Pydantic-схемам. Содержит подробный список ошибок валидации с указанием поля, типа ошибки и сообщения. По умолчанию возвращает ответ 422 Unprocessable Entity. Может быть перехвачено через @app.exception_handler(RequestValidationError) для кастомизации формата ошибок.",
+        syntax: `RequestValidationError(errors, *, body=None)`,
+        arguments: [
+            {
+                name: "errors",
+                description:
+                    "Список ошибок валидации от Pydantic. Каждая ошибка — словарь с ключами loc (расположение поля), msg (сообщение), type (тип ошибки) и input (переданное значение).",
+            },
+            {
+                name: "body",
+                description:
+                    "Тело запроса, вызвавшее ошибку валидации. Тип Any или None. Доступно в обработчике исключений для логирования или диагностики.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.requests import Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    price: float
+    quantity: int
+
+@app.post("/items")
+def create_item(item: Item):
+    return item
+
+# Кастомный обработчик — упрощённый формат ошибок
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = [
+        {
+            "field": " -> ".join(str(loc) for loc in err["loc"]),
+            "message": err["msg"],
+            "type": err["type"],
+        }
+        for err in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=422,
+        content={"validation_errors": errors, "body": str(exc.body)},
+    )
+
+# POST /items с телом {"name": 123, "price": "не число"}
+# Вернёт кастомный формат ошибок вместо стандартного`,
+    },
+    {
+        category: "Исключения",
+        name: "ResponseValidationError()",
+        description:
+            "Исключение, выбрасываемое FastAPI при несоответствии данных, возвращаемых обработчиком маршрута, объявленной response_model. В отличие от RequestValidationError (ошибка входных данных), это ошибка исходящих данных — сервер пытается вернуть невалидный ответ. По умолчанию приводит к 500 Internal Server Error.",
+        syntax: `ResponseValidationError(errors, *, body=None)`,
+        arguments: [
+            {
+                name: "errors",
+                description:
+                    "Список ошибок валидации Pydantic для исходящих данных. Каждая ошибка содержит loc, msg, type и input.",
+            },
+            {
+                name: "body",
+                description:
+                    "Тело ответа, которое не прошло валидацию. Доступно в обработчике для диагностики.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.exceptions import ResponseValidationError
+from fastapi.requests import Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class UserOut(BaseModel):
+    id: int
+    name: str
+    email: str  # обязательное поле в response_model
+
+@app.get("/users/{user_id}", response_model=UserOut)
+def get_user(user_id: int):
+    # email отсутствует — вызовет ResponseValidationError
+    return {"id": user_id, "name": "Alice"}
+
+# Кастомный обработчик ошибок валидации ответа
+@app.exception_handler(ResponseValidationError)
+async def response_validation_handler(request: Request, exc: ResponseValidationError):
+    # Логируем ошибку и возвращаем 500
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Внутренняя ошибка сервера: невалидный ответ",
+            "details": str(exc.errors()),
+        },
+    )`,
+    },
+    {
+        category: "Исключения",
+        name: "WebSocketException()",
+        description:
+            "Исключение для отклонения WebSocket-соединения на этапе рукопожатия (handshake) до вызова accept(). В отличие от WebSocketDisconnect (отключение уже принятого клиента), WebSocketException позволяет отказать в установке соединения с конкретным кодом закрытия. Обрабатывается через @app.exception_handler(WebSocketException).",
+        syntax: `WebSocketException(code, reason=None)`,
+        arguments: [
+            {
+                name: "code",
+                description:
+                    "Код закрытия WebSocket (RFC 6455). Обязательный параметр. Например: 1008 — нарушение политики (Policy Violation), 1011 — внутренняя ошибка сервера.",
+            },
+            {
+                name: "reason",
+                description:
+                    "Текстовое описание причины отклонения соединения. Тип str или None.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket
+from fastapi.websockets import WebSocketState
+from fastapi.exceptions import WebSocketException
+from fastapi.requests import Request
+from fastapi.responses import JSONResponse
+
+app = FastAPI()
+
+def get_token_from_ws(websocket: WebSocket) -> str:
+    token = websocket.query_params.get("token")
+    if not token:
+        raise WebSocketException(
+            code=1008,
+            reason="Токен авторизации не передан",
+        )
+    return token
+
+@app.websocket("/ws/secure")
+async def ws_secure(websocket: WebSocket):
+    token = get_token_from_ws(websocket)  # выбросит WebSocketException если нет токена
+    await websocket.accept()
+    await websocket.send_text(f"Добро пожаловать, токен: {token}")
+    await websocket.close()
+
+# Кастомный обработчик
+@app.exception_handler(WebSocketException)
+async def ws_exception_handler(request: Request, exc: WebSocketException):
+    # Здесь можно логировать отклонённые соединения
+    return JSONResponse(
+        status_code=403,
+        content={"code": exc.code, "reason": exc.reason},
+    )`,
+    },
+
+    // ─── WebSocketDisconnect ──────────────────────────────────────────────────
+    {
+        category: "WebSocket",
+        name: "WebSocketDisconnect()",
+        description:
+            "Исключение, выбрасываемое FastAPI при разрыве WebSocket-соединения со стороны клиента. Перехватывается через try/except для корректной обработки отключения: освобождения ресурсов, обновления списка активных пользователей, логирования. Содержит код закрытия и необязательное сообщение.",
+        syntax: `WebSocketDisconnect(code=1000, reason=None)`,
+        arguments: [
+            {
+                name: "code",
+                description:
+                    "Код закрытия WebSocket (RFC 6455), переданный клиентом. 1000 — нормальное закрытие, 1001 — клиент уходит (закрытие вкладки/браузера), 1006 — аномальное закрытие без фрейма Close. По умолчанию 1000.",
+            },
+            {
+                name: "reason",
+                description:
+                    "Текстовое сообщение, поясняющее причину отключения. Тип str или None. Предоставляется клиентом и может быть пустым.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+app = FastAPI()
+
+# Хранилище активных соединений
+active_connections: dict[int, WebSocket] = {}
+
+@app.websocket("/ws/{user_id}")
+async def ws(websocket: WebSocket, user_id: int):
+    await websocket.accept()
+    active_connections[user_id] = websocket
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await websocket.send_text(f"Получено: {data}")
+    except WebSocketDisconnect as exc:
+        # Обработка отключения с доступом к коду и причине
+        print(f"Пользователь {user_id} отключился: код={exc.code}, причина={exc.reason!r}")
+        active_connections.pop(user_id, None)`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket_disconnect.code",
+        description:
+            "Код закрытия WebSocket-соединения, переданный клиентом при отключении. Тип int. Доступен в блоке except WebSocketDisconnect as exc через exc.code. Позволяет различать нормальное закрытие (1000), уход клиента (1001) и аномальные обрывы (1006).",
+        syntax: `websocket_disconnect.code`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect as exc:
+        if exc.code == 1000:
+            print("Нормальное закрытие")
+        elif exc.code == 1001:
+            print("Клиент закрыл вкладку или браузер")
+        elif exc.code == 1006:
+            print("Аномальный обрыв соединения")
+        else:
+            print(f"Соединение закрыто с кодом: {exc.code}")`,
+    },
+    {
+        category: "WebSocket",
+        name: "websocket_disconnect.reason",
+        description:
+            "Текстовое сообщение, поясняющее причину закрытия WebSocket-соединения. Тип str. Доступен через exc.reason в блоке except WebSocketDisconnect. Предоставляется клиентом и может быть пустой строкой, если клиент не передал причину.",
+        syntax: `websocket_disconnect.reason`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import logging
+
+app = FastAPI()
+logger = logging.getLogger(__name__)
+
+@app.websocket("/ws/{session_id}")
+async def ws(websocket: WebSocket, session_id: str):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await websocket.send_text(data)
+    except WebSocketDisconnect as exc:
+        logger.warning(
+            "WS отключение: session=%s code=%d reason=%r",
+            session_id, exc.code, exc.reason or "не указана",
+        )`,
+    },
+
+    // ─── WebSocket методы ─────────────────────────────────────────────────────
+    {
+        category: "WebSocket",
+        name: "await websocket.accept()",
+        description:
+            "Принимает входящее WebSocket-соединение и завершает процедуру рукопожатия (handshake). Должен быть вызван до любой отправки или получения данных. Опционально позволяет согласовать субпротокол и добавить собственные заголовки в ответ на handshake.",
+        syntax: `await websocket.accept(subprotocol=None, headers=None)`,
+        arguments: [
+            {
+                name: "subprotocol",
+                description:
+                    "Субпротокол WebSocket для согласования с клиентом (например, \"chat\", \"graphql-ws\"). Должен совпадать с одним из субпротоколов, предложенных клиентом. Тип str или None.",
+            },
+            {
+                name: "headers",
+                description:
+                    "Дополнительные HTTP-заголовки, добавляемые к ответу handshake. Список кортежей [(name, value)] или объект Headers.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    # Простое принятие соединения
+    await websocket.accept()
+    await websocket.send_text("Соединение установлено")
+    await websocket.close()
+
+@app.websocket("/ws/proto")
+async def ws_proto(websocket: WebSocket):
+    # Согласование субпротокола и добавление заголовка
+    await websocket.accept(
+        subprotocol="chat",
+        headers=[(b"x-server", b"fastapi")],
+    )
+    await websocket.send_text("Субпротокол: chat")
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.receive()",
+        description:
+            "Низкоуровневый метод получения следующего сообщения от клиента. Возвращает словарь ASGI-сообщения с ключами type, text или bytes. Тип сообщения: \"websocket.receive\" — данные, \"websocket.disconnect\" — клиент отключился. Для повседневного использования предпочтительнее receive_text() или receive_bytes().",
+        syntax: `await websocket.receive()`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws/raw")
+async def ws_raw(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        message = await websocket.receive()
+        if message["type"] == "websocket.disconnect":
+            print("Клиент отключился")
+            break
+        if "text" in message:
+            print(f"Текст: {message['text']}")
+        elif "bytes" in message:
+            print(f"Байты: {len(message['bytes'])} байт")`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.receive_text()",
+        description:
+            "Асинхронно получает следующее текстовое сообщение от клиента и возвращает его как str. Блокирует выполнение до получения сообщения. Если клиент отправит бинарные данные или закроет соединение — выбросит исключение.",
+        syntax: `await websocket.receive_text()`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+app = FastAPI()
+
+@app.websocket("/ws/echo")
+async def ws_echo(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            text = await websocket.receive_text()
+            await websocket.send_text(f"Эхо: {text}")
+    except WebSocketDisconnect:
+        print("Клиент отключился")`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.receive_bytes()",
+        description:
+            "Асинхронно получает следующее бинарное сообщение от клиента и возвращает его как bytes. Подходит для передачи файлов, изображений, аудио и других бинарных данных. Если клиент отправит текст или закроет соединение — выбросит исключение.",
+        syntax: `await websocket.receive_bytes()`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import hashlib
+
+app = FastAPI()
+
+@app.websocket("/ws/binary")
+async def ws_binary(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_bytes()
+            md5 = hashlib.md5(data).hexdigest()
+            await websocket.send_text(
+                f"Получено {len(data)} байт, MD5: {md5}"
+            )
+    except WebSocketDisconnect:
+        print("Клиент отключился")`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.receive_json()",
+        description:
+            "Асинхронно получает сообщение и десериализует его из JSON. По умолчанию ожидает текстовый фрейм (mode=\"text\"), но может принимать и бинарный (mode=\"binary\"). Возвращает десериализованный Python-объект (dict, list и др.).",
+        syntax: `await websocket.receive_json(mode="text")`,
+        arguments: [
+            {
+                name: "mode",
+                description:
+                    "Режим получения: \"text\" — JSON из текстового фрейма (по умолчанию), \"binary\" — JSON из бинарного фрейма.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+app = FastAPI()
+
+@app.websocket("/ws/json")
+async def ws_json(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            payload = await websocket.receive_json()
+            action = payload.get("action")
+            data = payload.get("data")
+            await websocket.send_json({
+                "status": "ok",
+                "echo_action": action,
+                "echo_data": data,
+            })
+    except WebSocketDisconnect:
+        print("Клиент отключился")`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.send()",
+        description:
+            "Низкоуровневый метод отправки ASGI-сообщения клиенту. Принимает словарь с ключами type, text или bytes. Для повседневного использования предпочтительнее send_text(), send_bytes() или send_json().",
+        syntax: `await websocket.send(data)`,
+        arguments: [
+            {
+                name: "data",
+                description:
+                    "Словарь ASGI-сообщения. Должен содержать ключ type со значением \"websocket.send\", а также text (str) или bytes для передачи данных.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws/raw-send")
+async def ws_raw_send(websocket: WebSocket):
+    await websocket.accept()
+    # Отправка текста через низкоуровневый интерфейс
+    await websocket.send({"type": "websocket.send", "text": "Привет!"})
+    # Отправка байтов через низкоуровневый интерфейс
+    await websocket.send({"type": "websocket.send", "bytes": b"\\x00\\x01\\x02"})
+    await websocket.close()`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.send_text()",
+        description:
+            "Асинхронно отправляет текстовое сообщение клиенту в виде текстового WebSocket-фрейма. Принимает строку str. Наиболее распространённый способ отправки данных при работе с текстовыми протоколами.",
+        syntax: `await websocket.send_text(data)`,
+        arguments: [
+            {
+                name: "data",
+                description:
+                    "Строка str, которая будет отправлена клиенту как текстовый WebSocket-фрейм.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import json
+
+app = FastAPI()
+
+@app.websocket("/ws/chat")
+async def ws_chat(websocket: WebSocket):
+    await websocket.accept()
+    await websocket.send_text("Добро пожаловать в чат!")
+    try:
+        while True:
+            msg = await websocket.receive_text()
+            await websocket.send_text(f"Сервер: {msg.upper()}")
+    except WebSocketDisconnect:
+        pass`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.send_bytes()",
+        description:
+            "Асинхронно отправляет бинарное сообщение клиенту в виде бинарного WebSocket-фрейма. Принимает bytes. Используется для передачи файлов, изображений, аудио, сжатых данных и любого другого бинарного контента.",
+        syntax: `await websocket.send_bytes(data)`,
+        arguments: [
+            {
+                name: "data",
+                description:
+                    "Объект bytes, который будет отправлен клиенту как бинарный WebSocket-фрейм.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+app = FastAPI()
+
+@app.websocket("/ws/thumbnail")
+async def ws_thumbnail(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            # Получаем изображение от клиента
+            image_bytes = await websocket.receive_bytes()
+            # Обрабатываем (здесь — просто возвращаем)
+            thumbnail = image_bytes[:1024]  # заглушка
+            await websocket.send_bytes(thumbnail)
+    except WebSocketDisconnect:
+        pass`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.send_json()",
+        description:
+            "Асинхронно сериализует объект в JSON и отправляет его клиенту. По умолчанию отправляет как текстовый фрейм (mode=\"text\"). Поддерживает отправку как бинарного фрейма (mode=\"binary\"). Принимает любой JSON-сериализуемый Python-объект.",
+        syntax: `await websocket.send_json(data, mode="text")`,
+        arguments: [
+            {
+                name: "data",
+                description:
+                    "JSON-сериализуемый Python-объект (dict, list, str, int, bool, None).",
+            },
+            {
+                name: "mode",
+                description:
+                    "Режим отправки: \"text\" — как текстовый фрейм (по умолчанию), \"binary\" — как бинарный фрейм.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from datetime import datetime
+
+app = FastAPI()
+
+@app.websocket("/ws/updates")
+async def ws_updates(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            command = await websocket.receive_json()
+            if command.get("action") == "ping":
+                await websocket.send_json({
+                    "action": "pong",
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+    except WebSocketDisconnect:
+        pass`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.close()",
+        description:
+            "Инициирует закрытие WebSocket-соединения с указанным кодом завершения и необязательным сообщением. Стандартный код 1000 означает нормальное закрытие. После вызова обмен данными невозможен. Если клиент уже отключился — вызов безопасно игнорируется.",
+        syntax: `await websocket.close(code=1000, reason=None)`,
+        arguments: [
+            {
+                name: "code",
+                description:
+                    "Код закрытия WebSocket (RFC 6455). Основные: 1000 — нормальное закрытие, 1001 — endpoint уходит, 1008 — нарушение политики, 1011 — внутренняя ошибка сервера. По умолчанию 1000.",
+            },
+            {
+                name: "reason",
+                description:
+                    "Текстовое сообщение, поясняющее причину закрытия. Тип str или None. Передаётся клиенту, но не обязателен.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def ws(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "quit":
+                await websocket.close(code=1000, reason="Клиент запросил закрытие")
+                break
+            if data == "error":
+                await websocket.close(code=1011, reason="Тестовая ошибка сервера")
+                break
+            await websocket.send_text(f"Получено: {data}")
+    except WebSocketDisconnect:
+        pass`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.iter_text()",
+        description:
+            "Асинхронный генератор, последовательно возвращающий текстовые сообщения от клиента. Автоматически завершается при разрыве соединения (WebSocketDisconnect). Позволяет итерировать входящий поток через async for без явной обработки исключений отключения.",
+        syntax: `await websocket.iter_text()`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws/stream")
+async def ws_stream(websocket: WebSocket):
+    await websocket.accept()
+    async for message in websocket.iter_text():
+        # Цикл автоматически завершится при отключении клиента
+        processed = message.strip().upper()
+        await websocket.send_text(f"[{processed}]")`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.iter_bytes()",
+        description:
+            "Асинхронный генератор, последовательно возвращающий бинарные сообщения (bytes) от клиента. Автоматически завершается при разрыве соединения. Удобен для потоковой обработки бинарных данных: изображений, аудио, файлов.",
+        syntax: `await websocket.iter_bytes()`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+import hashlib
+
+app = FastAPI()
+
+@app.websocket("/ws/upload")
+async def ws_upload(websocket: WebSocket):
+    await websocket.accept()
+    chunks = []
+    async for chunk in websocket.iter_bytes():
+        chunks.append(chunk)
+        await websocket.send_text(f"Получен чанк: {len(chunk)} байт")
+
+    full_data = b"".join(chunks)
+    md5 = hashlib.md5(full_data).hexdigest()
+    await websocket.send_text(f"Итого: {len(full_data)} байт, MD5: {md5}")`,
+    },
+    {
+        category: "WebSocket",
+        name: "await websocket.iter_json()",
+        description:
+            "Асинхронный генератор, последовательно получающий и десериализующий JSON-сообщения от клиента. Автоматически завершается при разрыве соединения. Удобен для обработки потока JSON-команд или событий.",
+        syntax: `await websocket.iter_json()`,
+        arguments: [],
+        example: `from fastapi import FastAPI, WebSocket
+from datetime import datetime
+
+app = FastAPI()
+
+@app.websocket("/ws/events")
+async def ws_events(websocket: WebSocket):
+    await websocket.accept()
+    async for event in websocket.iter_json():
+        event_type = event.get("type", "unknown")
+        payload = event.get("payload", {})
+        await websocket.send_json({
+            "received": event_type,
+            "payload": payload,
+            "server_time": datetime.utcnow().isoformat(),
+        })`,
+    },
+
+    // ─── Фоновые задачи ───────────────────────────────────────────────────────
+    {
+        category: "Фоновые задачи",
+        name: "BackgroundTasks()",
+        description:
+            "Класс для регистрации фоновых задач, которые выполняются после отправки ответа клиенту. Позволяет запускать ресурсоёмкие операции (отправка email, запись в БД, обработка файлов) не задерживая HTTP-ответ. Объект BackgroundTasks обычно получают как параметр маршрута с аннотацией типа — FastAPI внедряет его автоматически.",
+        syntax: `BackgroundTasks(tasks=None)`,
+        arguments: [
+            {
+                name: "tasks",
+                description:
+                    "Список объектов BackgroundTask для предварительной инициализации. Как правило, не задаётся вручную — задачи добавляются через метод add_task().",
+            },
+        ],
+        example: `from fastapi import FastAPI, BackgroundTasks
+
+app = FastAPI()
+
+def send_welcome_email(email: str):
+    # Имитация отправки письма
+    print(f"Отправка приветственного письма на {email}")
+
+@app.post("/register")
+async def register_user(email: str, background_tasks: BackgroundTasks):
+    # Ответ отправляется клиенту немедленно,
+    # send_welcome_email запустится после этого
+    background_tasks.add_task(send_welcome_email, email)
+    return {"message": "Пользователь зарегистрирован"}`,
+    },
+    {
+        category: "Фоновые задачи",
+        name: "BackgroundTask()",
+        description:
+            "Низкоуровневый класс из Starlette для создания единственной фоновой задачи, привязанной напрямую к объекту ответа через параметр background. В отличие от BackgroundTasks, не внедряется через зависимости — создаётся вручную и передаётся в конструктор класса ответа. Удобен, когда задача неразрывно связана с конкретным ответом (например, удаление временного файла после FileResponse).",
+        syntax: `BackgroundTask(func, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "func",
+                description:
+                    "Вызываемый объект (sync или async функция), который будет выполнен после отправки ответа.",
+            },
+            {
+                name: "*args",
+                description:
+                    "Позиционные аргументы, передаваемые в func при вызове.",
+            },
+            {
+                name: "**kwargs",
+                description:
+                    "Именованные аргументы, передаваемые в func при вызове.",
+            },
+        ],
+        example: `import os
+from fastapi import FastAPI
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
+
+app = FastAPI()
+
+def cleanup(path: str):
+    if os.path.exists(path):
+        os.remove(path)
+        print(f"Временный файл удалён: {path}")
+
+# Удаление временного файла сразу после отдачи клиенту
+@app.get("/export")
+def export_data():
+    tmp_path = "/tmp/report_export.csv"
+    # ... генерация файла ...
+    with open(tmp_path, "w") as f:
+        f.write("id,name\\n1,Widget\\n2,Gadget\\n")
+
+    return FileResponse(
+        path=tmp_path,
+        filename="report.csv",
+        media_type="text/csv",
+        background=BackgroundTask(cleanup, tmp_path),
+    )
+
+# Логирование после отправки JSON-ответа
+def log_action(user_id: int, action: str):
+    print(f"[LOG] user={user_id} action={action}")
+
+@app.delete("/items/{item_id}")
+def delete_item(item_id: int):
+    # ... удаление из БД ...
+    return JSONResponse(
+        content={"deleted": item_id},
+        background=BackgroundTask(log_action, user_id=1, action="delete_item"),
+    )`,
+    },
+    {
+        category: "Фоновые задачи",
+        name: "background_tasks.add_task()",
+        description:
+            "Регистрирует функцию для выполнения в фоне после отправки ответа. Принимает вызываемый объект и любые позиционные или именованные аргументы для него. Поддерживает как обычные (sync), так и асинхронные (async) функции — FastAPI определяет тип автоматически. Задачи выполняются последовательно в порядке добавления.",
+        syntax: `background_tasks.add_task(func, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "func",
+                description:
+                    "Вызываемый объект (функция, корутина, лямбда), который будет выполнен в фоне. Может быть sync- или async-функцией.",
+            },
+            {
+                name: "*args",
+                description:
+                    "Позиционные аргументы, передаваемые в func при вызове.",
+            },
+            {
+                name: "**kwargs",
+                description:
+                    "Именованные аргументы, передаваемые в func при вызове.",
+            },
+        ],
+        example: `import asyncio
+from fastapi import FastAPI, BackgroundTasks, UploadFile, File
+
+app = FastAPI()
+
+# Sync-задача
+def write_log(message: str, level: str = "INFO"):
+    with open("app.log", "a") as f:
+        f.write(f"[{level}] {message}\\n")
+
+# Async-задача
+async def notify_admin(user_id: int, action: str):
+    await asyncio.sleep(0.1)  # имитация запроса к внешнему API
+    print(f"Уведомление: пользователь {user_id} выполнил '{action}'")
+
+@app.post("/items")
+async def create_item(name: str, background_tasks: BackgroundTasks):
+    # Добавляем несколько задач — выполнятся по порядку после ответа
+    background_tasks.add_task(write_log, f"Создан товар: {name}", level="INFO")
+    background_tasks.add_task(notify_admin, user_id=42, action="create_item")
+    return {"name": name, "status": "created"}
+
+@app.post("/upload")
+async def upload_and_process(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+):
+    contents = await file.read()
+    await file.close()
+    # Тяжёлая обработка — в фон
+    background_tasks.add_task(write_log, f"Загружен файл: {file.filename}")
+    return {"filename": file.filename, "size": len(contents)}`,
+    },
+
+    // ─── Загрузка файлов ──────────────────────────────────────────────────────
+    {
+        category: "Загрузка файлов",
+        name: "UploadFile()",
+        description:
+            "Класс для работы с загружаемыми файлами в маршрутах FastAPI. Оборачивает файловый объект SpooledTemporaryFile — небольшие файлы хранятся в памяти, большие автоматически сбрасываются на диск. Используется как тип аннотации параметра маршрута для приёма файлов через multipart/form-data.",
+        syntax: `UploadFile(
+    filename,
+    *,
+    size=None,
+    headers=Headers(),
+    file=None,
+)`,
+        arguments: [
+            {
+                name: "filename",
+                description:
+                    "Оригинальное имя файла, переданное клиентом (например, «photo.jpg»). Не является безопасным для использования напрямую в файловой системе — требует валидации.",
+            },
+            {
+                name: "size",
+                description:
+                    "Размер файла в байтах. Заполняется автоматически FastAPI при получении запроса. None, если размер неизвестен.",
+            },
+            {
+                name: "headers",
+                description:
+                    "HTTP-заголовки части multipart, относящиеся к данному файлу (Content-Type, Content-Disposition и др.).",
+            },
+            {
+                name: "file",
+                description:
+                    "Базовый файловый объект SpooledTemporaryFile. Как правило, не задаётся вручную — создаётся автоматически при разборе запроса.",
+            },
+        ],
+        example: `from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
+
+app = FastAPI()
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    return JSONResponse({
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "size": file.size,
+    })
+
+# Загрузка нескольких файлов сразу
+@app.post("/upload/multiple")
+async def upload_multiple(files: list[UploadFile] = File(...)):
+    results = []
+    for f in files:
+        contents = await f.read()
+        results.append({"filename": f.filename, "bytes": len(contents)})
+        await f.close()
+    return results`,
+    },
+    {
+        category: "Загрузка файлов",
+        name: "upload_file.filename",
+        description:
+            "Оригинальное имя файла, отправленное клиентом в заголовке Content-Disposition части multipart. Тип str или None. Не гарантирует безопасности — перед использованием в файловой системе необходима санитизация (удаление пути, спецсимволов).",
+        syntax: `upload_file.filename`,
+        arguments: [],
+        example: `from fastapi import FastAPI, UploadFile, File
+import re
+
+app = FastAPI()
+
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+    # Безопасное имя файла: убираем путь и опасные символы
+    safe_name = re.sub(r"[^\\w.\\-]", "_", file.filename or "unnamed")
+    return {"original": file.filename, "safe": safe_name}`,
+    },
+    {
+        category: "Загрузка файлов",
+        name: "upload_file.content_type",
+        description:
+            "MIME-тип файла, указанный клиентом (например, image/jpeg, application/pdf). Тип str или None. Значение определяется браузером или клиентом и не является надёжным — для проверки типа файла следует инспектировать байты содержимого (magic bytes), а не полагаться только на это поле.",
+        syntax: `upload_file.content_type`,
+        arguments: [],
+        example: `from fastapi import FastAPI, UploadFile, File, HTTPException
+
+app = FastAPI()
+
+ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+@app.post("/upload/image")
+async def upload_image(file: UploadFile = File(...)):
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Недопустимый тип файла: {file.content_type}",
+        )
+    contents = await file.read()
+    return {"filename": file.filename, "type": file.content_type, "size": len(contents)}`,
+    },
+    {
+        category: "Загрузка файлов",
+        name: "upload_file.headers",
+        description:
+            "Заголовки HTTP-части multipart, относящиеся к данному файлу. Объект типа Headers (из starlette). Содержит Content-Type, Content-Disposition и другие метаданные части. Доступ к конкретному заголовку: upload_file.headers[\"content-type\"].",
+        syntax: `upload_file.headers`,
+        arguments: [],
+        example: `from fastapi import FastAPI, UploadFile, File
+
+app = FastAPI()
+
+@app.post("/upload/inspect")
+async def inspect_headers(file: UploadFile = File(...)):
+    return {
+        "content_type_header": file.headers.get("content-type"),
+        "disposition": file.headers.get("content-disposition"),
+        "all_headers": dict(file.headers),
+    }`,
+    },
+    {
+        category: "Загрузка файлов",
+        name: "upload_file.size",
+        description:
+            "Размер загруженного файла в байтах. Тип int или None. Заполняется FastAPI автоматически при разборе multipart-запроса. Удобен для быстрой проверки ограничений без чтения всего файла.",
+        syntax: `upload_file.size`,
+        arguments: [],
+        example: `from fastapi import FastAPI, UploadFile, File, HTTPException
+
+app = FastAPI()
+
+MAX_SIZE = 5 * 1024 * 1024  # 5 МБ
+
+@app.post("/upload/limited")
+async def upload_limited(file: UploadFile = File(...)):
+    if file.size and file.size > MAX_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Файл слишком большой: {file.size} байт. Максимум: {MAX_SIZE} байт.",
+        )
+    contents = await file.read()
+    return {"filename": file.filename, "size": file.size}`,
+    },
+    {
+        category: "Загрузка файлов",
+        name: "await upload_file.read()",
+        description:
+            "Асинхронно читает содержимое файла и возвращает bytes. Без аргументов читает весь файл целиком. Если передан size, читает не более указанного числа байт. После вызова внутренний указатель перемещается в конец — для повторного чтения необходимо вызвать seek(0).",
+        syntax: `await upload_file.read(size=-1)`,
+        arguments: [
+            {
+                name: "size",
+                description:
+                    "Количество байт для чтения. По умолчанию -1 — читает весь файл до конца.",
+            },
+        ],
+        example: `from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
+import hashlib
+
+app = FastAPI()
+
+@app.post("/upload/hash")
+async def upload_and_hash(file: UploadFile = File(...)):
+    contents = await file.read()          # читаем весь файл
+    await file.seek(0)                    # сбрасываем указатель
+    first_16 = await file.read(16)        # читаем первые 16 байт (magic bytes)
+
+    md5 = hashlib.md5(contents).hexdigest()
+    return {
+        "filename": file.filename,
+        "size": len(contents),
+        "md5": md5,
+        "magic_bytes": first_16.hex(),
+    }`,
+    },
+    {
+        category: "Загрузка файлов",
+        name: "await upload_file.write()",
+        description:
+            "Асинхронно записывает данные во внутренний файловый объект UploadFile. Принимает bytes или str. Используется редко — как правило, для создания и наполнения UploadFile вручную в тестах или при программной генерации файлов.",
+        syntax: `await upload_file.write(data)`,
+        arguments: [
+            {
+                name: "data",
+                description:
+                    "Данные для записи — объект типа bytes или str.",
+            },
+        ],
+        example: `from fastapi import UploadFile
+from starlette.datastructures import Headers
+import pytest
+
+# Использование в тестах: создание UploadFile вручную
+async def make_upload_file(content: bytes, filename: str) -> UploadFile:
+    upload = UploadFile(filename=filename, headers=Headers())
+    await upload.write(content)
+    await upload.seek(0)   # возвращаем указатель в начало перед чтением
+    return upload
+
+# В тесте:
+async def test_upload():
+    fake_file = await make_upload_file(b"hello world", "test.txt")
+    data = await fake_file.read()
+    assert data == b"hello world"`,
+    },
+    {
+        category: "Загрузка файлов",
+        name: "await upload_file.seek()",
+        description:
+            "Асинхронно перемещает внутренний указатель файла на указанную позицию в байтах. Аналог file.seek() для обычных файлов. Необходим после read(), если нужно прочитать файл повторно или начать чтение с другой позиции.",
+        syntax: `await upload_file.seek(offset)`,
+        arguments: [
+            {
+                name: "offset",
+                description:
+                    "Позиция в байтах, на которую перемещается указатель. 0 — начало файла.",
+            },
+        ],
+        example: `from fastapi import FastAPI, UploadFile, File
+
+app = FastAPI()
+
+@app.post("/upload/preview")
+async def upload_preview(file: UploadFile = File(...)):
+    # Читаем первые 256 байт для предпросмотра
+    preview = await file.read(256)
+
+    # Возвращаем указатель в начало и читаем весь файл
+    await file.seek(0)
+    full_content = await file.read()
+
+    await file.close()
+    return {
+        "filename": file.filename,
+        "total_bytes": len(full_content),
+        "preview_hex": preview.hex(),
+    }`,
+    },
+    {
+        category: "Загрузка файлов",
+        name: "await upload_file.close()",
+        description:
+            "Асинхронно закрывает внутренний файловый объект и освобождает связанные ресурсы (удаляет временный файл с диска). FastAPI закрывает файлы автоматически по завершении запроса, однако явный вызов close() рекомендуется при обработке больших файлов или множественных загрузок, чтобы освободить память раньше.",
+        syntax: `await upload_file.close()`,
+        arguments: [],
+        example: `from fastapi import FastAPI, UploadFile, File
+import aiofiles
+import os
+
+app = FastAPI()
+
+UPLOAD_DIR = "/uploads"
+
+@app.post("/upload/save")
+async def save_file(file: UploadFile = File(...)):
+    dest = os.path.join(UPLOAD_DIR, file.filename or "unnamed")
+    try:
+        async with aiofiles.open(dest, "wb") as out:
+            while chunk := await file.read(65536):  # читаем по 64 КБ
+                await out.write(chunk)
+    finally:
+        await file.close()  # явно закрываем после сохранения
+
+    return {"saved_to": dest, "size": os.path.getsize(dest)}`,
+    },
+
+    // ─── Классы ответов ───────────────────────────────────────────────────────
+    {
+        category: "Классы ответов",
+        name: "JSONResponse()",
+        description:
+            "Стандартный класс ответа FastAPI. Сериализует переданный объект в JSON с помощью встроенного модуля json и возвращает ответ с заголовком Content-Type: application/json. Используется по умолчанию для всех маршрутов, если не указан другой response_class.",
+        syntax: `JSONResponse(
+    content=None,
+    status_code=200,
+    headers=None,
+    media_type="application/json",
+    background=None,
+)`,
+        arguments: [
+            {
+                name: "content",
+                description:
+                    "Данные для сериализации в JSON. Должны быть JSON-сериализуемым объектом (dict, list, str, int, bool, None).",
+            },
+            {
+                name: "status_code",
+                description:
+                    "HTTP-код статуса ответа. По умолчанию 200 (OK).",
+            },
+            {
+                name: "headers",
+                description:
+                    "Словарь дополнительных HTTP-заголовков для включения в ответ.",
+            },
+            {
+                name: "media_type",
+                description:
+                    'MIME-тип ответа. По умолчанию "application/json".',
+            },
+            {
+                name: "background",
+                description:
+                    "Фоновая задача (объект BackgroundTask), выполняемая после отправки ответа.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+def get_item(item_id: int):
+    if item_id == 0:
+        return JSONResponse(
+            content={"error": "Товар не найден"},
+            status_code=404,
+            headers={"X-Custom-Header": "value"},
+        )
+    return JSONResponse(content={"id": item_id, "name": "Widget"})`,
+    },
+    {
+        category: "Классы ответов",
+        name: "HTMLResponse()",
+        description:
+            "Возвращает HTML-контент клиенту с заголовком Content-Type: text/html. Используется для отдачи HTML-страниц или фрагментов разметки напрямую из маршрута без шаблонизатора.",
+        syntax: `HTMLResponse(
+    content=None,
+    status_code=200,
+    headers=None,
+    background=None,
+)`,
+        arguments: [
+            {
+                name: "content",
+                description:
+                    "HTML-строка, которая будет отправлена в теле ответа.",
+            },
+            {
+                name: "status_code",
+                description:
+                    "HTTP-код статуса ответа. По умолчанию 200 (OK).",
+            },
+            {
+                name: "headers",
+                description:
+                    "Словарь дополнительных HTTP-заголовков для включения в ответ.",
+            },
+            {
+                name: "background",
+                description:
+                    "Фоновая задача (объект BackgroundTask), выполняемая после отправки ответа.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+
+app = FastAPI()
+
+@app.get("/", response_class=HTMLResponse)
+def index():
+    html = """
+    <!DOCTYPE html>
+    <html>
+      <head><title>Главная</title></head>
+      <body><h1>Привет, FastAPI!</h1></body>
+    </html>
+    """
+    return HTMLResponse(content=html, status_code=200)`,
+    },
+    {
+        category: "Классы ответов",
+        name: "PlainTextResponse()",
+        description:
+            "Возвращает простой текст с заголовком Content-Type: text/plain. Подходит для возврата сырых строк, логов или любого неформатированного текста без HTML-разметки.",
+        syntax: `PlainTextResponse(
+    content=None,
+    status_code=200,
+    headers=None,
+    background=None,
+)`,
+        arguments: [
+            {
+                name: "content",
+                description:
+                    "Текстовая строка, которая будет отправлена в теле ответа.",
+            },
+            {
+                name: "status_code",
+                description:
+                    "HTTP-код статуса ответа. По умолчанию 200 (OK).",
+            },
+            {
+                name: "headers",
+                description:
+                    "Словарь дополнительных HTTP-заголовков для включения в ответ.",
+            },
+            {
+                name: "background",
+                description:
+                    "Фоновая задача (объект BackgroundTask), выполняемая после отправки ответа.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
+
+app = FastAPI()
+
+@app.get("/ping", response_class=PlainTextResponse)
+def ping():
+    return PlainTextResponse(content="pong")
+
+@app.get("/healthz", response_class=PlainTextResponse)
+def health():
+    return PlainTextResponse(content="OK", status_code=200)`,
+    },
+    {
+        category: "Классы ответов",
+        name: "ORJSONResponse()",
+        description:
+            "Высокопроизводительный JSON-ответ на основе библиотеки orjson. Значительно быстрее стандартного JSONResponse благодаря нативной реализации на Rust. Поддерживает сериализацию datetime, UUID, numpy-массивов и других типов из коробки. Требует установки пакета orjson.",
+        syntax: `ORJSONResponse(
+    content=None,
+    status_code=200,
+    headers=None,
+    media_type="application/json",
+    background=None,
+)`,
+        arguments: [
+            {
+                name: "content",
+                description:
+                    "Данные для сериализации. Поддерживает расширенный набор типов: datetime, UUID, dataclasses, numpy и др.",
+            },
+            {
+                name: "status_code",
+                description:
+                    "HTTP-код статуса ответа. По умолчанию 200 (OK).",
+            },
+            {
+                name: "headers",
+                description:
+                    "Словарь дополнительных HTTP-заголовков для включения в ответ.",
+            },
+            {
+                name: "media_type",
+                description:
+                    'MIME-тип ответа. По умолчанию "application/json".',
+            },
+            {
+                name: "background",
+                description:
+                    "Фоновая задача (объект BackgroundTask), выполняемая после отправки ответа.",
+            },
+        ],
+        example: `# pip install orjson
+from fastapi import FastAPI
+from fastapi.responses import ORJSONResponse
+from datetime import datetime
+
+app = FastAPI(default_response_class=ORJSONResponse)
+
+@app.get("/data")
+def get_data():
+    return ORJSONResponse(content={
+        "name": "FastAPI",
+        "created_at": datetime.utcnow(),  # orjson сериализует datetime автоматически
+        "scores": [1, 2, 3],
+    })`,
+    },
+    {
+        category: "Классы ответов",
+        name: "UJSONResponse()",
+        description:
+            "Быстрый JSON-ответ на основе библиотеки ujson. Альтернатива JSONResponse с более высокой производительностью сериализации. Менее строгий к нестандартным типам по сравнению с orjson, но быстрее стандартного json. Требует установки пакета ujson.",
+        syntax: `UJSONResponse(
+    content=None,
+    status_code=200,
+    headers=None,
+    media_type="application/json",
+    background=None,
+)`,
+        arguments: [
+            {
+                name: "content",
+                description:
+                    "Данные для сериализации в JSON. Поддерживает стандартные Python-типы.",
+            },
+            {
+                name: "status_code",
+                description:
+                    "HTTP-код статуса ответа. По умолчанию 200 (OK).",
+            },
+            {
+                name: "headers",
+                description:
+                    "Словарь дополнительных HTTP-заголовков для включения в ответ.",
+            },
+            {
+                name: "media_type",
+                description:
+                    'MIME-тип ответа. По умолчанию "application/json".',
+            },
+            {
+                name: "background",
+                description:
+                    "Фоновая задача (объект BackgroundTask), выполняемая после отправки ответа.",
+            },
+        ],
+        example: `# pip install ujson
+from fastapi import FastAPI
+from fastapi.responses import UJSONResponse
+
+app = FastAPI(default_response_class=UJSONResponse)
+
+@app.get("/items")
+def list_items():
+    items = [{"id": i, "name": f"Item {i}"} for i in range(1000)]
+    return UJSONResponse(content={"items": items, "total": 1000})`,
+    },
+    {
+        category: "Классы ответов",
+        name: "RedirectResponse()",
+        description:
+            "Выполняет HTTP-перенаправление на указанный URL. По умолчанию использует статус 307 (Temporary Redirect), сохраняющий метод запроса. Для постоянного перенаправления используйте 301, для смены метода на GET — 302 или 303.",
+        syntax: `RedirectResponse(
+    url,
+    status_code=307,
+    headers=None,
+    background=None,
+)`,
+        arguments: [
+            {
+                name: "url",
+                description:
+                    "URL для перенаправления. Может быть абсолютным (https://example.com) или относительным (/new-path).",
+            },
+            {
+                name: "status_code",
+                description:
+                    "HTTP-код перенаправления. 301 — постоянное (меняет метод на GET), 302 — временное (меняет метод на GET), 303 — See Other (всегда GET), 307 — временное (сохраняет метод), 308 — постоянное (сохраняет метод). По умолчанию 307.",
+            },
+            {
+                name: "headers",
+                description:
+                    "Словарь дополнительных HTTP-заголовков для включения в ответ.",
+            },
+            {
+                name: "background",
+                description:
+                    "Фоновая задача (объект BackgroundTask), выполняемая после отправки ответа.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+
+app = FastAPI()
+
+@app.get("/old-path")
+def old_route():
+    # Временное перенаправление, метод сохраняется (307)
+    return RedirectResponse(url="/new-path")
+
+@app.get("/docs-shortcut")
+def docs_redirect():
+    # Постоянное перенаправление на внешний ресурс (301)
+    return RedirectResponse(
+        url="https://fastapi.tiangolo.com",
+        status_code=301,
+    )
+
+@app.post("/submit")
+def submit_form():
+    # После обработки POST — редирект на GET-страницу (303)
+    return RedirectResponse(url="/success", status_code=303)
+
+@app.get("/new-path")
+def new_route():
+    return {"message": "Новый маршрут"}`,
+    },
+    {
+        category: "Классы ответов",
+        name: "StreamingResponse()",
+        description:
+            "Возвращает ответ с потоковой передачей данных. Принимает итерируемый объект или асинхронный генератор и отправляет данные клиенту по частям, не дожидаясь формирования всего тела ответа. Незаменим для больших файлов, видео, Server-Sent Events и любых данных, генерируемых в реальном времени.",
+        syntax: `StreamingResponse(
+    content,
+    status_code=200,
+    headers=None,
+    media_type=None,
+    background=None,
+)`,
+        arguments: [
+            {
+                name: "content",
+                description:
+                    "Итерируемый объект или асинхронный генератор, производящий фрагменты данных (bytes или str). Каждый фрагмент отправляется клиенту сразу по мере готовности.",
+            },
+            {
+                name: "status_code",
+                description:
+                    "HTTP-код статуса ответа. По умолчанию 200 (OK).",
+            },
+            {
+                name: "headers",
+                description:
+                    "Словарь дополнительных HTTP-заголовков для включения в ответ.",
+            },
+            {
+                name: "media_type",
+                description:
+                    "MIME-тип передаваемых данных, например text/event-stream для SSE, video/mp4 для видео, application/octet-stream для произвольных бинарных данных.",
+            },
+            {
+                name: "background",
+                description:
+                    "Фоновая задача (объект BackgroundTask), выполняемая после отправки всего потока.",
+            },
+        ],
+        example: `import asyncio
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+
+app = FastAPI()
+
+# Потоковая передача текста (Server-Sent Events)
+async def event_generator():
+    for i in range(5):
+        yield f"data: Сообщение {i}\\n\\n"
+        await asyncio.sleep(1)
+
+@app.get("/stream/events")
+def stream_events():
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+    )
+
+# Потоковая отдача большого файла
+def iter_file(path: str, chunk_size: int = 65536):
+    with open(path, "rb") as f:
+        while chunk := f.read(chunk_size):
+            yield chunk
+
+@app.get("/stream/file")
+def stream_file():
+    return StreamingResponse(
+        iter_file("/data/large_video.mp4"),
+        media_type="video/mp4",
+    )`,
+    },
+    {
+        category: "Классы ответов",
+        name: "FileResponse()",
+        description:
+            "Отправляет файл с диска клиенту асинхронно и эффективно. Автоматически определяет MIME-тип по расширению файла, выставляет заголовок Content-Disposition для скачивания, поддерживает HTTP range requests (частичная загрузка) и кэширование через ETag и Last-Modified.",
+        syntax: `FileResponse(
+    path,
+    status_code=200,
+    headers=None,
+    media_type=None,
+    background=None,
+    filename=None,
+    stat_result=None,
+    method=None,
+    content_disposition_type="attachment",
+)`,
+        arguments: [
+            {
+                name: "path",
+                description:
+                    "Путь к файлу на диске — строка или объект os.PathLike. Файл должен существовать, иначе возникнет ошибка.",
+            },
+            {
+                name: "status_code",
+                description:
+                    "HTTP-код статуса ответа. По умолчанию 200 (OK).",
+            },
+            {
+                name: "headers",
+                description:
+                    "Словарь дополнительных HTTP-заголовков для включения в ответ.",
+            },
+            {
+                name: "media_type",
+                description:
+                    "MIME-тип файла. Если не указан, определяется автоматически по расширению (например, image/png, application/pdf).",
+            },
+            {
+                name: "background",
+                description:
+                    "Фоновая задача (объект BackgroundTask), выполняемая после отправки файла. Удобно для удаления временных файлов.",
+            },
+            {
+                name: "filename",
+                description:
+                    "Имя файла, предлагаемое браузеру при скачивании. Используется в заголовке Content-Disposition. Если не указан, берётся из path.",
+            },
+            {
+                name: "stat_result",
+                description:
+                    "Результат os.stat() для файла. Если передан, FastAPI не вызывает stat() повторно — позволяет избежать лишнего системного вызова при заранее известных метаданных.",
+            },
+            {
+                name: "method",
+                description:
+                    "HTTP-метод запроса. Обычно не задаётся вручную — FastAPI определяет автоматически.",
+            },
+            {
+                name: "content_disposition_type",
+                description:
+                    'Тип Content-Disposition: "attachment" (скачать файл, по умолчанию) или "inline" (отобразить в браузере, если возможно).',
+            },
+        ],
+        example: `import os
+from fastapi import FastAPI, BackgroundTasks
+from fastapi.responses import FileResponse
+
+app = FastAPI()
+
+# Скачивание файла с предложенным именем
+@app.get("/download/report")
+def download_report():
+    return FileResponse(
+        path="/reports/2024_annual.pdf",
+        filename="Годовой_отчёт_2024.pdf",
+        media_type="application/pdf",
+    )
+
+# Отображение изображения в браузере (inline)
+@app.get("/images/{name}")
+def show_image(name: str):
+    return FileResponse(
+        path=f"/static/images/{name}",
+        content_disposition_type="inline",
+    )
+
+# Удаление временного файла после отправки
+@app.get("/export/temp")
+def export_and_cleanup(background_tasks: BackgroundTasks):
+    tmp_path = "/tmp/export_123.csv"
+    # ... генерация файла ...
+    background_tasks.add_task(os.remove, tmp_path)
+    return FileResponse(
+        path=tmp_path,
+        filename="export.csv",
+        media_type="text/csv",
+    )`,
+    },
 ];
