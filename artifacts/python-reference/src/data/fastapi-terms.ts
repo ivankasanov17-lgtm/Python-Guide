@@ -8219,4 +8219,3364 @@ def export_and_cleanup(background_tasks: BackgroundTasks):
         media_type="text/csv",
     )`,
     },
+    // ─── TestClient (тестирование) ────────────────────────────────────────────
+    {
+        category: "TestClient (тестирование)",
+        name: "TestClient(app, base_url, raise_server_exceptions, root_path, backend, backend_options, cookies, headers)",
+        description:
+            "Синхронный HTTP-клиент для тестирования FastAPI (и любого ASGI/WSGI) приложения без запуска реального сервера. Основан на httpx и поддерживает все стандартные HTTP-методы, cookies, заголовки и WebSocket-соединения. Используется в связке с pytest.",
+        syntax: `TestClient(
+    app,
+    base_url="http://testserver",
+    raise_server_exceptions=True,
+    root_path="",
+    backend="asyncio",
+    backend_options=None,
+    cookies=None,
+    headers=None,
+)`,
+        arguments: [
+            {
+                name: "app",
+                description:
+                    "ASGI- или WSGI-приложение, которое будет тестироваться. Обязательный параметр.",
+            },
+            {
+                name: "base_url",
+                description:
+                    'Базовый URL, используемый для формирования полных адресов запросов. По умолчанию "http://testserver".',
+            },
+            {
+                name: "raise_server_exceptions",
+                description:
+                    "Если True — исключения, возникшие на стороне сервера, будут проброшены в тест. По умолчанию True.",
+            },
+            {
+                name: "root_path",
+                description:
+                    "ASGI root_path для имитации развёртывания за reverse proxy. По умолчанию пустая строка.",
+            },
+            {
+                name: "backend",
+                description:
+                    'Асинхронный бэкенд для запуска приложения. По умолчанию "asyncio". Также поддерживается "trio".',
+            },
+            {
+                name: "backend_options",
+                description:
+                    "Словарь с дополнительными опциями для выбранного асинхронного бэкенда.",
+            },
+            {
+                name: "cookies",
+                description:
+                    "Cookies, отправляемые с каждым запросом. Словарь или объект Cookies.",
+            },
+            {
+                name: "headers",
+                description:
+                    "Заголовки, добавляемые к каждому запросу. Словарь строк.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+def read_item(item_id: int, q: str | None = None):
+    return {"item_id": item_id, "q": q}
+
+client = TestClient(app)
+
+def test_read_item():
+    response = client.get("/items/42", params={"q": "test"})
+    assert response.status_code == 200
+    assert response.json() == {"item_id": 42, "q": "test"}`,
+    },
+    {
+        category: "TestClient (тестирование)",
+        name: "client.get(url, params, headers, cookies, auth, follow_redirects)",
+        description:
+            "Выполняет HTTP GET-запрос к тестируемому приложению. Используется для получения ресурсов и чтения данных. Возвращает объект httpx.Response.",
+        syntax: `client.get(url, **kwargs)`,
+        arguments: [
+            {
+                name: "url",
+                description:
+                    "Путь или полный URL запроса. Относительные пути разрешаются относительно base_url.",
+            },
+            {
+                name: "params",
+                description:
+                    "Query-параметры запроса. Словарь, список кортежей или строка.",
+            },
+            {
+                name: "headers",
+                description:
+                    "Дополнительные HTTP-заголовки для этого запроса.",
+            },
+            {
+                name: "cookies",
+                description: "Cookies для этого запроса.",
+            },
+            {
+                name: "auth",
+                description:
+                    "Данные аутентификации: кортеж (username, password) или объект httpx.Auth.",
+            },
+            {
+                name: "follow_redirects",
+                description:
+                    "Следовать ли редиректам автоматически. По умолчанию False.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+app = FastAPI()
+
+@app.get("/users")
+def get_users(active: bool = True):
+    return [{"id": 1, "active": active}]
+
+client = TestClient(app)
+
+def test_get_users():
+    response = client.get("/users", params={"active": True})
+    assert response.status_code == 200
+    assert response.json() == [{"id": 1, "active": True}]`,
+    },
+    {
+        category: "TestClient (тестирование)",
+        name: "client.post(url, json, data, files, content, headers)",
+        description:
+            "Выполняет HTTP POST-запрос к тестируемому приложению. Используется для создания ресурсов и отправки данных. Поддерживает JSON, form-data и файлы. Возвращает объект httpx.Response.",
+        syntax: `client.post(url, **kwargs)`,
+        arguments: [
+            {
+                name: "url",
+                description: "Путь или полный URL запроса.",
+            },
+            {
+                name: "json",
+                description:
+                    "Данные в формате JSON. Автоматически сериализуется и устанавливает Content-Type: application/json.",
+            },
+            {
+                name: "data",
+                description:
+                    "Данные формы (application/x-www-form-urlencoded). Словарь или строка.",
+            },
+            {
+                name: "files",
+                description:
+                    "Файлы для отправки как multipart/form-data. Словарь {name: file_object}.",
+            },
+            {
+                name: "content",
+                description: "Сырое тело запроса в виде bytes или строки.",
+            },
+            {
+                name: "headers",
+                description: "Дополнительные HTTP-заголовки для этого запроса.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from pydantic import BaseModel
+from fastapi.testclient import TestClient
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    price: float
+
+@app.post("/items/", status_code=201)
+def create_item(item: Item):
+    return item
+
+client = TestClient(app)
+
+def test_create_item():
+    response = client.post("/items/", json={"name": "Widget", "price": 9.99})
+    assert response.status_code == 201
+    assert response.json() == {"name": "Widget", "price": 9.99}`,
+    },
+    {
+        category: "TestClient (тестирование)",
+        name: "client.put(url, json, data, content, headers)",
+        description:
+            "Выполняет HTTP PUT-запрос к тестируемому приложению. Используется для полного обновления существующего ресурса. Возвращает объект httpx.Response.",
+        syntax: `client.put(url, **kwargs)`,
+        arguments: [
+            {
+                name: "url",
+                description: "Путь или полный URL запроса.",
+            },
+            {
+                name: "json",
+                description:
+                    "Данные в формате JSON для тела запроса.",
+            },
+            {
+                name: "data",
+                description: "Данные формы для тела запроса.",
+            },
+            {
+                name: "content",
+                description: "Сырое тело запроса в виде bytes или строки.",
+            },
+            {
+                name: "headers",
+                description: "Дополнительные HTTP-заголовки для этого запроса.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from pydantic import BaseModel
+from fastapi.testclient import TestClient
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    price: float
+
+@app.put("/items/{item_id}")
+def update_item(item_id: int, item: Item):
+    return {"item_id": item_id, **item.model_dump()}
+
+client = TestClient(app)
+
+def test_update_item():
+    response = client.put("/items/1", json={"name": "Updated", "price": 19.99})
+    assert response.status_code == 200
+    assert response.json()["name"] == "Updated"`,
+    },
+    {
+        category: "TestClient (тестирование)",
+        name: "client.delete(url, params, headers, json)",
+        description:
+            "Выполняет HTTP DELETE-запрос к тестируемому приложению. Используется для удаления ресурсов. Возвращает объект httpx.Response.",
+        syntax: `client.delete(url, **kwargs)`,
+        arguments: [
+            {
+                name: "url",
+                description: "Путь или полный URL запроса.",
+            },
+            {
+                name: "params",
+                description: "Query-параметры запроса.",
+            },
+            {
+                name: "headers",
+                description: "Дополнительные HTTP-заголовки для этого запроса.",
+            },
+            {
+                name: "json",
+                description: "Тело запроса в формате JSON (редко используется для DELETE).",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+app = FastAPI()
+
+fake_db = {1: "Widget", 2: "Gadget"}
+
+@app.delete("/items/{item_id}")
+def delete_item(item_id: int):
+    item = fake_db.pop(item_id, None)
+    if item is None:
+        return {"error": "Not found"}
+    return {"deleted": item}
+
+client = TestClient(app)
+
+def test_delete_item():
+    response = client.delete("/items/1")
+    assert response.status_code == 200
+    assert response.json() == {"deleted": "Widget"}`,
+    },
+    {
+        category: "TestClient (тестирование)",
+        name: "client.patch(url, json, data, content, headers)",
+        description:
+            "Выполняет HTTP PATCH-запрос к тестируемому приложению. Используется для частичного обновления ресурса — только переданные поля изменяются. Возвращает объект httpx.Response.",
+        syntax: `client.patch(url, **kwargs)`,
+        arguments: [
+            {
+                name: "url",
+                description: "Путь или полный URL запроса.",
+            },
+            {
+                name: "json",
+                description:
+                    "Частичные данные в формате JSON для обновления ресурса.",
+            },
+            {
+                name: "data",
+                description: "Данные формы для частичного обновления.",
+            },
+            {
+                name: "content",
+                description: "Сырое тело запроса в виде bytes или строки.",
+            },
+            {
+                name: "headers",
+                description: "Дополнительные HTTP-заголовки для этого запроса.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from pydantic import BaseModel
+from fastapi.testclient import TestClient
+
+app = FastAPI()
+
+class ItemUpdate(BaseModel):
+    name: str | None = None
+    price: float | None = None
+
+@app.patch("/items/{item_id}")
+def patch_item(item_id: int, update: ItemUpdate):
+    result = {"item_id": item_id}
+    if update.name is not None:
+        result["name"] = update.name
+    if update.price is not None:
+        result["price"] = update.price
+    return result
+
+client = TestClient(app)
+
+def test_patch_item():
+    response = client.patch("/items/1", json={"price": 5.00})
+    assert response.status_code == 200
+    assert response.json()["price"] == 5.00`,
+    },
+    {
+        category: "TestClient (тестирование)",
+        name: "client.options(url, headers, params)",
+        description:
+            "Выполняет HTTP OPTIONS-запрос к тестируемому приложению. Используется для проверки разрешённых методов и заголовков CORS. Возвращает объект httpx.Response.",
+        syntax: `client.options(url, **kwargs)`,
+        arguments: [
+            {
+                name: "url",
+                description: "Путь или полный URL запроса.",
+            },
+            {
+                name: "headers",
+                description:
+                    "Дополнительные HTTP-заголовки для этого запроса. Часто используется для передачи Origin и Access-Control-Request-Method при тестировании CORS.",
+            },
+            {
+                name: "params",
+                description: "Query-параметры запроса.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.testclient import TestClient
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://example.com"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+@app.get("/items/")
+def read_items():
+    return []
+
+client = TestClient(app)
+
+def test_cors_preflight():
+    response = client.options(
+        "/items/",
+        headers={
+            "Origin": "https://example.com",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert response.status_code == 200
+    assert "access-control-allow-origin" in response.headers`,
+    },
+    {
+        category: "TestClient (тестирование)",
+        name: "client.head(url, params, headers)",
+        description:
+            "Выполняет HTTP HEAD-запрос к тестируемому приложению. Идентичен GET, но возвращает только заголовки без тела ответа. Используется для проверки существования ресурса и получения метаданных. Возвращает объект httpx.Response.",
+        syntax: `client.head(url, **kwargs)`,
+        arguments: [
+            {
+                name: "url",
+                description: "Путь или полный URL запроса.",
+            },
+            {
+                name: "params",
+                description: "Query-параметры запроса.",
+            },
+            {
+                name: "headers",
+                description: "Дополнительные HTTP-заголовки для этого запроса.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.responses import Response
+from fastapi.testclient import TestClient
+
+app = FastAPI()
+
+@app.get("/files/{filename}")
+def get_file(filename: str):
+    return Response(
+        content=b"file content",
+        headers={"Content-Length": "12", "Content-Type": "application/octet-stream"},
+    )
+
+client = TestClient(app)
+
+def test_file_exists():
+    response = client.head("/files/report.pdf")
+    assert response.status_code == 200
+    # Тело ответа пустое, только заголовки
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert response.content == b""`,
+    },
+    {
+        category: "TestClient (тестирование)",
+        name: "client.websocket_connect(url, subprotocols, headers, params)",
+        description:
+            "Открывает WebSocket-соединение с тестируемым приложением. Используется как контекстный менеджер (with). Возвращает объект WebSocketTestSession, у которого есть методы send_text(), send_json(), send_bytes(), receive_text(), receive_json(), receive_bytes() и close().",
+        syntax: `client.websocket_connect(url, subprotocols=None, **kwargs)`,
+        arguments: [
+            {
+                name: "url",
+                description:
+                    "Путь или полный URL WebSocket-эндпоинта. ws:// и wss:// также поддерживаются.",
+            },
+            {
+                name: "subprotocols",
+                description:
+                    "Список субпротоколов WebSocket, которые клиент готов использовать.",
+            },
+            {
+                name: "headers",
+                description:
+                    "HTTP-заголовки, передаваемые в запросе на установление соединения (handshake).",
+            },
+            {
+                name: "params",
+                description:
+                    "Query-параметры для URL WebSocket-соединения.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket
+from fastapi.testclient import TestClient
+
+app = FastAPI()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        data = await websocket.receive_text()
+        await websocket.send_text(f"Эхо: {data}")
+
+client = TestClient(app)
+
+def test_websocket():
+    with client.websocket_connect("/ws") as ws:
+        ws.send_text("Привет")
+        message = ws.receive_text()
+        assert message == "Эхо: Привет"
+
+        ws.send_json({"key": "value"})
+        # Для получения JSON:
+        # data = ws.receive_json()`,
+    },
+    // ─── APIRoute ─────────────────────────────────────────────────────────────
+    {
+        category: "APIRoute",
+        name: "APIRoute(path, endpoint, *, response_model, status_code, tags, dependencies, summary, description, response_description, responses, deprecated, name, methods, operation_id, response_model_include, response_model_exclude, response_model_by_alias, response_model_exclude_unset, response_model_exclude_defaults, response_model_exclude_none, include_in_schema, response_class, dependency_overrides_provider, callbacks, openapi_extra, generate_unique_id_function)",
+        description:
+            "Класс, представляющий отдельный HTTP-маршрут в FastAPI. Обычно создаётся неявно через декораторы @app.get(), @app.post() и т.д., но может быть создан вручную для программного управления маршрутами и добавлен через app.router.routes.append() или APIRouter.",
+        syntax: `APIRoute(
+    path,
+    endpoint,
+    *,
+    response_model=Default(None),
+    status_code=200,
+    tags=None,
+    dependencies=None,
+    summary=None,
+    description=None,
+    response_description="Successful Response",
+    responses=None,
+    deprecated=None,
+    name=None,
+    methods=None,
+    operation_id=None,
+    response_model_include=None,
+    response_model_exclude=None,
+    response_model_by_alias=True,
+    response_model_exclude_unset=False,
+    response_model_exclude_defaults=False,
+    response_model_exclude_none=False,
+    include_in_schema=True,
+    response_class=Default(JSONResponse),
+    dependency_overrides_provider=None,
+    callbacks=None,
+    openapi_extra=None,
+    generate_unique_id_function=Default(generate_unique_id),
+)`,
+        arguments: [
+            {
+                name: "path",
+                description:
+                    "URL-путь маршрута, например '/items/{item_id}'. Обязательный параметр.",
+            },
+            {
+                name: "endpoint",
+                description:
+                    "Функция-обработчик (sync или async), вызываемая при совпадении маршрута. Обязательный параметр.",
+            },
+            {
+                name: "response_model",
+                description:
+                    "Pydantic-модель для сериализации и валидации ответа. Влияет на схему OpenAPI и фильтрацию полей.",
+            },
+            {
+                name: "status_code",
+                description:
+                    "HTTP-код успешного ответа. По умолчанию 200.",
+            },
+            {
+                name: "tags",
+                description:
+                    "Список строк-тегов для группировки маршрута в документации Swagger UI.",
+            },
+            {
+                name: "dependencies",
+                description:
+                    "Список зависимостей Depends(), применяемых к маршруту без использования их возвращаемых значений.",
+            },
+            {
+                name: "summary",
+                description:
+                    "Краткое описание маршрута, отображаемое в документации.",
+            },
+            {
+                name: "description",
+                description:
+                    "Подробное описание маршрута. Поддерживает Markdown. Если не задано — берётся из docstring функции-обработчика.",
+            },
+            {
+                name: "response_description",
+                description:
+                    'Описание успешного ответа в документации. По умолчанию "Successful Response".',
+            },
+            {
+                name: "responses",
+                description:
+                    "Словарь дополнительных ответов {status_code: {\"model\": ..., \"description\": ...}} для документации.",
+            },
+            {
+                name: "deprecated",
+                description:
+                    "Если True — маршрут помечается как устаревший в документации OpenAPI.",
+            },
+            {
+                name: "name",
+                description:
+                    "Имя маршрута. Используется при генерации URL через url_path_for(). По умолчанию — имя функции-обработчика.",
+            },
+            {
+                name: "methods",
+                description:
+                    "Множество HTTP-методов (например, {\"GET\", \"POST\"}), на которые реагирует маршрут.",
+            },
+            {
+                name: "operation_id",
+                description:
+                    "Уникальный идентификатор операции в схеме OpenAPI. По умолчанию генерируется автоматически.",
+            },
+            {
+                name: "response_model_include",
+                description:
+                    "Множество или словарь полей response_model, которые нужно включить в ответ.",
+            },
+            {
+                name: "response_model_exclude",
+                description:
+                    "Множество или словарь полей response_model, которые нужно исключить из ответа.",
+            },
+            {
+                name: "response_model_by_alias",
+                description:
+                    "Сериализовать ли поля модели по псевдонимам (alias). По умолчанию True.",
+            },
+            {
+                name: "response_model_exclude_unset",
+                description:
+                    "Если True — из ответа исключаются поля, не заданные явно (только значения по умолчанию). По умолчанию False.",
+            },
+            {
+                name: "response_model_exclude_defaults",
+                description:
+                    "Если True — из ответа исключаются поля, равные своим значениям по умолчанию. По умолчанию False.",
+            },
+            {
+                name: "response_model_exclude_none",
+                description:
+                    "Если True — из ответа исключаются поля со значением None. По умолчанию False.",
+            },
+            {
+                name: "include_in_schema",
+                description:
+                    "Если False — маршрут скрыт из документации OpenAPI, но продолжает работать. По умолчанию True.",
+            },
+            {
+                name: "response_class",
+                description:
+                    "Класс HTTP-ответа по умолчанию для этого маршрута. По умолчанию JSONResponse.",
+            },
+            {
+                name: "dependency_overrides_provider",
+                description:
+                    "Объект, предоставляющий переопределения зависимостей. Обычно устанавливается автоматически приложением FastAPI.",
+            },
+            {
+                name: "callbacks",
+                description:
+                    "Список маршрутов-колбэков OpenAPI, описывающих исходящие запросы, которые сервер отправляет клиенту.",
+            },
+            {
+                name: "openapi_extra",
+                description:
+                    "Словарь с дополнительными полями, которые будут добавлены напрямую в схему OpenAPI этой операции.",
+            },
+            {
+                name: "generate_unique_id_function",
+                description:
+                    "Функция для генерации уникального operationId. Получает объект APIRoute и возвращает строку.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+from fastapi.responses import JSONResponse
+
+app = FastAPI()
+
+async def read_item(item_id: int) -> dict:
+    return {"item_id": item_id}
+
+# Программное добавление маршрута
+route = APIRoute(
+    path="/items/{item_id}",
+    endpoint=read_item,
+    methods={"GET"},
+    response_class=JSONResponse,
+    tags=["items"],
+    summary="Получить товар",
+    status_code=200,
+)
+
+app.router.routes.append(route)
+
+# Эквивалент декораторного стиля:
+# @app.get("/items/{item_id}", tags=["items"], summary="Получить товар")
+# async def read_item(item_id: int):
+#     return {"item_id": item_id}`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.path",
+        description:
+            "Строка с URL-шаблоном маршрута, например '/items/{item_id}'. Только для чтения после создания маршрута.",
+        syntax: `route.path`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+def read_item(item_id: int):
+    return {"item_id": item_id}
+
+# Получить все маршруты с их путями
+for route in app.routes:
+    print(route.path)
+# Вывод: /openapi.json, /docs, /redoc, /items/{item_id}`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.endpoint",
+        description:
+            "Ссылка на оригинальную функцию-обработчик маршрута (до применения зависимостей и middleware). Полезна для интроспекции и тестирования.",
+        syntax: `route.endpoint`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+
+app = FastAPI()
+
+@app.get("/items/{item_id}")
+def read_item(item_id: int):
+    return {"item_id": item_id}
+
+# Найти маршрут и получить его обработчик
+for route in app.routes:
+    if isinstance(route, APIRoute) and route.path == "/items/{item_id}":
+        print(route.endpoint.__name__)  # read_item
+        print(route.endpoint(item_id=42))  # {"item_id": 42}`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.name",
+        description:
+            "Имя маршрута, используемое при генерации URL через request.url_path_for() или app.url_path_for(). По умолчанию совпадает с именем функции-обработчика.",
+        syntax: `route.name`,
+        arguments: [],
+        example: `from fastapi import FastAPI, Request
+from fastapi.routing import APIRoute
+
+app = FastAPI()
+
+@app.get("/items/{item_id}", name="get_item")
+def read_item(item_id: int):
+    return {"item_id": item_id}
+
+@app.get("/link")
+def get_link(request: Request):
+    # Генерация URL по имени маршрута
+    url = request.url_for("get_item", item_id=42)
+    return {"url": str(url)}
+
+# Интроспекция
+for route in app.routes:
+    if isinstance(route, APIRoute):
+        print(route.name)  # get_item`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.methods",
+        description:
+            "Множество (set) строк с HTTP-методами, на которые реагирует маршрут, например {'GET'}, {'POST', 'PUT'}. Методы хранятся в верхнем регистре.",
+        syntax: `route.methods`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+
+app = FastAPI()
+
+@app.get("/items/")
+def list_items(): ...
+
+@app.post("/items/")
+def create_item(): ...
+
+for route in app.routes:
+    if isinstance(route, APIRoute):
+        print(f"{route.path}: {route.methods}")
+# /items/: {'GET'}
+# /items/: {'POST'}`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.tags",
+        description:
+            "Список строк-тегов, присвоенных маршруту. Используется для группировки операций в документации Swagger UI и ReDoc.",
+        syntax: `route.tags`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+
+app = FastAPI()
+
+@app.get("/users/", tags=["users", "admin"])
+def list_users(): ...
+
+@app.get("/items/", tags=["items"])
+def list_items(): ...
+
+for route in app.routes:
+    if isinstance(route, APIRoute):
+        print(f"{route.path}: {route.tags}")
+# /users/: ['users', 'admin']
+# /items/: ['items']`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.dependencies",
+        description:
+            "Список объектов зависимостей (params.Dependant или Depends), применяемых к маршруту. Включает как явно заданные, так и унаследованные от роутера зависимости.",
+        syntax: `route.dependencies`,
+        arguments: [],
+        example: `from fastapi import FastAPI, Depends
+from fastapi.routing import APIRoute
+
+app = FastAPI()
+
+def verify_token(token: str = ""):
+    if token != "secret":
+        raise ValueError("Неверный токен")
+
+@app.get("/secure/", dependencies=[Depends(verify_token)])
+def secure_endpoint(): ...
+
+for route in app.routes:
+    if isinstance(route, APIRoute):
+        print(f"{route.path}: {len(route.dependencies)} зависимост(ей)")
+# /secure/: 1 зависимост(ей)`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.summary",
+        description:
+            "Краткое одностроковое описание маршрута, отображаемое в списке операций Swagger UI. Если не задано явно — None.",
+        syntax: `route.summary`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+
+app = FastAPI()
+
+@app.get("/items/", summary="Список всех товаров")
+def list_items(): ...
+
+for route in app.routes:
+    if isinstance(route, APIRoute):
+        print(route.summary)  # Список всех товаров`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.description",
+        description:
+            "Подробное описание маршрута. Если задано явно — используется оно. Иначе берётся из docstring функции-обработчика. Поддерживает Markdown.",
+        syntax: `route.description`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+
+app = FastAPI()
+
+@app.get("/items/")
+def list_items():
+    """
+    Возвращает **список всех товаров**.
+
+    - Поддерживает пагинацию
+    - Требует авторизации
+    """
+    return []
+
+for route in app.routes:
+    if isinstance(route, APIRoute):
+        # description берётся из docstring
+        print(route.description)`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.operation_id",
+        description:
+            "Уникальный идентификатор операции в схеме OpenAPI. Используется клиент-генераторами как имя метода. Если не задан явно — генерируется из имени функции, HTTP-метода и пути.",
+        syntax: `route.operation_id`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+
+app = FastAPI()
+
+@app.get("/items/{item_id}", operation_id="fetchItem")
+def read_item(item_id: int): ...
+
+@app.get("/users/")
+def list_users(): ...
+
+for route in app.routes:
+    if isinstance(route, APIRoute):
+        print(f"{route.path}: {route.operation_id}")
+# /items/{item_id}: fetchItem
+# /users/: list_users_users__get`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.include_in_schema",
+        description:
+            "Булево значение: включён ли маршрут в схему OpenAPI и документацию. Если False — маршрут скрыт из /docs и /redoc, но продолжает обрабатывать запросы.",
+        syntax: `route.include_in_schema`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+
+app = FastAPI()
+
+@app.get("/public/")
+def public_endpoint(): ...
+
+@app.get("/internal/", include_in_schema=False)
+def internal_endpoint(): ...
+
+# Только публичные маршруты попадут в документацию
+for route in app.routes:
+    if isinstance(route, APIRoute):
+        status = "видим" if route.include_in_schema else "скрыт"
+        print(f"{route.path}: {status}")
+# /public/: видим
+# /internal/: скрыт`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.response_class",
+        description:
+            "Класс HTTP-ответа, используемый маршрутом по умолчанию. Определяет, как возвращаемое значение преобразуется в HTTP-ответ. По умолчанию JSONResponse.",
+        syntax: `route.response_class`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.routing import APIRoute
+
+app = FastAPI()
+
+@app.get("/page/", response_class=HTMLResponse)
+def get_page():
+    return "<h1>Привет!</h1>"
+
+@app.get("/data/")
+def get_data():
+    return {"key": "value"}
+
+for route in app.routes:
+    if isinstance(route, APIRoute):
+        print(f"{route.path}: {route.response_class.__name__}")
+# /page/: HTMLResponse
+# /data/: JSONResponse`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.responses",
+        description:
+            "Словарь дополнительных HTTP-ответов для документации OpenAPI. Ключи — HTTP-коды, значения — словари с полями model, description, content и др.",
+        syntax: `route.responses`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class ErrorResponse(BaseModel):
+    detail: str
+
+@app.get(
+    "/items/{item_id}",
+    responses={
+        404: {"model": ErrorResponse, "description": "Товар не найден"},
+        403: {"description": "Доступ запрещён"},
+    },
+)
+def read_item(item_id: int): ...
+
+for route in app.routes:
+    if isinstance(route, APIRoute):
+        print(route.responses)
+# {404: {"model": ErrorResponse, ...}, 403: {...}}`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.callbacks",
+        description:
+            "Список маршрутов-колбэков OpenAPI — описывают асинхронные исходящие запросы, которые сервер отправляет клиенту (webhooks-like). Используется для генерации секции callbacks в схеме OpenAPI.",
+        syntax: `route.callbacks`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+from pydantic import BaseModel, HttpUrl
+
+app = FastAPI()
+
+class OrderEvent(BaseModel):
+    order_id: int
+    status: str
+
+# Описываем колбэк, который сервер отправит на callback_url
+callback_router = APIRoute(
+    path="{$callback_url}",
+    endpoint=lambda body: None,
+    methods={"POST"},
+)
+
+@app.post("/orders/", callbacks=[callback_router])
+def create_order(callback_url: HttpUrl):
+    # Здесь сервер отправит POST на callback_url при изменении статуса
+    return {"order_id": 1}`,
+    },
+    {
+        category: "APIRoute",
+        name: "route.deprecated",
+        description:
+            "Булево значение или None: помечен ли маршрут как устаревший (deprecated) в документации OpenAPI. Устаревшие маршруты отображаются с визуальной пометкой в Swagger UI.",
+        syntax: `route.deprecated`,
+        arguments: [],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+
+app = FastAPI()
+
+@app.get("/v1/items/", deprecated=True)
+def list_items_v1():
+    """Устаревший эндпоинт. Используйте /v2/items/."""
+    return []
+
+@app.get("/v2/items/")
+def list_items_v2():
+    return []
+
+# Найти все устаревшие маршруты
+for route in app.routes:
+    if isinstance(route, APIRoute) and route.deprecated:
+        print(f"Устаревший маршрут: {route.path}")
+# Устаревший маршрут: /v1/items/`,
+    },
+    // ─── APIWebSocketRoute ────────────────────────────────────────────────────
+    {
+        category: "APIWebSocketRoute",
+        name: "APIWebSocketRoute(path, endpoint, *, name, dependencies, dependency_overrides_provider)",
+        description:
+            "Класс, представляющий отдельный WebSocket-маршрут в FastAPI. Обычно создаётся неявно через декоратор @app.websocket(), но может быть создан вручную для программного управления WebSocket-маршрутами.",
+        syntax: `APIWebSocketRoute(
+    path,
+    endpoint,
+    *,
+    name=None,
+    dependencies=None,
+    dependency_overrides_provider=None,
+)`,
+        arguments: [
+            {
+                name: "path",
+                description:
+                    "URL-путь WebSocket-маршрута, например '/ws' или '/ws/{client_id}'. Обязательный параметр.",
+            },
+            {
+                name: "endpoint",
+                description:
+                    "Async-функция-обработчик, принимающая объект WebSocket. Обязательный параметр.",
+            },
+            {
+                name: "name",
+                description:
+                    "Имя маршрута для генерации URL через url_path_for(). По умолчанию берётся из имени функции-обработчика.",
+            },
+            {
+                name: "dependencies",
+                description:
+                    "Список зависимостей Depends(), применяемых к маршруту. Выполняются до установки WebSocket-соединения.",
+            },
+            {
+                name: "dependency_overrides_provider",
+                description:
+                    "Объект, предоставляющий переопределения зависимостей. Обычно устанавливается автоматически приложением FastAPI.",
+            },
+        ],
+        example: `from fastapi import FastAPI, WebSocket, Depends
+from fastapi.routing import APIWebSocketRoute
+
+app = FastAPI()
+
+# --- Способ 1: через декоратор (рекомендуется) ---
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: int):
+    await websocket.accept()
+    await websocket.send_text(f"Привет, клиент {client_id}")
+    await websocket.close()
+
+# --- Способ 2: программное создание маршрута ---
+async def ws_handler(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        data = await websocket.receive_text()
+        await websocket.send_text(f"Эхо: {data}")
+
+route = APIWebSocketRoute(
+    path="/ws/echo",
+    endpoint=ws_handler,
+    name="echo_ws",
+)
+
+app.router.routes.append(route)
+
+# Интроспекция WebSocket-маршрутов
+from fastapi.routing import APIWebSocketRoute as WSRoute
+for route in app.routes:
+    if isinstance(route, WSRoute):
+        print(f"WS маршрут: {route.path}, имя: {route.name}")
+# WS маршрут: /ws/{client_id}, имя: websocket_endpoint
+# WS маршрут: /ws/echo, имя: echo_ws`,
+    },
+    // ─── Lifespan (жизненный цикл) ───────────────────────────────────────────
+    {
+        category: "Lifespan (жизненный цикл)",
+        name: "lifespan(app)",
+        description:
+            "Async-контекстный менеджер для управления жизненным циклом FastAPI-приложения. Код до yield выполняется при запуске (startup), код после yield — при остановке (shutdown). Заменяет устаревшие события on_startup / on_shutdown. Передаётся в FastAPI(lifespan=lifespan).",
+        syntax: `from contextlib import asynccontextmanager
+from fastapi import FastAPI
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # startup: инициализация ресурсов
+    yield
+    # shutdown: освобождение ресурсов
+
+app = FastAPI(lifespan=lifespan)`,
+        arguments: [
+            {
+                name: "@asynccontextmanager",
+                description:
+                    "Декоратор из модуля contextlib, превращающий async-генератор в асинхронный контекстный менеджер. Обязателен для определения lifespan.",
+            },
+            {
+                name: "app",
+                description:
+                    "Экземпляр FastAPI, передаваемый в функцию lifespan. Позволяет сохранять ресурсы в app.state для доступа из обработчиков запросов.",
+            },
+            {
+                name: "yield",
+                description:
+                    "Точка разделения: всё до yield — startup-логика (выполняется один раз при запуске сервера), всё после yield — shutdown-логика (выполняется при остановке).",
+            },
+            {
+                name: "FastAPI(lifespan=lifespan)",
+                description:
+                    "Передача функции lifespan в конструктор FastAPI. С этого момента фреймворк управляет вызовом startup и shutdown через контекстный менеджер.",
+            },
+        ],
+        example: `from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
+import httpx
+
+# --- Базовый пример ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # STARTUP: создаём HTTP-клиент и сохраняем в app.state
+    app.state.http_client = httpx.AsyncClient()
+    print("Приложение запущено, клиент создан")
+    yield
+    # SHUTDOWN: закрываем клиент при остановке
+    await app.state.http_client.aclose()
+    print("Приложение остановлено, клиент закрыт")
+
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/external")
+async def call_external(request: Request):
+    # Используем клиент из app.state
+    client: httpx.AsyncClient = request.app.state.http_client
+    response = await client.get("https://httpbin.org/get")
+    return response.json()
+
+
+# --- Пример с базой данных ---
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan_db(app: FastAPI):
+    # Startup: подключение к БД
+    app.state.db_pool = await create_db_pool()
+    yield
+    # Shutdown: закрытие пула соединений
+    await app.state.db_pool.close()
+
+app_db = FastAPI(lifespan=lifespan_db)
+
+
+# --- Тестирование lifespan через TestClient ---
+from fastapi.testclient import TestClient
+
+def test_lifespan():
+    with TestClient(app) as client:
+        # lifespan startup выполнен здесь
+        response = client.get("/external")
+        assert response.status_code == 200
+    # lifespan shutdown выполнен здесь`,
+    },
+    // ─── jsonable_encoder ─────────────────────────────────────────────────────
+    {
+        category: "jsonable_encoder",
+        name: "jsonable_encoder(obj, include, exclude, by_alias, exclude_unset, exclude_defaults, exclude_none, custom_encoder, sqlalchemy_safe)",
+        description:
+            "Утилита FastAPI для преобразования любого объекта (Pydantic-модели, datetime, UUID, Enum и т.д.) в структуру, совместимую с JSON — то есть в словари, списки и примитивные типы. Используется внутри FastAPI при формировании ответов, а также вручную — например, перед сохранением данных в NoSQL-базу или передачей в JSONResponse.",
+        syntax: `jsonable_encoder(
+    obj,
+    include=None,
+    exclude=None,
+    by_alias=True,
+    exclude_unset=False,
+    exclude_defaults=False,
+    exclude_none=False,
+    custom_encoder=None,
+    sqlalchemy_safe=True,
+)`,
+        arguments: [
+            {
+                name: "obj",
+                description:
+                    "Объект для преобразования. Поддерживает Pydantic-модели, dataclass, datetime, UUID, Enum, dict, list и любые вложенные комбинации. Обязательный параметр.",
+            },
+            {
+                name: "include",
+                description:
+                    "Множество или словарь полей, которые нужно включить в результат. Все остальные поля будут отброшены.",
+            },
+            {
+                name: "exclude",
+                description:
+                    "Множество или словарь полей, которые нужно исключить из результата.",
+            },
+            {
+                name: "by_alias",
+                description:
+                    "Использовать ли псевдонимы полей (alias) при сериализации Pydantic-моделей. По умолчанию True.",
+            },
+            {
+                name: "exclude_unset",
+                description:
+                    "Если True — поля, не заданные явно при создании модели (оставшиеся со значением по умолчанию), будут исключены. По умолчанию False.",
+            },
+            {
+                name: "exclude_defaults",
+                description:
+                    "Если True — поля, значение которых равно их default-значению, будут исключены. По умолчанию False.",
+            },
+            {
+                name: "exclude_none",
+                description:
+                    "Если True — поля со значением None будут исключены из результата. По умолчанию False.",
+            },
+            {
+                name: "custom_encoder",
+                description:
+                    "Словарь {тип: функция} для кастомной сериализации конкретных типов. Функция принимает значение и возвращает JSON-совместимый объект.",
+            },
+            {
+                name: "sqlalchemy_safe",
+                description:
+                    "Если True — пропускает атрибуты SQLAlchemy, начинающиеся с '_sa_', чтобы избежать ошибок сериализации ORM-объектов. По умолчанию True.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from datetime import datetime
+from uuid import UUID, uuid4
+from enum import Enum
+
+app = FastAPI()
+
+class Status(str, Enum):
+    active = "active"
+    inactive = "inactive"
+
+class Item(BaseModel):
+    id: UUID
+    name: str
+    created_at: datetime
+    status: Status
+    description: str | None = None
+
+# --- Базовый пример: Pydantic → dict для JSON ---
+item = Item(
+    id=uuid4(),
+    name="Виджет",
+    created_at=datetime.now(),
+    status=Status.active,
+)
+
+data = jsonable_encoder(item)
+# data — обычный dict, все типы приведены к JSON-совместимым:
+# {"id": "3fa85f64-...", "name": "Виджет",
+#  "created_at": "2024-01-15T10:30:00", "status": "active", "description": null}
+
+@app.put("/items/{item_id}")
+def update_item(item_id: int, item: Item):
+    # Преобразуем перед сохранением в MongoDB/Redis
+    encoded = jsonable_encoder(item)
+    fake_db[item_id] = encoded
+    return JSONResponse(content=encoded)
+
+
+# --- exclude_unset: сохраняем только явно переданные поля (PATCH-логика) ---
+class ItemUpdate(BaseModel):
+    name: str | None = None
+    status: Status | None = None
+
+@app.patch("/items/{item_id}")
+def patch_item(item_id: int, update: ItemUpdate):
+    stored = fake_db.get(item_id, {})
+    # Только поля, переданные клиентом
+    patch_data = jsonable_encoder(update, exclude_unset=True)
+    stored.update(patch_data)
+    fake_db[item_id] = stored
+    return stored
+
+
+# --- custom_encoder: кастомная сериализация типа ---
+from decimal import Decimal
+
+def encode_decimal(v: Decimal) -> float:
+    return round(float(v), 2)
+
+price = Decimal("19.9999")
+result = jsonable_encoder(
+    {"price": price},
+    custom_encoder={Decimal: encode_decimal},
+)
+# {"price": 20.0}
+
+
+# --- exclude_none: убираем пустые поля из ответа ---
+item_with_none = Item(
+    id=uuid4(),
+    name="Гаджет",
+    created_at=datetime.now(),
+    status=Status.inactive,
+    description=None,
+)
+clean = jsonable_encoder(item_with_none, exclude_none=True)
+# {"id": "...", "name": "Гаджет", "created_at": "...", "status": "inactive"}
+# поле description отсутствует`,
+    },
+    // ─── generate_unique_id ───────────────────────────────────────────────────
+    {
+        category: "generate_unique_id",
+        name: "generate_unique_id(route)",
+        description:
+            "Функция по умолчанию для генерации уникального operationId маршрута в схеме OpenAPI. Формирует строку из имени функции-обработчика, HTTP-метода и пути. Можно переопределить через параметр generate_unique_id_function у FastAPI() или APIRouter() для кастомной схемы именования.",
+        syntax: `generate_unique_id(route: APIRoute) -> str`,
+        arguments: [
+            {
+                name: "route",
+                description:
+                    "Объект APIRoute, для которого генерируется уникальный идентификатор. Функция использует route.name, route.methods и route.path для формирования строки.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.routing import APIRoute
+from fastapi.utils import generate_unique_id
+
+app = FastAPI()
+
+# --- Поведение по умолчанию ---
+@app.get("/items/{item_id}")
+def read_item(item_id: int): ...
+
+# По умолчанию operationId будет: "read_item_items__item_id__get"
+
+# --- Кастомная функция: только имя обработчика ---
+def custom_generate_unique_id(route: APIRoute) -> str:
+    return route.name
+
+app_custom = FastAPI(generate_unique_id_function=custom_generate_unique_id)
+
+@app_custom.get("/items/{item_id}")
+def read_item(item_id: int): ...
+# operationId будет: "read_item"
+
+# --- Кастомная функция с тегом ---
+def id_with_tag(route: APIRoute) -> str:
+    tag = route.tags[0] if route.tags else "default"
+    return f"{tag}-{route.name}"
+
+app_tagged = FastAPI(generate_unique_id_function=id_with_tag)
+
+@app_tagged.get("/items/", tags=["items"])
+def list_items(): ...
+# operationId будет: "items-list_items"
+
+# --- Переопределение на уровне роутера ---
+from fastapi import APIRouter
+
+router = APIRouter(generate_unique_id_function=custom_generate_unique_id)
+
+@router.get("/users/")
+def list_users(): ...
+
+app_tagged.include_router(router)`,
+    },
+    // ─── serialize_response ───────────────────────────────────────────────────
+    {
+        category: "serialize_response",
+        name: "serialize_response(*, response_content, field, include, exclude, by_alias, exclude_unset, exclude_defaults, exclude_none, is_coroutine)",
+        description:
+            "Внутренняя async-функция FastAPI для сериализации тела ответа с учётом response_model. Применяет фильтрацию полей, валидацию через Pydantic и преобразование в JSON-совместимый формат. Вызывается автоматически фреймворком; ручное использование нужно при создании кастомных роутеров или middleware.",
+        syntax: `serialize_response(
+    *,
+    response_content,
+    field=None,
+    include=None,
+    exclude=None,
+    by_alias=True,
+    exclude_unset=False,
+    exclude_defaults=False,
+    exclude_none=False,
+    is_coroutine=True,
+)`,
+        arguments: [
+            {
+                name: "response_content",
+                description:
+                    "Данные для сериализации — возвращаемое значение обработчика маршрута (Pydantic-модель, dict, list и т.д.). Обязательный параметр.",
+            },
+            {
+                name: "field",
+                description:
+                    "Поле Pydantic (ModelField), соответствующее response_model маршрута. Используется для валидации и фильтрации. Если None — сериализация выполняется как jsonable_encoder без дополнительной валидации.",
+            },
+            {
+                name: "include",
+                description:
+                    "Множество или словарь полей, которые нужно включить в сериализованный ответ.",
+            },
+            {
+                name: "exclude",
+                description:
+                    "Множество или словарь полей, которые нужно исключить из сериализованного ответа.",
+            },
+            {
+                name: "by_alias",
+                description:
+                    "Сериализовать поля по псевдонимам (alias). По умолчанию True.",
+            },
+            {
+                name: "exclude_unset",
+                description:
+                    "Если True — поля, не заданные явно, исключаются из ответа. По умолчанию False.",
+            },
+            {
+                name: "exclude_defaults",
+                description:
+                    "Если True — поля, равные значению по умолчанию, исключаются из ответа. По умолчанию False.",
+            },
+            {
+                name: "exclude_none",
+                description:
+                    "Если True — поля со значением None исключаются из ответа. По умолчанию False.",
+            },
+            {
+                name: "is_coroutine",
+                description:
+                    "Если True — функция-обработчик является корутиной (async def). Влияет на внутренний механизм вызова валидатора. По умолчанию True.",
+            },
+        ],
+        example: `# serialize_response — внутренняя функция FastAPI.
+# Напрямую используется при создании кастомных роутеров.
+
+import asyncio
+from fastapi import FastAPI
+from fastapi.routing import serialize_response
+from pydantic import BaseModel
+
+class UserOut(BaseModel):
+    id: int
+    name: str
+    password: str  # нужно скрыть в ответе
+
+class UserPublic(BaseModel):
+    id: int
+    name: str
+
+app = FastAPI()
+
+# --- Как FastAPI использует serialize_response внутри ---
+# При каждом запросе к маршруту с response_model фреймворк вызывает:
+#
+# serialized = await serialize_response(
+#     response_content=handler_return_value,
+#     field=route.response_field,   # построен из response_model
+#     by_alias=route.response_model_by_alias,
+#     exclude_unset=route.response_model_exclude_unset,
+#     exclude_none=route.response_model_exclude_none,
+#     is_coroutine=asyncio.iscoroutinefunction(route.endpoint),
+# )
+
+# --- Кастомный роутер с ручной сериализацией ---
+from fastapi.routing import APIRoute
+from fastapi.responses import JSONResponse
+from starlette.requests import Request
+from starlette.responses import Response
+
+class LoggingRoute(APIRoute):
+    def get_route_handler(self):
+        original = super().get_route_handler()
+        async def custom_handler(request: Request) -> Response:
+            response = await original(request)
+            # Здесь serialize_response уже был вызван внутри original
+            print(f"Ответ отправлен: {response.status_code}")
+            return response
+        return custom_handler
+
+app_custom = FastAPI()
+app_custom.router.route_class = LoggingRoute
+
+@app_custom.get("/users/{user_id}", response_model=UserPublic)
+def get_user(user_id: int):
+    # FastAPI вызовет serialize_response и автоматически
+    # уберёт поле password через response_model=UserPublic
+    return UserOut(id=user_id, name="Алиса", password="secret")`,
+    },
+    // ─── OpenAPI-модели (схемы) ───────────────────────────────────────────────
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "Contact(name, url, email)",
+        description:
+            "Pydantic-модель, описывающая контактную информацию API в схеме OpenAPI. Передаётся в параметр contact конструктора FastAPI(). Все поля опциональны.",
+        syntax: `Contact(name=None, url=None, email=None)`,
+        arguments: [
+            {
+                name: "name",
+                description: "Имя контактного лица или организации.",
+            },
+            {
+                name: "url",
+                description: "URL страницы с контактной информацией. Должен быть корректным URL.",
+            },
+            {
+                name: "email",
+                description: "Email контактного лица. Должен быть корректным email-адресом.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.models import Contact
+
+app = FastAPI(
+    contact=Contact(
+        name="Команда разработки",
+        url="https://example.com/support",
+        email="api@example.com",
+    )
+)
+
+# Эквивалентно передаче словаря:
+app2 = FastAPI(
+    contact={
+        "name": "Команда разработки",
+        "url": "https://example.com/support",
+        "email": "api@example.com",
+    }
+)`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "License(name, identifier, url)",
+        description:
+            "Pydantic-модель, описывающая лицензию API в схеме OpenAPI. Передаётся в параметр license_info конструктора FastAPI(). Поле name обязательно.",
+        syntax: `License(name, identifier=None, url=None)`,
+        arguments: [
+            {
+                name: "name",
+                description: "Название лицензии, например 'MIT', 'Apache 2.0'. Обязательный параметр.",
+            },
+            {
+                name: "identifier",
+                description: "Идентификатор лицензии в формате SPDX, например 'MIT', 'Apache-2.0'. Взаимоисключающий с url.",
+            },
+            {
+                name: "url",
+                description: "URL полного текста лицензии. Взаимоисключающий с identifier.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.models import License
+
+app = FastAPI(
+    license_info=License(
+        name="MIT",
+        url="https://opensource.org/licenses/MIT",
+    )
+)
+
+# С SPDX-идентификатором (OpenAPI 3.1+)
+app2 = FastAPI(
+    license_info=License(
+        name="Apache 2.0",
+        identifier="Apache-2.0",
+    )
+)`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "Info(title, version, summary, description, termsOfService, contact, license)",
+        description:
+            "Pydantic-модель метаданных API в схеме OpenAPI. Генерируется автоматически из параметров FastAPI(). Используется для явного формирования объекта Info при кастомизации схемы OpenAPI через get_openapi().",
+        syntax: `Info(
+    title,
+    version,
+    summary=None,
+    description=None,
+    termsOfService=None,
+    contact=None,
+    license=None,
+)`,
+        arguments: [
+            {
+                name: "title",
+                description: "Название API. Отображается в Swagger UI и ReDoc. Обязательный параметр.",
+            },
+            {
+                name: "version",
+                description: "Версия API в формате semver, например '1.0.0'. Обязательный параметр.",
+            },
+            {
+                name: "summary",
+                description: "Краткое одностроковое описание API.",
+            },
+            {
+                name: "description",
+                description: "Полное описание API. Поддерживает Markdown.",
+            },
+            {
+                name: "termsOfService",
+                description: "URL страницы с условиями использования API.",
+            },
+            {
+                name: "contact",
+                description: "Объект Contact с контактной информацией.",
+            },
+            {
+                name: "license",
+                description: "Объект License с информацией о лицензии.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+from fastapi.openapi.models import Info, Contact, License
+
+app = FastAPI()
+
+@app.get("/items/")
+def list_items(): ...
+
+# Кастомная схема OpenAPI с явным объектом Info
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title="My API",
+        version="2.0.0",
+        info=Info(
+            title="My API",
+            version="2.0.0",
+            summary="Краткое описание",
+            description="## Полное описание\\n\\nПоддерживает **Markdown**.",
+            contact=Contact(name="Support", email="support@example.com"),
+            license=License(name="MIT", url="https://opensource.org/licenses/MIT"),
+        ),
+        routes=app.routes,
+    )
+    app.openapi_schema = schema
+    return schema
+
+app.openapi = custom_openapi`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "ServerVariable(default, enum, description)",
+        description:
+            "Pydantic-модель переменной сервера OpenAPI. Используется внутри объекта Server для параметризации URL. Позволяет задать подстановочные значения в URL-шаблонах серверов, например схему (http/https) или окружение (dev/prod).",
+        syntax: `ServerVariable(default, enum=None, description=None)`,
+        arguments: [
+            {
+                name: "default",
+                description: "Значение переменной по умолчанию. Должно входить в enum, если он задан. Обязательный параметр.",
+            },
+            {
+                name: "enum",
+                description: "Список допустимых значений переменной. Если задан — значение должно быть одним из них.",
+            },
+            {
+                name: "description",
+                description: "Описание переменной. Поддерживает Markdown.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.models import Server, ServerVariable
+
+app = FastAPI(
+    servers=[
+        Server(
+            url="{scheme}://api.example.com/{environment}",
+            description="Основной сервер",
+            variables={
+                "scheme": ServerVariable(
+                    default="https",
+                    enum=["https", "http"],
+                    description="Протокол подключения",
+                ),
+                "environment": ServerVariable(
+                    default="v1",
+                    enum=["v1", "v2", "sandbox"],
+                    description="Версия / окружение API",
+                ),
+            },
+        )
+    ]
+)`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "Server(url, description, variables)",
+        description:
+            "Pydantic-модель сервера OpenAPI. Передаётся в параметр servers конструктора FastAPI() для указания доступных окружений API (production, staging, sandbox). URL может содержать переменные в фигурных скобках, описываемые объектами ServerVariable.",
+        syntax: `Server(url, description=None, variables=None)`,
+        arguments: [
+            {
+                name: "url",
+                description: "URL сервера. Может быть абсолютным или относительным. Поддерживает шаблоны с переменными: '{scheme}://api.example.com'. Обязательный параметр.",
+            },
+            {
+                name: "description",
+                description: "Описание сервера, отображаемое в Swagger UI при переключении окружений.",
+            },
+            {
+                name: "variables",
+                description: "Словарь {имя_переменной: ServerVariable} для параметризованных URL-шаблонов.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.models import Server
+
+app = FastAPI(
+    servers=[
+        Server(
+            url="https://api.example.com",
+            description="Production",
+        ),
+        Server(
+            url="https://staging.example.com",
+            description="Staging",
+        ),
+        Server(
+            url="http://localhost:8000",
+            description="Локальная разработка",
+        ),
+    ]
+)
+
+@app.get("/items/")
+def list_items():
+    return []
+
+# В Swagger UI появится выпадающий список серверов —
+# пользователь сможет переключаться между окружениями.`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "Tag(name, description, externalDocs)",
+        description:
+            "Pydantic-модель тега OpenAPI. Передаётся в параметр openapi_tags конструктора FastAPI() для задания порядка отображения и описания групп маршрутов в документации Swagger UI и ReDoc.",
+        syntax: `Tag(name, description=None, externalDocs=None)`,
+        arguments: [
+            {
+                name: "name",
+                description: "Имя тега. Должно совпадать со значениями, указанными в tags=[] маршрутов. Обязательный параметр.",
+            },
+            {
+                name: "description",
+                description: "Описание группы маршрутов. Поддерживает Markdown.",
+            },
+            {
+                name: "externalDocs",
+                description: "Объект ExternalDocumentation со ссылкой на внешнюю документацию для этой группы.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.models import Tag
+
+app = FastAPI(
+    openapi_tags=[
+        Tag(
+            name="users",
+            description="Операции с **пользователями**. Включает регистрацию и авторизацию.",
+        ),
+        Tag(
+            name="items",
+            description="Управление товарами каталога.",
+        ),
+        Tag(
+            name="admin",
+            description="Административные операции. Требуют прав суперпользователя.",
+        ),
+    ]
+)
+
+@app.get("/users/", tags=["users"])
+def list_users(): ...
+
+@app.get("/items/", tags=["items"])
+def list_items(): ...
+
+@app.delete("/users/{user_id}", tags=["users", "admin"])
+def delete_user(user_id: int): ...
+
+# Порядок тегов в openapi_tags определяет порядок
+# групп в Swagger UI и ReDoc.`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "OAuthFlow(refreshUrl, scopes)",
+        description:
+            "Базовая Pydantic-модель OAuth 2.0 flow в схеме OpenAPI. Напрямую используется редко — как правило, применяются конкретные подклассы: OAuthFlowImplicit, OAuthFlowPassword, OAuthFlowClientCredentials, OAuthFlowAuthorizationCode. Описывает параметры одного flow схемы безопасности OAuth2.",
+        syntax: `OAuthFlow(refreshUrl=None, scopes={})`,
+        arguments: [
+            {
+                name: "refreshUrl",
+                description: "URL для обновления токена. Опциональный для всех flow.",
+            },
+            {
+                name: "scopes",
+                description: "Словарь {scope: описание} — доступные области видимости OAuth2. По умолчанию пустой словарь.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.security import OAuth2
+from fastapi.openapi.models import OAuthFlows, OAuthFlowPassword
+
+# OAuthFlow используется через обёртку OAuthFlows:
+oauth2_scheme = OAuth2(
+    flows=OAuthFlows(
+        password=OAuthFlowPassword(
+            tokenUrl="/token",
+            scopes={
+                "read:items": "Чтение товаров",
+                "write:items": "Создание и изменение товаров",
+                "admin": "Полный доступ",
+            },
+        )
+    )
+)
+
+app = FastAPI()
+
+@app.get("/items/")
+def list_items(token: str = Depends(oauth2_scheme)):
+    return []`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "OAuthFlowImplicit(authorizationUrl, refreshUrl, scopes)",
+        description:
+            "Pydantic-модель Implicit flow OAuth 2.0 в схеме OpenAPI. В этом flow токен выдаётся браузеру напрямую через authorizationUrl без промежуточного кода. Считается устаревшим в OAuth 2.1 — рекомендуется использовать Authorization Code flow с PKCE.",
+        syntax: `OAuthFlowImplicit(authorizationUrl, refreshUrl=None, scopes={})`,
+        arguments: [
+            {
+                name: "authorizationUrl",
+                description: "URL сервера авторизации, на который перенаправляется пользователь для получения токена. Обязательный параметр.",
+            },
+            {
+                name: "refreshUrl",
+                description: "URL для обновления токена доступа.",
+            },
+            {
+                name: "scopes",
+                description: "Словарь {scope: описание} — доступные области видимости. По умолчанию пустой словарь.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends
+from fastapi.security import OAuth2ImplicitBearer
+from fastapi.openapi.models import OAuthFlows, OAuthFlowImplicit
+
+# OAuth2ImplicitBearer использует OAuthFlowImplicit внутри
+oauth2_implicit = OAuth2(
+    flows=OAuthFlows(
+        implicit=OAuthFlowImplicit(
+            authorizationUrl="https://auth.example.com/oauth/authorize",
+            scopes={
+                "openid": "Идентификация пользователя",
+                "profile": "Профиль пользователя",
+                "email": "Email пользователя",
+            },
+        )
+    )
+)
+
+app = FastAPI()
+
+@app.get("/me")
+def get_me(token: str = Depends(oauth2_implicit)):
+    return {"token": token}
+
+# Swagger UI добавит кнопку "Authorize" с перенаправлением
+# на authorizationUrl для получения токена.`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "OAuthFlowPassword(tokenUrl, refreshUrl, scopes)",
+        description:
+            "Pydantic-модель Resource Owner Password Credentials flow OAuth 2.0. Клиент передаёт логин и пароль пользователя напрямую на tokenUrl и получает токен. Используется в доверенных приложениях (например, собственный мобильный клиент). В FastAPI применяется через OAuth2PasswordBearer.",
+        syntax: `OAuthFlowPassword(tokenUrl, refreshUrl=None, scopes={})`,
+        arguments: [
+            {
+                name: "tokenUrl",
+                description: "URL эндпоинта для получения токена по логину и паролю. Обязательный параметр.",
+            },
+            {
+                name: "refreshUrl",
+                description: "URL для обновления токена доступа.",
+            },
+            {
+                name: "scopes",
+                description: "Словарь {scope: описание} — доступные области видимости. По умолчанию пустой словарь.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.openapi.models import OAuthFlows, OAuthFlowPassword
+from fastapi.security import OAuth2
+
+# OAuth2PasswordBearer использует OAuthFlowPassword внутри
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl="/token",
+    scopes={
+        "read": "Чтение данных",
+        "write": "Запись данных",
+    },
+)
+
+app = FastAPI()
+
+@app.post("/token")
+async def login(form: OAuth2PasswordRequestForm = Depends()):
+    # Проверка логина и пароля, выдача токена
+    return {"access_token": form.username, "token_type": "bearer"}
+
+@app.get("/users/me")
+async def get_me(token: str = Depends(oauth2_scheme)):
+    return {"user": token}`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "OAuthFlowClientCredentials(tokenUrl, refreshUrl, scopes)",
+        description:
+            "Pydantic-модель Client Credentials flow OAuth 2.0. Используется для межсервисного взаимодействия (machine-to-machine): клиент аутентифицируется своими учётными данными, не от имени пользователя. Подходит для фоновых задач, микросервисов и серверных интеграций.",
+        syntax: `OAuthFlowClientCredentials(tokenUrl, refreshUrl=None, scopes={})`,
+        arguments: [
+            {
+                name: "tokenUrl",
+                description: "URL эндпоинта для получения токена по client_id и client_secret. Обязательный параметр.",
+            },
+            {
+                name: "refreshUrl",
+                description: "URL для обновления токена доступа.",
+            },
+            {
+                name: "scopes",
+                description: "Словарь {scope: описание} — доступные области видимости для клиентских учётных данных.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends
+from fastapi.security import OAuth2
+from fastapi.openapi.models import OAuthFlows, OAuthFlowClientCredentials
+
+oauth2_client = OAuth2(
+    flows=OAuthFlows(
+        clientCredentials=OAuthFlowClientCredentials(
+            tokenUrl="https://auth.example.com/oauth/token",
+            scopes={
+                "service:read": "Чтение данных сервиса",
+                "service:write": "Запись данных сервиса",
+            },
+        )
+    )
+)
+
+app = FastAPI()
+
+@app.get("/internal/data")
+def get_internal_data(token: str = Depends(oauth2_client)):
+    # Эндпоинт только для сервисных клиентов
+    return {"data": "internal"}`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "OAuthFlowAuthorizationCode(authorizationUrl, tokenUrl, refreshUrl, scopes)",
+        description:
+            "Pydantic-модель Authorization Code flow OAuth 2.0 — наиболее безопасный и рекомендуемый flow для веб-приложений. Пользователь перенаправляется на authorizationUrl, получает код, который обменивается на токен через tokenUrl. Поддерживает PKCE.",
+        syntax: `OAuthFlowAuthorizationCode(
+    authorizationUrl,
+    tokenUrl,
+    refreshUrl=None,
+    scopes={},
+)`,
+        arguments: [
+            {
+                name: "authorizationUrl",
+                description: "URL сервера авторизации, на который перенаправляется пользователь для получения кода авторизации. Обязательный параметр.",
+            },
+            {
+                name: "tokenUrl",
+                description: "URL для обмена кода авторизации на токен доступа. Обязательный параметр.",
+            },
+            {
+                name: "refreshUrl",
+                description: "URL для обновления токена доступа.",
+            },
+            {
+                name: "scopes",
+                description: "Словарь {scope: описание} — доступные области видимости.",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends
+from fastapi.security import OAuth2AuthorizationCodeBearer
+from fastapi.openapi.models import OAuthFlows, OAuthFlowAuthorizationCode
+from fastapi.security import OAuth2
+
+# OAuth2AuthorizationCodeBearer использует OAuthFlowAuthorizationCode внутри
+oauth2_code = OAuth2AuthorizationCodeBearer(
+    authorizationUrl="https://auth.example.com/oauth/authorize",
+    tokenUrl="https://auth.example.com/oauth/token",
+    scopes={
+        "openid": "Идентификация",
+        "profile": "Профиль пользователя",
+        "email": "Email пользователя",
+    },
+)
+
+app = FastAPI()
+
+@app.get("/me")
+async def get_me(token: str = Depends(oauth2_code)):
+    return {"token": token}
+
+# В Swagger UI появится кнопка "Authorize" —
+# пользователь пройдёт полный Authorization Code flow.`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "OAuthFlows(implicit, password, clientCredentials, authorizationCode)",
+        description:
+            "Pydantic-модель, объединяющая все возможные OAuth 2.0 flow в один объект. Передаётся в SecurityScheme для описания полной конфигурации OAuth2 в схеме OpenAPI. Можно задать один или несколько flow одновременно.",
+        syntax: `OAuthFlows(
+    implicit=None,
+    password=None,
+    clientCredentials=None,
+    authorizationCode=None,
+)`,
+        arguments: [
+            {
+                name: "implicit",
+                description: "Объект OAuthFlowImplicit для Implicit flow (устарел в OAuth 2.1).",
+            },
+            {
+                name: "password",
+                description: "Объект OAuthFlowPassword для Resource Owner Password flow.",
+            },
+            {
+                name: "clientCredentials",
+                description: "Объект OAuthFlowClientCredentials для Client Credentials flow (межсервисный).",
+            },
+            {
+                name: "authorizationCode",
+                description: "Объект OAuthFlowAuthorizationCode для Authorization Code flow (рекомендуется).",
+            },
+        ],
+        example: `from fastapi import FastAPI, Depends
+from fastapi.security import OAuth2
+from fastapi.openapi.models import (
+    OAuthFlows,
+    OAuthFlowPassword,
+    OAuthFlowAuthorizationCode,
+    OAuthFlowClientCredentials,
+)
+
+# Комбинация нескольких flow в одной схеме
+multi_flow_oauth = OAuth2(
+    flows=OAuthFlows(
+        password=OAuthFlowPassword(
+            tokenUrl="/token",
+            scopes={"read": "Чтение"},
+        ),
+        authorizationCode=OAuthFlowAuthorizationCode(
+            authorizationUrl="https://auth.example.com/authorize",
+            tokenUrl="https://auth.example.com/token",
+            scopes={"read": "Чтение", "write": "Запись"},
+        ),
+        clientCredentials=OAuthFlowClientCredentials(
+            tokenUrl="https://auth.example.com/token",
+            scopes={"service": "Сервисный доступ"},
+        ),
+    )
+)
+
+app = FastAPI()
+
+@app.get("/protected")
+def protected(token: str = Depends(multi_flow_oauth)):
+    return {"token": token}`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "SecurityScheme(type, description, name, in_, scheme, bearerFormat, flows, openIdConnectUrl)",
+        description:
+            "Pydantic-модель схемы безопасности OpenAPI. Описывает механизм аутентификации API: API Key, HTTP (Basic/Bearer), OAuth2 или OpenID Connect. Используется при ручной кастомизации схемы через get_openapi(). В большинстве случаев схема создаётся автоматически через классы FastAPI Security.",
+        syntax: `SecurityScheme(
+    type,              # "apiKey" | "http" | "oauth2" | "openIdConnect"
+    description=None,
+    name=None,         # для type="apiKey"
+    in_=None,          # для type="apiKey": "query"|"header"|"cookie"
+    scheme=None,       # для type="http": "bearer"|"basic"
+    bearerFormat=None, # для scheme="bearer", например "JWT"
+    flows=None,        # для type="oauth2": объект OAuthFlows
+    openIdConnectUrl=None,  # для type="openIdConnect"
+)`,
+        arguments: [
+            {
+                name: "type",
+                description: "Тип схемы безопасности. Обязательный. Одно из: 'apiKey', 'http', 'oauth2', 'openIdConnect'.",
+            },
+            {
+                name: "description",
+                description: "Описание схемы безопасности, отображаемое в документации.",
+            },
+            {
+                name: "name",
+                description: "Имя параметра для type='apiKey' (например, 'X-API-Key'). Обязательно для apiKey.",
+            },
+            {
+                name: "in_",
+                description: "Расположение API Key для type='apiKey'. Одно из: 'query', 'header', 'cookie'. Обязательно для apiKey.",
+            },
+            {
+                name: "scheme",
+                description: "HTTP-схема аутентификации для type='http'. Например, 'bearer' или 'basic'. Обязательно для http.",
+            },
+            {
+                name: "bearerFormat",
+                description: "Формат Bearer-токена для подсказки клиентам, например 'JWT'. Используется только с scheme='bearer'.",
+            },
+            {
+                name: "flows",
+                description: "Объект OAuthFlows с конфигурацией flow. Обязательно для type='oauth2'.",
+            },
+            {
+                name: "openIdConnectUrl",
+                description: "URL документа OpenID Connect Discovery. Обязательно для type='openIdConnect'.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+from fastapi.openapi.models import SecurityScheme, OAuthFlows, OAuthFlowPassword
+
+app = FastAPI()
+
+@app.get("/items/")
+def list_items(): ...
+
+# Ручная кастомизация схемы безопасности
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(title="My API", version="1.0.0", routes=app.routes)
+    schema["components"]["securitySchemes"] = {
+        # API Key в заголовке
+        "ApiKeyAuth": SecurityScheme(
+            type="apiKey",
+            name="X-API-Key",
+            in_="header",
+            description="API-ключ для доступа к сервису",
+        ).model_dump(exclude_none=True),
+        # Bearer JWT
+        "BearerAuth": SecurityScheme(
+            type="http",
+            scheme="bearer",
+            bearerFormat="JWT",
+            description="JWT-токен в формате Bearer",
+        ).model_dump(exclude_none=True),
+        # OAuth2 Password
+        "OAuth2Password": SecurityScheme(
+            type="oauth2",
+            flows=OAuthFlows(
+                password=OAuthFlowPassword(tokenUrl="/token")
+            ),
+        ).model_dump(exclude_none=True),
+    }
+    app.openapi_schema = schema
+    return schema
+
+app.openapi = custom_openapi`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "Schema(title, description, type, format, default, example, enum, required, properties, ...)",
+        description:
+            "Pydantic-модель объекта Schema OpenAPI (JSON Schema). Описывает структуру данных в схеме OpenAPI. Генерируется автоматически из Pydantic-моделей, но может быть задана вручную через openapi_extra или при полной кастомизации схемы. Поддерживает все ключевые слова JSON Schema Draft 7 / OpenAPI 3.x.",
+        syntax: `Schema(
+    title=None,
+    description=None,
+    type=None,           # "string"|"number"|"integer"|"boolean"|"array"|"object"
+    format=None,         # "date-time"|"email"|"uuid"|"uri"|...
+    default=None,
+    example=None,
+    enum=None,
+    required=None,
+    properties=None,
+    items=None,          # для type="array"
+    anyOf=None,
+    allOf=None,
+    oneOf=None,
+    nullable=None,
+    minimum=None,
+    maximum=None,
+    minLength=None,
+    maxLength=None,
+    pattern=None,
+    readOnly=None,
+    writeOnly=None,
+    ...
+)`,
+        arguments: [
+            {
+                name: "type",
+                description: "Тип данных: 'string', 'number', 'integer', 'boolean', 'array', 'object'.",
+            },
+            {
+                name: "format",
+                description: "Уточнение формата: 'date-time', 'email', 'uuid', 'uri', 'password', 'byte', 'binary' и др.",
+            },
+            {
+                name: "title",
+                description: "Заголовок схемы, отображаемый в документации.",
+            },
+            {
+                name: "description",
+                description: "Описание поля или схемы. Поддерживает Markdown.",
+            },
+            {
+                name: "default",
+                description: "Значение по умолчанию. Отображается в документации и используется при валидации.",
+            },
+            {
+                name: "example",
+                description: "Пример значения для документации Swagger UI.",
+            },
+            {
+                name: "enum",
+                description: "Список допустимых значений. Поле принимает только одно из перечисленных значений.",
+            },
+            {
+                name: "required",
+                description: "Список обязательных полей для type='object'.",
+            },
+            {
+                name: "properties",
+                description: "Словарь {имя_поля: Schema} для описания полей объекта при type='object'.",
+            },
+            {
+                name: "items",
+                description: "Схема элементов массива при type='array'.",
+            },
+            {
+                name: "anyOf / allOf / oneOf",
+                description: "Композиция схем: anyOf — любая из, allOf — все сразу (наследование), oneOf — ровно одна из.",
+            },
+            {
+                name: "minimum / maximum",
+                description: "Ограничения диапазона для числовых полей.",
+            },
+            {
+                name: "minLength / maxLength",
+                description: "Ограничения длины для строковых полей.",
+            },
+            {
+                name: "pattern",
+                description: "Регулярное выражение для валидации строковых полей.",
+            },
+            {
+                name: "readOnly / writeOnly",
+                description: "Помечает поле только для чтения (в ответах) или только для записи (в запросах).",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.models import Schema
+
+app = FastAPI()
+
+# --- Использование openapi_extra для кастомизации схемы поля ---
+from pydantic import BaseModel
+
+class Item(BaseModel):
+    name: str
+    price: float
+    tags: list[str] = []
+
+@app.post(
+    "/items/",
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 100,
+                                "example": "Виджет",
+                            },
+                            "price": {
+                                "type": "number",
+                                "minimum": 0,
+                                "exclusiveMinimum": True,
+                                "example": 9.99,
+                            },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "uniqueItems": True,
+                                "default": [],
+                            },
+                        },
+                        "required": ["name", "price"],
+                    }
+                }
+            }
+        }
+    },
+)
+def create_item(item: Item):
+    return item
+
+# --- Схема с anyOf для nullable-поля ---
+nullable_schema = Schema(
+    anyOf=[
+        Schema(type="string", format="date-time"),
+        Schema(type="null" if True else ""),
+    ],
+    description="Дата удаления или null, если не удалён",
+)
+
+# --- Схема перечисления ---
+status_schema = Schema(
+    type="string",
+    enum=["active", "inactive", "banned"],
+    default="active",
+    description="Статус пользователя",
+)`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "Example(summary, description, value, externalValue)",
+        description:
+            "Pydantic-модель примера значения OpenAPI. Используется в параметрах маршрута, телах запросов и ответах для документирования нескольких вариантов данных в Swagger UI. Более выразительная альтернатива полю example — позволяет задать несколько именованных примеров через openapi_extra.",
+        syntax: `Example(summary=None, description=None, value=None, externalValue=None)`,
+        arguments: [
+            {
+                name: "summary",
+                description: "Краткое одностроковое описание примера, отображаемое в выпадающем списке Swagger UI.",
+            },
+            {
+                name: "description",
+                description: "Подробное описание примера. Поддерживает Markdown.",
+            },
+            {
+                name: "value",
+                description: "Конкретное значение примера. Любой JSON-совместимый объект. Взаимоисключающий с externalValue.",
+            },
+            {
+                name: "externalValue",
+                description: "URL внешнего ресурса с примером. Взаимоисключающий с value.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    price: float
+    in_stock: bool = True
+
+# Несколько именованных примеров через openapi_extra
+@app.post(
+    "/items/",
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "cheap_item": {
+                            "summary": "Дешёвый товар",
+                            "description": "Пример товара с минимальной ценой.",
+                            "value": {
+                                "name": "Карандаш",
+                                "price": 0.99,
+                                "in_stock": True,
+                            },
+                        },
+                        "expensive_item": {
+                            "summary": "Дорогой товар",
+                            "description": "Пример товара премиум-класса.",
+                            "value": {
+                                "name": "Ноутбук",
+                                "price": 2499.99,
+                                "in_stock": False,
+                            },
+                        },
+                        "external_example": {
+                            "summary": "Внешний пример",
+                            "externalValue": "https://example.com/samples/item.json",
+                        },
+                    }
+                }
+            }
+        }
+    },
+)
+def create_item(item: Item):
+    return item
+
+# В Swagger UI появится выпадающий список "Examples"
+# с тремя вариантами для быстрой подстановки в форму.`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "Encoding(contentType, headers, style, explode, allowReserved)",
+        description:
+            "Pydantic-модель настроек кодирования отдельного поля в multipart/form-data или application/x-www-form-urlencoded запросе. Используется внутри объекта MediaType для тонкой настройки сериализации полей формы.",
+        syntax: `Encoding(
+    contentType=None,
+    headers=None,
+    style=None,
+    explode=None,
+    allowReserved=None,
+)`,
+        arguments: [
+            {
+                name: "contentType",
+                description: "MIME-тип поля при кодировании multipart. Например, 'image/png' для файлов или 'application/json' для JSON-поля внутри формы.",
+            },
+            {
+                name: "headers",
+                description: "Словарь дополнительных заголовков, передаваемых вместе с частью multipart. Словарь {имя: Header}.",
+            },
+            {
+                name: "style",
+                description: "Стиль сериализации поля формы: 'form', 'spaceDelimited', 'pipeDelimited', 'deepObject'.",
+            },
+            {
+                name: "explode",
+                description: "Если True — каждое значение массива или свойство объекта передаётся как отдельный параметр формы.",
+            },
+            {
+                name: "allowReserved",
+                description: "Если True — символы RFC3986 (/, ?, # и др.) не кодируются процентным кодированием в значении поля.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+
+app = FastAPI()
+
+@app.post(
+    "/upload/",
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "file": {"type": "string", "format": "binary"},
+                            "metadata": {"type": "object"},
+                        },
+                    },
+                    "encoding": {
+                        # Encoding для поля "file"
+                        "file": {
+                            "contentType": "image/png, image/jpeg",
+                        },
+                        # Encoding для поля "metadata" — передаётся как JSON
+                        "metadata": {
+                            "contentType": "application/json",
+                        },
+                    },
+                }
+            }
+        }
+    },
+)
+async def upload_file():
+    return {"status": "ok"}`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "MediaType(schema, example, examples, encoding)",
+        description:
+            "Pydantic-модель типа содержимого (media type) в схеме OpenAPI. Описывает структуру тела запроса или ответа для конкретного MIME-типа. Используется внутри RequestBody и Response для описания, например, application/json, multipart/form-data или text/plain.",
+        syntax: `MediaType(schema=None, example=None, examples=None, encoding=None)`,
+        arguments: [
+            {
+                name: "schema",
+                description: "Объект Schema, описывающий структуру данных для данного MIME-типа.",
+            },
+            {
+                name: "example",
+                description: "Единственный пример значения для данного media type. Взаимоисключающий с examples.",
+            },
+            {
+                name: "examples",
+                description: "Словарь {имя: Example} с несколькими именованными примерами для Swagger UI. Взаимоисключающий с example.",
+            },
+            {
+                name: "encoding",
+                description: "Словарь {имя_поля: Encoding} — настройки кодирования для полей multipart/form-data или form-urlencoded.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+
+app = FastAPI()
+
+# MediaType описывает содержимое через openapi_extra
+@app.post(
+    "/items/",
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                # MediaType для application/json
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/Item"},
+                    "examples": {
+                        "simple": {
+                            "summary": "Простой товар",
+                            "value": {"name": "Карандаш", "price": 0.99},
+                        },
+                        "complex": {
+                            "summary": "Сложный товар",
+                            "value": {"name": "Ноутбук", "price": 1299.99},
+                        },
+                    },
+                },
+                # MediaType для text/plain
+                "text/plain": {
+                    "schema": {"type": "string"},
+                    "example": "name=Карандаш&price=0.99",
+                },
+            },
+        }
+    },
+)
+def create_item():
+    return {}`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "Header(required, schema_, ...)",
+        description:
+            "Pydantic-модель HTTP-заголовка в схеме OpenAPI. Описывает заголовки в ответах (Response.headers) или в настройках кодирования (Encoding.headers). Аналогична модели Parameter, но без полей name и in (они фиксированы для заголовков).",
+        syntax: `Header(
+    required=None,
+    schema_=None,
+    description=None,
+    deprecated=None,
+    allowEmptyValue=None,
+    style=None,
+    explode=None,
+    allowReserved=None,
+    example=None,
+    examples=None,
+)`,
+        arguments: [
+            {
+                name: "required",
+                description: "Если True — заголовок обязателен. По умолчанию False.",
+            },
+            {
+                name: "schema_",
+                description: "Объект Schema, описывающий тип и формат значения заголовка.",
+            },
+            {
+                name: "description",
+                description: "Описание заголовка. Поддерживает Markdown.",
+            },
+            {
+                name: "deprecated",
+                description: "Если True — заголовок помечается как устаревший в документации.",
+            },
+            {
+                name: "style",
+                description: "Стиль сериализации значения заголовка. Для заголовков по умолчанию 'simple'.",
+            },
+            {
+                name: "example / examples",
+                description: "Пример значения заголовка (одиночный или именованный словарь).",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+from fastapi.openapi.models import Header, Schema
+
+app = FastAPI()
+
+@app.get("/items/")
+def list_items():
+    return []
+
+# Добавление заголовков ответа в схему вручную
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(title="My API", version="1.0.0", routes=app.routes)
+    # Добавляем заголовок X-Total-Count к ответу маршрута
+    path = schema["paths"]["/items/"]["get"]
+    path["responses"]["200"]["headers"] = {
+        "X-Total-Count": {
+            "description": "Общее количество элементов",
+            "schema": {"type": "integer", "example": 42},
+        },
+        "X-Request-Id": {
+            "description": "Уникальный ID запроса для трассировки",
+            "schema": {"type": "string", "format": "uuid"},
+            "required": True,
+        },
+    }
+    app.openapi_schema = schema
+    return schema
+
+app.openapi = custom_openapi`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "RequestBody(content, description, required)",
+        description:
+            "Pydantic-модель тела HTTP-запроса в схеме OpenAPI. Описывает возможные MIME-типы и структуры данных, которые клиент должен передать. Генерируется автоматически из Pydantic-параметров тела, но может быть задана вручную через openapi_extra для полного контроля.",
+        syntax: `RequestBody(content, description=None, required=None)`,
+        arguments: [
+            {
+                name: "content",
+                description: "Словарь {MIME-тип: MediaType} — обязательный параметр. Описывает один или несколько поддерживаемых форматов тела запроса.",
+            },
+            {
+                name: "description",
+                description: "Описание тела запроса, отображаемое в документации. Поддерживает Markdown.",
+            },
+            {
+                name: "required",
+                description: "Если True — тело запроса обязательно. По умолчанию False, но FastAPI автоматически устанавливает True для Pydantic-параметров.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+
+app = FastAPI()
+
+# RequestBody с несколькими поддерживаемыми MIME-типами
+@app.post(
+    "/items/",
+    openapi_extra={
+        "requestBody": {
+            "description": "Данные нового товара. Принимается JSON или XML.",
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "price": {"type": "number"},
+                        },
+                        "required": ["name", "price"],
+                    },
+                    "example": {"name": "Виджет", "price": 9.99},
+                },
+                "application/xml": {
+                    "schema": {
+                        "type": "object",
+                        "xml": {"name": "Item"},
+                        "properties": {
+                            "name": {"type": "string"},
+                            "price": {"type": "number"},
+                        },
+                    },
+                },
+            },
+        }
+    },
+)
+async def create_item():
+    return {}`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "Link(operationRef, operationId, parameters, requestBody, description, server)",
+        description:
+            "Pydantic-модель связи (link) между операциями в схеме OpenAPI. Описывает, как результат одной операции может быть использован в качестве входных данных другой. Позволяет документировать рабочие процессы из нескольких шагов (например, создать пользователя → получить пользователя).",
+        syntax: `Link(
+    operationRef=None,
+    operationId=None,
+    parameters=None,
+    requestBody=None,
+    description=None,
+    server=None,
+)`,
+        arguments: [
+            {
+                name: "operationRef",
+                description: "Ссылка на операцию в формате JSON Reference, например '#/paths/~1users~1{userId}/get'. Взаимоисключающий с operationId.",
+            },
+            {
+                name: "operationId",
+                description: "operationId целевой операции. Взаимоисключающий с operationRef.",
+            },
+            {
+                name: "parameters",
+                description: "Словарь {имя_параметра: выражение} — значения параметров целевой операции, получаемые из текущего ответа. Поддерживает runtime expressions вида '$response.body#/id'.",
+            },
+            {
+                name: "requestBody",
+                description: "Значение или runtime expression для тела запроса целевой операции.",
+            },
+            {
+                name: "description",
+                description: "Описание связи. Поддерживает Markdown.",
+            },
+            {
+                name: "server",
+                description: "Объект Server, если целевая операция находится на другом сервере.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+
+app = FastAPI()
+
+@app.post("/users/", operation_id="createUser")
+def create_user(name: str):
+    return {"id": 1, "name": name}
+
+@app.get("/users/{user_id}", operation_id="getUser")
+def get_user(user_id: int):
+    return {"id": user_id, "name": "Алиса"}
+
+# Добавление Link: после создания пользователя — ссылка на его получение
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(title="My API", version="1.0.0", routes=app.routes)
+    schema["paths"]["/users/"]["post"]["responses"]["200"]["links"] = {
+        "GetCreatedUser": {
+            "operationId": "getUser",
+            "parameters": {
+                # id берётся из тела ответа POST /users/
+                "user_id": "$response.body#/id"
+            },
+            "description": "Получить только что созданного пользователя по ID из ответа.",
+        }
+    }
+    app.openapi_schema = schema
+    return schema
+
+app.openapi = custom_openapi`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "Response(description, headers, content, links)",
+        description:
+            "Pydantic-модель HTTP-ответа в схеме OpenAPI. Описывает один конкретный ответ операции: его заголовки, тело в различных форматах и связи с другими операциями. Генерируется автоматически FastAPI для успешного ответа, доп. ответы задаются через responses= или openapi_extra.",
+        syntax: `Response(description, headers=None, content=None, links=None)`,
+        arguments: [
+            {
+                name: "description",
+                description: "Описание ответа. Обязательный параметр. Поддерживает Markdown. Например: 'Успешное создание ресурса'.",
+            },
+            {
+                name: "headers",
+                description: "Словарь {имя_заголовка: Header} — заголовки, возвращаемые в ответе.",
+            },
+            {
+                name: "content",
+                description: "Словарь {MIME-тип: MediaType} — тело ответа в одном или нескольких форматах.",
+            },
+            {
+                name: "links",
+                description: "Словарь {имя_связи: Link} — возможные переходы к другим операциям на основе данных этого ответа.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+
+app = FastAPI()
+
+@app.get(
+    "/users/{user_id}",
+    responses={
+        200: {
+            "description": "Пользователь найден",
+            "content": {
+                "application/json": {
+                    "example": {"id": 1, "name": "Алиса"}
+                }
+            },
+        },
+        404: {"description": "Пользователь не найден"},
+        403: {"description": "Доступ запрещён"},
+    },
+)
+def get_user(user_id: int):
+    return {"id": user_id, "name": "Алиса"}
+
+# Кастомный ответ с заголовками через openapi_extra
+@app.get(
+    "/items/",
+    openapi_extra={
+        "responses": {
+            "200": {
+                "description": "Список товаров",
+                "headers": {
+                    "X-Total-Count": {
+                        "schema": {"type": "integer"},
+                        "description": "Всего товаров в базе",
+                    }
+                },
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "array",
+                            "items": {"type": "object"},
+                        }
+                    }
+                },
+            }
+        }
+    },
+)
+def list_items():
+    return []`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "Operation(responses, tags, summary, description, operationId, parameters, requestBody, callbacks, deprecated, security, servers)",
+        description:
+            "Pydantic-модель операции OpenAPI — описывает один HTTP-метод одного пути. Генерируется автоматически FastAPI из декораторов маршрутов. Используется при ручной кастомизации схемы или создании нестандартных генераторов документации.",
+        syntax: `Operation(
+    responses,
+    tags=None,
+    summary=None,
+    description=None,
+    externalDocs=None,
+    operationId=None,
+    parameters=None,
+    requestBody=None,
+    callbacks=None,
+    deprecated=None,
+    security=None,
+    servers=None,
+)`,
+        arguments: [
+            {
+                name: "responses",
+                description: "Словарь {status_code: Response} — все возможные ответы операции. Обязательный параметр.",
+            },
+            {
+                name: "tags",
+                description: "Список строк-тегов для группировки операции в документации.",
+            },
+            {
+                name: "summary",
+                description: "Краткое описание операции, отображаемое в заголовке в Swagger UI.",
+            },
+            {
+                name: "description",
+                description: "Подробное описание операции. Поддерживает Markdown.",
+            },
+            {
+                name: "operationId",
+                description: "Уникальный идентификатор операции в схеме. Используется клиент-генераторами.",
+            },
+            {
+                name: "parameters",
+                description: "Список параметров операции (path, query, header, cookie). Объекты Parameter.",
+            },
+            {
+                name: "requestBody",
+                description: "Объект RequestBody — тело HTTP-запроса.",
+            },
+            {
+                name: "callbacks",
+                description: "Словарь {имя: PathItem} — колбэки, которые сервер может отправить клиенту.",
+            },
+            {
+                name: "deprecated",
+                description: "Если True — операция помечается как устаревшая в документации.",
+            },
+            {
+                name: "security",
+                description: "Список требований безопасности для операции. Переопределяет глобальные security-требования.",
+            },
+            {
+                name: "servers",
+                description: "Список объектов Server — альтернативные серверы для данной операции.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+
+app = FastAPI()
+
+@app.get("/users/{user_id}")
+def get_user(user_id: int):
+    return {"id": user_id}
+
+# Патчим уже сгенерированную Operation в схеме
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(title="My API", version="1.0.0", routes=app.routes)
+    operation = schema["paths"]["/users/{user_id}"]["get"]
+    # Добавляем требование безопасности только к этой операции
+    operation["security"] = [{"BearerAuth": []}]
+    # Добавляем нестандартное расширение
+    operation["x-rate-limit"] = 100
+    app.openapi_schema = schema
+    return schema
+
+app.openapi = custom_openapi`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "PathItem(summary, description, get, put, post, delete, options, head, patch, trace, servers, parameters)",
+        description:
+            "Pydantic-модель пути (path item) OpenAPI. Описывает все операции, доступные по одному URL-пути. Каждый HTTP-метод (get, post, put и т.д.) — это отдельный объект Operation. Генерируется автоматически FastAPI; используется при ручной работе со схемой или создании вебхуков.",
+        syntax: `PathItem(
+    summary=None,
+    description=None,
+    get=None,
+    put=None,
+    post=None,
+    delete=None,
+    options=None,
+    head=None,
+    patch=None,
+    trace=None,
+    servers=None,
+    parameters=None,
+)`,
+        arguments: [
+            {
+                name: "summary",
+                description: "Краткое описание, применяемое ко всем операциям пути.",
+            },
+            {
+                name: "description",
+                description: "Подробное описание пути. Поддерживает Markdown.",
+            },
+            {
+                name: "get / put / post / delete / options / head / patch / trace",
+                description: "Объект Operation для соответствующего HTTP-метода. None означает, что метод не поддерживается.",
+            },
+            {
+                name: "servers",
+                description: "Список объектов Server — альтернативные серверы для всех операций этого пути.",
+            },
+            {
+                name: "parameters",
+                description: "Список параметров, применяемых ко всем операциям пути (например, общий path-параметр {user_id}).",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+from fastapi.openapi.models import PathItem, Operation
+
+app = FastAPI()
+
+@app.get("/users/{user_id}")
+def get_user(user_id: int):
+    return {"id": user_id}
+
+@app.put("/users/{user_id}")
+def update_user(user_id: int, name: str):
+    return {"id": user_id, "name": name}
+
+# Интроспекция PathItem через схему
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(title="My API", version="1.0.0", routes=app.routes)
+    path_item = schema["paths"].get("/users/{user_id}", {})
+    print("Методы пути:", list(path_item.keys()))
+    # ['get', 'put']
+
+    # PathItem используется при определении вебхуков (FastAPI 0.99+)
+    schema.setdefault("webhooks", {})
+    schema["webhooks"]["newUser"] = {
+        "post": {
+            "summary": "Уведомление о новом пользователе",
+            "requestBody": {
+                "content": {
+                    "application/json": {
+                        "schema": {"type": "object", "properties": {"id": {"type": "integer"}}}
+                    }
+                }
+            },
+            "responses": {"200": {"description": "Успешно обработано"}},
+        }
+    }
+    app.openapi_schema = schema
+    return schema
+
+app.openapi = custom_openapi`,
+    },
+    {
+        category: "OpenAPI-модели (схемы)",
+        name: "OpenAPI(info, paths, jsonSchemaDialect, servers, components, security, tags, externalDocs, openapi, webhooks)",
+        description:
+            "Корневая Pydantic-модель всей схемы OpenAPI. Представляет полный документ openapi.json, возвращаемый по эндпоинту /openapi.json. Генерируется автоматически функцией get_openapi(). Используется при полной кастомизации документа — добавлении компонентов, вебхуков, глобальных требований безопасности.",
+        syntax: `OpenAPI(
+    info,
+    paths=None,
+    jsonSchemaDialect=None,
+    servers=None,
+    components=None,
+    security=None,
+    tags=None,
+    externalDocs=None,
+    openapi="3.1.0",
+    webhooks=None,
+)`,
+        arguments: [
+            {
+                name: "info",
+                description: "Объект Info с метаданными API (title, version и т.д.). Обязательный параметр.",
+            },
+            {
+                name: "paths",
+                description: "Словарь {путь: PathItem} — все маршруты API. None означает пустой API.",
+            },
+            {
+                name: "jsonSchemaDialect",
+                description: "URI диалекта JSON Schema для схем этого документа. Например, 'https://json-schema.org/draft/2020-12/schema'. Только OpenAPI 3.1+.",
+            },
+            {
+                name: "servers",
+                description: "Список объектов Server — доступные серверы API. По умолчанию [{url: '/'}].",
+            },
+            {
+                name: "components",
+                description: "Объект Components с переиспользуемыми схемами, параметрами, ответами, схемами безопасности и т.д.",
+            },
+            {
+                name: "security",
+                description: "Глобальные требования безопасности, применяемые ко всем операциям (если не переопределены на уровне операции).",
+            },
+            {
+                name: "tags",
+                description: "Список объектов Tag с метаданными групп операций и их порядком в документации.",
+            },
+            {
+                name: "externalDocs",
+                description: "Ссылка на внешнюю документацию API (url + description).",
+            },
+            {
+                name: "openapi",
+                description: "Версия спецификации OpenAPI. По умолчанию '3.1.0'.",
+            },
+            {
+                name: "webhooks",
+                description: "Словарь {имя: PathItem} — описание вебхуков, которые приложение отправляет клиентам. OpenAPI 3.1+.",
+            },
+        ],
+        example: `from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+
+app = FastAPI()
+
+@app.get("/users/", tags=["users"])
+def list_users(): ...
+
+@app.post("/users/", tags=["users"])
+def create_user(): ...
+
+# Полная кастомизация корневого документа OpenAPI
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title="Production API",
+        version="3.0.0",
+        description="## API документация\\n\\nПолное описание с **Markdown**.",
+        routes=app.routes,
+    )
+
+    # Глобальные требования безопасности
+    schema["security"] = [{"BearerAuth": []}]
+
+    # Переиспользуемые схемы безопасности
+    schema.setdefault("components", {})
+    schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+        }
+    }
+
+    # Вебхуки (OpenAPI 3.1)
+    schema["webhooks"] = {
+        "userCreated": {
+            "post": {
+                "summary": "Пользователь создан",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {"user_id": {"type": "integer"}},
+                            }
+                        }
+                    }
+                },
+                "responses": {"200": {"description": "OK"}},
+            }
+        }
+    }
+
+    app.openapi_schema = schema
+    return schema
+
+app.openapi = custom_openapi`,
+    },
+    // ─── FastAPI (приложение) ─────────────────────────────────────────────────
+    {
+        category: "FastAPI (приложение)",
+        name: "FastAPI()",
+        description:
+            "Главный класс фреймворка — создаёт экземпляр ASGI-приложения. Наследует от Starlette и является точкой входа для всех маршрутов, middleware, обработчиков ошибок и документации. Передаётся в ASGI-сервер (uvicorn, gunicorn) для запуска.",
+        syntax: `FastAPI(
+    *,
+    debug=False,
+    routes=None,
+    title="FastAPI",
+    summary=None,
+    description="",
+    version="0.1.0",
+    openapi_url="/openapi.json",
+    openapi_tags=None,
+    servers=None,
+    dependencies=None,
+    default_response_class=Default(JSONResponse),
+    docs_url="/docs",
+    redoc_url="/redoc",
+    swagger_ui_oauth2_redirect_url="/docs/oauth2-redirect",
+    swagger_ui_init_oauth=None,
+    middleware=None,
+    exception_handlers=None,
+    on_startup=None,
+    on_shutdown=None,
+    lifespan=None,
+    terms_of_service=None,
+    contact=None,
+    license_info=None,
+    openapi_prefix="",
+    root_path="",
+    root_path_in_servers=True,
+    responses=None,
+    callbacks=None,
+    webhooks=None,
+    generate_unique_id_function=Default(generate_unique_id),
+    separate_input_output_schemas=True,
+)`,
+        arguments: [
+            {
+                name: "debug",
+                description:
+                    "Включает режим отладки: подробные сообщения об ошибках. По умолчанию False.",
+            },
+            {
+                name: "routes",
+                description:
+                    "Список маршрутов для инициализации приложения. Обычно не используется напрямую — маршруты добавляются через декораторы.",
+            },
+            {
+                name: "title",
+                description:
+                    'Название API, отображаемое в документации Swagger UI и ReDoc. По умолчанию "FastAPI".',
+            },
+            {
+                name: "summary",
+                description:
+                    "Краткое одностроковое описание API в документации. Поддерживает Markdown.",
+            },
+            {
+                name: "description",
+                description:
+                    "Полное описание API в документации. Поддерживает Markdown, включая заголовки и примеры кода.",
+            },
+            {
+                name: "version",
+                description:
+                    'Версия API в формате semver, отображаемая в документации. По умолчанию "0.1.0".',
+            },
+            {
+                name: "openapi_url",
+                description:
+                    'URL, по которому доступна схема OpenAPI в формате JSON. По умолчанию "/openapi.json". Установите None, чтобы отключить.',
+            },
+            {
+                name: "openapi_tags",
+                description:
+                    "Список словарей с метаданными тегов: name, description, externalDocs. Задаёт порядок и описание групп в документации.",
+            },
+            {
+                name: "servers",
+                description:
+                    "Список серверов OpenAPI (URL и описание). Используется для указания нескольких окружений (dev, staging, prod).",
+            },
+            {
+                name: "dependencies",
+                description:
+                    "Глобальные зависимости, применяемые ко всем маршрутам приложения. Список объектов Depends.",
+            },
+            {
+                name: "default_response_class",
+                description:
+                    "Класс ответа по умолчанию для всех маршрутов. По умолчанию JSONResponse.",
+            },
+            {
+                name: "docs_url",
+                description:
+                    'URL Swagger UI. По умолчанию "/docs". Установите None, чтобы отключить.',
+            },
+            {
+                name: "redoc_url",
+                description:
+                    'URL ReDoc-документации. По умолчанию "/redoc". Установите None, чтобы отключить.',
+            },
+            {
+                name: "swagger_ui_oauth2_redirect_url",
+                description:
+                    'URL перенаправления OAuth2 для Swagger UI. По умолчанию "/docs/oauth2-redirect".',
+            },
+            {
+                name: "swagger_ui_init_oauth",
+                description:
+                    "Словарь с параметрами инициализации OAuth2 для Swagger UI (clientId, appName и др.).",
+            },
+            {
+                name: "middleware",
+                description:
+                    "Список middleware для приложения. Обычно добавляются через app.add_middleware().",
+            },
+            {
+                name: "exception_handlers",
+                description:
+                    "Словарь {тип_исключения: обработчик}. Обычно добавляются через app.add_exception_handler().",
+            },
+            {
+                name: "on_startup",
+                description:
+                    "Список функций, вызываемых при запуске приложения. Устарел — используйте lifespan.",
+            },
+            {
+                name: "on_shutdown",
+                description:
+                    "Список функций, вызываемых при остановке приложения. Устарел — используйте lifespan.",
+            },
+            {
+                name: "lifespan",
+                description:
+                    "Async context manager для управления жизненным циклом приложения (startup/shutdown). Заменяет on_startup / on_shutdown.",
+            },
+            {
+                name: "terms_of_service",
+                description:
+                    "URL условий использования API. Отображается в документации.",
+            },
+            {
+                name: "contact",
+                description:
+                    "Словарь с контактной информацией: name, url, email. Отображается в документации.",
+            },
+            {
+                name: "license_info",
+                description:
+                    "Словарь с информацией о лицензии: name, identifier, url. Отображается в документации.",
+            },
+            {
+                name: "openapi_prefix",
+                description:
+                    "Префикс для URL в схеме OpenAPI. Используется при развёртывании за прокси.",
+            },
+            {
+                name: "root_path",
+                description:
+                    "ASGI root_path — задаёт базовый путь приложения за reverse proxy.",
+            },
+            {
+                name: "root_path_in_servers",
+                description:
+                    "Включать ли root_path в список серверов OpenAPI. По умолчанию True.",
+            },
+            {
+                name: "responses",
+                description:
+                    'Глобальные дополнительные ответы для всех маршрутов. Словарь {status_code: {"model": ...}}.',
+            },
+            {
+                name: "callbacks",
+                description: "Глобальные колбэки OpenAPI для всех маршрутов.",
+            },
+            {
+                name: "webhooks",
+                description:
+                    "Вебхуки OpenAPI — описывают исходящие запросы, отправляемые приложением.",
+            },
+            {
+                name: "generate_unique_id_function",
+                description:
+                    "Функция для генерации уникальных operationId маршрутов. По умолчанию — из имени функции и метода.",
+            },
+            {
+                name: "separate_input_output_schemas",
+                description:
+                    "Генерировать отдельные схемы для входных и выходных данных (с учётом default-значений). По умолчанию True.",
+            },
+        ],
+        example: `from contextlib import asynccontextmanager
+from fastapi import FastAPI
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: подключение к БД, кэш и т.д.
+    print("Запуск приложения")
+    yield
+    # Shutdown: освобождение ресурсов
+    print("Остановка приложения")
+
+app = FastAPI(
+    title="My API",
+    description="## Описание API\\n\\nПоддерживает **Markdown**.",
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+    contact={"name": "Команда поддержки", "email": "support@example.com"},
+    license_info={"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
+    openapi_tags=[
+        {"name": "users",   "description": "Операции с пользователями"},
+        {"name": "items",   "description": "Операции с товарами"},
+    ],
+)
+
+@app.get("/", tags=["users"])
+def root():
+    return {"message": "Hello, World!"}
+
+# Запуск: uvicorn main:app --reload`,
+    },
 ];
