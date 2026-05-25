@@ -12,6 +12,8 @@ export function Navbar() {
   const [isExamples] = useRoute("/examples");
   const [isDjango] = useRoute("/django");
   const [isFastAPI] = useRoute("/fastapi");
+  const [isDjangoExamples] = useRoute("/django-examples");
+  const [isFastAPIExamples] = useRoute("/fastapi-examples");
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -25,46 +27,66 @@ export function Navbar() {
           </span>
         </div>
 
-        <div className="flex flex-1 items-center gap-6 text-sm font-medium">
+        <div className="flex flex-1 items-center gap-6 text-sm font-medium overflow-x-auto scrollbar-hide">
           <Link
             href="/reference"
             className={cn(
-              "flex items-center gap-2 transition-colors hover:text-primary",
+              "flex items-center gap-2 transition-colors hover:text-primary whitespace-nowrap",
               isReference ? "text-primary" : "text-muted-foreground"
             )}
           >
-            <BookOpen className="h-4 w-4" />
+            <BookOpen className="h-4 w-4 flex-shrink-0" />
             Справочник
           </Link>
           <Link
             href="/examples"
             className={cn(
-              "flex items-center gap-2 transition-colors hover:text-primary",
+              "flex items-center gap-2 transition-colors hover:text-primary whitespace-nowrap",
               isExamples ? "text-primary" : "text-muted-foreground"
             )}
           >
-            <Code2 className="h-4 w-4" />
+            <Code2 className="h-4 w-4 flex-shrink-0" />
             Сложные примеры
           </Link>
           <Link
             href="/django"
             className={cn(
-              "flex items-center gap-2 transition-colors hover:text-primary",
+              "flex items-center gap-2 transition-colors hover:text-primary whitespace-nowrap",
               isDjango ? "text-primary" : "text-muted-foreground"
             )}
           >
-            <Layers className="h-4 w-4" />
+            <Layers className="h-4 w-4 flex-shrink-0" />
             Django
+          </Link>
+          <Link
+            href="/django-examples"
+            className={cn(
+              "flex items-center gap-2 transition-colors hover:text-primary whitespace-nowrap",
+              isDjangoExamples ? "text-primary" : "text-muted-foreground"
+            )}
+          >
+            <Code2 className="h-4 w-4 flex-shrink-0" />
+            Примеры Django
           </Link>
           <Link
             href="/fastapi"
             className={cn(
-              "flex items-center gap-2 transition-colors hover:text-primary",
+              "flex items-center gap-2 transition-colors hover:text-primary whitespace-nowrap",
               isFastAPI ? "text-primary" : "text-muted-foreground"
             )}
           >
-            <Zap className="h-4 w-4" />
+            <Zap className="h-4 w-4 flex-shrink-0" />
             FastAPI
+          </Link>
+          <Link
+            href="/fastapi-examples"
+            className={cn(
+              "flex items-center gap-2 transition-colors hover:text-primary whitespace-nowrap",
+              isFastAPIExamples ? "text-primary" : "text-muted-foreground"
+            )}
+          >
+            <Code2 className="h-4 w-4 flex-shrink-0" />
+            Примеры FastAPI
           </Link>
         </div>
       </div>
