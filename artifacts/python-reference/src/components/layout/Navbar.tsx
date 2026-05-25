@@ -1,5 +1,5 @@
 import { Link, useRoute } from "wouter";
-import { BookOpen, Code2, Layers } from "lucide-react";
+import { BookOpen, Code2, Layers, Zap } from "lucide-react";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -11,6 +11,7 @@ export function Navbar() {
   const [isReference] = useRoute("/reference");
   const [isExamples] = useRoute("/examples");
   const [isDjango] = useRoute("/django");
+  const [isFastAPI] = useRoute("/fastapi");
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -54,6 +55,16 @@ export function Navbar() {
           >
             <Layers className="h-4 w-4" />
             Django
+          </Link>
+          <Link
+            href="/fastapi"
+            className={cn(
+              "flex items-center gap-2 transition-colors hover:text-primary",
+              isFastAPI ? "text-primary" : "text-muted-foreground"
+            )}
+          >
+            <Zap className="h-4 w-4" />
+            FastAPI
           </Link>
         </div>
       </div>
