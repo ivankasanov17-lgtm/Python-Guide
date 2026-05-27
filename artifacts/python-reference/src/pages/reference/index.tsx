@@ -16,10 +16,8 @@ export default function ReferencePage() {
 
   const filteredTerms = useMemo(() => {
     if (!searchQuery.trim()) return terms;
-    return terms.filter(
-      (term) =>
-        term.name.toLowerCase().includes(searchQuery.toLowerCase()) 
-        // || term.description.toLowerCase().includes(searchQuery.toLowerCase()),
+    return terms.filter((term) =>
+      term.name.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [searchQuery]);
 
