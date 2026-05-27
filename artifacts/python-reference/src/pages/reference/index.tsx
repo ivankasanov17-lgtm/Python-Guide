@@ -19,7 +19,7 @@ export default function ReferencePage() {
     return terms.filter(
       (term) =>
         term.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        term.description.toLowerCase().includes(searchQuery.toLowerCase()),
+        // term.description.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [searchQuery]);
 
