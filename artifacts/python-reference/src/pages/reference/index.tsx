@@ -18,8 +18,8 @@ export default function ReferencePage() {
     if (!searchQuery.trim()) return terms;
     return terms.filter(
       (term) =>
-        term.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        // term.description.toLowerCase().includes(searchQuery.toLowerCase()),
+        term.name.toLowerCase().includes(searchQuery.toLowerCase()) 
+        // || term.description.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [searchQuery]);
 
