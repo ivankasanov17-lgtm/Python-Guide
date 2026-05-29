@@ -69,25 +69,26 @@
 
 /* LIGHT MODE */
 :root {
-  --button-outline: rgba(0,0,0, .10);
-  --badge-outline: rgba(0,0,0, .05);
+  --button-outline: rgba(0, 0, 0, .10);
+  --badge-outline: rgba(0, 0, 0, .05);
 
   /* Automatic computation of border around primary / danger buttons */
-  --opaque-button-border-intensity: -8; /* In terms of percentages */
+  --opaque-button-border-intensity: -8;
+  /* In terms of percentages */
 
   /* Backgrounds applied on top of other backgrounds when hovered/active */
-  --elevate-1: rgba(0,0,0, .03);
-  --elevate-2: rgba(0,0,0, .08);
+  --elevate-1: rgba(0, 0, 0, .03);
+  --elevate-2: rgba(0, 0, 0, .08);
 
   --background: 0 0% 100%;
   --foreground: 222 47% 11%;
-  
+
   --border: 214 32% 91%;
-  
+
   --card: 0 0% 100%;
   --card-foreground: 222 47% 11%;
   --card-border: 214 32% 91%;
-  
+
   --sidebar: 210 40% 98%;
   --sidebar-foreground: 222 47% 11%;
   --sidebar-border: 214 32% 91%;
@@ -96,26 +97,26 @@
   --sidebar-accent: 210 40% 96%;
   --sidebar-accent-foreground: 222 47% 11%;
   --sidebar-ring: 221 83% 53%;
-  
+
   --popover: 0 0% 100%;
   --popover-foreground: 222 47% 11%;
   --popover-border: 214 32% 91%;
-  
+
   --primary: 221 83% 53%;
   --primary-foreground: 210 40% 98%;
-  
+
   --secondary: 210 40% 96.1%;
   --secondary-foreground: 222 47% 11%;
-  
+
   --muted: 210 40% 96.1%;
   --muted-foreground: 215.4 16.3% 46.9%;
-  
+
   --accent: 210 40% 96.1%;
   --accent-foreground: 222 47% 11%;
-  
+
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
-  
+
   --input: 214 32% 91%;
   --ring: 221 83% 53%;
   --chart-1: 12 76% 61%;
@@ -127,10 +128,10 @@
   --app-font-sans: 'Inter', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: 'JetBrains Mono', monospace;
-  
-  --radius: .75rem; 
-  --shadow-2xs: 0px 2px 0px 0px hsl(202 89% 53% / 0.00); 
-  --shadow-xs: 0px 2px 0px 0px hsl(202 89% 53% / 0.00); 
+
+  --radius: .75rem;
+  --shadow-2xs: 0px 2px 0px 0px hsl(202 89% 53% / 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(202 89% 53% / 0.00);
   --shadow-sm: 0px 2px 0px 0px hsl(202 89% 53% / 0.00), 0px 1px 2px -1px hsl(202 89% 53% / 0.00);
   --shadow: 0px 2px 0px 0px hsl(202 89% 53% / 0.00), 0px 1px 2px -1px hsl(202 89% 53% / 0.00);
   --shadow-md: 0px 2px 0px 0px hsl(202 89% 53% / 0.00), 0px 2px 4px -1px hsl(202 89% 53% / 0.00);
@@ -172,24 +173,25 @@
 }
 
 .dark {
-  --button-outline: rgba(255,255,255, .10);
-  --badge-outline: rgba(255,255,255, .05);
+  --button-outline: rgba(255, 255, 255, .10);
+  --badge-outline: rgba(255, 255, 255, .05);
 
-  --opaque-button-border-intensity: 9;  /* In terms of percentages */
+  --opaque-button-border-intensity: 9;
+  /* In terms of percentages */
 
   /* Backgrounds applied on top of other backgrounds when hovered/active */
-  --elevate-1: rgba(255,255,255, .04);
-  --elevate-2: rgba(255,255,255, .09);
+  --elevate-1: rgba(255, 255, 255, .04);
+  --elevate-2: rgba(255, 255, 255, .09);
 
   --background: 222 47% 11%;
   --foreground: 210 40% 98%;
-  
+
   --border: 217 32% 17%;
-  
+
   --card: 222 47% 11%;
   --card-foreground: 210 40% 98%;
   --card-border: 217 32% 17%;
-  
+
   --sidebar: 217 32% 17%;
   --sidebar-foreground: 210 40% 98%;
   --sidebar-border: 217 32% 17%;
@@ -198,29 +200,29 @@
   --sidebar-accent: 217 32% 17%;
   --sidebar-accent-foreground: 210 40% 98%;
   --sidebar-ring: 210 40% 98%;
-  
+
   --popover: 222 47% 11%;
   --popover-foreground: 210 40% 98%;
   --popover-border: 217 32% 17%;
-  
+
   --primary: 210 40% 98%;
   --primary-foreground: 222.2 47.4% 11.2%;
-  
+
   --secondary: 217 32% 17%;
   --secondary-foreground: 210 40% 98%;
-  
+
   --muted: 217 32% 17%;
   --muted-foreground: 215 20.2% 65.1%;
-  
+
   --accent: 217 32% 17%;
   --accent-foreground: 210 40% 98%;
-  
+
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 210 40% 98%;
-  
+
   --input: 217 32% 17%;
   --ring: 210 40% 98%;
-  
+
   --chart-1: 220 70% 50%;
   --chart-2: 160 60% 45%;
   --chart-3: 30 80% 55%;
@@ -248,4 +250,22 @@
     color: hsl(var(--muted-foreground));
     pointer-events: none;
   }
+}
+
+
+
+
+@media (min-width: 968px) {
+  main>div {
+    max-width: none !important;
+  }
+
+  main>div>div:nth-child(2)>div {
+    margin-left: 0;
+  }
+
+  .lg\:w-96 {
+    width: calc(var(--spacing) * 140);
+  }
+
 }
