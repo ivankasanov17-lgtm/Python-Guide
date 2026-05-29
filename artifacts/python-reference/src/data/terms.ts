@@ -13,6 +13,72 @@ export interface Term {
 
 export const terms: Term[] = [
   {
+    name: "aiohttp.ClientSession.request",
+    description:
+      "Универсальный метод класса ClientSession библиотеки aiohttp для выполнения HTTP-запроса с произвольным методом. Является основой для методов get(), post(), put() и других. Возвращает объект ClientResponse в виде асинхронного контекстного менеджера. Используется когда нужен метод, не имеющий собственного shortcut-метода.",
+    syntax: "await session.request(method, url, **kwargs)",
+    arguments: [
+      {
+        name: "method",
+        description:
+          'Строка HTTP-метода в верхнем регистре: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" и др.',
+      },
+      { name: "url", description: "URL запроса — строка или yarl.URL объект." },
+      {
+        name: "params",
+        description:
+          "Параметры строки запроса (query string). dict, list кортежей или строка.",
+      },
+      {
+        name: "data",
+        description:
+          "Тело запроса: bytes, str, dict (form-data), AsyncIterable или FormData.",
+      },
+      {
+        name: "json",
+        description:
+          "Объект Python, который будет сериализован в JSON и отправлен как тело с Content-Type: application/json.",
+      },
+      {
+        name: "headers",
+        description:
+          "Дополнительные HTTP-заголовки запроса в виде dict или CIMultiDict.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Объект aiohttp.ClientTimeout с ограничениями времени ожидания.",
+      },
+      {
+        name: "ssl",
+        description:
+          "SSL-контекст, False (отключить проверку) или None (по умолчанию).",
+      },
+    ],
+    example: `import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        # Универсальный запрос:
+        async with session.request('GET', 'https://httpbin.org/get',
+                                   params={'key': 'value'}) as resp:
+            print(resp.status)          # 200
+            data = await resp.json()
+            print(data['url'])
+
+        # PATCH через request():
+        async with session.request(
+            'PATCH',
+            'https://api.example.com/items/1',
+            json={'name': 'updated'},
+            headers={'Authorization': 'Bearer token'},
+        ) as resp:
+            print(await resp.json())
+
+asyncio.run(main())`,
+  },
+  {
     name: "aiohttp.ClientSession.get",
     description:
       'Метод класса ClientSession библиотеки aiohttp. Выполняет HTTP GET-запрос. Shortcut для session.request("GET", url, **kwargs). Возвращает объект ClientResponse в виде асинхронного контекстного менеджера. Используется для получения данных от API, загрузки страниц и файлов.',
@@ -41399,71 +41465,6 @@ def detect_newlines(text: str) -> str | tuple | None:
     d.decode(text, final=True)
     return d.newlines`,
   },
-  {
-    name: "aiohttp.ClientSession.request",
-    description:
-      "Универсальный метод класса ClientSession библиотеки aiohttp для выполнения HTTP-запроса с произвольным методом. Является основой для методов get(), post(), put() и других. Возвращает объект ClientResponse в виде асинхронного контекстного менеджера. Используется когда нужен метод, не имеющий собственного shortcut-метода.",
-    syntax: "await session.request(method, url, **kwargs)",
-    arguments: [
-      {
-        name: "method",
-        description:
-          'Строка HTTP-метода в верхнем регистре: "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" и др.',
-      },
-      { name: "url", description: "URL запроса — строка или yarl.URL объект." },
-      {
-        name: "params",
-        description:
-          "Параметры строки запроса (query string). dict, list кортежей или строка.",
-      },
-      {
-        name: "data",
-        description:
-          "Тело запроса: bytes, str, dict (form-data), AsyncIterable или FormData.",
-      },
-      {
-        name: "json",
-        description:
-          "Объект Python, который будет сериализован в JSON и отправлен как тело с Content-Type: application/json.",
-      },
-      {
-        name: "headers",
-        description:
-          "Дополнительные HTTP-заголовки запроса в виде dict или CIMultiDict.",
-      },
-      {
-        name: "timeout",
-        description:
-          "Объект aiohttp.ClientTimeout с ограничениями времени ожидания.",
-      },
-      {
-        name: "ssl",
-        description:
-          "SSL-контекст, False (отключить проверку) или None (по умолчанию).",
-      },
-    ],
-    example: `import aiohttp
-import asyncio
 
-async def main():
-    async with aiohttp.ClientSession() as session:
-        # Универсальный запрос:
-        async with session.request('GET', 'https://httpbin.org/get',
-                                   params={'key': 'value'}) as resp:
-            print(resp.status)          # 200
-            data = await resp.json()
-            print(data['url'])
-
-        # PATCH через request():
-        async with session.request(
-            'PATCH',
-            'https://api.example.com/items/1',
-            json={'name': 'updated'},
-            headers={'Authorization': 'Bearer token'},
-        ) as resp:
-            print(await resp.json())
-
-asyncio.run(main())`,
-  },
 
 ];
