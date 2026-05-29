@@ -14,12 +14,22 @@ export default function ReferencePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTermName, setSelectedTermName] = useState<string | null>(null);
 
+  const uniqueTerms = useMemo(() => {
+    const seen = new Set<string>();
+    return terms.filter((t) => {
+      if (seen.has(t.name)) return false;
+      seen.add(t.name);
+      return true;
+    });
+  }, []);
+
   const filteredTerms = useMemo(() => {
-    if (!searchQuery.trim()) return terms;
-    return terms.filter((term) =>
-      term.name.toLowerCase().includes(searchQuery.toLowerCase()),
+    if (!searchQuery.trim()) return uniqueTerms;
+    const q = searchQuery.toLowerCase();
+    return uniqueTerms.filter((term) =>
+      term.name.toLowerCase().includes(q),
     );
-  }, [searchQuery]);
+  }, [searchQuery, uniqueTerms]);
 
   const selectedTerm = useMemo(() => {
     return terms.find((t) => t.name === selectedTermName) || null;
