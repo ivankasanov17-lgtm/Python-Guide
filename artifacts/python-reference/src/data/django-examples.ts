@@ -4000,5 +4000,2361 @@ class ProductDetailView(APIView):
 
 **Масштабирование**: Write-эндпоинты идут в primary БД, Read-эндпоинты — в реплику. Команды можно ставить в очередь (Celery). Тяжёлые query-функции (\`get_admin_product_stats\`) кэшируются независимо. CQRS + replica router — естественная комбинация.`,
   },
+   {
+        id: "django-signals-event-driven",
+        title: "Event-driven архитектура с Django Signals",
+        task: `Спроектируйте event-driven систему уведомлений на основе Django Signals и Celery. При изменении статуса заказа должны: обновляться связанные записи, отправляться уведомление пользователю (email/push), логироваться событие в аудит-лог, тригерриться пересчёт статистики. Избегайте цепочек сигналов и циклических зависимостей. Обоснуйте, когда сигналы уместны, а когда нет.`,
+        files: [
+            {
+                filename: "orders/models.py",
+                code: `from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class Order(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает"
+        CONFIRMED = "confirmed", "Подтверждён"
+        SHIPPED = "shipped", "Отправлен"
+        DELIVERED = "delivered", "Доставлен"
+        CANCELLED = "cancelled", "Отменён"
+
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name="orders")
+    status = models.CharField(max_length=20, choices=Status, default=Status.PENDING)
+    total = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Order #{self.pk} ({self.status})"
+
+
+class AuditLog(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="audit_logs")
+    old_status = models.CharField(max_length=20)
+    new_status = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class OrderStats(models.Model):
+    date = models.DateField(unique=True)
+    total_orders = models.PositiveIntegerField(default=0)
+    total_revenue = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    class Meta:
+        ordering = ["-date"]
+`,
+            },
+            {
+                filename: "orders/signals.py",
+                code: `from django.db.models.signals import pre_save
+from django.dispatch import receiver
+
+from .models import Order
+from .tasks import notify_user, write_audit_log, recalculate_stats
+
+
+@receiver(pre_save, sender=Order)
+def on_order_status_changed(sender, instance, **kwargs):
+    """
+    Единственный сигнал для заказа. Реагирует только на смену статуса.
+    Вся бизнес-логика вынесена в Celery-задачи, чтобы не блокировать
+    транзакцию и не создавать цепочки сигналов.
+    """
+    if not instance.pk:
+        return  # новый объект — пропускаем
+
+    try:
+        old = Order.objects.only("status").get(pk=instance.pk)
+    except Order.DoesNotExist:
+        return
+
+    if old.status == instance.status:
+        return  # статус не изменился — ничего не делаем
+
+    # Сохраняем старый статус в атрибут объекта,
+    # чтобы задачи могли его использовать после сохранения.
+    instance._old_status = old.status
+`,
+            },
+            {
+                filename: "orders/apps.py",
+                code: `from django.apps import AppConfig
+
+
+class OrdersConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "orders"
+
+    def ready(self):
+        # Импортируем signals здесь, чтобы они зарегистрировались при старте.
+        # Импорт внутри ready() — стандартная практика для предотвращения
+        # проблем с circular imports и двойной регистрацией.
+        from . import signals  # noqa: F401
+        from .hooks import connect_post_save_hooks
+
+        connect_post_save_hooks()
+`,
+            },
+            {
+                filename: "orders/hooks.py",
+                code: `"""
+post_save хуки вынесены отдельно от signals.py, чтобы разграничить
+pre_save (сбор данных об изменении) и post_save (запуск задач).
+Это устраняет риск цепочки сигналов и гарантирует,
+что задачи запускаются после коммита транзакции.
+"""
+from django.db.models.signals import post_save
+from django.db import transaction
+
+from .models import Order
+from .tasks import notify_user, write_audit_log, recalculate_stats
+
+
+def on_order_saved(sender, instance, **kwargs):
+    old_status = getattr(instance, "_old_status", None)
+    if old_status is None:
+        return
+
+    new_status = instance.status
+
+    # on_commit гарантирует запуск задач только после успешного коммита.
+    # Без этого задачи могут стартовать до того, как данные реально записаны.
+    transaction.on_commit(lambda: _dispatch_tasks(instance, old_status, new_status))
+
+
+def _dispatch_tasks(order, old_status, new_status):
+    write_audit_log.delay(order.pk, old_status, new_status)
+    notify_user.delay(order.pk, new_status)
+    recalculate_stats.delay(order.created_at.date().isoformat())
+
+
+def connect_post_save_hooks():
+    post_save.connect(on_order_saved, sender=Order, weak=False)
+`,
+            },
+            {
+                filename: "orders/tasks.py",
+                code: `from celery import shared_task
+from django.core.mail import send_mail
+
+from .models import Order, AuditLog, OrderStats
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def notify_user(self, order_id: int, new_status: str):
+    try:
+        order = Order.objects.select_related("user").get(pk=order_id)
+    except Order.DoesNotExist:
+        return
+
+    send_mail(
+        subject=f"Статус заказа #{order_id} изменён",
+        message=f"Ваш заказ теперь имеет статус: {new_status}",
+        from_email="noreply@example.com",
+        recipient_list=[order.user.email],
+        fail_silently=False,
+    )
+
+
+@shared_task
+def write_audit_log(order_id: int, old_status: str, new_status: str):
+    AuditLog.objects.create(
+        order_id=order_id,
+        old_status=old_status,
+        new_status=new_status,
+    )
+
+
+@shared_task
+def recalculate_stats(date_str: str):
+    from datetime import date
+    from django.db.models import Count, Sum
+
+    target_date = date.fromisoformat(date_str)
+    agg = Order.objects.filter(created_at__date=target_date).aggregate(
+        total_orders=Count("id"),
+        total_revenue=Sum("total"),
+    )
+
+    OrderStats.objects.update_or_create(
+        date=target_date,
+        defaults={
+            "total_orders": agg["total_orders"] or 0,
+            "total_revenue": agg["total_revenue"] or 0,
+        },
+    )
+`,
+            },
+        ],
+        explanation: `**Ключевые решения:**
+
+**Разделение pre_save и post_save.** \`pre_save\` используется только для того, чтобы зафиксировать старый статус до перезаписи. Вся логика запускается в \`post_save\` через \`transaction.on_commit\`, что гарантирует атомарность — задачи не стартуют, если транзакция откатилась.
+
+**Нет цепочек сигналов.** Сигналы не вызывают сохранение других моделей напрямую — это главная причина цепочек. Вместо этого все побочные эффекты делегируются независимым Celery-задачам.
+
+**Один сигнал — одна ответственность.** Вместо нескольких \`post_save\` на разные эффекты — один обработчик, который диспетчеризует задачи. Это упрощает отладку и избегает неопределённого порядка вызовов.
+
+**Когда сигналы уместны:**
+- Сквозная логика, не связанная с доменом (аудит, кэш-инвалидация, метрики)
+- Реакция на изменения сторонних моделей (contrib.auth и т.д.)
+
+**Когда сигналы НЕ уместны:**
+- Бизнес-логика, которую нужно тестировать изолированно — вынесите её в service layer
+- Тяжёлые операции — всегда делегируйте в Celery
+- Когда нужен явный порядок выполнения — используйте явные вызовы вместо неявных сигналов`,
+    },
+
+    {
+        id: "django-middleware-production",
+        title: "Middleware для сквозной функциональности",
+        task: `Разработайте набор middleware для production-окружения: RequestIdMiddleware — добавляет уникальный ID к каждому запросу и передаёт в логи, PerformanceMiddleware — логирует медленные запросы (>500ms) с трейсом, TenantMiddleware — определяет tenant по домену и устанавливает connection на нужную схему БД. Учтите порядок middleware и async-совместимость.`,
+        files: [
+            {
+                filename: "core/middleware.py",
+                code: `import time
+import uuid
+import logging
+import threading
+
+from django.db import connection
+
+logger = logging.getLogger(__name__)
+
+# Thread-local хранилище для передачи request_id в логгер
+_request_ctx = threading.local()
+
+
+def get_current_request_id() -> str | None:
+    return getattr(_request_ctx, "request_id", None)
+
+
+class RequestIdMiddleware:
+    """
+    Генерирует уникальный ID для каждого запроса.
+    Сохраняет в request.request_id, thread-local и заголовке ответа.
+    Должен стоять первым в MIDDLEWARE, чтобы все последующие слои
+    могли использовать ID в своих логах.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        request_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+        request.request_id = request_id
+        _request_ctx.request_id = request_id
+
+        response = self.get_response(request)
+        response["X-Request-Id"] = request_id
+
+        _request_ctx.request_id = None
+        return response
+
+
+class PerformanceMiddleware:
+    """
+    Логирует запросы медленнее порога SLOW_REQUEST_THRESHOLD_MS.
+    Включает путь, метод, статус и время выполнения.
+    Совместим с sync и async через корректный __call__.
+    """
+
+    SLOW_REQUEST_THRESHOLD_MS = 500
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        start = time.monotonic()
+        response = self.get_response(request)
+        duration_ms = (time.monotonic() - start) * 1000
+
+        if duration_ms >= self.SLOW_REQUEST_THRESHOLD_MS:
+            logger.warning(
+                "Slow request detected",
+                extra={
+                    "request_id": getattr(request, "request_id", None),
+                    "method": request.method,
+                    "path": request.path,
+                    "status_code": response.status_code,
+                    "duration_ms": round(duration_ms, 1),
+                },
+            )
+
+        return response
+
+
+class TenantMiddleware:
+    """
+    Определяет tenant по поддомену (tenant.example.com)
+    и устанавливает PostgreSQL search_path для row-level isolation.
+
+    Требует таблицу Tenant с полем subdomain.
+    Возвращает 404 для неизвестных поддоменов.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from django.http import Http404
+        from tenants.models import Tenant
+
+        subdomain = self._extract_subdomain(request.get_host())
+
+        if subdomain:
+            try:
+                tenant = Tenant.objects.get(subdomain=subdomain, is_active=True)
+            except Tenant.DoesNotExist:
+                raise Http404(f"Tenant '{subdomain}' not found")
+
+            request.tenant = tenant
+            self._set_schema(tenant.schema_name)
+        else:
+            request.tenant = None
+
+        response = self.get_response(request)
+
+        # Сбрасываем схему обратно в public после обработки запроса
+        if subdomain:
+            self._set_schema("public")
+
+        return response
+
+    @staticmethod
+    def _extract_subdomain(host: str) -> str | None:
+        # host вида "tenant.example.com" → "tenant"
+        # host вида "example.com" или "localhost" → None
+        parts = host.split(".")
+        return parts[0] if len(parts) > 2 else None
+
+    @staticmethod
+    def _set_schema(schema: str):
+        with connection.cursor() as cursor:
+            cursor.execute("SET search_path TO %s", [schema])
+`,
+            },
+            {
+                filename: "settings.py (фрагмент)",
+                code: `MIDDLEWARE = [
+    # 1. RequestId — самый первый: все последующие слои логируют с request_id
+    "core.middleware.RequestIdMiddleware",
+
+    # 2. Django security headers
+    "django.middleware.security.SecurityMiddleware",
+
+    # 3. Tenant — до SessionMiddleware и аутентификации,
+    #    чтобы схема БД была установлена до любых запросов к данным
+    "core.middleware.TenantMiddleware",
+
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+
+    # 4. Performance — последним среди наших, чтобы замерять полное время
+    #    включая все предыдущие middleware
+    "core.middleware.PerformanceMiddleware",
+]
+`,
+            },
+            {
+                filename: "core/logging.py",
+                code: `"""
+Кастомный фильтр логгера, автоматически добавляющий request_id
+из thread-local в каждую запись лога.
+"""
+import logging
+from .middleware import get_current_request_id
+
+
+class RequestIdFilter(logging.Filter):
+    def filter(self, record):
+        record.request_id = get_current_request_id() or "-"
+        return True
+
+
+# settings.py — пример конфигурации логгера
+LOGGING = {
+    "version": 1,
+    "filters": {
+        "request_id": {"()": "core.logging.RequestIdFilter"},
+    },
+    "formatters": {
+        "json": {
+            "format": '{"time": "%(asctime)s", "level": "%(levelname)s", '
+                      '"request_id": "%(request_id)s", "message": "%(message)s"}',
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "filters": ["request_id"],
+            "formatter": "json",
+        },
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+}
+`,
+            },
+        ],
+        explanation: `**Порядок middleware — критичен.**
+Django обрабатывает middleware сверху вниз при запросе и снизу вверх при ответе. \`RequestIdMiddleware\` стоит первым, чтобы ID был доступен во всех последующих слоях. \`TenantMiddleware\` — до аутентификации, поскольку Django Auth обращается к БД. \`PerformanceMiddleware\` — последним, чтобы замерять суммарное время вместе со всеми предыдущими слоями.
+
+**Thread-local для request_id.** \`request\` объект доступен только внутри view и middleware, но не в логгере. Thread-local (\`threading.local()\`) позволяет передать ID в любой вызов в рамках одного потока — включая ORM-запросы, сервисы и Celery-задачи.
+
+**TenantMiddleware и SET search_path.** Установка \`search_path\` в PostgreSQL изолирует данные на уровне схемы без изменения кода запросов. После обработки запроса схема возвращается в \`public\` — важно при использовании connection pool, где соединения переиспользуются между запросами.
+
+**Async-совместимость.** Все три класса используют синхронный \`__call__\`, что корректно для sync Django. Для async-проектов нужно добавить \`async def __acall__\` или использовать \`sync_to_async\` обёртки для блокирующих операций (например, запрос к БД в TenantMiddleware).`,
+    },
+
+    {
+        id: "django-custom-permissions-abac",
+        title: "Кастомная система разрешений (ABAC + DRF)",
+        task: `Реализуйте систему разрешений с поддержкой ролей и атрибутно-ориентированного контроля доступа (ABAC). Требования: разрешения могут зависеть от атрибутов объекта (например, пользователь может редактировать только свои черновики), поддержка row-level security, кастомные бэкенды авторизации, интеграция с DRF permission_classes.`,
+        files: [
+            {
+                filename: "articles/models.py",
+                code: `from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class Article(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Черновик"
+        PUBLISHED = "published", "Опубликована"
+
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="articles")
+    title = models.CharField(max_length=255)
+    body = models.TextField()
+    status = models.CharField(max_length=20, choices=Status, default=Status.DRAFT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+`,
+            },
+            {
+                filename: "core/permissions.py",
+                code: `"""
+ABAC (Attribute-Based Access Control) поверх стандартного Django Auth.
+
+Архитектура:
+  - Policy  — правило: для какого действия и при каких условиях разрешён доступ
+  - PolicyBackend — Django auth backend, регистрирует политики и выполняет проверку
+  - ObjectPermission — DRF permission class, делегирует проверку PolicyBackend
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+
+# ---------------------------------------------------------------------------
+# Политика доступа
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Policy:
+    """
+    action:    строковый код действия, напр. "articles.change_article"
+    condition: функция (user, obj | None) -> bool
+               obj=None означает проверку без конкретного объекта
+    """
+    action: str
+    condition: Callable[[Any, Any | None], bool]
+
+
+# ---------------------------------------------------------------------------
+# Backend
+# ---------------------------------------------------------------------------
+
+class PolicyBackend:
+    """
+    Django authentication backend, реализующий ABAC через реестр политик.
+
+    Регистрация:
+        backend = PolicyBackend()
+        backend.register(Policy("articles.change_article", can_edit_article))
+
+    Использование django.contrib.auth:
+        user.has_perm("articles.change_article", obj=article)
+    """
+
+    def __init__(self):
+        self._policies: dict[str, list[Policy]] = {}
+
+    def register(self, policy: Policy) -> None:
+        self._policies.setdefault(policy.action, []).append(policy)
+
+    def has_perm(self, user_obj, perm: str, obj=None) -> bool:
+        if not user_obj.is_active:
+            return False
+
+        # Суперпользователь обходит все политики
+        if user_obj.is_superuser:
+            return True
+
+        policies = self._policies.get(perm, [])
+        return any(p.condition(user_obj, obj) for p in policies)
+
+    def has_module_perms(self, user_obj, app_label: str) -> bool:
+        return user_obj.is_active
+
+
+# ---------------------------------------------------------------------------
+# Глобальный реестр — инициализируется в AppConfig.ready()
+# ---------------------------------------------------------------------------
+
+policy_backend = PolicyBackend()
+
+
+# ---------------------------------------------------------------------------
+# DRF Permission Classes
+# ---------------------------------------------------------------------------
+
+from rest_framework.permissions import BasePermission
+
+
+class ObjectPermission(BasePermission):
+    """
+    Универсальный DRF permission, делегирующий проверку PolicyBackend.
+
+    Использование:
+        class ArticleViewSet(ModelViewSet):
+            permission_classes = [IsAuthenticated, ObjectPermission]
+            object_action_map = {
+                "update": "articles.change_article",
+                "destroy": "articles.delete_article",
+            }
+    """
+
+    # Карта action → permission, переопределяется в ViewSet
+    object_action_map: dict[str, str] = {}
+
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated
+
+    def has_object_permission(self, request, view, obj):
+        action = getattr(view, "action", None)
+        perm = self.get_object_action_map(view).get(action)
+
+        if perm is None:
+            # Действие не в карте — разрешаем по умолчанию
+            return True
+
+        return request.user.has_perm(perm, obj)
+
+    @staticmethod
+    def get_object_action_map(view) -> dict[str, str]:
+        return getattr(view, "object_action_map", {})
+`,
+            },
+            {
+                filename: "articles/policies.py",
+                code: `"""
+Политики для модели Article.
+Каждая функция — чистый предикат (user, obj) -> bool без побочных эффектов.
+Регистрируются один раз при старте приложения.
+"""
+from core.permissions import Policy, policy_backend
+from .models import Article
+
+
+def _is_author_of_draft(user, obj) -> bool:
+    """Пользователь — автор и статья является черновиком."""
+    if obj is None:
+        return False
+    return obj.author_id == user.pk and obj.status == Article.Status.DRAFT
+
+
+def _is_author(user, obj) -> bool:
+    """Пользователь является автором статьи."""
+    if obj is None:
+        return False
+    return obj.author_id == user.pk
+
+
+def _is_editor(user, _obj) -> bool:
+    """Пользователь состоит в группе редакторов."""
+    return user.groups.filter(name="editors").exists()
+
+
+def register_article_policies():
+    # Редактировать можно только собственный черновик ИЛИ если пользователь — редактор
+    policy_backend.register(Policy("articles.change_article", _is_author_of_draft))
+    policy_backend.register(Policy("articles.change_article", _is_editor))
+
+    # Удалять может только автор (любой статус)
+    policy_backend.register(Policy("articles.delete_article", _is_author))
+    policy_backend.register(Policy("articles.delete_article", _is_editor))
+`,
+            },
+            {
+                filename: "articles/apps.py",
+                code: `from django.apps import AppConfig
+
+
+class ArticlesConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "articles"
+
+    def ready(self):
+        from .policies import register_article_policies
+        register_article_policies()
+`,
+            },
+            {
+                filename: "articles/views.py",
+                code: `from rest_framework.viewsets import ModelViewSet
+from rest_framework.permissions import IsAuthenticated
+
+from core.permissions import ObjectPermission
+from .models import Article
+from .serializers import ArticleSerializer
+
+
+class ArticleViewSet(ModelViewSet):
+    serializer_class = ArticleSerializer
+    permission_classes = [IsAuthenticated, ObjectPermission]
+
+    # Карта: action ViewSet → код разрешения
+    object_action_map = {
+        "update": "articles.change_article",
+        "partial_update": "articles.change_article",
+        "destroy": "articles.delete_article",
+    }
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # Row-level security: обычный пользователь видит опубликованные
+        # + собственные черновики. Редактор и суперпользователь — всё.
+        if user.is_superuser or user.groups.filter(name="editors").exists():
+            return Article.objects.all()
+
+        return Article.objects.filter(
+            status=Article.Status.PUBLISHED
+        ) | Article.objects.filter(author=user)
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
+`,
+            },
+            {
+                filename: "settings.py (фрагмент)",
+                code: `AUTHENTICATION_BACKENDS = [
+    # Сначала стандартный backend Django (username/password)
+    "django.contrib.auth.backends.ModelBackend",
+    # Затем наш ABAC backend
+    "core.permissions.policy_backend",
+]
+`,
+            },
+        ],
+        explanation: `**ABAC vs RBAC.** Чистый RBAC (Role-Based) проверяет только роль пользователя. ABAC добавляет атрибуты объекта: статус статьи, её автора, дату публикации — любые данные доступные в момент проверки. Это позволяет выразить правило «редактировать можно только свой черновик» без дополнительных таблиц разрешений.
+
+**PolicyBackend как Django Auth Backend.** Регистрируя бэкенд в \`AUTHENTICATION_BACKENDS\`, мы делаем политики доступными через стандартный \`user.has_perm(perm, obj)\`. Это означает, что та же проверка работает в шаблонах (\`{% if perms.articles.change_article %}\`), в Django Admin и в любом custom коде.
+
+**ObjectPermission в DRF.** DRF разделяет \`has_permission\` (проверка без объекта — например, аутентифицирован ли пользователь) и \`has_object_permission\` (проверка с конкретным объектом). Наш \`ObjectPermission\` делегирует объектную проверку в PolicyBackend, что устраняет дублирование логики.
+
+**Row-level security в \`get_queryset\`.** Авторизация на уровне объекта в DRF вызывается только для эндпоинтов с \`get_object()\` (retrieve, update, destroy). Для списковых запросов (list) объект не передаётся — поэтому фильтрацию «что пользователь вообще может видеть» нужно реализовывать в \`get_queryset\`, а не в permission classes.
+
+**Регистрация политик в \`ready()\`.** Политики регистрируются единожды при старте приложения, что исключает повторную регистрацию при каждом запросе. Чистые предикаты без побочных эффектов легко тестируются в изоляции.`,
+    },
+
+    {
+        id: "django-nested-serializers",
+        title: "Вложенные сериализаторы и запись",
+        task: `Реализуйте API для создания заказа (Order) с вложенными позициями (OrderItem). Сериализатор должен: принимать вложенные объекты в одном запросе, валидировать наличие товаров и остатки на складе, создавать все записи в одной транзакции, возвращать полное представление созданного объекта. Обработайте частичное обновление (PATCH).`,
+        files: [
+            {
+                filename: "orders/models.py",
+                code: `from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class Product(models.Model):
+    name = models.CharField(max_length=255)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    stock = models.PositiveIntegerField(default=0)
+
+    def __str__(self):
+        return self.name
+
+
+class Order(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает"
+        CONFIRMED = "confirmed", "Подтверждён"
+
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name="orders")
+    status = models.CharField(max_length=20, choices=Status, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def total(self):
+        return sum(item.subtotal for item in self.items.all())
+
+
+class OrderItem(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
+    product = models.ForeignKey(Product, on_delete=models.PROTECT)
+    quantity = models.PositiveIntegerField()
+    price = models.DecimalField(max_digits=10, decimal_places=2)  # зафиксирована на момент заказа
+
+    @property
+    def subtotal(self):
+        return self.price * self.quantity
+`,
+            },
+            {
+                filename: "orders/serializers.py",
+                code: `from django.db import transaction
+from rest_framework import serializers
+
+from .models import Order, OrderItem, Product
+
+
+class OrderItemWriteSerializer(serializers.Serializer):
+    """Используется только для записи (создание/обновление)."""
+    product_id = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all(), source="product")
+    quantity = serializers.IntegerField(min_value=1)
+
+
+class OrderItemReadSerializer(serializers.ModelSerializer):
+    """Используется только для чтения (ответ API)."""
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = OrderItem
+        fields = ["id", "product_id", "product_name", "quantity", "price", "subtotal"]
+
+
+class OrderWriteSerializer(serializers.Serializer):
+    """
+    Сериализатор для создания и обновления заказа.
+    Разделение Write/Read сериализаторов — лучшая практика:
+    они редко имеют одинаковую форму.
+    """
+    items = OrderItemWriteSerializer(many=True, min_length=1)
+
+    def validate_items(self, items):
+        errors = []
+        for i, item in enumerate(items):
+            product = item["product"]
+            if product.stock < item["quantity"]:
+                errors.append(
+                    f"Товар '{product.name}': запрошено {item['quantity']}, "
+                    f"доступно {product.stock}."
+                )
+        if errors:
+            raise serializers.ValidationError(errors)
+        return items
+
+    @transaction.atomic
+    def create(self, validated_data):
+        items_data = validated_data.pop("items")
+        order = Order.objects.create(user=self.context["request"].user)
+        self._create_items(order, items_data)
+        return order
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        """PATCH: заменяем позиции целиком, если они переданы."""
+        items_data = validated_data.pop("items", None)
+        if items_data is not None:
+            instance.items.all().delete()
+            self._create_items(instance, items_data)
+        return instance
+
+    @staticmethod
+    def _create_items(order, items_data):
+        OrderItem.objects.bulk_create([
+            OrderItem(
+                order=order,
+                product=item["product"],
+                quantity=item["quantity"],
+                price=item["product"].price,  # фиксируем текущую цену
+            )
+            for item in items_data
+        ])
+
+
+class OrderReadSerializer(serializers.ModelSerializer):
+    items = OrderItemReadSerializer(many=True, read_only=True)
+    total = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Order
+        fields = ["id", "status", "total", "items", "created_at"]
+`,
+            },
+            {
+                filename: "orders/views.py",
+                code: `from rest_framework import mixins, viewsets
+from rest_framework.permissions import IsAuthenticated
+
+from .models import Order
+from .serializers import OrderWriteSerializer, OrderReadSerializer
+
+
+class OrderViewSet(
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "patch"]  # запрещаем PUT явно
+
+    def get_queryset(self):
+        return (
+            Order.objects.filter(user=self.request.user)
+            .prefetch_related("items__product")
+        )
+
+    def get_serializer_class(self):
+        # Write-сериализатор для записи, Read — для всего остального
+        if self.action in ("create", "partial_update"):
+            return OrderWriteSerializer
+        return OrderReadSerializer
+
+    def get_serializer(self, *args, **kwargs):
+        if self.action == "partial_update":
+            kwargs["partial"] = True
+        return super().get_serializer(*args, **kwargs)
+
+    def perform_create(self, serializer):
+        # context с request нужен сериализатору для доступа к user
+        serializer.save()
+
+    def create(self, request, *args, **kwargs):
+        write = self.get_serializer(data=request.data)
+        write.is_valid(raise_exception=True)
+        order = write.save()
+        read = OrderReadSerializer(order, context=self.get_serializer_context())
+        from rest_framework import status
+        from rest_framework.response import Response
+        return Response(read.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        write = self.get_serializer(instance, data=request.data, partial=True)
+        write.is_valid(raise_exception=True)
+        order = write.save()
+        read = OrderReadSerializer(order, context=self.get_serializer_context())
+        from rest_framework.response import Response
+        return Response(read.data)
+`,
+            },
+        ],
+        explanation: `**Разделение Write и Read сериализаторов.** Write и Read сериализаторы почти никогда не совпадают по форме: на входе принимаем \`product_id\`, на выходе возвращаем \`product_name\` и \`subtotal\`. Единый сериализатор с условными полями быстро превращается в запутанный код. Два специализированных класса — чище и проще тестировать.
+
+**Валидация остатков в \`validate_items\`.** Валидация собирается полностью до начала записи: все ошибки возвращаются одним ответом, а не по одной. Проверка выполняется в \`validate_<field>\`, а не в \`create\`, чтобы не нарушать контракт DRF — \`save()\` вызывается только на валидных данных.
+
+**\`transaction.atomic\` на \`create\` и \`update\`.** Создание заказа и всех позиций — атомарная операция. Если \`bulk_create\` упадёт после создания \`Order\`, заказ без позиций не сохранится в БД. Декоратор на методе сериализатора, а не на view — потому что именно сериализатор владеет логикой записи.
+
+**Фиксация цены в момент заказа.** \`price\` в \`OrderItem\` копируется из \`product.price\` при создании. Это стандартная практика: цена товара может измениться, а история заказов должна отражать цену на момент покупки.
+
+**PATCH через замену позиций.** Частичное обновление позиций заказа удаляет старые и создаёт новые — это проще и надёжнее, чем попытка diff-а. Для сложных кейсов (частичное обновление отдельных позиций) потребуется отдельный эндпоинт \`/orders/{id}/items/{item_id}/\`.`,
+    },
+
+    {
+        id: "django-cursor-pagination",
+        title: "Cursor-based пагинация",
+        task: `Реализуйте cursor-based пагинацию для ленты событий с сортировкой по времени. Обычная offset-пагинация неэффективна для больших таблицах. Курсор должен быть непрозрачным для клиента (encoded), поддерживать сортировку по нескольким полям, корректно работать при добавлении новых записей между запросами страниц.`,
+        files: [
+            {
+                filename: "events/models.py",
+                code: `from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class Event(models.Model):
+    class Kind(models.TextChoices):
+        LOGIN = "login", "Вход"
+        PURCHASE = "purchase", "Покупка"
+        COMMENT = "comment", "Комментарий"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="events")
+    kind = models.CharField(max_length=30, choices=Kind)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        # Составной индекс для сортировки по (created_at DESC, id DESC)
+        indexes = [
+            models.Index(fields=["-created_at", "-id"], name="event_feed_idx"),
+        ]
+        ordering = ["-created_at", "-id"]
+`,
+            },
+            {
+                filename: "core/pagination.py",
+                code: `"""
+Cursor-based пагинация.
+
+Принцип работы:
+  Курсор кодирует значения полей сортировки последнего элемента страницы.
+  Следующая страница запрашивает записи строго «после» этого курсора,
+  используя row comparison: (created_at, id) < (cursor_created_at, cursor_id).
+
+Преимущества перед offset:
+  - O(log n) вместо O(offset) — не деградирует на больших таблицах
+  - Стабильность: новые записи не смещают страницы
+  - Курсор непрозрачен для клиента (base64-encoded JSON)
+"""
+import base64
+import json
+from dataclasses import dataclass
+from typing import Any
+
+from django.db.models import QuerySet
+from rest_framework.request import Request
+from rest_framework.response import Response
+
+
+@dataclass
+class CursorPage:
+    results: list
+    next_cursor: str | None
+    previous_cursor: str | None
+    page_size: int
+
+
+def _encode(data: dict) -> str:
+    return base64.urlsafe_b64encode(json.dumps(data).encode()).decode()
+
+
+def _decode(cursor: str) -> dict | None:
+    try:
+        return json.loads(base64.urlsafe_b64decode(cursor.encode()))
+    except Exception:
+        return None
+
+
+class CursorPaginator:
+    """
+    Пагинатор для QuerySet с сортировкой по (created_at DESC, id DESC).
+    Поля сортировки фиксированы; для других полей — создайте подкласс.
+    """
+
+    def __init__(self, page_size: int = 20):
+        self.page_size = page_size
+
+    def paginate(self, queryset: QuerySet, cursor: str | None) -> CursorPage:
+        qs = self._apply_cursor(queryset, cursor)
+        # Запрашиваем на 1 больше, чтобы понять есть ли следующая страница
+        items = list(qs[: self.page_size + 1])
+
+        has_next = len(items) > self.page_size
+        if has_next:
+            items = items[: self.page_size]
+
+        next_cursor = self._make_cursor(items[-1]) if has_next and items else None
+        # previous_cursor — курсор на первый элемент текущей страницы (для «назад»)
+        prev_cursor = self._make_cursor(items[0], direction="prev") if cursor and items else None
+
+        return CursorPage(
+            results=items,
+            next_cursor=next_cursor,
+            previous_cursor=prev_cursor,
+            page_size=self.page_size,
+        )
+
+    def _apply_cursor(self, qs: QuerySet, cursor: str | None) -> QuerySet:
+        if not cursor:
+            return qs
+        data = _decode(cursor)
+        if not data:
+            return qs
+
+        direction = data.get("dir", "next")
+        created_at = data["created_at"]
+        obj_id = data["id"]
+
+        if direction == "next":
+            # Записи старше курсора (движение вперёд по времени — назад в ленте)
+            return qs.filter(
+                created_at__lt=created_at
+            ) | qs.filter(created_at=created_at, id__lt=obj_id)
+        else:
+            # Записи новее курсора (движение назад)
+            return qs.filter(
+                created_at__gt=created_at
+            ) | qs.filter(created_at=created_at, id__gt=obj_id)
+
+    @staticmethod
+    def _make_cursor(obj: Any, direction: str = "next") -> str:
+        return _encode({
+            "created_at": obj.created_at.isoformat(),
+            "id": obj.id,
+            "dir": direction,
+        })
+
+
+class CursorPaginatedMixin:
+    """
+    Mixin для DRF ViewSet: добавляет cursor-пагинацию через query param ?cursor=.
+    """
+    pagination_page_size: int = 20
+
+    def paginate_and_respond(self, queryset: QuerySet, serializer_class, request: Request) -> Response:
+        paginator = CursorPaginator(page_size=self.pagination_page_size)
+        cursor = request.query_params.get("cursor")
+        page = paginator.paginate(queryset, cursor)
+        data = serializer_class(page.results, many=True, context={"request": request}).data
+        return Response({
+            "results": data,
+            "pagination": {
+                "next_cursor": page.next_cursor,
+                "previous_cursor": page.previous_cursor,
+                "page_size": page.page_size,
+            },
+        })
+`,
+            },
+            {
+                filename: "events/views.py",
+                code: `from rest_framework import serializers, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+
+from core.pagination import CursorPaginatedMixin
+from .models import Event
+
+
+class EventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Event
+        fields = ["id", "kind", "payload", "created_at"]
+
+
+class EventViewSet(CursorPaginatedMixin, viewsets.GenericViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = EventSerializer
+    pagination_page_size = 25
+
+    def get_queryset(self):
+        return Event.objects.filter(user=self.request.user)
+
+    def list(self, request):
+        return self.paginate_and_respond(
+            queryset=self.get_queryset(),
+            serializer_class=EventSerializer,
+            request=request,
+        )
+`,
+            },
+        ],
+        explanation: `**Почему offset-пагинация деградирует.** \`OFFSET 10000 LIMIT 20\` заставляет БД отсчитать и выбросить 10 000 строк перед возвратом нужных. На таблице с миллионами записей это становится полным сканом. Курсорная пагинация использует индекс и выбирает ровно нужные строки через \`WHERE (created_at, id) < (cursor_values)\`.
+
+**Row comparison через два условия.** Точный row comparison \`(created_at, id) < (:ts, :id)\` в Django ORM напрямую не выражается, поэтому разбиваем на два \`filter\` с объединением через \`|\`. Для production с высокой нагрузкой можно использовать \`RawSQL\` или \`extra\` для буквального \`ROW(created_at, id) < ROW(%s, %s)\` — это единственное обращение к сырому SQL, когда ORM не справляется.
+
+**Составной индекс \`(created_at DESC, id DESC)\`.** Без него каждая страница — filesort. Порядок в индексе должен совпадать с порядком сортировки в запросе. \`id\` в индексе нужен как тайbreaker: гарантирует уникальность курсора даже при совпадающих \`created_at\`.
+
+**Непрозрачность курсора.** Base64-encoded JSON скрывает детали реализации от клиента. Клиент не должен интерпретировать или конструировать курсоры вручную — только передавать значение, полученное из предыдущего ответа. Это позволяет менять внутреннюю структуру курсора без изменения API-контракта.
+
+**Запрос \`page_size + 1\`.** Стандартный трюк для определения наличия следующей страницы без дополнительного \`COUNT\` запроса. Если вернулось \`page_size + 1\` записей — страница есть, последний элемент обрезается и становится основой для \`next_cursor\`.`,
+    },
+
+    {
+        id: "django-api-versioning",
+        title: "Версионирование API (v1 → v2)",
+        task: `Спроектируйте и реализуйте версионирование API (v1 → v2) с минимальным дублированием кода. Изменения в v2: переименование полей, изменение структуры ответа, добавление обязательных полей. Реализуйте через URL-версионирование, общие базовые классы и трансформеры ответа. Обеспечьте обратную совместимость v1 в течение 6 месяцев.`,
+        files: [
+            {
+                filename: "users/models.py",
+                code: `from django.contrib.auth.models import AbstractUser
+from django.db import models
+
+
+class User(AbstractUser):
+    """
+    Кастомная модель пользователя.
+    v1 отдавала: { "username", "email", "full_name" }
+    v2 отдаёт:   { "username", "email", "first_name", "last_name", "display_name", "joined_at" }
+    """
+    # Поле full_name существовало в v1, в v2 разбито на first_name + last_name
+    # (first_name и last_name уже есть в AbstractUser)
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def display_name(self) -> str:
+        return self.get_full_name() or self.username
+`,
+            },
+            {
+                filename: "users/serializers.py",
+                code: `from rest_framework import serializers
+from .models import User
+
+
+class UserSerializerV1(serializers.ModelSerializer):
+    """
+    Оригинальный контракт v1. Не изменяем — только помечаем deprecated.
+    full_name — единое поле, joined_at отсутствует.
+    """
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ["id", "username", "email", "full_name"]
+
+    def get_full_name(self, obj) -> str:
+        return obj.display_name
+
+
+class UserSerializerV2(serializers.ModelSerializer):
+    """
+    Новый контракт v2: поля разбиты, добавлен joined_at и display_name.
+    """
+    display_name = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = ["id", "username", "email", "first_name", "last_name", "display_name", "joined_at"]
+`,
+            },
+            {
+                filename: "users/views.py",
+                code: `import warnings
+from rest_framework import mixins, viewsets
+from rest_framework.permissions import IsAuthenticated
+
+from .models import User
+from .serializers import UserSerializerV1, UserSerializerV2
+
+
+class BaseUserViewSet(
+    mixins.RetrieveModelMixin,
+    mixins.ListModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    """
+    Вся бизнес-логика — здесь. Версионные ViewSet-ы только указывают сериализатор.
+    Добавление новой версии = новый класс в 3 строки.
+    """
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "patch"]
+
+    def get_queryset(self):
+        return User.objects.all()
+
+
+class UserViewSetV1(BaseUserViewSet):
+    serializer_class = UserSerializerV1
+
+    def dispatch(self, request, *args, **kwargs):
+        # Предупреждаем разработчиков в заголовке ответа
+        response = super().dispatch(request, *args, **kwargs)
+        response["Deprecation"] = "version=\"v1\"; sunset=\"2025-12-31\""
+        response["Link"] = '</api/v2/users/>; rel="successor-version"'
+        return response
+
+
+class UserViewSetV2(BaseUserViewSet):
+    serializer_class = UserSerializerV2
+`,
+            },
+            {
+                filename: "config/urls.py",
+                code: `from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+
+from users.views import UserViewSetV1, UserViewSetV2
+
+router_v1 = DefaultRouter()
+router_v1.register("users", UserViewSetV1, basename="users-v1")
+
+router_v2 = DefaultRouter()
+router_v2.register("users", UserViewSetV2, basename="users-v2")
+
+urlpatterns = [
+    path("api/v1/", include((router_v1.urls, "v1"))),
+    path("api/v2/", include((router_v2.urls, "v2"))),
+]
+`,
+            },
+            {
+                filename: "config/settings.py (фрагмент)",
+                code: `REST_FRAMEWORK = {
+    # URL-версионирование: /api/v1/... и /api/v2/...
+    # Альтернативы: AcceptHeaderVersioning (?version=v2 или Accept: application/json; version=v2)
+    # URL-версионирование — самое явное и легко кэшируемое CDN-ами.
+    "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.URLPathVersioning",
+    "DEFAULT_VERSION": "v2",
+    "ALLOWED_VERSIONS": ["v1", "v2"],
+    "VERSION_PARAM": "version",
+}
+`,
+            },
+        ],
+        explanation: `**Минимальное дублирование через BaseViewSet.** Вся логика (queryset, permissions, методы) живёт в \`BaseUserViewSet\`. Версионные классы наследуют его и только указывают нужный \`serializer_class\`. При добавлении v3 — три строки кода.
+
+**Сериализаторы не изменяются после релиза.** \`UserSerializerV1\` заморожен на весь период поддержки. Любые изменения в v1 контракте требуют нового \`UserSerializerV1Patch\` или явного решения о несовместимом изменении. Это гарантирует, что существующие клиенты не сломаются.
+
+**Deprecation через HTTP-заголовки.** Стандарт RFC 8594 определяет заголовок \`Deprecation\` и \`Sunset\` — они сообщают клиентам дату отключения машиночитаемым способом. \`Link: rel="successor-version"\` указывает на URL новой версии. Серьёзные API-клиенты (Postman, curl --verbose) показывают эти заголовки разработчику.
+
+**URL-версионирование vs Accept Header.** URL-версионирование (\`/api/v1/\`) проще для отладки, кэширования и логирования. Accept header (\`Accept: application/vnd.api+json; version=2\`) чище с REST-точки зрения, но требует правильной настройки кэша (\`Vary: Accept\`). Для публичных API — URL-версионирование предпочтительнее.
+
+**Стратегия sunset.** 6 месяцев — минимум для публичного API. Реальный план: объявить deprecation при релизе v2, за 30 дней до sunset — email всем, кто использует v1 (по логам), за 7 дней — предупреждение в ответе v1. После sunset — 410 Gone вместо 404.`,
+    },
+
+    {
+        id: "django-jwt-auth",
+        title: "JWT-аутентификация с refresh-токенами",
+        task: `Реализуйте JWT-аутентификацию с refresh-токенами без сторонних библиотек (только PyJWT). Требования: access-токен живёт 15 минут, refresh-токен — 30 дней, refresh-токен ротируется при каждом обновлении, возможность отзыва конкретного refresh-токена, детекция повторного использования отозванного токена (token reuse detection).`,
+        files: [
+            {
+                filename: "auth/models.py",
+                code: `import uuid
+from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class RefreshToken(models.Model):
+    """
+    Хранит refresh-токены. Хранится хеш, а не сам токен —
+    как с паролями: даже при утечке БД токены бесполезны.
+
+    family_id объединяет цепочку ротаций одного токена.
+    Если используется уже отозванный токен из той же семьи —
+    это признак компрометации: вся семья немедленно инвалидируется.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="refresh_tokens")
+    token_hash = models.CharField(max_length=64, unique=True)  # SHA-256 hex
+    family_id = models.UUIDField(default=uuid.uuid4, db_index=True)
+    is_revoked = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        indexes = [models.Index(fields=["token_hash"])]
+`,
+            },
+            {
+                filename: "auth/tokens.py",
+                code: `import hashlib
+import secrets
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import jwt
+from django.conf import settings
+
+ACCESS_TOKEN_TTL = timedelta(minutes=15)
+REFRESH_TOKEN_TTL = timedelta(days=30)
+
+ALGORITHM = "HS256"
+
+
+# ---------------------------------------------------------------------------
+# Низкоуровневые утилиты
+# ---------------------------------------------------------------------------
+
+def _now() -> datetime:
+    return datetime.now(tz=timezone.utc)
+
+
+def _hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Access-токен (stateless JWT)
+# ---------------------------------------------------------------------------
+
+def create_access_token(user_id: int) -> str:
+    payload = {
+        "sub": str(user_id),
+        "type": "access",
+        "exp": _now() + ACCESS_TOKEN_TTL,
+        "iat": _now(),
+        "jti": str(uuid.uuid4()),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_access_token(token: str) -> dict:
+    """Бросает jwt.PyJWTError при невалидном или просроченном токене."""
+    return jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+
+
+# ---------------------------------------------------------------------------
+# Refresh-токен (stateful: хранится в БД)
+# ---------------------------------------------------------------------------
+
+def create_refresh_token(user, family_id: uuid.UUID | None = None) -> str:
+    from .models import RefreshToken
+
+    raw = secrets.token_urlsafe(48)  # криптографически стойкий случайный токен
+
+    RefreshToken.objects.create(
+        user=user,
+        token_hash=_hash(raw),
+        family_id=family_id or uuid.uuid4(),
+        expires_at=_now() + REFRESH_TOKEN_TTL,
+    )
+    return raw
+
+
+def rotate_refresh_token(raw_token: str) -> tuple[str, str]:
+    """
+    Ротирует refresh-токен: старый отзывается, создаётся новый в той же семье.
+    Возвращает (новый_access, новый_refresh).
+
+    Если токен уже отозван — инвалидирует всю семью (reuse detection).
+    Бросает ValueError при любой проблеме с токеном.
+    """
+    from .models import RefreshToken
+
+    token_hash = _hash(raw_token)
+
+    try:
+        stored = RefreshToken.objects.select_related("user").get(token_hash=token_hash)
+    except RefreshToken.DoesNotExist:
+        raise ValueError("Refresh token not found.")
+
+    if stored.expires_at < _now():
+        stored.delete()
+        raise ValueError("Refresh token expired.")
+
+    if stored.is_revoked:
+        # Повторное использование отозванного токена — компрометация всей семьи
+        RefreshToken.objects.filter(family_id=stored.family_id).delete()
+        raise ValueError("Token reuse detected. All sessions in this family have been revoked.")
+
+    # Отзываем текущий токен
+    stored.is_revoked = True
+    stored.save(update_fields=["is_revoked"])
+
+    # Создаём новую пару токенов в той же семье
+    new_access = create_access_token(stored.user.id)
+    new_refresh = create_refresh_token(stored.user, family_id=stored.family_id)
+    return new_access, new_refresh
+
+
+def revoke_refresh_token(raw_token: str) -> None:
+    """Отзывает конкретный токен (logout с одного устройства)."""
+    from .models import RefreshToken
+
+    RefreshToken.objects.filter(token_hash=_hash(raw_token)).update(is_revoked=True)
+
+
+def revoke_all_user_tokens(user_id: int) -> None:
+    """Отзывает все токены пользователя (logout со всех устройств)."""
+    from .models import RefreshToken
+
+    RefreshToken.objects.filter(user_id=user_id).delete()
+`,
+            },
+            {
+                filename: "auth/views.py",
+                code: `import jwt
+from django.contrib.auth import authenticate
+from rest_framework import serializers, status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .tokens import (
+    create_access_token,
+    create_refresh_token,
+    decode_access_token,
+    rotate_refresh_token,
+    revoke_refresh_token,
+)
+
+
+class LoginView(APIView):
+    class InputSerializer(serializers.Serializer):
+        username = serializers.CharField()
+        password = serializers.CharField()
+
+    def post(self, request):
+        s = self.InputSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+
+        user = authenticate(**s.validated_data)
+        if user is None:
+            return Response({"detail": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        return Response({
+            "access": create_access_token(user.id),
+            "refresh": create_refresh_token(user),
+        })
+
+
+class RefreshView(APIView):
+    class InputSerializer(serializers.Serializer):
+        refresh = serializers.CharField()
+
+    def post(self, request):
+        s = self.InputSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+
+        try:
+            new_access, new_refresh = rotate_refresh_token(s.validated_data["refresh"])
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+
+        return Response({"access": new_access, "refresh": new_refresh})
+
+
+class LogoutView(APIView):
+    class InputSerializer(serializers.Serializer):
+        refresh = serializers.CharField()
+
+    def post(self, request):
+        s = self.InputSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        revoke_refresh_token(s.validated_data["refresh"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------------------
+# DRF Authentication backend
+# ---------------------------------------------------------------------------
+
+from rest_framework.authentication import BaseAuthentication
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class JWTAuthentication(BaseAuthentication):
+    def authenticate(self, request):
+        header = request.headers.get("Authorization", "")
+        if not header.startswith("Bearer "):
+            return None
+
+        token = header.removeprefix("Bearer ").strip()
+        try:
+            payload = decode_access_token(token)
+        except jwt.PyJWTError:
+            from rest_framework.exceptions import AuthenticationFailed
+            raise AuthenticationFailed("Invalid or expired access token.")
+
+        try:
+            user = User.objects.get(pk=payload["sub"])
+        except User.DoesNotExist:
+            from rest_framework.exceptions import AuthenticationFailed
+            raise AuthenticationFailed("User not found.")
+
+        return user, None
+`,
+            },
+            {
+                filename: "settings.py (фрагмент)",
+                code: `REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "auth.views.JWTAuthentication",
+    ],
+}
+
+# Периодически удаляем истёкшие токены из БД
+# Запускайте management-командой или через Celery Beat:
+# python manage.py cleartokens
+`,
+            },
+        ],
+        explanation: `**Хранение хеша, а не токена.** Refresh-токен в БД хранится как SHA-256 хеш, аналогично паролю. При утечке БД атакующий получает хеши, а не рабочие токены. При проверке входящий токен хешируется и сравнивается — скорость не критична, т.к. операция выполняется один раз за запрос к \`/auth/refresh\`.
+
+**Семьи токенов (token families) и reuse detection.** При каждой ротации новый токен наследует \`family_id\` родителя. Если клиент присылает уже отозванный токен — значит, либо клиент ошибся в логике, либо токен скомпрометирован. Безопасная реакция: удалить всю семью. Это разлогинит атакующего и легитимного пользователя, но лучше, чем игнорировать.
+
+**Access-токен stateless, refresh-токен stateful.** Access-токен верифицируется только подписью — никаких обращений к БД при каждом запросе. Refresh-токен всегда проверяется через БД: это единственный способ реализовать отзыв. Короткий TTL access-токена (15 мин) ограничивает окно компрометации при утечке.
+
+**\`secrets.token_urlsafe\` вместо UUID.** UUID4 содержит 122 бита энтропии — достаточно, но \`secrets.token_urlsafe(48)\` генерирует 384 бита и является рекомендованным способом для криптографических токенов в Python (PEP 506).
+
+**Очистка истёкших токенов.** Таблица растёт бесконечно без периодической очистки. Добавьте management-команду \`cleartokens\` или Celery Beat задачу, которая удаляет записи с \`expires_at < now()\`.`,
+    },
+
+    {
+        id: "django-rate-limiting",
+        title: "Rate limiting и throttling",
+        task: `Реализуйте многоуровневый rate limiting: глобальный лимит по IP, лимит по аутентифицированному пользователю, отдельные лимиты для конкретных эндпоинтов (например, /api/auth/login — 5 запросов в минуту), динамические лимиты в зависимости от плана пользователя. Используйте Redis для хранения счётчиков. Верните корректные заголовки Retry-After и X-RateLimit-*.`,
+        files: [
+            {
+                filename: "core/throttling.py",
+                code: `"""
+Многоуровневый rate limiting через Redis с алгоритмом sliding window.
+
+Алгоритм sliding window:
+  Храним в Redis Sorted Set временные метки запросов за последнее окно.
+  При каждом запросе:
+    1. Удаляем метки старше (now - window)
+    2. Считаем оставшиеся
+    3. Если count < limit — добавляем текущую метку и разрешаем
+    4. Иначе — блокируем, возвращаем Retry-After
+
+Преимущество перед fixed window: нет burst-эффекта на границе окна.
+"""
+import time
+import redis
+from django.conf import settings
+from rest_framework.throttling import BaseThrottle
+from rest_framework.exceptions import Throttled
+
+
+def _get_redis() -> redis.Redis:
+    return redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+def _sliding_window(key: str, limit: int, window_seconds: int) -> tuple[bool, int, int]:
+    """
+    Проверяет и обновляет счётчик в Redis.
+    Возвращает (allowed, current_count, retry_after_seconds).
+    """
+    r = _get_redis()
+    now = time.time()
+    window_start = now - window_seconds
+
+    pipe = r.pipeline()
+    pipe.zremrangebyscore(key, "-inf", window_start)  # удаляем устаревшие
+    pipe.zcard(key)                                    # считаем актуальные
+    pipe.zadd(key, {str(now): now})                    # добавляем текущий
+    pipe.expire(key, window_seconds + 1)               # TTL чуть больше окна
+    _, count, _, _ = pipe.execute()
+
+    allowed = count < limit
+    retry_after = 0
+
+    if not allowed:
+        # Время до освобождения слота: когда самый старый запрос выйдет из окна
+        oldest = r.zrange(key, 0, 0, withscores=True)
+        if oldest:
+            oldest_ts = oldest[0][1]
+            retry_after = max(0, int(oldest_ts + window_seconds - now) + 1)
+
+    return allowed, count, retry_after
+
+
+class RateLimitMixin:
+    """
+    Базовый mixin: определяет ключ, лимит и окно.
+    Подклассы переопределяют get_limit() для динамических лимитов.
+    """
+    scope: str = "default"
+    limit: int = 100
+    window: int = 60  # секунды
+
+    def get_ident(self, request) -> str:
+        raise NotImplementedError
+
+    def get_limit(self, request) -> int:
+        return self.limit
+
+    def allow_request(self, request, view) -> bool:
+        key = f"rl:{self.scope}:{self.get_ident(request)}"
+        limit = self.get_limit(request)
+        allowed, count, retry_after = _sliding_window(key, limit, self.window)
+
+        # Сохраняем метаданные для заголовков ответа
+        request._rl_data = getattr(request, "_rl_data", {})
+        request._rl_data[self.scope] = {
+            "limit": limit,
+            "remaining": max(0, limit - count - 1),
+            "retry_after": retry_after,
+        }
+
+        return allowed
+
+    def wait(self) -> float | None:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Конкретные throttle-классы
+# ---------------------------------------------------------------------------
+
+class IPThrottle(RateLimitMixin, BaseThrottle):
+    """Глобальный лимит по IP: 200 запросов в минуту."""
+    scope = "ip"
+    limit = 200
+    window = 60
+
+    def get_ident(self, request) -> str:
+        return self.get_ip(request)
+
+    @staticmethod
+    def get_ip(request) -> str:
+        forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
+        return forwarded.split(",")[0].strip() if forwarded else request.META["REMOTE_ADDR"]
+
+
+class UserThrottle(RateLimitMixin, BaseThrottle):
+    """Лимит по аутентифицированному пользователю с учётом плана."""
+    scope = "user"
+    window = 60
+
+    # Лимиты по плану (запросов в минуту)
+    PLAN_LIMITS = {
+        "free": 30,
+        "basic": 100,
+        "pro": 500,
+        "enterprise": 2000,
+    }
+    DEFAULT_LIMIT = 30
+
+    def get_ident(self, request) -> str:
+        if request.user and request.user.is_authenticated:
+            return f"user:{request.user.pk}"
+        return f"ip:{IPThrottle.get_ip(request)}"
+
+    def get_limit(self, request) -> int:
+        if not (request.user and request.user.is_authenticated):
+            return self.DEFAULT_LIMIT
+        plan = getattr(request.user, "plan", "free")
+        return self.PLAN_LIMITS.get(plan, self.DEFAULT_LIMIT)
+
+
+class LoginThrottle(RateLimitMixin, BaseThrottle):
+    """Жёсткий лимит для /api/auth/login: 5 попыток в минуту по IP."""
+    scope = "login"
+    limit = 5
+    window = 60
+
+    def get_ident(self, request) -> str:
+        return IPThrottle.get_ip(request)
+`,
+            },
+            {
+                filename: "core/middleware.py",
+                code: `"""
+Middleware добавляет X-RateLimit-* и Retry-After заголовки к каждому ответу.
+Данные собираются throttle-классами в request._rl_data во время обработки.
+"""
+
+
+class RateLimitHeadersMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        rl_data: dict = getattr(request, "_rl_data", {})
+
+        # Используем самый строгий лимит для заголовков
+        if rl_data:
+            most_restrictive = min(rl_data.values(), key=lambda d: d["remaining"])
+            response["X-RateLimit-Limit"] = most_restrictive["limit"]
+            response["X-RateLimit-Remaining"] = most_restrictive["remaining"]
+            if most_restrictive["retry_after"]:
+                response["Retry-After"] = most_restrictive["retry_after"]
+
+        return response
+`,
+            },
+            {
+                filename: "auth/views.py (фрагмент)",
+                code: `from rest_framework.views import APIView
+from core.throttling import LoginThrottle
+
+
+class LoginView(APIView):
+    # Применяем жёсткий throttle только к этому endpoint
+    throttle_classes = [LoginThrottle]
+
+    def post(self, request):
+        ...
+`,
+            },
+            {
+                filename: "settings.py (фрагмент)",
+                code: `REDIS_URL = "redis://localhost:6379/0"
+
+REST_FRAMEWORK = {
+    # Применяются ко всем endpoint-ам, если не переопределены в ViewSet
+    "DEFAULT_THROTTLE_CLASSES": [
+        "core.throttling.IPThrottle",
+        "core.throttling.UserThrottle",
+    ],
+    # Используем наши собственные классы, поэтому DEFAULT_THROTTLE_RATES не нужен
+}
+
+MIDDLEWARE = [
+    ...
+    # После всех middleware: добавляем заголовки к готовому ответу
+    "core.middleware.RateLimitHeadersMiddleware",
+]
+`,
+            },
+        ],
+        explanation: `**Sliding window vs Fixed window.** Fixed window сбрасывает счётчик в фиксированный момент времени: при лимите 100 req/min можно отправить 100 запросов в 00:59 и ещё 100 в 01:00 — burst в 200 запросов за 2 секунды. Sliding window смотрит на последние N секунд относительно текущего момента, поэтому burst невозможен.
+
+**Redis Sorted Set как хранилище меток.** Каждый запрос — элемент Sorted Set с score = unix timestamp. \`ZREMRANGEBYSCORE\` удаляет устаревшие, \`ZCARD\` считает актуальные. Pipeline объединяет 4 операции в одно сетевое обращение. TTL на ключе гарантирует автоматическую очистку неактивных ключей.
+
+**Динамические лимиты по плану.** \`get_limit()\` вызывается при каждом запросе и возвращает значение в зависимости от \`user.plan\`. Это не требует хранения лимита в Redis — сам лимит вычисляется на лету, а Redis хранит только счётчики запросов.
+
+**Разделение scope-ов.** Каждый throttle использует свой ключ (\`rl:ip:...\`, \`rl:user:...\`, \`rl:login:...\`). Это позволяет применять разные лимиты независимо: пользователь может попасть под IP-лимит, не исчерпав пользовательский, и наоборот.
+
+**Заголовки \`X-RateLimit-*\` и \`Retry-After\`.** Middleware собирает данные из \`request._rl_data\`, добавленных throttle-классами. \`Retry-After\` — секунды до следующего разрешённого запроса, вычисляется из timestamp самого старого запроса в окне. Клиент может использовать этот заголовок для автоматического retry с правильной задержкой.`,
+    },
+
+    {
+        id: "django-async-views",
+        title: "Async Views в Django",
+        task: `Переведите ресурсоёмкое представление на async. Представление агрегирует данные из 3 внешних API параллельно, делает несколько запросов к БД и отдаёт итоговый JSON. Используйте async def view, asyncio.gather, sync_to_async для ORM-запросов. Измерьте разницу в latency. Объясните ограничения Django async ORM.`,
+        files: [
+            {
+                filename: "dashboard/views.py",
+                code: `"""
+Async view агрегирует данные из трёх внешних API параллельно
+и делает несколько ORM-запросов через sync_to_async.
+
+Latency (пример с тремя API по 300ms каждый):
+  sync view:  ~900ms  (последовательно)
+  async view: ~300ms  (параллельно через gather)
+"""
+import asyncio
+import logging
+
+import httpx
+from asgiref.sync import sync_to_async
+from django.http import JsonResponse
+from django.views import View
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Внешние API — каждый вызов независим, выполняем параллельно
+# ---------------------------------------------------------------------------
+
+async def fetch_weather(client: httpx.AsyncClient, city: str) -> dict:
+    try:
+        r = await client.get(
+            "https://api.weather.example.com/current",
+            params={"city": city},
+            timeout=5.0,
+        )
+        r.raise_for_status()
+        return r.json()
+    except Exception as exc:
+        logger.warning("Weather API failed: %s", exc)
+        return {}
+
+
+async def fetch_exchange_rates(client: httpx.AsyncClient) -> dict:
+    try:
+        r = await client.get("https://api.rates.example.com/latest", timeout=5.0)
+        r.raise_for_status()
+        return r.json()
+    except Exception as exc:
+        logger.warning("Exchange rates API failed: %s", exc)
+        return {}
+
+
+async def fetch_news(client: httpx.AsyncClient, category: str) -> list:
+    try:
+        r = await client.get(
+            "https://api.news.example.com/headlines",
+            params={"category": category},
+            timeout=5.0,
+        )
+        r.raise_for_status()
+        return r.json().get("articles", [])
+    except Exception as exc:
+        logger.warning("News API failed: %s", exc)
+        return []
+
+
+# ---------------------------------------------------------------------------
+# ORM-запросы через sync_to_async
+# ---------------------------------------------------------------------------
+#
+# Django ORM синхронный. В async-контексте прямой вызов ORM бросает
+# SynchronousOnlyOperation. Решение — sync_to_async, который запускает
+# синхронный код в threadpool executor.
+#
+# ВАЖНО: передавайте в sync_to_async как можно меньше работы.
+# Не передавайте lazy queryset — он выполнится вне async-контекста.
+# Материализуйте его (list/values) внутри обёрнутой функции.
+
+def _get_user_profile(user_id: int) -> dict:
+    from users.models import UserProfile
+    profile = UserProfile.objects.select_related("user").get(user_id=user_id)
+    return {"city": profile.city, "currency": profile.currency, "plan": profile.plan}
+
+
+def _get_recent_orders(user_id: int, limit: int = 5) -> list:
+    from orders.models import Order
+    qs = (
+        Order.objects.filter(user_id=user_id)
+        .order_by("-created_at")
+        .values("id", "status", "total", "created_at")[:limit]
+    )
+    return list(qs)  # материализуем внутри sync_to_async
+
+
+get_user_profile = sync_to_async(_get_user_profile)
+get_recent_orders = sync_to_async(_get_recent_orders)
+
+
+# ---------------------------------------------------------------------------
+# Async View
+# ---------------------------------------------------------------------------
+
+class DashboardView(View):
+    async def get(self, request, *args, **kwargs):
+        user_id = request.user.id
+
+        # 1. ORM-запросы выполняем параллельно между собой и с API
+        async with httpx.AsyncClient() as client:
+            profile, orders, weather, rates, news = await asyncio.gather(
+                get_user_profile(user_id),
+                get_recent_orders(user_id),
+                # Значения из профиля нужны для API, но профиль ещё не загружен.
+                # Если зависимость есть — сначала await profile, потом gather для API.
+                fetch_weather(client, "Moscow"),
+                fetch_exchange_rates(client),
+                fetch_news(client, "technology"),
+                return_exceptions=False,  # исключения пробрасываются наверх
+            )
+
+        return JsonResponse({
+            "profile": profile,
+            "recent_orders": orders,
+            "weather": weather,
+            "exchange_rates": rates,
+            "news": news[:3],
+        })
+`,
+            },
+            {
+                filename: "dashboard/views_sync.py",
+                code: `"""
+Синхронная версия того же view — для сравнения latency.
+При трёх API по 300ms каждый: суммарно ~900ms.
+"""
+import requests
+from django.http import JsonResponse
+from django.views import View
+from orders.models import Order
+from users.models import UserProfile
+
+
+class DashboardViewSync(View):
+    def get(self, request, *args, **kwargs):
+        user_id = request.user.id
+
+        profile = UserProfile.objects.select_related("user").get(user_id=user_id)
+        orders = list(
+            Order.objects.filter(user_id=user_id)
+            .order_by("-created_at")
+            .values("id", "status", "total", "created_at")[:5]
+        )
+
+        # Последовательные вызовы — каждый ждёт предыдущего
+        weather = requests.get("https://api.weather.example.com/current", timeout=5).json()
+        rates = requests.get("https://api.rates.example.com/latest", timeout=5).json()
+        news = requests.get("https://api.news.example.com/headlines", timeout=5).json()
+
+        return JsonResponse({
+            "profile": {"city": profile.city, "currency": profile.currency},
+            "recent_orders": orders,
+            "weather": weather,
+            "exchange_rates": rates,
+            "news": news.get("articles", [])[:3],
+        })
+`,
+            },
+            {
+                filename: "config/asgi.py",
+                code: `"""
+Async views требуют ASGI-сервер. Gunicorn (WSGI) не поддерживает async.
+Для production используйте Uvicorn или Daphne.
+"""
+import os
+from django.core.asgi import get_asgi_application
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+
+application = get_asgi_application()
+
+# Запуск в production:
+#   uvicorn config.asgi:application --workers 4 --port 8000
+`,
+            },
+        ],
+        explanation: `**Когда async view даёт выигрыш.** Async view эффективен при I/O-bound операциях: несколько HTTP-запросов к внешним API, долгие запросы к БД, работа с файлами. Вместо блокировки потока на каждый вызов event loop переключается на другие корутины. При трёх API по 300ms параллельное выполнение даёт ~300ms вместо ~900ms.
+
+**\`sync_to_async\` и ограничения ORM.** Django ORM полностью синхронный. Прямой вызов ORM в async-контексте бросает \`SynchronousOnlyOperation\`. \`sync_to_async\` запускает синхронный код в threadpool, что безопасно, но не бесплатно: каждый вызов создаёт overhead переключения потока. Оборачивайте целые функции, а не отдельные строки, и материализуйте QuerySet внутри обёртки — иначе lazy evaluation произойдёт вне threadpool.
+
+**\`return_exceptions=False\` в \`gather\`.** При \`False\` первое исключение пробрасывается наружу и отменяет остальные корутины. При \`True\` исключения возвращаются как значения в результирующем списке — подходит для partial failure (вернуть частичный результат если один API недоступен). Выбор зависит от требований к graceful degradation.
+
+**ASGI обязателен.** Async views работают только с ASGI-сервером (Uvicorn, Daphne, Hypercorn). Gunicorn — WSGI, он выполнит async view как sync в отдельном потоке, никакого параллелизма не будет. В Django 4.1+ sync и async views можно смешивать в одном проекте.
+
+**Ограничения Django async ORM.** На момент Django 5.x нативный async ORM (\`await Model.objects.filter(...)\`) реализован, но не все возможности покрыты: некоторые менеджеры, сигналы и транзакции требуют дополнительных обёрток. \`sync_to_async\` остаётся самым надёжным подходом для сложных ORM-запросов.`,
+    },
+
+    {
+        id: "django-celery-canvas",
+        title: "Celery: сложные workflow (Canvas)",
+        task: `Реализуйте с помощью Celery Canvas сложный workflow обработки загруженного видеофайла: валидация формата → параллельное создание превью разных разрешений → транскодирование → загрузка в S3 → уведомление пользователя. Используйте chain, group, chord. Реализуйте обработку частичных сбоев и retry-стратегию для каждого шага.`,
+        files: [
+            {
+                filename: "video/models.py",
+                code: `from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class VideoJob(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает"
+        VALIDATING = "validating", "Валидация"
+        PROCESSING = "processing", "Обработка"
+        UPLOADING = "uploading", "Загрузка"
+        DONE = "done", "Готово"
+        FAILED = "failed", "Ошибка"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    original_path = models.CharField(max_length=500)
+    status = models.CharField(max_length=20, choices=Status, default=Status.PENDING)
+    error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def set_status(self, status: str, error: str = "") -> None:
+        self.status = status
+        self.error = error
+        self.save(update_fields=["status", "error", "updated_at"])
+`,
+            },
+            {
+                filename: "video/tasks.py",
+                code: `"""
+Celery Canvas workflow:
+
+  validate_video
+       │
+       ▼
+  chord(
+    group(
+      create_preview("360p"),
+      create_preview("720p"),
+      create_preview("1080p"),
+    ),
+    callback=transcode_video   ← запускается после всех preview
+  )
+       │
+       ▼
+  upload_to_s3
+       │
+       ▼
+  notify_user
+"""
+import logging
+from celery import shared_task, chain, group, chord
+from celery.exceptions import MaxRetriesExceededError
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Вспомогательные retry-настройки
+# ---------------------------------------------------------------------------
+NETWORK_RETRY = dict(max_retries=3, default_retry_delay=30)   # для S3/сети
+PROCESS_RETRY = dict(max_retries=2, default_retry_delay=60)   # для CPU-задач
+
+
+# ---------------------------------------------------------------------------
+# Шаги pipeline
+# ---------------------------------------------------------------------------
+
+@shared_task(bind=True, max_retries=1)
+def validate_video(self, job_id: int) -> int:
+    """Проверяет формат файла. Бросает ValueError при невалидном файле."""
+    from .models import VideoJob
+    job = VideoJob.objects.get(pk=job_id)
+    job.set_status(VideoJob.Status.VALIDATING)
+
+    try:
+        _check_format(job.original_path)  # бросает ValueError если формат неверный
+    except ValueError as exc:
+        job.set_status(VideoJob.Status.FAILED, error=str(exc))
+        raise  # не retry — формат не изменится
+
+    return job_id  # передаётся следующему шагу как первый аргумент
+
+
+@shared_task(bind=True, **PROCESS_RETRY)
+def create_preview(self, job_id: int, resolution: str) -> str:
+    """Создаёт превью одного разрешения. Возвращает путь к файлу."""
+    try:
+        path = _ffmpeg_preview(job_id, resolution)
+        return path
+    except Exception as exc:
+        logger.warning("Preview %s failed for job %d: %s", resolution, job_id, exc)
+        try:
+            raise self.retry(exc=exc)
+        except MaxRetriesExceededError:
+            # Частичный сбой — возвращаем None, chord продолжится
+            return None
+
+
+@shared_task(bind=True, **PROCESS_RETRY)
+def transcode_video(self, preview_paths: list[str | None], job_id: int) -> int:
+    """
+    Callback chord-а: получает результаты всех create_preview.
+    preview_paths — список путей (или None для упавших превью).
+    """
+    from .models import VideoJob
+    job = VideoJob.objects.get(pk=job_id)
+    job.set_status(VideoJob.Status.PROCESSING)
+
+    successful = [p for p in preview_paths if p]
+    logger.info("Job %d: %d/%d previews ready", job_id, len(successful), len(preview_paths))
+
+    try:
+        _ffmpeg_transcode(job.original_path)
+    except Exception as exc:
+        raise self.retry(exc=exc)
+
+    return job_id
+
+
+@shared_task(bind=True, **NETWORK_RETRY)
+def upload_to_s3(self, job_id: int) -> int:
+    from .models import VideoJob
+    job = VideoJob.objects.get(pk=job_id)
+    job.set_status(VideoJob.Status.UPLOADING)
+
+    try:
+        _s3_upload(job_id)
+    except Exception as exc:
+        raise self.retry(exc=exc)
+
+    return job_id
+
+
+@shared_task
+def notify_user(job_id: int) -> None:
+    from django.core.mail import send_mail
+    from .models import VideoJob
+    job = VideoJob.objects.select_related("user").get(pk=job_id)
+    job.set_status(VideoJob.Status.DONE)
+    send_mail(
+        subject="Ваше видео готово",
+        message=f"Видео #{job_id} обработано и доступно.",
+        from_email="noreply@example.com",
+        recipient_list=[job.user.email],
+    )
+
+
+@shared_task
+def on_pipeline_failure(request, exc, traceback, job_id: int) -> None:
+    """link_error callback — вызывается при необработанной ошибке в цепочке."""
+    from .models import VideoJob
+    logger.error("Video pipeline failed for job %d: %s", job_id, exc)
+    VideoJob.objects.filter(pk=job_id).update(
+        status=VideoJob.Status.FAILED,
+        error=str(exc),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Сборка и запуск pipeline
+# ---------------------------------------------------------------------------
+
+def process_video(job_id: int) -> None:
+    """
+    Строит и запускает полный Celery Canvas pipeline.
+    Вызывается из view после сохранения VideoJob.
+    """
+    resolutions = ["360p", "720p", "1080p"]
+
+    # chord: group параллельных превью → transcode как callback
+    preview_chord = chord(
+        group(create_preview.s(job_id, res) for res in resolutions),
+        transcode_video.s(job_id),       # получит список результатов группы
+    )
+
+    pipeline = chain(
+        validate_video.s(job_id),
+        preview_chord,
+        upload_to_s3.s(),                # получит job_id от transcode
+        notify_user.s(),
+    )
+
+    # link_error навешивается на всю цепочку
+    pipeline.apply_async(
+        link_error=on_pipeline_failure.s(job_id),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Заглушки для внешних зависимостей (ffmpeg, boto3)
+# ---------------------------------------------------------------------------
+
+def _check_format(path: str) -> None:
+    allowed = (".mp4", ".mov", ".avi", ".mkv")
+    if not any(path.endswith(ext) for ext in allowed):
+        raise ValueError(f"Unsupported format: {path}")
+
+
+def _ffmpeg_preview(job_id: int, resolution: str) -> str:
+    # subprocess.run(["ffmpeg", ...])
+    return f"/tmp/job_{job_id}_{resolution}.jpg"
+
+
+def _ffmpeg_transcode(path: str) -> None:
+    # subprocess.run(["ffmpeg", "-i", path, ...])
+    pass
+
+
+def _s3_upload(job_id: int) -> None:
+    # boto3.client("s3").upload_file(...)
+    pass
+`,
+            },
+        ],
+        explanation: `**Chain, Group, Chord — три примитива Celery Canvas.**
+\`chain\` — последовательность: результат каждой задачи передаётся следующей как первый аргумент. \`group\` — параллельные задачи, результаты не собираются в одно место. \`chord\` — group с callback: callback вызывается когда все задачи группы завершились, получая список их результатов.
+
+**Как \`chord\` вписывается в \`chain\`.** В Celery \`chord\` можно поместить внутрь \`chain\`, но передача аргументов нетривиальна: callback chord-а получает результаты группы, а не аргумент из предыдущего шага chain. Поэтому \`job_id\` передаётся в \`transcode_video\` явно через \`.s(job_id)\`, а не через цепочку.
+
+**Обработка частичных сбоев в group.** Если одна из задач создания превью падает после всех retry — она возвращает \`None\` вместо броска исключения. Chord не прерывается: callback \`transcode_video\` получает список с \`None\` на месте упавшего превью и продолжает работу с теми превью, которые удались. Это осознанный trade-off: потеря одного разрешения некритична.
+
+**\`link_error\` для катастрофических сбоев.** Если критическая задача (validate, transcode, upload) исчерпала retry — её исключение пробрасывается в \`link_error\` callback. Это единственное место, где статус \`FAILED\` выставляется для неожиданных ошибок. Задачи, возвращающие \`None\` при сбое, не триггерят \`link_error\`.
+
+**Разные retry-стратегии.** Сетевые задачи (S3) могут быть нестабильны — 3 retry с паузой 30s. CPU-задачи (ffmpeg) падают редко, но если падают — скорее всего проблема в файле — 2 retry с паузой 60s. Валидация — 1 retry: повторная проверка формата почти никогда не изменит результат.`,
+    },
+
+    {
+        id: "django-celery-beat-dynamic",
+        title: "Celery Beat и динамические расписания",
+        task: `Реализуйте систему динамических периодических задач: пользователи настраивают расписание отчётов (cron-выражение) через UI, задачи должны создаваться/удаляться/обновляться без перезапуска Celery, поддержка timezone для каждого расписания. Используйте django-celery-beat с кастомным scheduler или реализуйте собственное решение.`,
+        files: [
+            {
+                filename: "reports/models.py",
+                code: `from django.db import models
+from django.contrib.auth import get_user_model
+from django.core.validators import RegexValidator
+
+User = get_user_model()
+
+# Простая валидация cron-выражения: 5 полей через пробел
+CRON_VALIDATOR = RegexValidator(
+    regex=r'^(\\S+\\s){4}\\S+$',
+    message="Введите корректное cron-выражение (5 полей: минута час день месяц день_недели)",
+)
+
+
+class ReportSchedule(models.Model):
+    """
+    Расписание отчёта, управляемое пользователем.
+    Синхронизируется с django-celery-beat через сигналы.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="report_schedules")
+    name = models.CharField(max_length=255)
+    report_type = models.CharField(max_length=50)
+    cron = models.CharField(max_length=100, validators=[CRON_VALIDATOR],
+                            help_text="Пример: '0 9 * * 1' — каждый понедельник в 09:00")
+    timezone = models.CharField(max_length=50, default="UTC",
+                                help_text="Пример: Europe/Moscow")
+    is_active = models.BooleanField(default=True)
+
+    # Ссылка на задачу в django-celery-beat
+    periodic_task_name = models.CharField(max_length=255, blank=True, editable=False)
+
+    class Meta:
+        unique_together = [("user", "name")]
+
+    def __str__(self):
+        return f"{self.user}: {self.name} ({self.cron})"
+`,
+            },
+            {
+                filename: "reports/beat_sync.py",
+                code: `"""
+Синхронизация ReportSchedule → django_celery_beat.PeriodicTask.
+
+django-celery-beat хранит расписания в БД и опрашивает их каждые
+DEFAULT_HEARTBEAT секунд (по умолчанию 5s). Изменение PeriodicTask
+подхватывается без перезапуска Celery Beat.
+"""
+import json
+from django_celery_beat.models import PeriodicTask, CrontabSchedule
+
+
+def _get_or_create_crontab(cron: str, timezone: str) -> CrontabSchedule:
+    """
+    Парсит строку '0 9 * * 1' в поля CrontabSchedule.
+    get_or_create гарантирует отсутствие дублей.
+    """
+    minute, hour, day_of_month, month_of_year, day_of_week = cron.split()
+    schedule, _ = CrontabSchedule.objects.get_or_create(
+        minute=minute,
+        hour=hour,
+        day_of_month=day_of_month,
+        month_of_year=month_of_year,
+        day_of_week=day_of_week,
+        timezone=timezone,
+    )
+    return schedule
+
+
+def sync_to_beat(schedule: "ReportSchedule") -> None:
+    """Создаёт или обновляет PeriodicTask для данного расписания."""
+    task_name = f"report.{schedule.pk}.{schedule.user_id}"
+    crontab = _get_or_create_crontab(schedule.cron, schedule.timezone)
+
+    PeriodicTask.objects.update_or_create(
+        name=task_name,
+        defaults={
+            "task": "reports.tasks.generate_report",
+            "crontab": crontab,
+            "kwargs": json.dumps({
+                "schedule_id": schedule.pk,
+                "report_type": schedule.report_type,
+                "user_id": schedule.user_id,
+            }),
+            "enabled": schedule.is_active,
+        },
+    )
+
+    # Сохраняем имя задачи обратно в модель для последующего удаления
+    if schedule.periodic_task_name != task_name:
+        ReportSchedule = schedule.__class__
+        ReportSchedule.objects.filter(pk=schedule.pk).update(periodic_task_name=task_name)
+
+
+def remove_from_beat(task_name: str) -> None:
+    """Удаляет PeriodicTask по имени. Безопасно если задачи нет."""
+    PeriodicTask.objects.filter(name=task_name).delete()
+`,
+            },
+            {
+                filename: "reports/signals.py",
+                code: `from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+
+from .models import ReportSchedule
+from .beat_sync import sync_to_beat, remove_from_beat
+
+
+@receiver(post_save, sender=ReportSchedule)
+def on_schedule_saved(sender, instance, **kwargs):
+    """Синхронизируем с Beat при создании и обновлении."""
+    sync_to_beat(instance)
+
+
+@receiver(post_delete, sender=ReportSchedule)
+def on_schedule_deleted(sender, instance, **kwargs):
+    """Удаляем PeriodicTask при удалении расписания."""
+    if instance.periodic_task_name:
+        remove_from_beat(instance.periodic_task_name)
+`,
+            },
+            {
+                filename: "reports/tasks.py",
+                code: `import logging
+from celery import shared_task
+
+logger = logging.getLogger(__name__)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+def generate_report(self, schedule_id: int, report_type: str, user_id: int) -> None:
+    """
+    Задача, которую запускает Celery Beat по расписанию.
+    kwargs передаются из PeriodicTask.kwargs (JSON).
+    """
+    from django.contrib.auth import get_user_model
+    from django.core.mail import send_mail
+
+    User = get_user_model()
+
+    try:
+        user = User.objects.get(pk=user_id)
+        report_data = _build_report(report_type, user_id)
+        _send_report(user.email, report_type, report_data)
+        logger.info("Report '%s' sent to user %d", report_type, user_id)
+    except Exception as exc:
+        logger.error("Report generation failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+def _build_report(report_type: str, user_id: int) -> dict:
+    # Здесь реальная логика генерации отчёта
+    return {"type": report_type, "user_id": user_id, "rows": []}
+
+
+def _send_report(email: str, report_type: str, data: dict) -> None:
+    from django.core.mail import send_mail
+    send_mail(
+        subject=f"Отчёт: {report_type}",
+        message=f"Ваш отчёт готов. Строк: {len(data.get('rows', []))}",
+        from_email="reports@example.com",
+        recipient_list=[email],
+    )
+`,
+            },
+            {
+                filename: "reports/views.py",
+                code: `from rest_framework import serializers, viewsets
+from rest_framework.permissions import IsAuthenticated
+
+from .models import ReportSchedule
+
+
+class ReportScheduleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReportSchedule
+        fields = ["id", "name", "report_type", "cron", "timezone", "is_active"]
+        read_only_fields = ["id"]
+
+    def validate_timezone(self, value: str) -> str:
+        import zoneinfo
+        try:
+            zoneinfo.ZoneInfo(value)
+        except (KeyError, zoneinfo.ZoneInfoNotFoundError):
+            raise serializers.ValidationError(f"Unknown timezone: {value}")
+        return value
+
+
+class ReportScheduleViewSet(viewsets.ModelViewSet):
+    serializer_class = ReportScheduleSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return ReportSchedule.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        # post_save сигнал автоматически создаст PeriodicTask
+        serializer.save(user=self.request.user)
+`,
+            },
+        ],
+        explanation: `**Как django-celery-beat подхватывает изменения без перезапуска.** Beat-процесс опрашивает таблицу \`django_celery_beat_periodictask\` каждые 5 секунд (настраивается через \`CELERYBEAT_MAX_LOOP_INTERVAL\`). При изменении записи Beat перечитывает расписание на следующей итерации. Это ключевое отличие от файловой конфигурации (\`celerybeat-schedule\`), которая требует перезапуска.
+
+**CrontabSchedule и переиспользование.** \`get_or_create\` для \`CrontabSchedule\` предотвращает дублирование: \`"0 9 * * 1 UTC"\` будет создан один раз и использован всеми задачами с таким расписанием. При изменении расписания создаётся новый \`CrontabSchedule\`, старый остаётся (возможно используется другими задачами).
+
+**Сигналы как точка синхронизации.** \`post_save\` на \`ReportSchedule\` гарантирует, что Beat-задача обновляется при любом изменении: через API, Django Admin, management-команды. Логика синхронизации изолирована в \`beat_sync.py\` и не дублируется.
+
+**\`kwargs\` вместо \`args\` в PeriodicTask.** Аргументы передаются как JSON-строка в поле \`kwargs\`. Это надёжнее \`args\`: при изменении сигнатуры задачи именованные аргументы не сломают уже запланированные вызовы.
+
+**Timezone на уровне расписания.** \`CrontabSchedule.timezone\` принимает строку в формате IANA (Europe/Moscow). Beat выполнит задачу в корректный локальный момент времени независимо от timezone сервера. Валидируйте timezone через \`zoneinfo.ZoneInfo\` — это встроенный модуль Python 3.9+.`,
+    },
 
 ];
