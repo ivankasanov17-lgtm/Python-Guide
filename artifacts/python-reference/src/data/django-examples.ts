@@ -4000,7 +4000,7 @@ class ProductDetailView(APIView):
 
 **Масштабирование**: Write-эндпоинты идут в primary БД, Read-эндпоинты — в реплику. Команды можно ставить в очередь (Celery). Тяжёлые query-функции (\`get_admin_product_stats\`) кэшируются независимо. CQRS + replica router — естественная комбинация.`,
   },
-   {
+{
         id: "django-signals-event-driven",
         title: "Event-driven архитектура с Django Signals",
         task: `Спроектируйте event-driven систему уведомлений на основе Django Signals и Celery. При изменении статуса заказа должны: обновляться связанные записи, отправляться уведомление пользователю (email/push), логироваться событие в аудит-лог, тригерриться пересчёт статистики. Избегайте цепочек сигналов и циклических зависимостей. Обоснуйте, когда сигналы уместны, а когда нет.`,
@@ -6355,6 +6355,4976 @@ class ReportScheduleViewSet(viewsets.ModelViewSet):
 **\`kwargs\` вместо \`args\` в PeriodicTask.** Аргументы передаются как JSON-строка в поле \`kwargs\`. Это надёжнее \`args\`: при изменении сигнатуры задачи именованные аргументы не сломают уже запланированные вызовы.
 
 **Timezone на уровне расписания.** \`CrontabSchedule.timezone\` принимает строку в формате IANA (Europe/Moscow). Beat выполнит задачу в корректный локальный момент времени независимо от timezone сервера. Валидируйте timezone через \`zoneinfo.ZoneInfo\` — это встроенный модуль Python 3.9+.`,
+    },
+
+    {
+        id: "django-idempotent-tasks",
+        title: "Idempotent задачи и exactly-once обработка",
+        task: `Вам нужно реализовать списание баллов с баланса пользователя в фоновой задаче. Задача может быть выполнена несколько раз из-за retry. Реализуйте идемпотентность через: уникальный ключ задачи (idempotency key), distributed lock через Redis, транзакционный outbox pattern. Покажите разницу между at-least-once и exactly-once семантикой.`,
+        files: [
+            {
+                filename: "billing/models.py",
+                code: `import uuid
+from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class Wallet(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="wallet")
+    balance = models.PositiveIntegerField(default=0)  # баллы, целое число
+
+    def __str__(self):
+        return f"{self.user}: {self.balance} pts"
+
+
+class DeductionRecord(models.Model):
+    """
+    Таблица выполненных списаний. Уникальный idempotency_key гарантирует,
+    что одно и то же списание не будет применено дважды даже при retry.
+    Это и есть exactly-once семантика на уровне БД.
+    """
+    idempotency_key = models.UUIDField(unique=True, db_index=True)
+    wallet = models.ForeignKey(Wallet, on_delete=models.PROTECT, related_name="deductions")
+    amount = models.PositiveIntegerField()
+    reason = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class OutboxEvent(models.Model):
+    """
+    Transactional Outbox: событие записывается в той же транзакции,
+    что и само списание. Отдельный worker читает и публикует события.
+    Гарантирует, что событие не потеряется если брокер недоступен.
+    """
+    class Status(models.TextChoices):
+        PENDING = "pending", "Ожидает"
+        SENT = "sent", "Отправлено"
+
+    event_type = models.CharField(max_length=100)
+    payload = models.JSONField()
+    status = models.CharField(max_length=20, choices=Status, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+`,
+            },
+            {
+                filename: "billing/deduction.py",
+                code: `"""
+Три уровня защиты от двойного списания:
+
+1. Idempotency key + уникальный индекс в БД (DeductionRecord)
+   → exactly-once: повторный вызов с тем же ключом — no-op
+2. Distributed lock через Redis
+   → защита от параллельных вызовов до момента записи в БД
+3. Transactional outbox
+   → событие публикуется только если транзакция закоммичена
+"""
+import uuid
+import logging
+from contextlib import contextmanager
+
+import redis
+from django.conf import settings
+from django.db import transaction, IntegrityError
+
+logger = logging.getLogger(__name__)
+
+
+def _redis() -> redis.Redis:
+    return redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+
+
+@contextmanager
+def distributed_lock(key: str, timeout: int = 30):
+    """
+    SET NX EX — атомарная операция Redis.
+    Если ключ уже существует — другой воркер держит блокировку.
+    """
+    r = _redis()
+    lock_key = f"lock:{key}"
+    acquired = r.set(lock_key, "1", nx=True, ex=timeout)
+    if not acquired:
+        raise RuntimeError(f"Could not acquire lock for {key}")
+    try:
+        yield
+    finally:
+        r.delete(lock_key)
+
+
+def deduct_points(
+    wallet_id: int,
+    amount: int,
+    reason: str,
+    idempotency_key: uuid.UUID,
+) -> bool:
+    """
+    Списывает баллы идемпотентно.
+    Возвращает True если списание выполнено, False если уже было выполнено ранее.
+    Бросает ValueError при недостатке баланса.
+    """
+    from .models import Wallet, DeductionRecord, OutboxEvent
+
+    # Шаг 1: быстрая проверка без лока — если запись уже есть, выходим
+    if DeductionRecord.objects.filter(idempotency_key=idempotency_key).exists():
+        logger.info("Deduction %s already applied, skipping.", idempotency_key)
+        return False
+
+    # Шаг 2: распределённая блокировка — защищаем от race condition
+    with distributed_lock(f"wallet:{wallet_id}"):
+        try:
+            with transaction.atomic():
+                wallet = Wallet.objects.select_for_update().get(pk=wallet_id)
+
+                if wallet.balance < amount:
+                    raise ValueError(
+                        f"Insufficient balance: {wallet.balance} < {amount}"
+                    )
+
+                wallet.balance -= amount
+                wallet.save(update_fields=["balance"])
+
+                # Запись-маркер — уникальный индекс предотвращает дубль
+                DeductionRecord.objects.create(
+                    idempotency_key=idempotency_key,
+                    wallet=wallet,
+                    amount=amount,
+                    reason=reason,
+                )
+
+                # Outbox-событие в той же транзакции
+                OutboxEvent.objects.create(
+                    event_type="points.deducted",
+                    payload={
+                        "wallet_id": wallet_id,
+                        "amount": amount,
+                        "reason": reason,
+                        "idempotency_key": str(idempotency_key),
+                    },
+                )
+
+        except IntegrityError:
+            # Гонка: параллельный вызов успел записать DeductionRecord первым
+            logger.info("Deduction %s lost race, skipping.", idempotency_key)
+            return False
+
+    return True
+`,
+            },
+            {
+                filename: "billing/tasks.py",
+                code: `"""
+At-least-once семантика Celery + идемпотентная логика = exactly-once эффект.
+
+Celery гарантирует at-least-once: задача выполнится минимум один раз,
+но при сбое или retry — возможно несколько раз.
+Idempotency key на уровне БД превращает это в exactly-once:
+повторный вызов с тем же ключом — безопасный no-op.
+"""
+import uuid
+from celery import shared_task
+
+from .deduction import deduct_points
+
+
+@shared_task(
+    bind=True,
+    max_retries=5,
+    default_retry_delay=60,
+    # acks_late=True: задача подтверждается брокеру только после успешного выполнения.
+    # При сбое воркера — задача вернётся в очередь (at-least-once).
+    acks_late=True,
+)
+def deduct_points_task(
+    self,
+    wallet_id: int,
+    amount: int,
+    reason: str,
+    idempotency_key: str,  # UUID передаётся как строка (JSON-совместимо)
+) -> None:
+    try:
+        applied = deduct_points(
+            wallet_id=wallet_id,
+            amount=amount,
+            reason=reason,
+            idempotency_key=uuid.UUID(idempotency_key),
+        )
+        if not applied:
+            # Уже выполнено — завершаем без ошибки, не retry
+            return
+    except ValueError as exc:
+        # Бизнес-ошибка (недостаток баланса) — не retry
+        raise
+    except Exception as exc:
+        # Техническая ошибка (БД недоступна, Redis упал) — retry
+        raise self.retry(exc=exc)
+
+
+# ---------------------------------------------------------------------------
+# Использование: вызов из view или другой задачи
+# ---------------------------------------------------------------------------
+
+def schedule_deduction(wallet_id: int, amount: int, reason: str) -> str:
+    """
+    Генерирует idempotency_key и ставит задачу в очередь.
+    Ключ должен генерироваться на стороне вызывающего кода,
+    а не внутри задачи — иначе каждый retry получит новый ключ.
+    """
+    key = str(uuid.uuid4())
+    deduct_points_task.delay(
+        wallet_id=wallet_id,
+        amount=amount,
+        reason=reason,
+        idempotency_key=key,
+    )
+    return key
+`,
+            },
+            {
+                filename: "billing/outbox_worker.py",
+                code: `"""
+Outbox worker: читает неотправленные события и публикует их в брокер.
+Запускается как отдельный процесс или периодическая Celery-задача.
+
+Паттерн Transactional Outbox решает проблему dual write:
+без outbox возможна ситуация когда транзакция закоммичена,
+но событие в брокер не отправлено (сервер упал между двумя операциями).
+"""
+from celery import shared_task
+from .models import OutboxEvent
+
+
+@shared_task
+def publish_outbox_events() -> int:
+    pending = OutboxEvent.objects.filter(status=OutboxEvent.Status.PENDING).order_by("created_at")[:100]
+    published = 0
+
+    for event in pending:
+        try:
+            _publish_to_broker(event.event_type, event.payload)
+            event.status = OutboxEvent.Status.SENT
+            event.save(update_fields=["status"])
+            published += 1
+        except Exception:
+            # Оставляем PENDING — следующий запуск повторит попытку
+            pass
+
+    return published
+
+
+def _publish_to_broker(event_type: str, payload: dict) -> None:
+    # В реальном проекте: kafka-producer, pika (RabbitMQ), boto3 SNS и т.д.
+    pass
+`,
+            },
+        ],
+        explanation: `**At-least-once vs exactly-once.** Celery (и большинство брокеров) гарантируют at-least-once: задача выполнится минимум один раз, но при сбое — возможно несколько. Exactly-once на уровне брокера технически сложно и дорого. Практичное решение: сделать обработчик идемпотентным — повторный вызов с теми же данными даёт тот же результат без побочных эффектов.
+
+**Три уровня защиты.** Быстрая проверка \`exists()\` до лока — для случаев, когда retry очевиден и не нужно занимать Redis. Distributed lock — защита от параллельных вызовов с одним ключом до момента записи в БД. Уникальный индекс + \`IntegrityError\` — финальная страховка: даже если оба воркера прошли через lock (теоретически возможно при истечении TTL), БД не позволит записать дубль.
+
+**\`select_for_update()\` внутри транзакции.** Блокирует строку кошелька на уровне БД — предотвращает race condition при параллельном изменении баланса из разных транзакций. Работает в паре с \`transaction.atomic()\`.
+
+**Idempotency key генерируется на стороне вызывающего.** Если генерировать ключ внутри задачи — каждый retry создаст новый UUID и идемпотентность не сработает. Ключ должен быть стабильным идентификатором конкретной операции (UUID от вызывающего кода, или deterministic hash от параметров).
+
+**Transactional Outbox.** Без outbox есть окно между коммитом транзакции и отправкой события в брокер — сервер может упасть в этот момент, событие потеряется. Запись \`OutboxEvent\` в той же транзакции, что и изменение баланса, гарантирует атомарность: либо оба есть, либо ни одного. Отдельный worker публикует события с retry.`,
+    },
+
+    {
+        id: "django-channels-websocket",
+        title: "WebSocket и Django Channels",
+        task: `Реализуйте real-time уведомления с использованием Django Channels. Требования: пользователь подключается к персональному WebSocket-каналу, при возникновении события в системе (новый заказ, изменение статуса) — получает push-уведомление, поддержка масштабирования через Redis channel layer, graceful reconnect на клиенте, аутентификация WebSocket-соединения.`,
+        files: [
+            {
+                filename: "notifications/consumers.py",
+                code: `"""
+NotificationConsumer — персональный WebSocket-канал пользователя.
+
+Группа: "user_{user_id}" — уникальная для каждого пользователя.
+Один пользователь может иметь несколько соединений (разные вкладки/устройства):
+все они подписаны на одну группу и получат одно и то же сообщение.
+"""
+import json
+import logging
+
+from channels.generic.websocket import AsyncWebsocketConsumer
+
+logger = logging.getLogger(__name__)
+
+
+class NotificationConsumer(AsyncWebsocketConsumer):
+
+    @property
+    def group_name(self) -> str:
+        return f"user_{self.scope['user'].id}"
+
+    async def connect(self):
+        user = self.scope.get("user")
+
+        # AnonymousUser не аутентифицирован — закрываем соединение
+        if not user or not user.is_authenticated:
+            await self.close(code=4001)
+            return
+
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        await self.accept()
+        logger.info("WS connected: user=%d channel=%s", user.id, self.channel_name)
+
+        # Отправляем подтверждение подключения
+        await self.send_json({"type": "connected", "user_id": user.id})
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        logger.info("WS disconnected: code=%d channel=%s", close_code, self.channel_name)
+
+    # WebSocket → сервер (клиент что-то отправил)
+    async def receive(self, text_data=None, bytes_data=None):
+        # Пинг от клиента для поддержания соединения
+        try:
+            data = json.loads(text_data or "{}")
+        except json.JSONDecodeError:
+            return
+        if data.get("type") == "ping":
+            await self.send_json({"type": "pong"})
+
+    # Channel Layer → этот consumer (событие из группы)
+    async def notification_message(self, event: dict):
+        """
+        Вызывается channel layer когда кто-то отправит в группу
+        сообщение с type="notification.message".
+        Django Channels маппит "." → "_" при поиске метода.
+        """
+        await self.send_json(event["data"])
+
+    async def send_json(self, data: dict):
+        await self.send(text_data=json.dumps(data, ensure_ascii=False))
+`,
+            },
+            {
+                filename: "notifications/middleware.py",
+                code: `"""
+WebSocket-аутентификация через JWT в query string.
+HTTP Cookie недоступны напрямую в WS handshake в некоторых браузерах,
+поэтому токен передаётся как ?token=<access_token>.
+
+Пример подключения: ws://example.com/ws/notifications/?token=eyJ...
+"""
+from urllib.parse import parse_qs
+
+from channels.db import database_sync_to_async
+from channels.middleware import BaseMiddleware
+from django.contrib.auth.models import AnonymousUser
+
+
+@database_sync_to_async
+def get_user_from_token(token: str):
+    """Валидирует JWT и возвращает пользователя или AnonymousUser."""
+    try:
+        import jwt
+        from django.conf import settings
+        from django.contrib.auth import get_user_model
+
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        User = get_user_model()
+        return User.objects.get(pk=payload["sub"])
+    except Exception:
+        return AnonymousUser()
+
+
+class JWTAuthMiddleware(BaseMiddleware):
+    async def __call__(self, scope, receive, send):
+        query_string = scope.get("query_string", b"").decode()
+        params = parse_qs(query_string)
+        token = params.get("token", [None])[0]
+
+        scope["user"] = await get_user_from_token(token) if token else AnonymousUser()
+        return await super().__call__(scope, receive, send)
+`,
+            },
+            {
+                filename: "notifications/sender.py",
+                code: `"""
+API для отправки уведомлений из любого места в проекте.
+Работает из sync и async кода.
+"""
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
+
+def notify_user(user_id: int, notification_type: str, data: dict) -> None:
+    """
+    Sync-обёртка: отправляет уведомление пользователю через channel layer.
+    Вызывается из Django views, Celery tasks, signals — везде.
+    """
+    channel_layer = get_channel_layer()
+    group_name = f"user_{user_id}"
+
+    async_to_sync(channel_layer.group_send)(
+        group_name,
+        {
+            "type": "notification.message",   # → метод notification_message в consumer
+            "data": {
+                "type": notification_type,
+                **data,
+            },
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Примеры использования из разных частей проекта
+# ---------------------------------------------------------------------------
+
+def notify_order_status_changed(order) -> None:
+    notify_user(
+        user_id=order.user_id,
+        notification_type="order.status_changed",
+        data={"order_id": order.pk, "status": order.status},
+    )
+
+
+def notify_points_deducted(user_id: int, amount: int) -> None:
+    notify_user(
+        user_id=user_id,
+        notification_type="points.deducted",
+        data={"amount": amount},
+    )
+`,
+            },
+            {
+                filename: "config/routing.py",
+                code: `from django.urls import path
+from channels.routing import ProtocolTypeRouter, URLRouter
+from notifications.consumers import NotificationConsumer
+from notifications.middleware import JWTAuthMiddleware
+
+application = ProtocolTypeRouter({
+    "websocket": JWTAuthMiddleware(
+        URLRouter([
+            path("ws/notifications/", NotificationConsumer.as_asgi()),
+        ])
+    ),
+})
+`,
+            },
+            {
+                filename: "frontend/notifications.js",
+                code: `/**
+ * WebSocket-клиент с exponential backoff reconnect.
+ * Graceful reconnect: при разрыве соединения повторяет попытки
+ * с нарастающей задержкой (1s → 2s → 4s → ... → max 30s).
+ */
+class NotificationSocket {
+    constructor(token, onMessage) {
+        this.token = token;
+        this.onMessage = onMessage;
+        this.retryDelay = 1000;
+        this.maxDelay = 30000;
+        this.shouldReconnect = true;
+        this.connect();
+    }
+
+    connect() {
+        const url = \`wss://\${location.host}/ws/notifications/?token=\${this.token}\`;
+        this.ws = new WebSocket(url);
+
+        this.ws.onopen = () => {
+            console.log("WS connected");
+            this.retryDelay = 1000; // сбрасываем задержку при успешном подключении
+        };
+
+        this.ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === "pong") return; // игнорируем служебные сообщения
+            this.onMessage(data);
+        };
+
+        this.ws.onclose = (event) => {
+            if (!this.shouldReconnect) return;
+            if (event.code === 4001) {
+                console.error("WS auth failed, not reconnecting");
+                return;
+            }
+            console.log(\`WS closed, reconnecting in \${this.retryDelay}ms\`);
+            setTimeout(() => this.connect(), this.retryDelay);
+            this.retryDelay = Math.min(this.retryDelay * 2, this.maxDelay);
+        };
+
+        // Heartbeat: предотвращаем разрыв соединения прокси/балансировщиком
+        this.pingInterval = setInterval(() => {
+            if (this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: "ping" }));
+            }
+        }, 25000);
+    }
+
+    disconnect() {
+        this.shouldReconnect = false;
+        clearInterval(this.pingInterval);
+        this.ws.close();
+    }
+}
+
+// Использование:
+// const ns = new NotificationSocket(accessToken, (msg) => {
+//     console.log("Notification:", msg);
+// });
+`,
+            },
+            {
+                filename: "settings.py (фрагмент)",
+                code: `INSTALLED_APPS = [
+    ...
+    "channels",
+    "notifications",
+]
+
+# ASGI application — указываем routing с WebSocket поддержкой
+ASGI_APPLICATION = "config.routing.application"
+
+# Channel Layer: Redis для масштабирования между воркерами
+# Без Redis channel layer работает in-memory — только в одном процессе
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("localhost", 6379)],
+            "capacity": 1500,       # максимум сообщений в очереди группы
+            "expiry": 10,           # секунды хранения сообщения в channel layer
+        },
+    }
+}
+`,
+            },
+        ],
+        explanation: `**Channel Layer и Redis для масштабирования.** In-memory channel layer (по умолчанию) работает только в рамках одного процесса — при горизонтальном масштабировании (несколько Daphne/Uvicorn воркеров) пользователи на разных воркерах не получат сообщения. Redis channel layer является общей шиной: \`group_send\` публикует в Redis, все воркеры подписаны и доставляют в свои соединения.
+
+**Группы вместо прямых каналов.** Один пользователь может иметь несколько активных соединений (разные вкладки, мобильное устройство). Отправка в группу \`user_{id}\` автоматически доставит уведомление во все соединения. \`channel_name\` уникален для каждого соединения — не используйте его напрямую для нотификаций.
+
+**Маппинг \`type\` → метод.** Django Channels преобразует точки в underscores: сообщение с \`type: "notification.message"\` → вызов метода \`notification_message\`. Это соглашение важно соблюдать точно.
+
+**JWT в query string.** Это стандартная практика для WS-аутентификации когда cookie недоступны (CORS, мобильные клиенты). Access-токен имеет короткий TTL (15 мин), поэтому риск ограничен. Альтернатива — первый message после connect с токеном, но это усложняет клиент.
+
+**Graceful reconnect с exponential backoff.** При разрыве клиент ждёт 1s → 2s → 4s → ... → 30s перед следующей попыткой. Это предотвращает thundering herd: если сервер перезапустился, тысячи клиентов не обрушат его одновременными reconnect-ами. Код \`4001\` (auth failed) — специальный: reconnect бессмысленен, токен не изменится.`,
+    },
+
+    {
+        id: "django-multilevel-cache",
+        title: "Многоуровневое кэширование",
+        task: `Реализуйте многоуровневую стратегию кэширования для страницы каталога товаров: L1 — in-process cache (locmem) для frequently accessed данных, L2 — Redis для shared cache между воркерами, cache invalidation при изменении товара или его категории, поддержка vary by: язык, валюта, пользовательский сегмент. Используйте паттерн Cache-Aside.`,
+        files: [
+            {
+                filename: "core/cache.py",
+                code: `"""
+Двухуровневый кэш: L1 (locmem, in-process) + L2 (Redis, shared).
+
+Cache-Aside паттерн:
+  1. Читаем из L1 → если есть, возвращаем
+  2. Читаем из L2 → если есть, пишем в L1, возвращаем
+  3. Читаем из источника → пишем в L2 и L1, возвращаем
+
+Запись происходит только при cache miss — данные загружаются «лениво».
+Invalidation: удаляем из обоих уровней по ключу или по тегу.
+"""
+import hashlib
+import json
+from typing import Any, Callable
+
+from django.core.cache import caches
+
+
+def _l1():
+    return caches["l1"]   # django.core.cache.backends.locmem.LocMemCache
+
+
+def _l2():
+    return caches["l2"]   # django_redis (Redis)
+
+
+class TwoLevelCache:
+    """
+    Обёртка над L1/L2 с поддержкой тегов для групповой инвалидации.
+    Теги хранятся в Redis как Sorted Set; версия тега инкрементируется
+    при инвалидации, что делает старые ключи «несвежими».
+    """
+
+    L1_TTL = 60          # секунды (короткий — L1 обновляется чаще)
+    L2_TTL = 600         # секунды
+
+    def get_or_set(
+        self,
+        key: str,
+        loader: Callable[[], Any],
+        tags: list[str] | None = None,
+        l2_ttl: int | None = None,
+    ) -> Any:
+        versioned_key = self._versioned_key(key, tags or [])
+
+        # L1 hit
+        value = _l1().get(versioned_key)
+        if value is not None:
+            return value
+
+        # L2 hit → прогреваем L1
+        value = _l2().get(versioned_key)
+        if value is not None:
+            _l1().set(versioned_key, value, self.L1_TTL)
+            return value
+
+        # Miss → загружаем из источника
+        value = loader()
+        ttl = l2_ttl or self.L2_TTL
+        _l2().set(versioned_key, value, ttl)
+        _l1().set(versioned_key, value, self.L1_TTL)
+        return value
+
+    def invalidate(self, key: str, tags: list[str] | None = None) -> None:
+        versioned_key = self._versioned_key(key, tags or [])
+        _l1().delete(versioned_key)
+        _l2().delete(versioned_key)
+
+    def invalidate_tag(self, tag: str) -> None:
+        """
+        Инкрементируем версию тега → все ключи с этим тегом становятся stale.
+        Это O(1) вместо перебора всех ключей с префиксом.
+        """
+        _l2().incr(f"tag_version:{tag}", 1)
+        # L1 устареет сам через L1_TTL секунд — это допустимая eventual consistency
+
+    def _versioned_key(self, key: str, tags: list[str]) -> str:
+        if not tags:
+            return key
+        # Получаем версии всех тегов одним pipeline-запросом
+        r2 = _l2()
+        versions = [r2.get(f"tag_version:{t}") or "0" for t in tags]
+        tag_hash = hashlib.md5(":".join(versions).encode()).hexdigest()[:8]
+        return f"{key}:v{tag_hash}"
+
+
+cache = TwoLevelCache()
+`,
+            },
+            {
+                filename: "catalog/cache_keys.py",
+                code: `"""
+Централизованное определение ключей кэша и vary-параметров.
+Все ключи в одном месте — легко найти и инвалидировать.
+"""
+
+
+def catalog_page_key(page: int, lang: str, currency: str, segment: str) -> str:
+    """
+    Vary by: язык, валюта, сегмент пользователя.
+    Разные сегменты видят разные цены/акции — нельзя отдавать один кэш.
+    """
+    return f"catalog:page:{page}:{lang}:{currency}:{segment}"
+
+
+def product_key(product_id: int, lang: str) -> str:
+    return f"product:{product_id}:{lang}"
+
+
+def product_tags(product_id: int, category_id: int) -> list[str]:
+    """Теги для инвалидации: при изменении товара или категории."""
+    return [f"product:{product_id}", f"category:{category_id}"]
+
+
+def category_tag(category_id: int) -> str:
+    return f"category:{category_id}"
+`,
+            },
+            {
+                filename: "catalog/views.py",
+                code: `from django.http import JsonResponse
+from django.views import View
+
+from core.cache import cache
+from .cache_keys import catalog_page_key, product_tags
+from .serializers import serialize_catalog_page
+
+
+def _get_user_segment(user) -> str:
+    """Определяем сегмент пользователя для vary-кэша."""
+    if not user.is_authenticated:
+        return "anonymous"
+    return getattr(user, "plan", "free")
+
+
+class CatalogView(View):
+    def get(self, request):
+        page = int(request.GET.get("page", 1))
+        lang = request.LANGUAGE_CODE          # django i18n
+        currency = request.GET.get("currency", "RUB")
+        segment = _get_user_segment(request.user)
+
+        key = catalog_page_key(page, lang, currency, segment)
+
+        data = cache.get_or_set(
+            key=key,
+            loader=lambda: serialize_catalog_page(page, lang, currency, segment),
+            tags=["catalog"],        # инвалидируется при любом изменении каталога
+            l2_ttl=300,
+        )
+        return JsonResponse(data)
+
+
+class ProductDetailView(View):
+    def get(self, request, product_id: int):
+        from .models import Product
+        lang = request.LANGUAGE_CODE
+        product = Product.objects.select_related("category").get(pk=product_id)
+
+        key = f"product:{product_id}:{lang}"
+        data = cache.get_or_set(
+            key=key,
+            loader=lambda: _serialize_product(product, lang),
+            tags=product_tags(product_id, product.category_id),
+        )
+        return JsonResponse(data)
+
+
+def _serialize_product(product, lang: str) -> dict:
+    return {
+        "id": product.pk,
+        "name": product.name,
+        "price": str(product.price),
+        "category": product.category.name,
+    }
+`,
+            },
+            {
+                filename: "catalog/signals.py",
+                code: `from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+from core.cache import cache
+from .cache_keys import category_tag
+from .models import Product, Category
+
+
+@receiver(post_save, sender=Product)
+def on_product_saved(sender, instance, **kwargs):
+    # Инвалидируем конкретный товар и каталог целиком
+    cache.invalidate_tag(f"product:{instance.pk}")
+    cache.invalidate_tag("catalog")
+
+
+@receiver(post_save, sender=Category)
+def on_category_saved(sender, instance, **kwargs):
+    # Инвалидируем все товары категории через тег
+    cache.invalidate_tag(category_tag(instance.pk))
+    cache.invalidate_tag("catalog")
+`,
+            },
+            {
+                filename: "settings.py (фрагмент)",
+                code: `CACHES = {
+    # L1: in-process, per-worker, мгновенный доступ
+    "l1": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "l1-catalog",
+    },
+    # L2: Redis, shared между всеми воркерами
+    "l2": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://localhost:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+        },
+    },
+    # Django default cache (используется встроенными механизмами: sessions и т.д.)
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://localhost:6379/0",
+    },
+}
+`,
+            },
+        ],
+        explanation: `**L1 (locmem) — зачем нужен если есть Redis.** Redis — сетевой вызов (~0.5–2ms). Locmem — обращение к словарю в памяти (~microseconds). При высокой нагрузке разница существенна: тысячи запросов в секунду к одним и тем же ключам создают значительный трафик к Redis. L1 снимает нагрузку с Redis для «горячих» ключей. Компромисс: L1 изолирован в рамках одного воркера — при инвалидации через Redis, L1 устареет только через свой TTL (60s). Это eventual consistency — допустимо для каталога товаров.
+
+**Инвалидация по тегам через версионирование.** Хранить список всех ключей для тега накладно и ненадёжно. Вместо этого версия тега — одно число в Redis. Все ключи включают хеш версий своих тегов. При инвалидации тега инкрементируем его версию — все ключи со старым хешем станут промахами (cache miss), данные перезагрузятся при следующем запросе. Это O(1) операция независимо от количества ключей под тегом.
+
+**Vary by — обязательно для персонализированного контента.** Без vary разные пользователи получат один и тот же кэшированный ответ. Пользователь с планом \`pro\` увидит цены сегмента \`free\` — это критическая ошибка. Vary-параметры формируют разные ключи: \`catalog:page:1:ru:RUB:pro\` ≠ \`catalog:page:1:ru:RUB:free\`.
+
+**Cache-Aside vs Write-Through.** Cache-Aside (используем здесь): кэш заполняется только при miss, данные загружаются лениво. Write-Through: данные пишутся в кэш синхронно при каждом обновлении в БД. Cache-Aside проще и устойчивее к холодному старту; Write-Through даёт более свежие данные, но усложняет логику записи.`,
+    },
+
+    {
+        id: "django-query-caching",
+        title: "Кэширование запросов к БД (Query caching)",
+        task: `Реализуйте кэширование на уровне QuerySet с автоматической инвалидацией. При изменении любой записи Product должен инвалидироваться кэш всех запросов, которые эту запись возвращали. Рассмотрите использование django-cachalot или реализуйте свой механизм через signals + cache tags. Обозначьте риски staleness.`,
+        files: [
+            {
+                filename: "core/query_cache.py",
+                code: `"""
+Кэширование QuerySet через cache tags без django-cachalot.
+
+Идея: каждый кэшированный результат помечается тегами моделей,
+данные которых в него вошли. При изменении модели инкрементируем
+версию тега → все ключи с этим тегом становятся stale (cache miss).
+
+Это тот же подход что в TwoLevelCache, но заточенный под QuerySet.
+"""
+import hashlib
+import pickle
+from typing import Any
+
+from django.core.cache import cache
+from django.db import models
+
+
+def _tag_version_key(model: type) -> str:
+    return f"qc:tag:{model._meta.label_lower}"
+
+
+def _get_tag_version(model: type) -> str:
+    return cache.get(_tag_version_key(model)) or "0"
+
+
+def invalidate_model(model: type) -> None:
+    """
+    Инвалидирует все кэшированные запросы, затрагивающие данную модель.
+    Вызывается из сигнала post_save / post_delete.
+    """
+    key = _tag_version_key(model)
+    try:
+        cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, timeout=None)
+
+
+def _build_cache_key(qs: models.QuerySet, models_involved: list[type]) -> str:
+    """
+    Ключ: SQL-запрос + параметры + версии всех моделей.
+    При инвалидации любой модели версия меняется → новый ключ → miss.
+    """
+    sql, params = qs.query.sql_with_params()
+    versions = ":".join(_get_tag_version(m) for m in models_involved)
+    raw = f"{sql}:{params}:{versions}"
+    return "qc:" + hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def cached_qs(
+    qs: models.QuerySet,
+    models_involved: list[type],
+    timeout: int = 300,
+) -> list[Any]:
+    """
+    Выполняет QuerySet и кэширует результат.
+    При изменении любой из models_involved кэш инвалидируется.
+
+    Пример:
+        results = cached_qs(
+            Product.objects.filter(is_active=True).select_related("category"),
+            models_involved=[Product, Category],
+            timeout=60,
+        )
+    """
+    key = _build_cache_key(qs, models_involved)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    result = list(qs)          # материализуем QuerySet
+    cache.set(key, result, timeout)
+    return result
+`,
+            },
+            {
+                filename: "catalog/signals.py",
+                code: `"""
+Сигналы для автоматической инвалидации кэша QuerySet.
+
+post_save и post_delete покрывают все изменения через Django ORM.
+Массовые операции (queryset.update(), queryset.delete()) сигналы
+НЕ посылают — это главный риск staleness.
+"""
+from django.db.models.signals import post_delete, post_save
+from django.dispatch import receiver
+
+from core.query_cache import invalidate_model
+from .models import Category, Product
+
+
+@receiver([post_save, post_delete], sender=Product)
+def on_product_change(sender, **kwargs):
+    invalidate_model(Product)
+
+
+@receiver([post_save, post_delete], sender=Category)
+def on_category_change(sender, **kwargs):
+    invalidate_model(Category)
+`,
+            },
+            {
+                filename: "catalog/views.py",
+                code: `from django.http import JsonResponse
+from django.views import View
+
+from core.query_cache import cached_qs
+from .models import Category, Product
+
+
+class ActiveProductsView(View):
+    def get(self, request):
+        # Запрос кэшируется; инвалидируется при изменении Product или Category
+        products = cached_qs(
+            Product.objects.filter(is_active=True)
+                           .select_related("category")
+                           .order_by("-created_at"),
+            models_involved=[Product, Category],
+            timeout=120,
+        )
+        data = [
+            {
+                "id": p.pk,
+                "name": p.name,
+                "category": p.category.name,
+                "price": str(p.price),
+            }
+            for p in products
+        ]
+        return JsonResponse({"products": data})
+`,
+            },
+            {
+                filename: "django_cachalot_alternative.md",
+                code: `# django-cachalot: встроенное автоматическое кэширование QuerySet
+
+## Что делает
+Патчит Django ORM: перехватывает все SELECT-запросы, кэширует результат,
+инвалидирует при любом INSERT/UPDATE/DELETE к затронутым таблицам.
+Работает прозрачно — изменений в коде запросов не требуется.
+
+## Подключение
+\`\`\`python
+# settings.py
+INSTALLED_APPS += ["cachalot"]
+CACHALOT_CACHE = "default"   # Redis cache backend
+CACHALOT_TIMEOUT = 300
+\`\`\`
+
+## Плюсы
+- Нулевые изменения в коде запросов
+- Инвалидирует даже при queryset.update() и bulk_create()
+  (перехватывает на уровне SQL compiler, а не сигналов)
+- Поддерживает multi-db, READ COMMITTED, транзакции
+
+## Минусы и риски staleness
+- Не кэширует запросы с \`RawSQL\`, \`extra()\`, курсорами —
+  изменения через raw SQL не триггерят инвалидацию
+- При использовании нескольких БД нужна точная настройка
+  \`CACHALOT_DATABASES\`
+- Большие QuerySet могут занять много памяти в кэше
+
+## Риски staleness при ручной реализации (signals)
+1. \`queryset.update()\` — не посылает post_save → кэш не инвалидируется
+2. \`queryset.delete()\` — не посылает post_delete для каждого объекта
+3. Прямой SQL через \`connection.execute()\` — Django не знает об изменении
+4. Внешние процессы, пишущие в ту же БД (скрипты, другие сервисы)
+
+## Рекомендация
+Для простых случаев (только ORM, нет raw SQL) — django-cachalot.
+Для сложных сценариев (несколько источников записи, custom SQL) —
+ручная инвалидация через cache tags с явными вызовами \`invalidate_model()\`.
+`,
+            },
+        ],
+        explanation: `**Версионирование тегов вместо перебора ключей.** Хранить список всех кэш-ключей для модели ненадёжно — при падении Redis список теряется. Вместо этого версия модели — одно число. Кэш-ключ включает хеш версий всех задействованных моделей. При инвалидации \`cache.incr\` делает все старые ключи недостижимыми — следующий запрос к ним будет cache miss, данные перезагрузятся.
+
+**Главный риск: массовые операции минуют сигналы.** \`Product.objects.filter(...).update(price=F("price") * 1.1)\` выполняет SQL UPDATE напрямую, минуя \`post_save\`. Это означает: кэш не инвалидируется, пользователи видят старые цены до истечения TTL. Это фундаментальное ограничение подхода на сигналах. \`django-cachalot\` решает это, перехватывая SQL на уровне компилятора.
+
+**django-cachalot vs ручная реализация.** Cachalot прозрачен — не нужно менять код запросов, он корректно обрабатывает \`update()\` и \`bulk_create()\`. Минус: магия под капотом усложняет отладку и не работает с raw SQL. Ручная реализация прозрачнее и предсказуемее, но требует явных вызовов инвалидации везде.
+
+**TTL как последняя линия обороны.** Даже при ручной реализации TTL ограничивает максимальное время staleness. Для критичных данных (цены, остатки) — короткий TTL (30–60s) или отключение кэша. Для стабильных данных (категории, теги) — длинный TTL (10–30 мин).
+
+**Материализация QuerySet обязательна перед кэшированием.** \`list(qs)\` выполняет SQL и возвращает список Python-объектов. Кэширование самого QuerySet объекта бессмысленно — он lazy и выполнит запрос при следующем обращении.`,
+    },
+
+    {
+        id: "django-profiling",
+        title: "Профилирование и оптимизация",
+        task: `Вам передали Django-приложение с жалобами на медленную работу. Опишите и реализуйте полный цикл профилирования: использование django-debug-toolbar и django-silk в dev, py-spy или cProfile в production, анализ медленных SQL-запросов через EXPLAIN ANALYZE, настройка алертов на медленные запросы. По результатам анализа — оптимизируйте найденное узкое место.`,
+        files: [
+            {
+                filename: "config/settings_dev.py",
+                code: `"""
+Dev-настройки для профилирования.
+Никогда не включайте debug toolbar и silk в production.
+"""
+from .settings import *
+
+DEBUG = True
+
+# ---------------------------------------------------------------------------
+# django-debug-toolbar: SQL, время выполнения view, cache hits, signals
+# ---------------------------------------------------------------------------
+INSTALLED_APPS += ["debug_toolbar"]
+MIDDLEWARE = ["debug_toolbar.middleware.DebugToolbarMiddleware"] + MIDDLEWARE
+
+# Toolbar показывается только для этих IP
+INTERNAL_IPS = ["127.0.0.1", "::1"]
+
+DEBUG_TOOLBAR_CONFIG = {
+    "SHOW_TOOLBAR_CALLBACK": lambda request: DEBUG,
+    "RESULTS_CACHE_SIZE": 100,
+}
+
+# ---------------------------------------------------------------------------
+# django-silk: детальное профилирование запросов с историей
+# ---------------------------------------------------------------------------
+INSTALLED_APPS += ["silk"]
+MIDDLEWARE += ["silk.middleware.SilkyMiddleware"]
+
+SILKY_PYTHON_PROFILER = True          # включает cProfile для каждого запроса
+SILKY_PYTHON_PROFILER_BINARY = False  # True для .prof файла (SnakeViz)
+SILKY_MAX_RECORDED_REQUESTS = 1000
+SILKY_INTERCEPT_PERCENT = 100         # 100% в dev, 5–10% в staging
+
+# Логируем медленные SQL-запросы
+SILKY_ANALYZE_QUERIES = True
+SILKY_MAX_RESPONSE_BODY_SIZE = 1024   # bytes
+
+# Slow query log: запросы длиннее 100ms попадают в лог
+LOGGING = {
+    "version": 1,
+    "handlers": {
+        "slow_queries": {
+            "class": "logging.FileHandler",
+            "filename": "logs/slow_queries.log",
+        }
+    },
+    "loggers": {
+        "django.db.backends": {
+            "handlers": ["slow_queries"],
+            "level": "DEBUG",
+        }
+    },
+}
+`,
+            },
+            {
+                filename: "core/middleware.py",
+                code: `"""
+Middleware для алертов на медленные запросы в production.
+Не зависит от debug toolbar / silk — работает в любом окружении.
+"""
+import logging
+import time
+
+from django.conf import settings
+
+logger = logging.getLogger("performance")
+
+SLOW_REQUEST_THRESHOLD_MS = getattr(settings, "SLOW_REQUEST_THRESHOLD_MS", 500)
+VERY_SLOW_REQUEST_THRESHOLD_MS = getattr(settings, "VERY_SLOW_REQUEST_THRESHOLD_MS", 2000)
+
+
+class SlowRequestMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        start = time.perf_counter()
+        response = self.get_response(request)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+        if elapsed_ms >= SLOW_REQUEST_THRESHOLD_MS:
+            level = logging.WARNING if elapsed_ms < VERY_SLOW_REQUEST_THRESHOLD_MS else logging.ERROR
+            logger.log(
+                level,
+                "Slow request: %s %s — %.0fms | status=%d | user=%s",
+                request.method,
+                request.path,
+                elapsed_ms,
+                response.status_code,
+                getattr(request.user, "id", "anon"),
+            )
+
+        # Добавляем заголовок для observability (снимается на балансировщике)
+        response["X-Response-Time-Ms"] = f"{elapsed_ms:.0f}"
+        return response
+`,
+            },
+            {
+                filename: "core/profiling.py",
+                code: `"""
+Утилиты профилирования для production.
+
+py-spy — sampling profiler, не требует изменения кода:
+  sudo py-spy top --pid <PID>                    # realtime top
+  sudo py-spy record -o profile.svg --pid <PID>  # flamegraph
+
+cProfile — deterministic profiler, используйте для конкретных функций:
+"""
+import cProfile
+import functools
+import io
+import logging
+import pstats
+from contextlib import contextmanager
+
+logger = logging.getLogger("performance")
+
+
+@contextmanager
+def profile_block(name: str, top_n: int = 20):
+    """
+    Context manager для профилирования произвольного блока кода.
+
+    with profile_block("expensive_operation"):
+        result = compute_something()
+    """
+    pr = cProfile.Profile()
+    pr.enable()
+    try:
+        yield
+    finally:
+        pr.disable()
+        stream = io.StringIO()
+        ps = pstats.Stats(pr, stream=stream).sort_stats("cumulative")
+        ps.print_stats(top_n)
+        logger.info("Profile [%s]:\\n%s", name, stream.getvalue())
+
+
+def profile_view(view_func):
+    """
+    Декоратор для профилирования Django view.
+    Используйте только временно — в production оставляет значительный overhead.
+    """
+    @functools.wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        with profile_block(f"view:{view_func.__name__}"):
+            return view_func(request, *args, **kwargs)
+    return wrapper
+`,
+            },
+            {
+                filename: "catalog/views_before.py",
+                code: `"""
+БЫЛО: типичный N+1 query problem.
+Для 100 товаров → 1 запрос products + 100 запросов category + 100 запросов images.
+django-debug-toolbar покажет 201 SQL-запрос на одну страницу.
+"""
+from django.http import JsonResponse
+from django.views import View
+from .models import Product
+
+
+class ProductListBefore(View):
+    def get(self, request):
+        products = Product.objects.filter(is_active=True)[:100]
+        data = []
+        for product in products:
+            data.append({
+                "id": product.pk,
+                "name": product.name,
+                "category": product.category.name,     # SELECT category WHERE id=?  ← N+1
+                "images": [                             # SELECT images WHERE product_id=?  ← N+1
+                    img.url for img in product.images.all()
+                ],
+            })
+        return JsonResponse({"products": data})
+`,
+            },
+            {
+                filename: "catalog/views_after.py",
+                code: `"""
+СТАЛО: select_related + prefetch_related устраняют N+1.
+3 запроса вместо 201, независимо от количества товаров.
+
+EXPLAIN ANALYZE покажет:
+  Seq Scan → Index Scan после добавления индекса на is_active
+  Hash Join для category вместо вложенных loops
+"""
+from django.db import connection
+from django.http import JsonResponse
+from django.views import View
+
+from .models import Product
+
+
+class ProductListAfter(View):
+    def get(self, request):
+        products = (
+            Product.objects
+            .filter(is_active=True)
+            .select_related("category")         # JOIN category — 0 доп. запросов
+            .prefetch_related("images")         # 1 запрос для всех images
+            .only("id", "name", "price",        # не грузим лишние поля
+                  "category__id", "category__name")
+            [:100]
+        )
+
+        data = [
+            {
+                "id": p.pk,
+                "name": p.name,
+                "category": p.category.name,
+                "images": [img.url for img in p.images.all()],  # из prefetch
+            }
+            for p in products
+        ]
+        return JsonResponse({"products": data})
+
+
+# ---------------------------------------------------------------------------
+# Анализ конкретного медленного запроса через EXPLAIN ANALYZE
+# ---------------------------------------------------------------------------
+
+def explain_slow_query() -> str:
+    """
+    Пример: анализируем запрос, на который жалуются пользователи.
+    Запускайте в Django shell или management command, не в production view.
+    """
+    slow_sql = """
+        SELECT p.*, c.name as category_name
+        FROM catalog_product p
+        JOIN catalog_category c ON c.id = p.category_id
+        WHERE p.is_active = true
+          AND p.created_at > NOW() - INTERVAL '30 days'
+        ORDER BY p.created_at DESC
+        LIMIT 100
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) {slow_sql}")
+        rows = cursor.fetchall()
+    plan = "\\n".join(row[0] for row in rows)
+
+    # Что искать в плане:
+    # - "Seq Scan" на большой таблице → нужен индекс
+    # - "Sort" с высоким cost → нужен индекс для ORDER BY
+    # - "Nested Loop" вместо "Hash Join" при большом датасете → статистика устарела (ANALYZE)
+    # - Buffers: hit >> read → данные в shared_buffers (хорошо)
+    #            read >> hit → идём на диск (нужно больше RAM или индекс)
+    return plan
+`,
+            },
+        ],
+        explanation: `**django-debug-toolbar для быстрого обнаружения N+1.** Панель SQL показывает все запросы, их время и стек вызовов. Красный счётчик дублирующихся запросов — главный сигнал N+1. Для view с 100 объектами без \`select_related\` вы увидите 101+ запрос. Это стартовая точка: определяем проблемный view, потом идём глубже.
+
+**django-silk для истории и cProfile.** Silk сохраняет все запросы в БД — можно сравнивать время до/после оптимизации, смотреть на выбросы в конкретные часы. \`SILKY_PYTHON_PROFILER=True\` оборачивает каждый запрос в cProfile — появляется кнопка "View Profile" с детализацией по функциям. В staging используйте \`SILKY_INTERCEPT_PERCENT=10\` чтобы не замедлять всё.
+
+**py-spy для production без изменений кода.** Sampling profiler: снимает стек трейс раз в N миллисекунд без остановки процесса. Команда \`py-spy record\` создаёт SVG flamegraph — визуально виден самый «широкий» блок. Не требует \`DEBUG=True\`, работает с любым Python-процессом по PID. Для Gunicorn — передайте PID конкретного воркера.
+
+**EXPLAIN ANALYZE: что искать.** \`Seq Scan\` на таблице с миллионами строк при наличии WHERE — почти всегда означает отсутствие индекса. \`Sort\` с высоким cost — добавьте индекс на ORDER BY столбцы. \`Nested Loop\` вместо \`Hash Join\` при большом датасете — статистика устарела, нужен \`ANALYZE\`. \`Buffers: read\` (не \`hit\`) — данные читаются с диска, нужно больше \`shared_buffers\` или кэширование.
+
+**select_related vs prefetch_related.** \`select_related\` — SQL JOIN, работает для ForeignKey и OneToOne, один запрос. \`prefetch_related\` — отдельный SELECT с \`WHERE id IN (...)\`, работает для ManyToMany и обратных FK, два запроса суммарно независимо от количества объектов. \`only()\` ограничивает набор загружаемых полей — сокращает трафик и время десериализации.`,
+    },
+
+    {
+        id: "django-db-indexes",
+        title: "Индексы и оптимизация схемы БД",
+        task: `Для таблицы events (50M строк) с полями user_id, event_type, created_at, metadata (jsonb) реализуйте оптимальную стратегию индексирования для следующих запросов: события конкретного пользователя за период, события определённого типа с фильтром по metadata, количество уникальных пользователей по дням. Используйте partial indexes, composite indexes, GIN-индексы для JSONB.`,
+        files: [
+            {
+                filename: "analytics/models.py",
+                code: `from django.db import models
+from django.contrib.postgres.indexes import GinIndex, BrinIndex
+
+
+class Event(models.Model):
+    user_id = models.BigIntegerField(db_index=False)  # индекс ниже — составной
+    event_type = models.CharField(max_length=100)
+    created_at = models.DateTimeField()
+    metadata = models.JSONField(default=dict)
+
+    class Meta:
+        indexes = [
+            # ----------------------------------------------------------------
+            # Запрос 1: события конкретного пользователя за период
+            # SELECT * FROM events WHERE user_id = ? AND created_at BETWEEN ? AND ?
+            #
+            # Составной индекс (user_id, created_at):
+            # - user_id идёт первым: Index Scan по пользователю → диапазон по дате
+            # - порядок важен: (created_at, user_id) был бы хуже для этого запроса
+            # ----------------------------------------------------------------
+            models.Index(
+                fields=["user_id", "created_at"],
+                name="event_user_date_idx",
+            ),
+
+            # ----------------------------------------------------------------
+            # Запрос 2: события типа 'purchase' — partial index
+            # SELECT * FROM events WHERE event_type = 'purchase' AND created_at > ?
+            #
+            # Partial index: индексируем только строки где event_type = 'purchase'.
+            # Если 'purchase' — 5% от 50M строк, индекс в 20 раз меньше полного.
+            # Менее частые типы (page_view — 80% строк) — partial index не выгоден.
+            # ----------------------------------------------------------------
+            models.Index(
+                fields=["created_at"],
+                condition=models.Q(event_type="purchase"),
+                name="event_purchase_date_idx",
+            ),
+
+            # ----------------------------------------------------------------
+            # Запрос 3: фильтр по metadata JSONB
+            # SELECT * FROM events WHERE metadata @> '{"campaign_id": 42}'
+            #
+            # GIN индекс: инвертированный индекс для JSONB.
+            # Поддерживает операторы @> (contains), ? (key exists), @? (jsonpath).
+            # jsonb_path_ops — компактнее чем jsonb_ops, но только для @> и @?
+            # ----------------------------------------------------------------
+            GinIndex(
+                fields=["metadata"],
+                name="event_metadata_gin_idx",
+                opclasses=["jsonb_path_ops"],
+            ),
+
+            # ----------------------------------------------------------------
+            # Запрос 4: количество уникальных пользователей по дням
+            # SELECT date_trunc('day', created_at), COUNT(DISTINCT user_id)
+            # FROM events GROUP BY 1
+            #
+            # BRIN индекс: Block Range Index — сверхкомпактный для монотонно
+            # возрастающих данных (временные метки, serial ID).
+            # Хранит min/max для диапазона блоков, а не каждую строку.
+            # Для 50M строк: GIN/BTree займёт сотни MB, BRIN — единицы MB.
+            # Эффективен для запросов с диапазоном дат на append-only таблицах.
+            # ----------------------------------------------------------------
+            BrinIndex(
+                fields=["created_at"],
+                name="event_created_brin_idx",
+                pages_per_range=128,  # баланс между размером и точностью
+            ),
+        ]
+
+    class Meta:
+        # Partitioning: для 50M+ строк рассмотрите партиционирование по месяцам.
+        # Создаётся через raw SQL (Django не поддерживает native partitioning):
+        # CREATE TABLE events PARTITION BY RANGE (created_at);
+        # CREATE TABLE events_2024_01 PARTITION OF events
+        #   FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
+        pass
+`,
+            },
+            {
+                filename: "analytics/migrations/0001_indexes.py",
+                code: `"""
+ВАЖНО: добавление индексов на живой таблице 50M строк блокирует таблицу.
+Используйте CREATE INDEX CONCURRENTLY — блокировки нет, но занимает больше времени.
+Django поддерживает это через Meta.indexes + AlterField --database-option или
+через ручную миграцию с RunSQL.
+"""
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+    atomic = False   # CONCURRENTLY не работает внутри транзакции
+
+    dependencies = [("analytics", "0000_initial")]
+
+    operations = [
+        # Составной индекс (user_id, created_at)
+        migrations.RunSQL(
+            sql="""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS event_user_date_idx
+                ON analytics_event (user_id, created_at DESC);
+            """,
+            reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS event_user_date_idx;",
+        ),
+
+        # Partial index — только purchase
+        migrations.RunSQL(
+            sql="""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS event_purchase_date_idx
+                ON analytics_event (created_at DESC)
+                WHERE event_type = 'purchase';
+            """,
+            reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS event_purchase_date_idx;",
+        ),
+
+        # GIN для JSONB
+        migrations.RunSQL(
+            sql="""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS event_metadata_gin_idx
+                ON analytics_event USING GIN (metadata jsonb_path_ops);
+            """,
+            reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS event_metadata_gin_idx;",
+        ),
+
+        # BRIN для created_at
+        migrations.RunSQL(
+            sql="""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS event_created_brin_idx
+                ON analytics_event USING BRIN (created_at) WITH (pages_per_range = 128);
+            """,
+            reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS event_created_brin_idx;",
+        ),
+    ]
+`,
+            },
+            {
+                filename: "analytics/queries.py",
+                code: `"""
+Запросы, оптимизированные под созданные индексы.
+Каждый запрос сопровождён EXPLAIN ANALYZE для проверки использования индекса.
+"""
+from datetime import date, timedelta
+
+from django.db import connection
+from django.db.models import Count
+from django.db.models.functions import TruncDay
+
+from .models import Event
+
+
+# ---------------------------------------------------------------------------
+# Запрос 1: события пользователя за период → использует event_user_date_idx
+# ---------------------------------------------------------------------------
+
+def get_user_events(user_id: int, days: int = 30) -> list:
+    from django.utils import timezone
+    since = timezone.now() - timedelta(days=days)
+    return list(
+        Event.objects.filter(user_id=user_id, created_at__gte=since)
+                     .order_by("-created_at")
+                     .values("id", "event_type", "created_at", "metadata")
+    )
+
+
+# ---------------------------------------------------------------------------
+# Запрос 2a: покупки с фильтром по metadata → partial index + GIN
+# SELECT * FROM events
+# WHERE event_type = 'purchase'
+#   AND metadata @> '{"campaign_id": 42}'
+#   AND created_at > NOW() - INTERVAL '7 days'
+# ---------------------------------------------------------------------------
+
+def get_campaign_purchases(campaign_id: int, days: int = 7) -> list:
+    from django.utils import timezone
+    since = timezone.now() - timedelta(days=days)
+    return list(
+        Event.objects.filter(
+            event_type="purchase",
+            created_at__gte=since,
+            metadata__contains={"campaign_id": campaign_id},  # @> оператор → GIN
+        ).values("user_id", "created_at", "metadata")
+    )
+
+
+# ---------------------------------------------------------------------------
+# Запрос 3: уникальные пользователи по дням → BRIN + TruncDay
+# ---------------------------------------------------------------------------
+
+def daily_unique_users(start: date, end: date) -> list[dict]:
+    return list(
+        Event.objects.filter(created_at__date__range=(start, end))
+                     .annotate(day=TruncDay("created_at"))
+                     .values("day")
+                     .annotate(unique_users=Count("user_id", distinct=True))
+                     .order_by("day")
+    )
+
+
+# ---------------------------------------------------------------------------
+# Проверка плана запроса
+# ---------------------------------------------------------------------------
+
+def explain_query(sql: str) -> str:
+    with connection.cursor() as cursor:
+        cursor.execute(f"EXPLAIN (ANALYZE, BUFFERS) {sql}")
+        return "\\n".join(row[0] for row in cursor.fetchall())
+
+
+# Пример проверки:
+# plan = explain_query(
+#     "SELECT * FROM analytics_event "
+#     "WHERE user_id = 12345 AND created_at >= NOW() - INTERVAL '30 days'"
+# )
+# Ожидаем: "Index Scan using event_user_date_idx"
+`,
+            },
+            {
+                filename: "analytics/index_strategy.md",
+                code: `# Стратегия индексирования: сводка
+
+## Правила выбора индекса
+
+| Сценарий | Тип индекса | Когда использовать |
+|----------|-------------|-------------------|
+| WHERE col = val, ORDER BY col | BTree (default) | Большинство запросов |
+| WHERE col = 'frequent_value' | Partial BTree | Значение — < 20% строк |
+| WHERE jsonb_col @> '...' | GIN jsonb_path_ops | JSONB contains/jsonpath |
+| WHERE jsonb_col ? 'key' | GIN jsonb_ops | Key existence |
+| Диапазон дат, append-only | BRIN | Монотонно возрастающие данные |
+| Полнотекстовый поиск | GIN tsvector | text search |
+
+## Составной индекс: порядок полей
+
+(user_id, created_at) — правильно для:
+  WHERE user_id = ? AND created_at > ?
+  WHERE user_id = ? ORDER BY created_at
+
+(created_at, user_id) — правильно для:
+  WHERE created_at > ? (диапазон без user_id)
+
+Правило: поля с equality (=) идут первыми, range (>, <, BETWEEN) — последними.
+
+## CREATE INDEX CONCURRENTLY
+
+Обычный CREATE INDEX: блокирует таблицу на запись (SHARE lock).
+CONCURRENTLY: не блокирует запись, но:
+- Занимает в 2-3x больше времени
+- Нельзя выполнять внутри транзакции (atomic = False в миграции)
+- Может завершиться с INVALID индексом при конкурентных изменениях
+  (проверьте: SELECT indexname, indisvalid FROM pg_indexes WHERE indisvalid = false)
+
+## Обслуживание индексов
+
+REINDEX CONCURRENTLY index_name  -- перестройка без блокировки
+VACUUM ANALYZE analytics_event   -- обновление статистики для планировщика
+pg_stat_user_indexes             -- использование индексов (idx_scan > 0?)
+
+Индексы с idx_scan = 0 за последний месяц — кандидаты на удаление.
+`,
+            },
+        ],
+        explanation: `**Составной индекс (user_id, created_at): порядок полей критичен.** Индекс \`(user_id, created_at)\` эффективен для \`WHERE user_id = ? AND created_at > ?\` потому что PostgreSQL сначала находит все строки пользователя (O(log N)), затем применяет диапазон по дате внутри этого множества. Обратный порядок \`(created_at, user_id)\` был бы оптимален для \`WHERE created_at > ?\` без фильтра по пользователю. Общее правило: equality-поля первыми, range-поля последними.
+
+**Partial index: меньше места, быстрее поиск.** Если 'purchase' составляет 5% от 50M строк, partial index индексирует 2.5M записей вместо 50M. Он в 20 раз меньше, умещается в RAM, и Index Scan по нему на порядок быстрее. При этом PostgreSQL использует его только когда \`WHERE event_type = 'purchase'\` присутствует в запросе — это условие должно быть буквальным (не через параметр), иначе планировщик не распознает.
+
+**GIN для JSONB: два opclass с разными возможностями.** \`jsonb_path_ops\` — только оператор \`@>\` (contains) и \`@?\` (jsonpath), но компактнее. \`jsonb_ops\` — дополнительно \`?\` (key exists), \`?|\`, \`?&\`, но в 1.5–2x больше по размеру. Для запросов типа \`metadata @> '{"campaign_id": 42}'\` достаточно \`jsonb_path_ops\`.
+
+**BRIN: размер vs точность.** BRIN хранит min/max для диапазонов блоков (pages_per_range блоков на одну запись индекса). При \`pages_per_range=128\`: каждая запись покрывает 128×8KB=1MB данных. Индекс для 50M строк занимает ~1MB против ~1GB для BTree. Эффективен только если данные физически отсортированы по полю (insert-only таблицы с монотонным \`created_at\`).
+
+**CREATE INDEX CONCURRENTLY обязателен для живой таблицы.** Обычный \`CREATE INDEX\` берёт \`SHARE\` lock — блокирует все INSERT/UPDATE/DELETE на время построения. Для 50M строк это минуты. \`CONCURRENTLY\` строит индекс в два прохода без блокировки записи, но требует \`atomic = False\` в миграции Django. После создания проверьте \`pg_indexes WHERE indisvalid = false\` — при конфликте индекс создаётся как INVALID и не используется.`,
+    },
+
+    {
+        id: "django-connection-pooling",
+        title: "Connection pooling и управление соединениями",
+        task: `Настройте PgBouncer или django-db-geventpool для эффективного connection pooling. Реализуйте: мониторинг pool utilization, graceful handling connection timeout и pool exhaustion, корректную работу с транзакционным и сессионным pooling mode, интеграцию с health checks. Объясните разницу между режимами pooling и их влияние на Django.`,
+        files: [
+            {
+                filename: "pgbouncer/pgbouncer.ini",
+                code: `; PgBouncer — connection pooler между Django и PostgreSQL.
+; Запускается как отдельный процесс, Django подключается к нему как к обычному PostgreSQL.
+
+[databases]
+; Django видит этот DSN — подключается к PgBouncer, а не к Postgres напрямую
+mydb = host=postgres port=5432 dbname=mydb
+
+[pgbouncer]
+listen_addr = 0.0.0.0
+listen_port = 6432
+
+; -----------------------------------------------------------------------
+; Режимы pooling — выбор зависит от особенностей приложения
+;
+; session:      соединение закреплено за клиентом на всё время сессии.
+;               Равносильно прямому подключению к PostgreSQL.
+;               Совместим с любыми Django-функциями (SET, LISTEN, cursors).
+;
+; transaction:  соединение выдаётся только на время транзакции, потом
+;               возвращается в пул. Максимальная эффективность.
+;               НЕСОВМЕСТИМ с: SET LOCAL вне транзакции, LISTEN/NOTIFY,
+;               named prepared statements, advisory locks вне транзакции.
+;               Django по умолчанию совместим при ATOMIC_REQUESTS=False.
+;
+; statement:    соединение выдаётся на один SQL-запрос. Практически не
+;               используется с Django — несовместим с транзакциями.
+; -----------------------------------------------------------------------
+pool_mode = transaction
+
+; Максимум соединений к PostgreSQL (сторона сервера)
+; PostgreSQL имеет hard limit (max_connections в postgresql.conf).
+; PgBouncer обслуживает тысячи клиентов через десятки серверных соединений.
+max_client_conn = 1000
+default_pool_size = 20       ; соединений к Postgres на базу данных
+min_pool_size = 5            ; держим минимум соединений всегда открытыми
+reserve_pool_size = 5        ; резерв для пиков нагрузки
+reserve_pool_timeout = 5     ; секунды ожидания резервного соединения
+
+; Таймауты
+server_connect_timeout = 15  ; секунды ожидания подключения к Postgres
+server_idle_timeout = 600    ; закрываем idle соединения через 10 минут
+client_idle_timeout = 0      ; не закрываем idle клиентские соединения
+
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+
+; Мониторинг — подключайтесь к виртуальной БД pgbouncer для статистики
+; psql -h localhost -p 6432 -U pgbouncer pgbouncer
+; SHOW POOLS;   — утилизация пула
+; SHOW STATS;   — запросы/сек, время ожидания
+; SHOW CLIENTS; — активные клиентские соединения
+admin_users = pgbouncer
+stats_users = monitor
+`,
+            },
+            {
+                filename: "config/settings.py (фрагмент)",
+                code: `"""
+Django подключается к PgBouncer, а не к PostgreSQL напрямую.
+При transaction pooling mode — важные ограничения настроек Django.
+"""
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "HOST": "localhost",
+        "PORT": "6432",          # порт PgBouncer, не PostgreSQL (5432)
+        "NAME": "mydb",
+        "USER": "appuser",
+        "PASSWORD": "secret",
+        "OPTIONS": {
+            # Отключаем server-side prepared statements:
+            # в transaction pooling mode разные транзакции могут получить
+            # разные серверные соединения → prepared statement недоступен.
+            "prepare_threshold": None,
+            # Явно задаём application_name для мониторинга в pg_stat_activity
+            "application_name": "django-app",
+        },
+        "CONN_MAX_AGE": 0,       # НЕ используем persistent connections Django:
+                                  # PgBouncer уже управляет пулом на своей стороне.
+                                  # Persistent connections + transaction pooling = конфликт.
+        "CONN_HEALTH_CHECKS": False,
+    }
+}
+
+# ATOMIC_REQUESTS=True совместим с transaction pooling —
+# каждый request оборачивается в транзакцию, соединение держится на время транзакции.
+# Но учтите overhead: каждый запрос, даже read-only, открывает транзакцию.
+ATOMIC_REQUESTS = False   # рекомендуется при transaction pooling для гибкости
+`,
+            },
+            {
+                filename: "core/db_health.py",
+                code: `"""
+Health check и мониторинг pool utilization через PgBouncer stats.
+"""
+import logging
+from dataclasses import dataclass
+
+import psycopg2
+from django.db import connection, OperationalError
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PoolStats:
+    database: str
+    active: int       # соединения, выполняющие запрос
+    idle: int         # свободные серверные соединения в пуле
+    waiting: int      # клиенты, ожидающие соединения из пула
+    max_wait_ms: int  # максимальное время ожидания (мс)
+
+    @property
+    def utilization(self) -> float:
+        total = self.active + self.idle
+        return self.active / total if total > 0 else 0.0
+
+    @property
+    def is_exhausted(self) -> bool:
+        return self.waiting > 0
+
+
+def get_pool_stats(pgbouncer_dsn: str) -> list[PoolStats]:
+    """
+    Подключается к виртуальной БД pgbouncer и читает статистику пула.
+    Вызывайте из Celery beat каждые 30s и отправляйте в Prometheus/Datadog.
+    """
+    try:
+        conn = psycopg2.connect(pgbouncer_dsn + " dbname=pgbouncer")
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("SHOW POOLS;")
+            rows = cur.fetchall()
+            cols = [d[0] for d in cur.description]
+        conn.close()
+    except Exception as exc:
+        logger.error("Failed to query PgBouncer stats: %s", exc)
+        return []
+
+    stats = []
+    for row in rows:
+        r = dict(zip(cols, row))
+        stats.append(PoolStats(
+            database=r["database"],
+            active=int(r["sv_active"]),
+            idle=int(r["sv_idle"]),
+            waiting=int(r["cl_waiting"]),
+            max_wait_ms=int(float(r.get("maxwait_us", 0)) / 1000),
+        ))
+
+    for s in stats:
+        if s.is_exhausted:
+            logger.error(
+                "Pool EXHAUSTED for %s: %d clients waiting (max_wait=%dms)",
+                s.database, s.waiting, s.max_wait_ms,
+            )
+        elif s.utilization > 0.8:
+            logger.warning(
+                "Pool high utilization for %s: %.0f%% (%d/%d active)",
+                s.database, s.utilization * 100, s.active, s.active + s.idle,
+            )
+    return stats
+
+
+def django_db_health_check() -> dict:
+    """
+    Используется в /health/ эндпоинте для load balancer / k8s liveness probe.
+    Проверяет что Django может выполнить простой запрос к БД.
+    """
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        return {"status": "ok", "db": "connected"}
+    except OperationalError as exc:
+        logger.critical("DB health check failed: %s", exc)
+        return {"status": "error", "db": str(exc)}
+`,
+            },
+            {
+                filename: "core/views.py",
+                code: `"""
+Health check эндпоинт для интеграции с load balancer / k8s.
+Возвращает 200 если БД доступна, 503 если нет.
+"""
+from django.http import JsonResponse
+from django.views import View
+
+from .db_health import django_db_health_check
+
+
+class HealthView(View):
+    # Исключаем из authentication и CSRF — вызывается инфраструктурой
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        result = django_db_health_check()
+        status_code = 200 if result["status"] == "ok" else 503
+        return JsonResponse(result, status=status_code)
+`,
+            },
+        ],
+        explanation: `**Три режима PgBouncer и совместимость с Django.** Session mode — соединение закреплено за клиентом, полная совместимость, но экономия минимальна. Transaction mode — соединение выдаётся на время транзакции: при 100 воркерах Django реально нужно 20–30 серверных соединений к PostgreSQL. Statement mode — одно соединение на один SQL, несовместим с транзакциями Django совсем.
+
+**Ограничения transaction pooling.** Разные транзакции одного Django-воркера могут получить разные серверные соединения. Это ломает: server-side prepared statements (отключайте \`prepare_threshold=None\`), \`SET\` вне транзакции (значение теряется при возврате соединения в пул), \`LISTEN/NOTIFY\` (слушатель должен держать постоянное соединение), advisory locks вне транзакции, \`pg_temp\` таблицы.
+
+**\`CONN_MAX_AGE=0\` с PgBouncer.** Django persistent connections (\`CONN_MAX_AGE > 0\`) держат соединение открытым между запросами. С transaction pooling это значит: воркер удерживает серверное соединение даже когда не выполняет транзакцию. Теряется весь смысл пулинга. Устанавливайте \`CONN_MAX_AGE=0\` — Django закрывает соединение после каждого запроса, PgBouncer возвращает его в пул.
+
+**Мониторинг через \`SHOW POOLS\`.** Ключевые метрики: \`sv_active\` (соединения под нагрузкой), \`sv_idle\` (свободные), \`cl_waiting\` (клиенты в очереди). \`cl_waiting > 0\` означает pool exhaustion — клиенты ждут соединения. \`maxwait_us\` — время ожидания в микросекундах. Отправляйте эти метрики в Prometheus раз в 30 секунд.
+
+**\`reserve_pool_size\` как буфер против пиков.** При \`pool_size=20\` и \`reserve_pool_size=5\` в пике PgBouncer откроет до 25 соединений. Резерв выдаётся только после \`reserve_pool_timeout\` секунд ожидания — это защита от случайных выбросов, а не от систематической перегрузки.`,
+    },
+
+    {
+        id: "django-injection-security",
+        title: "Защита от инъекций и валидация данных",
+        task: `Проведите аудит безопасности Django-приложения. Найдите и исправьте уязвимости: использование сырого SQL с интерполяцией строк, небезопасная десериализация данных от пользователя, XSS через отключённый autoescaping в шаблонах, SSRF при обращении к URL из пользовательского ввода. Реализуйте безопасные альтернативы и напишите тесты безопасности.`,
+        files: [
+            {
+                filename: "audit/sql_injection.py",
+                code: `"""
+SQL-инъекция: небезопасные и безопасные паттерны.
+"""
+from django.db import connection
+from .models import Product
+
+
+# ============================================================
+# УЯЗВИМО: интерполяция строк в raw SQL
+# Атака: GET /products/?category='; DROP TABLE products; --
+# ============================================================
+def search_products_unsafe(category: str) -> list:
+    with connection.cursor() as cursor:
+        # НИКОГДА так не делайте:
+        cursor.execute(f"SELECT * FROM catalog_product WHERE category = '{category}'")
+        return cursor.fetchall()
+
+
+# ============================================================
+# БЕЗОПАСНО: параметризованные запросы (второй аргумент execute)
+# Django всегда экранирует параметры через драйвер psycopg2.
+# ============================================================
+def search_products_safe_raw(category: str) -> list:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT id, name, price FROM catalog_product WHERE category = %s",
+            [category],   # передаём как параметр, не интерполируем
+        )
+        cols = [d[0] for d in cursor.description]
+        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+
+# ============================================================
+# БЕЗОПАСНО: ORM (всегда параметризован)
+# ============================================================
+def search_products_orm(category: str) -> list:
+    return list(
+        Product.objects.filter(category=category).values("id", "name", "price")
+    )
+
+
+# ============================================================
+# ОПАСНЫЙ ПАТТЕРН: динамические имена полей через ORM
+# Атака: GET /products/?order_by=password  (enumerate hidden fields)
+# ============================================================
+ALLOWED_ORDER_FIELDS = {"name", "price", "created_at"}
+
+def list_products_ordered_unsafe(order_by: str) -> list:
+    # УЯЗВИМО: пользователь контролирует имя поля
+    return list(Product.objects.order_by(order_by))
+
+def list_products_ordered_safe(order_by: str) -> list:
+    # БЕЗОПАСНО: whitelist допустимых полей
+    if order_by.lstrip("-") not in ALLOWED_ORDER_FIELDS:
+        order_by = "name"
+    return list(Product.objects.order_by(order_by).values("id", "name", "price"))
+`,
+            },
+            {
+                filename: "audit/deserialization.py",
+                code: `"""
+Небезопасная десериализация и безопасные альтернативы.
+"""
+import json
+import pickle
+from typing import Any
+
+from django.core import signing
+from rest_framework import serializers
+
+
+# ============================================================
+# УЯЗВИМО: pickle от пользователя → RCE (Remote Code Execution)
+# pickle.loads выполняет произвольный Python-код при десериализации
+# ============================================================
+def load_session_data_unsafe(raw: bytes) -> Any:
+    return pickle.loads(raw)   # НИКОГДА не делайте так с пользовательскими данными
+
+
+# ============================================================
+# БЕЗОПАСНО: JSON + явная схема (serializer)
+# JSON не выполняет код; serializer проверяет типы и значения
+# ============================================================
+class CartItemSerializer(serializers.Serializer):
+    product_id = serializers.IntegerField(min_value=1)
+    quantity = serializers.IntegerField(min_value=1, max_value=100)
+
+
+def load_cart_safe(raw_json: str) -> list[dict]:
+    try:
+        data = json.loads(raw_json)
+    except (json.JSONDecodeError, TypeError):
+        raise ValueError("Invalid JSON")
+
+    if not isinstance(data, list):
+        raise ValueError("Expected list")
+
+    result = []
+    for item in data:
+        s = CartItemSerializer(data=item)
+        s.is_valid(raise_exception=True)
+        result.append(s.validated_data)
+    return result
+
+
+# ============================================================
+# БЕЗОПАСНО: подписанные данные через django.core.signing
+# Используется для URL-токенов, которые нельзя подделать
+# ============================================================
+def make_signed_token(data: dict) -> str:
+    return signing.dumps(data, salt="cart-token")
+
+def read_signed_token(token: str) -> dict:
+    try:
+        return signing.loads(token, salt="cart-token", max_age=3600)
+    except signing.BadSignature:
+        raise ValueError("Invalid or expired token")
+`,
+            },
+            {
+                filename: "audit/xss_templates.py",
+                code: `"""
+XSS через шаблоны Django.
+
+Django по умолчанию экранирует HTML в шаблонах (autoescaping включён).
+Уязвимость возникает при явном отключении: {% autoescape off %} или фильтр |safe.
+"""
+
+# audit/templates/product_detail.html — УЯЗВИМЫЙ вариант:
+TEMPLATE_UNSAFE = """
+{% autoescape off %}
+  <h1>{{ product.name }}</h1>          {# ← XSS если name содержит <script> #}
+  <div>{{ product.description|safe }}</div>  {# ← safe отключает экранирование #}
+{% endautoescape %}
+"""
+
+# audit/templates/product_detail.html — БЕЗОПАСНЫЙ вариант:
+TEMPLATE_SAFE = """
+{# autoescaping включён по умолчанию — не трогайте без явной причины #}
+<h1>{{ product.name }}</h1>
+<div>{{ product.description }}</div>
+
+{# Если нужен HTML из БД (редактор WYSIWYG) — используйте bleach для sanitize #}
+{# {{ product.rich_description|bleach_clean }} — через кастомный template tag #}
+"""
+
+# В Python-коде: явная разметка строки как safe
+from django.utils.html import format_html, escape
+
+def render_product_name(name: str) -> str:
+    # УЯЗВИМО:
+    # return mark_safe(f"<b>{name}</b>")
+
+    # БЕЗОПАСНО: format_html экранирует все аргументы
+    return format_html("<b>{}</b>", name)
+
+def render_product_badge(label: str, url: str) -> str:
+    return format_html('<a href="{}" class="badge">{}</a>', url, label)
+`,
+            },
+            {
+                filename: "audit/ssrf_protection.py",
+                code: `"""
+SSRF (Server-Side Request Forgery): пользователь передаёт URL,
+сервер делает запрос от своего имени — к внутренним сервисам, метаданным облака.
+
+Атаки:
+  http://169.254.169.254/latest/meta-data/  — AWS EC2 metadata (ключи IAM)
+  http://localhost:6379/                    — Redis без auth
+  file:///etc/passwd                        — чтение файлов (некоторые библиотеки)
+"""
+import ipaddress
+import re
+from urllib.parse import urlparse
+
+import requests
+from django.core.exceptions import ValidationError
+
+
+# Диапазоны адресов, недоступных из интернета
+PRIVATE_RANGES = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),  # link-local (AWS metadata)
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+]
+
+ALLOWED_SCHEMES = {"https"}          # только HTTPS, не http/file/ftp
+ALLOWED_DOMAINS_RE = re.compile(
+    r"^([\w-]+\.)*example\.com$"    # замените на свой whitelist
+)
+
+
+def validate_url(url: str) -> str:
+    """Валидирует URL перед выполнением запроса от имени сервера."""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        raise ValidationError("Invalid URL format.")
+
+    if parsed.scheme not in ALLOWED_SCHEMES:
+        raise ValidationError(f"Scheme '{parsed.scheme}' is not allowed.")
+
+    hostname = parsed.hostname or ""
+    if not ALLOWED_DOMAINS_RE.match(hostname):
+        raise ValidationError(f"Domain '{hostname}' is not in whitelist.")
+
+    # Резолвим hostname и проверяем IP
+    import socket
+    try:
+        ip = socket.gethostbyname(hostname)
+    except socket.gaierror:
+        raise ValidationError("Could not resolve hostname.")
+
+    addr = ipaddress.ip_address(ip)
+    for net in PRIVATE_RANGES:
+        if addr in net:
+            raise ValidationError(f"Requests to private addresses are not allowed.")
+
+    return url
+
+
+def fetch_user_url(url: str) -> bytes:
+    """Безопасный fetch URL из пользовательского ввода."""
+    validated = validate_url(url)
+    response = requests.get(
+        validated,
+        timeout=5,
+        allow_redirects=False,   # редиректы могут обойти проверку хоста
+        headers={"User-Agent": "MyApp/1.0"},
+        stream=True,
+    )
+    # Ограничиваем размер ответа — защита от OOM
+    return response.raw.read(1024 * 1024)  # max 1MB
+`,
+            },
+            {
+                filename: "audit/tests/test_security.py",
+                code: `"""
+Тесты безопасности — проверяют что уязвимости закрыты.
+"""
+import pytest
+from django.core.exceptions import ValidationError
+from django.test import TestCase, Client
+
+from audit.sql_injection import list_products_ordered_safe
+from audit.deserialization import load_cart_safe, read_signed_token, make_signed_token
+from audit.ssrf_protection import validate_url
+
+
+class SQLInjectionTest(TestCase):
+    def test_order_by_whitelist_rejects_unknown_field(self):
+        # Атака: попытка использовать поле password в ORDER BY
+        result = list_products_ordered_safe("password")
+        # Функция должна откатиться к default полю, не упасть
+        self.assertIsInstance(result, list)
+
+    def test_order_by_whitelist_allows_valid_field(self):
+        result = list_products_ordered_safe("name")
+        self.assertIsInstance(result, list)
+
+    def test_order_by_whitelist_allows_descending(self):
+        result = list_products_ordered_safe("-price")
+        self.assertIsInstance(result, list)
+
+
+class DeserializationTest(TestCase):
+    def test_valid_cart(self):
+        import json
+        raw = json.dumps([{"product_id": 1, "quantity": 2}])
+        result = load_cart_safe(raw)
+        self.assertEqual(result[0]["product_id"], 1)
+
+    def test_invalid_quantity_rejected(self):
+        import json
+        raw = json.dumps([{"product_id": 1, "quantity": 9999}])
+        with self.assertRaises(Exception):
+            load_cart_safe(raw)
+
+    def test_signed_token_tamper(self):
+        token = make_signed_token({"user_id": 1})
+        with self.assertRaises(ValueError):
+            read_signed_token(token + "tampered")
+
+
+class SSRFTest(TestCase):
+    def test_private_ip_blocked(self):
+        with self.assertRaises(ValidationError):
+            validate_url("https://192.168.1.1/secret")
+
+    def test_localhost_blocked(self):
+        with self.assertRaises(ValidationError):
+            validate_url("https://127.0.0.1/")
+
+    def test_aws_metadata_blocked(self):
+        with self.assertRaises(ValidationError):
+            validate_url("https://169.254.169.254/latest/meta-data/")
+
+    def test_http_scheme_blocked(self):
+        with self.assertRaises(ValidationError):
+            validate_url("http://example.com/resource")
+
+    def test_file_scheme_blocked(self):
+        with self.assertRaises(ValidationError):
+            validate_url("file:///etc/passwd")
+
+    def test_unknown_domain_blocked(self):
+        with self.assertRaises(ValidationError):
+            validate_url("https://evil.attacker.com/hook")
+`,
+            },
+        ],
+        explanation: `**SQL-инъекция: f-строки в \`execute()\` — главная ошибка.** Django ORM защищён по умолчанию — все значения параметризуются. Уязвимость появляется при использовании \`cursor.execute(f"... {value}")\` или конкатенации строк. Всегда передавайте значения вторым аргументом: \`cursor.execute("... WHERE x = %s", [value])\`. Отдельная ловушка — динамические имена полей в ORM: \`order_by(user_input)\` не является SQL-инъекцией, но позволяет перечислять скрытые поля (enumerate). Whitelist обязателен.
+
+**pickle от пользователя = RCE.** \`pickle.loads\` вызывает \`__reduce__\` объекта при десериализации — атакующий может сконструировать payload, который выполнит \`os.system("rm -rf /")\`. Никогда не десериализуйте pickle от пользователя. Используйте JSON + явную схему через DRF Serializer или Pydantic. Для подписанных данных — \`django.core.signing\`: HMAC-SHA256, нельзя подделать без SECRET_KEY.
+
+**XSS: \`|safe\` и \`autoescape off\` должны быть красным флагом.** Django экранирует HTML по умолчанию: \`<script>\` превращается в \`&lt;script&gt;\`. Уязвимость появляется при явном отключении. \`format_html()\` — правильный способ собирать HTML из Python: экранирует все \`{}\` аргументы. Если нужен пользовательский HTML (WYSIWYG) — обязательна санитизация через \`bleach\`.
+
+**SSRF: проверка hostname недостаточна.** Атакующий может зарегистрировать \`evil.com\` с DNS-записью \`169.254.169.254\`. Проверяйте не hostname, а реальный IP после DNS-резолвинга. \`allow_redirects=False\` критично: редирект может вести на внутренний адрес, который прошёл бы проверку hostname, но не прошёл бы проверку IP. Ограничение размера ответа защищает от DoS через огромные ответы.`,
+    },
+
+    {
+        id: "django-csrf-cors",
+        title: "CSRF и защита API",
+        task: `Реализуйте корректную CSRF-защиту для гибридного приложения: классические form-based views с CSRF-токенами, SPA фронтенд на React с cookie-based CSRF (double submit cookie pattern), мобильные клиенты с JWT без CSRF. Настройте CORS заголовки с whitelist доменов. Объясните, почему JWT сам по себе не защищает от CSRF.`,
+        files: [
+            {
+                filename: "config/settings.py (фрагмент)",
+                code: `# -----------------------------------------------------------------------
+# CSRF настройки
+# -----------------------------------------------------------------------
+
+# Домены, которым разрешено делать cross-origin запросы с CSRF-токеном.
+# CSRF_TRUSTED_ORIGINS проверяет Origin/Referer заголовок запроса.
+CSRF_TRUSTED_ORIGINS = [
+    "https://app.example.com",
+    "https://admin.example.com",
+]
+
+# Cookie настройки для CSRF
+CSRF_COOKIE_SECURE = True        # только HTTPS
+CSRF_COOKIE_SAMESITE = "Lax"     # защита от CSRF для обычных запросов
+                                  # "Strict" — строже, но ломает OAuth redirects
+CSRF_COOKIE_HTTPONLY = False      # SPA должен читать токен из cookie через JS
+
+# Session cookie
+SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_HTTPONLY = True    # JS не должен читать session cookie
+
+# -----------------------------------------------------------------------
+# CORS (пакет django-cors-headers)
+# -----------------------------------------------------------------------
+INSTALLED_APPS += ["corsheaders"]
+MIDDLEWARE = ["corsheaders.middleware.CorsMiddleware"] + MIDDLEWARE  # первым!
+
+# Разрешённые origins для cross-origin запросов
+CORS_ALLOWED_ORIGINS = [
+    "https://app.example.com",
+    "https://admin.example.com",
+]
+
+# НИКОГДА не используйте CORS_ALLOW_ALL_ORIGINS = True в production
+
+CORS_ALLOW_CREDENTIALS = True    # разрешаем отправку cookie при cross-origin
+
+CORS_ALLOW_METHODS = ["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"]
+
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "authorization",
+    "content-type",
+    "x-csrftoken",    # SPA отправляет CSRF-токен в этом заголовке
+]
+
+# Preflight кэшируется браузером на N секунд — уменьшает OPTIONS-запросы
+CORS_PREFLIGHT_MAX_AGE = 86400
+`,
+            },
+            {
+                filename: "auth/views_forms.py",
+                code: `"""
+Классические form-based views: CSRF через {% csrf_token %} в шаблоне.
+Django CsrfViewMiddleware проверяет токен автоматически для POST/PUT/PATCH/DELETE.
+"""
+from django.contrib.auth import authenticate, login
+from django.shortcuts import redirect, render
+from django.views import View
+from django.views.decorators.csrf import csrf_protect
+
+
+class LoginView(View):
+    # csrf_protect явно — дополнительная защита для критичных эндпоинтов
+    @csrf_protect
+    def get(self, request):
+        return render(request, "auth/login.html")  # шаблон содержит {% csrf_token %}
+
+    @csrf_protect
+    def post(self, request):
+        username = request.POST.get("username", "")
+        password = request.POST.get("password", "")
+        user = authenticate(request, username=username, password=password)
+        if user:
+            login(request, user)
+            return redirect("dashboard")
+        return render(request, "auth/login.html", {"error": "Invalid credentials"})
+`,
+            },
+            {
+                filename: "auth/views_spa.py",
+                code: `"""
+SPA (React) + Django: Double Submit Cookie pattern.
+
+Схема работы:
+1. SPA делает GET /api/csrf/ → Django устанавливает csrftoken cookie
+2. SPA читает cookie через JS (CSRF_COOKIE_HTTPONLY = False)
+3. SPA добавляет токен в заголовок X-CSRFToken при каждом POST/PUT/DELETE
+4. Django проверяет: значение в cookie == значение в заголовке
+
+Почему это работает: злоумышленный сайт не может прочитать cookie
+другого домена (same-origin policy), значит не может подставить верный
+токен в заголовок.
+"""
+from django.http import JsonResponse
+from django.middleware.csrf import get_token
+from django.utils.decorators import method_decorator
+from django.views import View
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+
+class CsrfTokenView(View):
+    """Эндпоинт для получения CSRF-токена. SPA вызывает при старте."""
+
+    @method_decorator(ensure_csrf_cookie)  # гарантирует установку cookie
+    def get(self, request):
+        return JsonResponse({"csrfToken": get_token(request)})
+
+
+# ---------------------------------------------------------------------------
+# React-клиент: как читать и использовать CSRF-токен
+# ---------------------------------------------------------------------------
+REACT_SNIPPET = """
+// utils/csrf.js
+function getCsrfToken() {
+    const name = 'csrftoken=';
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+        const c = cookie.trim();
+        if (c.startsWith(name)) return c.slice(name.length);
+    }
+    return null;
+}
+
+// При старте приложения — получаем токен
+await fetch('/api/csrf/', { credentials: 'include' });
+
+// Все мутирующие запросы
+const response = await fetch('/api/orders/', {
+    method: 'POST',
+    credentials: 'include',       // отправляем session cookie
+    headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCsrfToken(),   // токен из cookie
+    },
+    body: JSON.stringify(orderData),
+});
+"""
+`,
+            },
+            {
+                filename: "auth/views_mobile.py",
+                code: `"""
+Мобильные клиенты / API-only: JWT аутентификация без CSRF.
+
+Почему JWT в Authorization header не нуждается в CSRF:
+  CSRF-атака работает так: злоумышленный сайт делает запрос от имени
+  жертвы, браузер автоматически прикрепляет cookie (session).
+  Браузер НЕ прикрепляет Authorization header автоматически —
+  его должен добавить JS жертвы (чего злоумышленный сайт не может
+  сделать из-за same-origin policy).
+
+  Но: если JWT хранится в cookie (httpOnly), а не в localStorage/memory,
+  то CSRF снова актуален — браузер прикрепит cookie автоматически.
+  В этом случае нужен либо CSRF-токен, либо SameSite=Strict cookie.
+
+Эндпоинты, используемые мобильными клиентами, исключаем из CSRF:
+"""
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from django.views.decorators.csrf import csrf_exempt
+
+
+@csrf_exempt  # mobile API — CSRF не нужен при Authorization header
+@api_view(["GET"])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def mobile_orders(request):
+    """
+    Мобильный клиент отправляет: Authorization: Bearer <access_token>
+    CSRF не нужен: браузер не прикрепляет Authorization header автоматически.
+    """
+    orders = request.user.orders.values("id", "status", "total")[:20]
+    return Response({"orders": list(orders)})
+`,
+            },
+            {
+                filename: "auth/csrf_explanation.md",
+                code: `# Почему JWT в localStorage не защищает от XSS, а CSRF не актуален
+
+## CSRF-атака: механизм
+
+1. Пользователь залогинен на bank.com (session cookie установлен)
+2. Открывает evil.com
+3. evil.com делает: fetch("https://bank.com/transfer", {method:"POST", body:...})
+4. Браузер АВТОМАТИЧЕСКИ добавляет cookie bank.com к запросу
+5. Сервер видит валидный session cookie → выполняет перевод
+
+## Почему Authorization header защищает от CSRF
+
+Шаг 3 изменяется: злоумышленный скрипт должен добавить заголовок:
+  headers: { "Authorization": "Bearer " + token }
+
+Но evil.com не знает token — он хранится в памяти или localStorage
+приложения bank.com. Браузер не прикрепляет Authorization автоматически.
+Same-origin policy не позволяет evil.com читать localStorage другого домена.
+
+Итог: CSRF-атака не работает, если токен в Authorization header.
+
+## Когда JWT в cookie → CSRF снова актуален
+
+Если хранить JWT в httpOnly cookie:
+  Set-Cookie: jwt=eyJ...; HttpOnly; Secure; SameSite=Lax
+
+Браузер прикрепит cookie автоматически → CSRF-атака снова возможна.
+Решение: SameSite=Strict (ломает OAuth) или Double Submit Cookie с CSRF-токеном.
+
+## Где хранить JWT: компромисс
+
+| Хранилище     | XSS      | CSRF         | Примечание |
+|---------------|----------|--------------|------------|
+| localStorage  | Уязвим   | Защищён      | JS имеет доступ |
+| httpOnly cookie | Защищён | Уязвим (нужен CSRF) | JS не имеет доступа |
+| memory (переменная) | Защищён | Защищён | Теряется при перезагрузке |
+
+Рекомендация для SPA: access token в memory, refresh token в httpOnly cookie + CSRF-токен.
+`,
+            },
+        ],
+        explanation: `**Double Submit Cookie: почему работает без сервера.** Браузер запрещает читать cookie чужого домена (same-origin policy). Злоумышленный сайт не может получить значение \`csrftoken\` cookie домена жертвы, значит не может подставить правильное значение в заголовок \`X-CSRFToken\`. Django проверяет: cookie == header. Подделать оба невозможно без доступа к cookie.
+
+**JWT в Authorization header vs cookie.** Если JWT передаётся в заголовке \`Authorization: Bearer ...\`, браузер не добавляет его автоматически при cross-origin запросах — только JS жертвы может это сделать, но злоумышленный сайт не имеет доступа к \`localStorage\` или переменным памяти чужого домена. CSRF не актуален. Но если JWT в \`httpOnly cookie\` — браузер прикрепит его автоматически, и CSRF снова актуален.
+
+**\`SameSite=Lax\` vs \`Strict\`.** \`Strict\` — cookie не отправляется ни при каких cross-origin переходах, включая переходы по ссылкам. Это ломает OAuth-redirect flows: пользователь возвращается от Google Auth на ваш сайт, cookie не прикреплён, сессия не установлена. \`Lax\` — cookie не отправляется при cross-origin POST (основной вектор CSRF), но отправляется при GET-переходах по ссылкам. Разумный компромисс.
+
+**\`CorsMiddleware\` должен быть первым в MIDDLEWARE.** CORS-заголовки должны добавляться до любой обработки запроса, включая аутентификацию. Если middleware аутентификации стоит раньше и отклоняет запрос с 401 без CORS-заголовков, браузер не сможет прочитать статус ошибки из-за CORS policy — получите непонятную сетевую ошибку вместо 401.
+
+**\`CORS_ALLOW_ALL_ORIGINS = True\` в production — открытая дверь.** При \`CORS_ALLOW_CREDENTIALS = True\` этот флаг запрещён спецификацией (браузеры игнорируют \`credentials\` при \`*\`). Но даже без credentials — любой сайт может читать ответы вашего API. Всегда используйте \`CORS_ALLOWED_ORIGINS\` с явным списком доменов.`,
+    },
+
+    {
+        id: "django-audit-log",
+        title: "Аудит-лог и non-repudiation",
+        task: `Реализуйте систему аудит-логирования для критических операций (изменение прав доступа, финансовые транзакции, удаление данных). Лог должен: записываться атомарно вместе с основной операцией, содержать: кто, что, когда, откуда, до и после, быть защищён от изменения (append-only), поддерживать поиск и фильтрацию, экспорт для compliance.`,
+        files: [
+            {
+                filename: "audit/models.py",
+                code: `"""
+AuditLog — append-only таблица критических событий.
+
+Защита от изменений:
+  1. Модель не имеет метода save() с update — только create().
+  2. На уровне БД: row-level trigger запрещает UPDATE/DELETE (см. миграцию).
+  3. Поле hash_chain: SHA-256 от содержимого + хеш предыдущей записи —
+     любая правка нарушит цепочку хешей.
+"""
+import hashlib
+import json
+from django.conf import settings
+from django.db import models
+
+
+class AuditLog(models.Model):
+    class Action(models.TextChoices):
+        CREATE = "create", "Создание"
+        UPDATE = "update", "Изменение"
+        DELETE = "delete", "Удаление"
+        ACCESS = "access", "Доступ"
+        PERMISSION_CHANGE = "permission_change", "Изменение прав"
+        FINANCIAL = "financial", "Финансовая операция"
+
+    # Кто
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        db_index=True,
+    )
+    actor_email = models.EmailField(blank=True)    # снапшот на момент события
+
+    # Что
+    action = models.CharField(max_length=30, choices=Action, db_index=True)
+    resource_type = models.CharField(max_length=100, db_index=True)  # "Order", "User"
+    resource_id = models.CharField(max_length=100, db_index=True)
+    before = models.JSONField(null=True, blank=True)   # состояние до
+    after = models.JSONField(null=True, blank=True)    # состояние после
+
+    # Когда
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    # Откуда
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    request_id = models.CharField(max_length=64, blank=True, db_index=True)
+
+    # Integrity
+    hash_chain = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(fields=["resource_type", "resource_id"]),
+            models.Index(fields=["actor", "timestamp"]),
+            models.Index(fields=["action", "timestamp"]),
+        ]
+
+    def compute_hash(self, prev_hash: str = "") -> str:
+        payload = json.dumps({
+            "actor_id": self.actor_id,
+            "action": self.action,
+            "resource_type": self.resource_type,
+            "resource_id": str(self.resource_id),
+            "before": self.before,
+            "after": self.after,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else "",
+            "prev_hash": prev_hash,
+        }, sort_keys=True)
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    # Запрещаем изменение через ORM — только создание
+    def save(self, *args, **kwargs):
+        if self.pk:
+            raise RuntimeError("AuditLog entries are immutable.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError("AuditLog entries cannot be deleted.")
+`,
+            },
+            {
+                filename: "audit/writer.py",
+                code: `"""
+Единственная точка записи в аудит-лог.
+Все критические операции должны вызывать log_action().
+"""
+import logging
+from typing import Any
+
+from django.db import transaction
+
+from .models import AuditLog
+
+logger = logging.getLogger("audit")
+
+
+def _extract_request_meta(request) -> dict:
+    if request is None:
+        return {}
+    xff = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    ip = xff.split(",")[0].strip() if xff else request.META.get("REMOTE_ADDR", "")
+    return {
+        "ip_address": ip or None,
+        "user_agent": request.META.get("HTTP_USER_AGENT", "")[:500],
+        "request_id": getattr(request, "request_id", ""),
+    }
+
+
+def log_action(
+    action: str,
+    resource_type: str,
+    resource_id: Any,
+    actor=None,
+    before: dict | None = None,
+    after: dict | None = None,
+    request=None,
+) -> AuditLog:
+    """
+    Записывает событие в аудит-лог.
+    ДОЛЖНА вызываться внутри транзакции основной операции:
+
+        with transaction.atomic():
+            order.status = "cancelled"
+            order.save()
+            log_action("update", "Order", order.pk, before=..., after=..., ...)
+
+    Это гарантирует: либо оба изменения сохранены, либо ни одного.
+    """
+    meta = _extract_request_meta(request)
+
+    # Хеш-цепочка: берём хеш последней записи для этого ресурса
+    last = (
+        AuditLog.objects.filter(
+            resource_type=resource_type,
+            resource_id=str(resource_id),
+        )
+        .order_by("-timestamp")
+        .values_list("hash_chain", flat=True)
+        .first()
+    )
+    prev_hash = last or ""
+
+    entry = AuditLog(
+        actor=actor,
+        actor_email=getattr(actor, "email", ""),
+        action=action,
+        resource_type=resource_type,
+        resource_id=str(resource_id),
+        before=before,
+        after=after,
+        **meta,
+    )
+    # Временно сохраняем без хеша чтобы получить timestamp от БД,
+    # затем вычисляем хеш и обновляем поле напрямую через QuerySet.update
+    # (не через instance.save() — он запрещён для существующих записей)
+    entry.hash_chain = ""
+    # Обходим наш иммутабельный save() — используем super() через type
+    type(AuditLog).save(entry)
+    computed = entry.compute_hash(prev_hash)
+    AuditLog.objects.filter(pk=entry.pk).update(hash_chain=computed)
+
+    logger.info(
+        "AUDIT %s %s/%s actor=%s",
+        action, resource_type, resource_id,
+        getattr(actor, "id", "system"),
+    )
+    return entry
+`,
+            },
+            {
+                filename: "audit/migrations/0002_append_only_trigger.py",
+                code: `"""
+PostgreSQL trigger: запрещает UPDATE и DELETE в таблице audit_auditlog.
+Защита на уровне БД — не обходится через raw SQL из Django.
+"""
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+    dependencies = [("audit", "0001_initial")]
+
+    operations = [
+        migrations.RunSQL(
+            sql="""
+                CREATE OR REPLACE FUNCTION audit_log_immutable()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    IF TG_OP = 'UPDATE' AND OLD.hash_chain = '' THEN
+                        -- Разрешаем единственный UPDATE: запись hash_chain сразу после INSERT
+                        RETURN NEW;
+                    END IF;
+                    RAISE EXCEPTION 'audit_auditlog is append-only: % is not allowed', TG_OP;
+                END;
+                $$ LANGUAGE plpgsql;
+
+                CREATE TRIGGER audit_log_immutable_trigger
+                BEFORE UPDATE OR DELETE ON audit_auditlog
+                FOR EACH ROW EXECUTE FUNCTION audit_log_immutable();
+            """,
+            reverse_sql="""
+                DROP TRIGGER IF EXISTS audit_log_immutable_trigger ON audit_auditlog;
+                DROP FUNCTION IF EXISTS audit_log_immutable();
+            """,
+        )
+    ]
+`,
+            },
+            {
+                filename: "audit/views.py",
+                code: `"""
+API для поиска и экспорта аудит-лога (только для staff/compliance).
+"""
+import csv
+from datetime import datetime
+
+from django.http import StreamingHttpResponse
+from rest_framework import serializers, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAdminUser
+
+from .models import AuditLog
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    actor_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AuditLog
+        fields = [
+            "id", "actor_display", "action", "resource_type", "resource_id",
+            "before", "after", "timestamp", "ip_address", "request_id", "hash_chain",
+        ]
+
+    def get_actor_display(self, obj):
+        return obj.actor_email or str(obj.actor_id)
+
+
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Только чтение — лог нельзя изменить через API.
+    Доступен только staff пользователям.
+    """
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAdminUser]
+    filterset_fields = ["action", "resource_type", "resource_id", "actor"]
+
+    def get_queryset(self):
+        qs = AuditLog.objects.select_related("actor").order_by("-timestamp")
+
+        # Фильтр по диапазону дат
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+        if date_from:
+            qs = qs.filter(timestamp__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(timestamp__date__lte=date_to)
+
+        return qs
+
+    @action(detail=False, methods=["get"], url_path="export-csv")
+    def export_csv(self, request):
+        """Стриминговый CSV-экспорт для compliance-отчётов (большие объёмы)."""
+
+        def rows():
+            yield ["timestamp", "actor", "action", "resource_type",
+                   "resource_id", "ip_address", "hash_chain"]
+            for entry in self.get_queryset().iterator(chunk_size=500):
+                yield [
+                    entry.timestamp.isoformat(),
+                    entry.actor_email,
+                    entry.action,
+                    entry.resource_type,
+                    entry.resource_id,
+                    entry.ip_address or "",
+                    entry.hash_chain,
+                ]
+
+        class EchoWriter:
+            def write(self, value): return value
+
+        writer = csv.writer(EchoWriter())
+        response = StreamingHttpResponse(
+            (writer.writerow(row) for row in rows()),
+            content_type="text/csv",
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="audit_{datetime.now().date()}.csv"'
+        )
+        return response
+`,
+            },
+            {
+                filename: "orders/views.py",
+                code: `"""
+Пример использования аудит-лога в финансовой операции.
+log_action вызывается внутри той же транзакции что и основное изменение.
+"""
+from django.db import transaction
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from audit.writer import log_action
+from .models import Order
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def cancel_order(request, order_id: int):
+    with transaction.atomic():
+        order = Order.objects.select_for_update().get(pk=order_id, user=request.user)
+
+        if order.status == "cancelled":
+            return Response({"detail": "Already cancelled."}, status=400)
+
+        before_state = {"status": order.status, "total": str(order.total)}
+        order.status = "cancelled"
+        order.save(update_fields=["status"])
+
+        log_action(
+            action="update",
+            resource_type="Order",
+            resource_id=order.pk,
+            actor=request.user,
+            before=before_state,
+            after={"status": "cancelled", "total": str(order.total)},
+            request=request,
+        )
+
+    return Response({"detail": "Order cancelled."})
+`,
+            },
+        ],
+        explanation: `**Атомарность через единую транзакцию.** Основное изменение и запись в аудит-лог происходят в одном \`transaction.atomic()\`. Если транзакция откатывается — лог-запись тоже откатывается. Если лог не записался — основное изменение тоже не сохраняется. Это гарантирует полноту лога: нет события без записи и нет записи без события.
+
+**Три уровня защиты от изменений.** Иммутабельный \`save()\` в Python — первая линия: любая попытка изменить запись через ORM бросает \`RuntimeError\`. PostgreSQL trigger — вторая: запрещает \`UPDATE\` и \`DELETE\` на уровне БД, не обходится raw SQL из приложения. Хеш-цепочка — третья: любая правка нарушает цепочку SHA-256, что обнаруживается при аудите. Вместе они создают defence-in-depth.
+
+**Снапшот \`actor_email\`.** \`actor\` — ForeignKey с \`SET_NULL\`: при удалении пользователя связь теряется, но \`actor_email\` сохраняет email на момент события. Это критично для compliance: нужно знать кто выполнил действие, даже если аккаунт удалён. Аналогично для \`before\`/\`after\` — снапшот состояния, а не ссылка на текущий объект.
+
+**Стриминговый CSV-экспорт через \`iterator()\`.** Аудит-лог может содержать миллионы записей. Загрузка всех в память — OOM. \`QuerySet.iterator(chunk_size=500)\` читает записи батчами без кэширования. \`StreamingHttpResponse\` пишет в сокет по мере генерации — клиент получает данные постепенно, сервер не держит весь ответ в памяти.
+
+**Хеш-цепочка: blockchain-lite.** Каждая запись содержит SHA-256 от своего содержимого + хеш предыдущей записи для того же ресурса. Это создаёт цепочку: изменить запись №5 без нарушения цепочки невозможно — её хеш учтён в записи №6. Периодическая верификация цепочки (audit job) обнаружит любую правку.`,
+    },
+
+    {
+        id: "django-field-encryption",
+        title: "Шифрование данных на уровне приложения",
+        task: `Реализуйте шифрование чувствительных данных (номера карт, паспортные данные) на уровне приложения с использованием django-encrypted-model-fields или собственной реализации на cryptography. Обеспечьте: прозрачное шифрование/дешифрование при работе с ORM, ротацию ключей шифрования без даунтайма, поиск по зашифрованным полям через детерминированное шифрование или blind index.`,
+        files: [
+            {
+                filename: "core/encryption.py",
+                code: `"""
+Шифрование данных на уровне приложения через cryptography (Fernet + AES-GCM).
+
+Fernet: AES-128-CBC + HMAC-SHA256, симметричное, authenticated.
+  + Простой API, защита от tampering
+  - Не детерминированный (каждый вызов → разный шифротекст)
+  - Нельзя фильтровать по зашифрованному полю
+
+Для поиска используем blind index:
+  HMAC-SHA256(plaintext, search_key) — детерминирован, не раскрывает plaintext,
+  хранится рядом с зашифрованным полем, фильтруем по нему.
+"""
+import base64
+import hashlib
+import hmac
+import os
+from typing import Optional
+
+from cryptography.fernet import Fernet, MultiFernet, InvalidToken
+from django.conf import settings
+
+
+def _get_fernets() -> MultiFernet:
+    """
+    MultiFernet поддерживает несколько ключей: шифрует первым (текущим),
+    расшифровывает любым. Это основа ротации ключей без даунтайма:
+    добавляем новый ключ первым, старые оставляем — старые данные
+    продолжают расшифровываться, новые шифруются новым ключом.
+    """
+    raw_keys = settings.FIELD_ENCRYPTION_KEYS  # список строк, первый — текущий
+    fernets = [Fernet(k.encode() if isinstance(k, str) else k) for k in raw_keys]
+    return MultiFernet(fernets)
+
+
+def _search_key() -> bytes:
+    """Отдельный ключ для blind index — не должен совпадать с ключом шифрования."""
+    key = settings.FIELD_SEARCH_KEY
+    return key.encode() if isinstance(key, str) else key
+
+
+def encrypt(plaintext: str) -> str:
+    """Шифрует строку, возвращает base64-строку для хранения в БД."""
+    if not plaintext:
+        return ""
+    token = _get_fernets().encrypt(plaintext.encode())
+    return token.decode()
+
+
+def decrypt(ciphertext: str) -> str:
+    """Расшифровывает. Бросает InvalidToken при неверном ключе или порче данных."""
+    if not ciphertext:
+        return ""
+    try:
+        return _get_fernets().decrypt(ciphertext.encode()).decode()
+    except InvalidToken as exc:
+        raise ValueError("Decryption failed: data is corrupted or key is wrong.") from exc
+
+
+def make_blind_index(plaintext: str) -> str:
+    """
+    Детерминированный HMAC-SHA256 для поиска без раскрытия plaintext.
+    Одинаковый plaintext + key → одинаковый hash → можно фильтровать в БД.
+    Атакующий с доступом к БД видит хеши, но не может восстановить plaintext
+    (при достаточной энтропии значения — номера карт, паспорта).
+    """
+    if not plaintext:
+        return ""
+    digest = hmac.new(_search_key(), plaintext.lower().encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).decode()
+`,
+            },
+            {
+                filename: "core/fields.py",
+                code: `"""
+Кастомные поля Django ORM: прозрачно шифруют при записи, расшифровывают при чтении.
+"""
+from django.db import models
+from .encryption import decrypt, encrypt, make_blind_index
+
+
+class EncryptedCharField(models.TextField):
+    """
+    Хранит зашифрованный текст. В Python-объекте — plaintext.
+    В БД — шифротекст (значительно длиннее исходного).
+
+    ВАЖНО: зашифрованное поле нельзя использовать в filter() напрямую.
+    Для поиска используйте BlindIndexField рядом с EncryptedCharField.
+    """
+
+    def from_db_value(self, value, expression, connection):
+        if value is None:
+            return value
+        return decrypt(value)
+
+    def to_python(self, value):
+        if value is None or not value:
+            return value
+        # Значение уже расшифровано если пришло из БД через from_db_value
+        return value
+
+    def get_prep_value(self, value):
+        """Вызывается перед записью в БД — шифруем."""
+        if value is None or value == "":
+            return value
+        # Если уже зашифровано (например при повторном save) — не шифруем дважды
+        if value.startswith("gAAA"):  # Fernet prefix
+            return value
+        return encrypt(value)
+
+
+class BlindIndexField(models.CharField):
+    """
+    Хранит HMAC-хеш для поиска по зашифрованному полю.
+    Всегда используется в паре с EncryptedCharField.
+    Не содержит plaintext — только детерминированный хеш.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("max_length", 64)
+        kwargs.setdefault("blank", True)
+        kwargs.setdefault("editable", False)
+        super().__init__(*args, **kwargs)
+
+    def pre_save(self, model_instance, add):
+        # Вычисляем хеш из связанного encrypted поля перед сохранением
+        raise NotImplementedError(
+            "BlindIndexField.pre_save must be overridden in subclass "
+            "to reference the correct encrypted field."
+        )
+`,
+            },
+            {
+                filename: "payments/models.py",
+                code: `"""
+Модель с зашифрованными полями карты.
+"""
+from django.conf import settings
+from django.db import models
+
+from core.encryption import decrypt, encrypt, make_blind_index
+from core.fields import EncryptedCharField
+
+
+class PaymentMethod(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
+    # Зашифрованные поля
+    card_number = EncryptedCharField()        # хранит шифротекст
+    card_holder = EncryptedCharField()
+    cardholder_passport = EncryptedCharField(blank=True)
+
+    # Blind index для поиска по последним 4 цифрам (low entropy — не используем)
+    # Для номера карты целиком blind index безопасен (16 цифр → 10^16 вариантов)
+    card_number_idx = models.CharField(max_length=64, blank=True, editable=False,
+                                       db_index=True)
+
+    # Последние 4 цифры хранятся открыто — достаточно для UX, не критично
+    card_last4 = models.CharField(max_length=4, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        # Обновляем blind index перед сохранением
+        if self.card_number:
+            # get_prep_value не вызван ещё — card_number может быть plaintext
+            plaintext = self.card_number
+            if plaintext.startswith("gAAA"):  # уже зашифровано — декодируем для idx
+                plaintext = decrypt(plaintext)
+            self.card_number_idx = make_blind_index(plaintext)
+            self.card_last4 = plaintext[-4:] if len(plaintext) >= 4 else ""
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def find_by_card_number(cls, card_number: str):
+        """Поиск по номеру карты через blind index — не расшифровывает всё."""
+        idx = make_blind_index(card_number)
+        return cls.objects.filter(card_number_idx=idx)
+
+    def __str__(self):
+        return f"**** **** **** {self.card_last4}"
+`,
+            },
+            {
+                filename: "payments/key_rotation.py",
+                code: `"""
+Ротация ключей шифрования без даунтайма.
+
+Схема:
+1. Добавляем новый ключ ПЕРВЫМ в FIELD_ENCRYPTION_KEYS
+   (старый остаётся — MultiFernet расшифрует старые данные)
+2. Деплоим — новые данные шифруются новым ключом, старые читаются нормально
+3. Запускаем migrate_encryption() — перешифровываем старые записи
+4. Удаляем старый ключ из настроек
+5. Деплоим снова
+
+Шаг 3 выполняется батчами чтобы не блокировать таблицу.
+"""
+import logging
+from django.db import transaction
+
+logger = logging.getLogger(__name__)
+
+
+def rotate_payment_methods(batch_size: int = 100) -> int:
+    """
+    Перешифровывает все PaymentMethod новым ключом.
+    Возвращает количество обновлённых записей.
+    """
+    from .models import PaymentMethod
+    from core.encryption import decrypt, encrypt
+
+    total = 0
+    last_id = 0
+
+    while True:
+        batch = list(
+            PaymentMethod.objects.filter(pk__gt=last_id).order_by("pk")[:batch_size]
+        )
+        if not batch:
+            break
+
+        with transaction.atomic():
+            for pm in batch:
+                # from_db_value уже расшифровал поля при загрузке из БД.
+                # get_prep_value зашифрует новым ключом при сохранении.
+                # Просто save() — MultiFernet сделает всё остальное.
+                pm.save(update_fields=["card_number", "card_holder",
+                                       "cardholder_passport", "card_number_idx"])
+                total += 1
+
+        last_id = batch[-1].pk
+        logger.info("Rotated %d records, last_id=%d", total, last_id)
+
+    return total
+`,
+            },
+            {
+                filename: "config/settings.py (фрагмент)",
+                code: `"""
+Ключи шифрования хранятся в переменных окружения — никогда в коде.
+Первый ключ в списке — текущий (используется для шифрования).
+Остальные — старые (используются только для расшифровки при ротации).
+
+Генерация нового ключа:
+    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+"""
+import os
+
+# Список ключей: первый — текущий, остальные — для обратной совместимости
+FIELD_ENCRYPTION_KEYS = [
+    k.strip()
+    for k in os.environ.get("FIELD_ENCRYPTION_KEYS", "").split(",")
+    if k.strip()
+]
+
+# Отдельный ключ для blind index (HMAC)
+FIELD_SEARCH_KEY = os.environ.get("FIELD_SEARCH_KEY", "")
+
+if not FIELD_ENCRYPTION_KEYS:
+    raise ImproperlyConfigured("FIELD_ENCRYPTION_KEYS must be set in environment.")
+if not FIELD_SEARCH_KEY:
+    raise ImproperlyConfigured("FIELD_SEARCH_KEY must be set in environment.")
+`,
+            },
+        ],
+        explanation: `**MultiFernet для ротации без даунтайма.** \`MultiFernet([new_key, old_key])\` шифрует всегда первым ключом, расшифровывает — любым из списка. Процедура ротации: добавить новый ключ первым → задеплоить (новые данные шифруются новым ключом, старые читаются старым) → батч-перешифровка старых данных → удалить старый ключ из списка → задеплоить снова. Даунтайм: ноль.
+
+**Blind index для поиска по зашифрованным полям.** Fernet недетерминирован: \`encrypt("4111...")\` каждый раз даёт разный шифротекст. Фильтровать по нему нельзя. Решение: рядом с зашифрованным полем хранить HMAC-SHA256 от plaintext. HMAC детерминирован: один и тот же ввод + ключ → один и тот же хеш. Фильтруем по хешу, получаем запись, расшифровываем для отображения. Атакующий с доступом к БД видит хеши, но не может восстановить данные при достаточной энтропии (номер карты — 10¹⁶ вариантов).
+
+**Прозрачность через \`from_db_value\` / \`get_prep_value\`.** \`from_db_value\` вызывается при чтении из БД — возвращает расшифрованный plaintext. \`get_prep_value\` вызывается перед записью — возвращает шифротекст. Для остального кода модель выглядит как обычная: \`pm.card_number\` возвращает plaintext, \`pm.save()\` сохраняет шифротекст.
+
+**Ключи только в переменных окружения.** Жёстко заданные ключи в коде попадают в git-историю и доступны всем, кто имеет доступ к репозиторию. Обязательно читайте ключи из \`os.environ\` и поднимайте \`ImproperlyConfigured\` при их отсутствии — это предотвращает запуск приложения без шифрования.
+
+**Батчевая перешифровка не блокирует таблицу.** Полная перешифровка всех записей одной транзакцией заблокирует таблицу на минуты. Батчи по 100 записей в отдельных транзакциях дают другим запросам возможность работать между батчами. Используйте keyset pagination (\`pk > last_id\`) вместо \`OFFSET\` — стабильнее при параллельных вставках.`,
+    },
+
+    {
+        id: "django-testing-mocks",
+        title: "Тестирование с изоляцией внешних зависимостей",
+        task: `Напишите полное тестовое покрытие для сервиса оплаты, который интегрируется с внешним платёжным провайдером, Celery-задачами и email-рассылкой. Используйте: unittest.mock и pytest-mock для внешних вызовов, responses или httpretty для HTTP-запросов, factory_boy для фикстур, freezegun для работы с временем. Покажите разницу между mock, stub, fake и spy.`,
+        files: [
+            {
+                filename: "payments/service.py",
+                code: `"""
+PaymentService — тестируемый объект.
+Интегрируется с: внешним HTTP API, Celery, email.
+"""
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timezone
+
+import requests
+from django.conf import settings
+from django.core.mail import send_mail
+
+from orders.models import Order
+from .tasks import send_payment_confirmation
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PaymentResult:
+    success: bool
+    transaction_id: str
+    amount: int
+    processed_at: datetime
+
+
+class PaymentProviderError(Exception):
+    pass
+
+
+class PaymentService:
+    def __init__(self, api_url: str | None = None):
+        self.api_url = api_url or settings.PAYMENT_API_URL
+
+    def charge(self, order: Order, card_token: str) -> PaymentResult:
+        """
+        1. Вызывает внешний платёжный API
+        2. Обновляет статус заказа
+        3. Ставит Celery-задачу на уведомление
+        4. Отправляет email
+        """
+        response = requests.post(
+            f"{self.api_url}/charge",
+            json={"amount": order.total_cents, "token": card_token},
+            timeout=10,
+        )
+        if not response.ok:
+            raise PaymentProviderError(f"Provider error: {response.status_code}")
+
+        data = response.json()
+        result = PaymentResult(
+            success=True,
+            transaction_id=data["transaction_id"],
+            amount=data["amount"],
+            processed_at=datetime.now(tz=timezone.utc),
+        )
+
+        order.status = "paid"
+        order.transaction_id = result.transaction_id
+        order.save(update_fields=["status", "transaction_id"])
+
+        send_payment_confirmation.delay(order.pk)
+
+        send_mail(
+            subject="Оплата прошла успешно",
+            message=f"Заказ #{order.pk} оплачен. Транзакция: {result.transaction_id}",
+            from_email="payments@example.com",
+            recipient_list=[order.user.email],
+        )
+        return result
+`,
+            },
+            {
+                filename: "tests/factories.py",
+                code: `"""
+factory_boy: фабрики для создания тестовых данных.
+
+Преимущества перед фикстурами в БД:
+- Объекты создаются с разумными дефолтами, переопределяются точечно
+- Нет coupling между тестами (каждый тест создаёт свои данные)
+- Легко создавать связанные объекты (Order → User → Wallet)
+"""
+import factory
+import factory.fuzzy
+from django.contrib.auth import get_user_model
+from orders.models import Order
+from payments.models import PaymentMethod
+
+User = get_user_model()
+
+
+class UserFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = User
+
+    username = factory.Sequence(lambda n: f"user_{n}")
+    email = factory.LazyAttribute(lambda o: f"{o.username}@example.com")
+    password = factory.PostGenerationMethodCall("set_password", "testpass123")
+    is_active = True
+
+
+class OrderFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Order
+
+    user = factory.SubFactory(UserFactory)
+    status = "pending"
+    total_cents = factory.fuzzy.FuzzyInteger(100, 100_000)  # 1–1000 USD
+
+    class Params:
+        # Трейт: OrderFactory(paid=True) создаёт оплаченный заказ
+        paid = factory.Trait(
+            status="paid",
+            transaction_id=factory.Sequence(lambda n: f"txn_{n:08d}"),
+        )
+`,
+            },
+            {
+                filename: "tests/test_payment_service.py",
+                code: `"""
+Демонстрация четырёх видов тест-двойников:
+
+  Mock  — объект с контролируемым поведением И проверкой вызовов
+  Stub  — объект с фиксированным ответом, вызовы не проверяются
+  Fake  — работающая упрощённая реализация (in-memory вместо реального API)
+  Spy   — реальный объект, который записывает вызовы для последующей проверки
+"""
+import pytest
+import responses as resp_lib
+from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch, call
+from freezegun import freeze_time
+
+from payments.service import PaymentService, PaymentProviderError
+from .factories import OrderFactory, UserFactory
+
+
+# ---------------------------------------------------------------------------
+# Фикстуры
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def order(db):
+    return OrderFactory(total_cents=5000)
+
+
+@pytest.fixture
+def service():
+    return PaymentService(api_url="https://pay.example.com")
+
+
+# ---------------------------------------------------------------------------
+# STUB: возвращает фиксированный ответ, вызовы не проверяются
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+def test_charge_success_stub(service, order, mocker):
+    """
+    Stub: requests.post заменён объектом с фиксированным .json() и .ok=True.
+    Нас интересует только итоговое состояние, а не параметры запроса.
+    """
+    stub_response = MagicMock()
+    stub_response.ok = True
+    stub_response.json.return_value = {
+        "transaction_id": "txn_abc123",
+        "amount": 5000,
+    }
+    mocker.patch("payments.service.requests.post", return_value=stub_response)
+    mocker.patch("payments.service.send_payment_confirmation.delay")
+    mocker.patch("payments.service.send_mail")
+
+    result = service.charge(order, card_token="tok_test")
+
+    assert result.success is True
+    assert result.transaction_id == "txn_abc123"
+    order.refresh_from_db()
+    assert order.status == "paid"
+
+
+# ---------------------------------------------------------------------------
+# MOCK: контролируемый ответ + проверка вызовов
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+def test_charge_calls_provider_correctly_mock(service, order, mocker):
+    """
+    Mock: проверяем не только результат, но и то, как именно вызван внешний API.
+    """
+    mock_post = mocker.patch("payments.service.requests.post")
+    mock_post.return_value.ok = True
+    mock_post.return_value.json.return_value = {"transaction_id": "txn_xyz", "amount": 5000}
+    mocker.patch("payments.service.send_payment_confirmation.delay")
+    mocker.patch("payments.service.send_mail")
+
+    service.charge(order, card_token="tok_visa")
+
+    # Проверяем точные параметры вызова — это и отличает mock от stub
+    mock_post.assert_called_once_with(
+        "https://pay.example.com/charge",
+        json={"amount": 5000, "token": "tok_visa"},
+        timeout=10,
+    )
+
+
+# ---------------------------------------------------------------------------
+# FAKE: упрощённая in-memory реализация вместо реального HTTP
+# ---------------------------------------------------------------------------
+
+class FakePaymentProvider:
+    """Fake: реальная логика, но без сети. Запоминает все транзакции."""
+
+    def __init__(self):
+        self.transactions: dict[str, dict] = {}
+        self._counter = 0
+
+    def post(self, url: str, json: dict, timeout: int):
+        self._counter += 1
+        txn_id = f"fake_txn_{self._counter:04d}"
+        self.transactions[txn_id] = json
+
+        response = MagicMock()
+        response.ok = True
+        response.json.return_value = {"transaction_id": txn_id, "amount": json["amount"]}
+        return response
+
+
+@pytest.mark.django_db
+def test_charge_with_fake_provider(service, order, mocker):
+    """
+    Fake: замена всего HTTP-слоя рабочей in-memory реализацией.
+    Позволяет тестировать несколько вызовов с состоянием между ними.
+    """
+    fake = FakePaymentProvider()
+    mocker.patch("payments.service.requests", fake)
+    mocker.patch("payments.service.send_payment_confirmation.delay")
+    mocker.patch("payments.service.send_mail")
+
+    result = service.charge(order, card_token="tok_test")
+
+    assert result.transaction_id.startswith("fake_txn_")
+    assert result.transaction_id in fake.transactions
+
+
+# ---------------------------------------------------------------------------
+# SPY: реальный объект, который записывает вызовы
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+def test_email_sent_on_success_spy(service, order, mocker):
+    """
+    Spy: send_mail вызывается реально (в тестах Django email бэкенд in-memory),
+    но mocker.spy позволяет проверить параметры вызова.
+    """
+    mocker.patch("payments.service.requests.post").return_value = MagicMock(
+        ok=True,
+        json=lambda: {"transaction_id": "txn_spy", "amount": 5000},
+    )
+    mocker.patch("payments.service.send_payment_confirmation.delay")
+
+    # spy оборачивает реальную функцию — она выполняется, но вызов записывается
+    spy = mocker.spy(PaymentService, "charge")
+    service.charge(order, card_token="tok_test")
+
+    assert spy.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# responses: декларативный mock HTTP через registered responses
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+@resp_lib.activate
+def test_charge_with_responses_library(service, order, mocker):
+    """
+    responses: перехватывает реальные requests.get/post без patch.
+    Удобно для сложных сценариев с несколькими HTTP-эндпоинтами.
+    """
+    resp_lib.add(
+        resp_lib.POST,
+        "https://pay.example.com/charge",
+        json={"transaction_id": "txn_resp_001", "amount": 5000},
+        status=200,
+    )
+    mocker.patch("payments.service.send_payment_confirmation.delay")
+    mocker.patch("payments.service.send_mail")
+
+    result = service.charge(order, card_token="tok_resp")
+
+    assert result.transaction_id == "txn_resp_001"
+
+
+# ---------------------------------------------------------------------------
+# freezegun: фиксируем время для детерминированных тестов
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+@freeze_time("2024-06-15 12:00:00")
+def test_processed_at_timestamp(service, order, mocker):
+    """
+    freezegun: datetime.now() возвращает фиксированное время.
+    Важно для тестов, проверяющих временны́е метки.
+    """
+    mocker.patch("payments.service.requests.post").return_value = MagicMock(
+        ok=True,
+        json=lambda: {"transaction_id": "txn_time", "amount": 5000},
+    )
+    mocker.patch("payments.service.send_payment_confirmation.delay")
+    mocker.patch("payments.service.send_mail")
+
+    result = service.charge(order, card_token="tok_time")
+
+    assert result.processed_at.year == 2024
+    assert result.processed_at.month == 6
+    assert result.processed_at.day == 15
+
+
+# ---------------------------------------------------------------------------
+# Тест ошибки провайдера
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+def test_charge_raises_on_provider_error(service, order, mocker):
+    mocker.patch("payments.service.requests.post").return_value = MagicMock(
+        ok=False,
+        status_code=402,
+    )
+
+    with pytest.raises(PaymentProviderError, match="402"):
+        service.charge(order, card_token="tok_bad")
+
+    order.refresh_from_db()
+    assert order.status == "pending"   # статус не изменился
+`,
+            },
+            {
+                filename: "conftest.py",
+                code: `"""
+pytest конфигурация: общие фикстуры и настройки.
+"""
+import pytest
+from django.conf import settings
+
+
+@pytest.fixture(autouse=True)
+def use_test_email_backend(settings):
+    """Все тесты используют in-memory email бэкенд — письма не отправляются."""
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+
+@pytest.fixture(autouse=True)
+def reset_celery_to_eager(settings):
+    """
+    CELERY_TASK_ALWAYS_EAGER=True: задачи выполняются синхронно в том же процессе.
+    Для unit-тестов не нужен реальный брокер.
+    Для интеграционных тестов используйте celery_worker фикстуру (pytest-celery).
+    """
+    settings.CELERY_TASK_ALWAYS_EAGER = True
+    settings.CELERY_TASK_EAGER_PROPAGATES = True
+`,
+            },
+        ],
+        explanation: `**Mock vs Stub vs Fake vs Spy — четыре разных инструмента.** Stub возвращает заготовленный ответ, вызовы не проверяются — используйте когда важен только результат. Mock дополнительно проверяет как именно был сделан вызов (аргументы, количество раз) — используйте для проверки контракта с внешним сервисом. Fake — работающая упрощённая реализация (in-memory база, локальный файловый провайдер) — используйте для сложных сценариев с состоянием. Spy — обёртка над реальным объектом, которая записывает вызовы не изменяя поведение.
+
+**\`mocker.patch\` vs \`responses\`.** \`mocker.patch("payments.service.requests.post")\` патчит объект в конкретном модуле — важно патчить там, где используется, а не там, где определено. Библиотека \`responses\` декларативнее: регистрируете ожидаемые URL и ответы, библиотека перехватывает все запросы через requests. Удобна когда тестируемый код делает несколько HTTP-запросов к разным URL.
+
+**\`factory_boy\` vs фикстуры в БД.** Фикстуры (JSON/YAML дампы) хрупкие: любое изменение схемы ломает их. Factory boy создаёт объекты программно с разумными дефолтами. Трейты (\`OrderFactory(paid=True)\`) позволяют создавать варианты без дублирования. \`SubFactory\` создаёт связанные объекты автоматически — не нужно вручную создавать пользователя перед заказом.
+
+**\`freezegun\` для детерминированных временны́х тестов.** \`datetime.now()\` в реальном коде даёт разные результаты при каждом запуске. \`@freeze_time\` заменяет все вызовы \`datetime.now()\`, \`date.today()\`, \`time.time()\` на фиксированное значение. Работает как декоратор и как context manager. Особенно важно для тестов истечения токенов, дедлайнов, scheduled задач.
+
+**\`CELERY_TASK_ALWAYS_EAGER\` для unit-тестов.** В eager режиме \`.delay()\` выполняет задачу синхронно в том же потоке — не нужен Redis/RabbitMQ. Исключения из задач пробрасываются в тест при \`EAGER_PROPAGATES=True\`. Для интеграционных тестов с реальным брокером — \`celery_worker\` фикстура из \`pytest-celery\`.`,
+    },
+
+    {
+        id: "django-integration-e2e-tests",
+        title: "Интеграционные и e2e тесты",
+        task: `Разработайте стратегию интеграционного тестирования для критического пути: регистрация → подтверждение email → оформление заказа → оплата → уведомление. Используйте pytest-django, реальную тестовую БД, celery_worker fixture для async задач. Реализуйте тесты, которые работают как на sqlite (быстро), так и на PostgreSQL (точность). Настройте CI для параллельного запуска.`,
+        files: [
+            {
+                filename: "tests/integration/test_order_flow.py",
+                code: `"""
+Интеграционный тест критического пути:
+  регистрация → email подтверждение → заказ → оплата → уведомление
+
+Использует реальную БД (TransactionTestCase для Celery),
+реальные сигналы, реальный email бэкенд (in-memory).
+"""
+import pytest
+from django.core import mail
+from django.urls import reverse
+from rest_framework.test import APIClient
+
+from tests.factories import OrderFactory, UserFactory
+
+
+# ---------------------------------------------------------------------------
+# Фикстуры
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def api_client():
+    return APIClient()
+
+
+@pytest.fixture
+def registered_user(db):
+    """Создаёт пользователя и возвращает вместе с паролем для аутентификации."""
+    password = "StrongPass!99"
+    user = UserFactory(password=None, is_active=False)
+    user.set_password(password)
+    user.save()
+    return user, password
+
+
+# ---------------------------------------------------------------------------
+# Шаг 1: Регистрация и подтверждение email
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db(transaction=True)
+def test_registration_sends_confirmation_email(api_client, mailoutbox):
+    payload = {
+        "username": "newuser",
+        "email": "new@example.com",
+        "password": "StrongPass!99",
+    }
+    response = api_client.post(reverse("api:register"), payload)
+
+    assert response.status_code == 201
+    assert len(mailoutbox) == 1
+    assert "подтвердите" in mailoutbox[0].subject.lower()
+    assert "new@example.com" in mailoutbox[0].to
+
+
+@pytest.mark.django_db(transaction=True)
+def test_email_confirmation_activates_user(api_client, registered_user):
+    user, _ = registered_user
+    assert not user.is_active
+
+    # Генерируем токен подтверждения
+    from django.contrib.auth.tokens import default_token_generator
+    from django.utils.encoding import force_bytes
+    from django.utils.http import urlsafe_base64_encode
+
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+
+    response = api_client.get(reverse("api:confirm-email", kwargs={"uid": uid, "token": token}))
+
+    assert response.status_code == 200
+    user.refresh_from_db()
+    assert user.is_active
+
+
+# ---------------------------------------------------------------------------
+# Шаг 2: Аутентификация и оформление заказа
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db(transaction=True)
+def test_authenticated_user_can_create_order(api_client, registered_user):
+    user, password = registered_user
+    user.is_active = True
+    user.save()
+
+    # Получаем JWT токен
+    token_response = api_client.post(
+        reverse("api:token-obtain"),
+        {"username": user.username, "password": password},
+    )
+    assert token_response.status_code == 200
+    access = token_response.data["access"]
+
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+    order_response = api_client.post(
+        reverse("api:orders-list"),
+        {"items": [{"product_id": 1, "quantity": 2}]},
+    )
+    assert order_response.status_code == 201
+    assert order_response.data["status"] == "pending"
+
+
+# ---------------------------------------------------------------------------
+# Шаг 3: Оплата (с мокированным провайдером) + Celery
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db(transaction=True)
+def test_payment_triggers_notification_task(
+    api_client,
+    registered_user,
+    celery_worker,       # pytest-celery: реальный воркер в фоне
+    mailoutbox,
+    mocker,
+):
+    user, password = registered_user
+    user.is_active = True
+    user.save()
+    order = OrderFactory(user=user, total_cents=9900, status="pending")
+
+    # Мокируем внешний платёжный API — не хотим реальных списаний в тестах
+    mocker.patch("payments.service.requests.post").return_value = type(
+        "R", (), {"ok": True, "json": lambda self: {"transaction_id": "test_txn_001", "amount": 9900}}
+    )()
+
+    token_response = api_client.post(
+        reverse("api:token-obtain"),
+        {"username": user.username, "password": password},
+    )
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {token_response.data['access']}")
+
+    pay_response = api_client.post(
+        reverse("api:orders-pay", kwargs={"pk": order.pk}),
+        {"card_token": "tok_integration_test"},
+    )
+    assert pay_response.status_code == 200
+
+    order.refresh_from_db()
+    assert order.status == "paid"
+    assert order.transaction_id == "test_txn_001"
+
+    # Celery задача уведомления выполнилась в реальном воркере — проверяем email
+    import time
+    time.sleep(1)  # ждём завершения async задачи
+    assert len(mailoutbox) >= 1
+    assert any("оплат" in m.subject.lower() for m in mailoutbox)
+`,
+            },
+            {
+                filename: "tests/conftest.py",
+                code: `"""
+Конфигурация pytest для поддержки SQLite (быстро) и PostgreSQL (точность).
+Выбор БД через переменную окружения.
+"""
+import pytest
+from django.conf import settings
+
+
+def pytest_configure(config):
+    """
+    Автоматически выбирает БД на основе TEST_DB переменной окружения.
+    pytest                  → SQLite (быстро, для локальной разработки)
+    TEST_DB=postgres pytest → PostgreSQL (точность, для CI)
+    """
+    import os
+    if os.environ.get("TEST_DB") == "postgres":
+        settings.DATABASES["default"] = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ.get("TEST_PG_DB", "test_myapp"),
+            "USER": os.environ.get("TEST_PG_USER", "postgres"),
+            "PASSWORD": os.environ.get("TEST_PG_PASSWORD", ""),
+            "HOST": os.environ.get("TEST_PG_HOST", "localhost"),
+            "PORT": os.environ.get("TEST_PG_PORT", "5432"),
+            "TEST": {"NAME": os.environ.get("TEST_PG_DB", "test_myapp")},
+        }
+
+
+@pytest.fixture(scope="session")
+def django_db_setup(django_test_environment, django_db_blocker):
+    """Настройка тестовой БД: создаём один раз на сессию для скорости."""
+    with django_db_blocker.unblock():
+        from django.test.utils import setup_test_environment
+        setup_test_environment()
+
+
+@pytest.fixture
+def mailoutbox(settings):
+    """Django in-memory email бэкенд + доступ к отправленным письмам."""
+    settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+    from django.core import mail
+    mail.outbox = []
+    yield mail.outbox
+    mail.outbox = []
+`,
+            },
+            {
+                filename: "pytest.ini",
+                code: `[pytest]
+DJANGO_SETTINGS_MODULE = config.settings.test
+python_files = tests/test_*.py tests/integration/test_*.py
+python_classes = Test*
+python_functions = test_*
+
+# Маркеры для группировки тестов
+markers =
+    unit: быстрые unit-тесты без БД
+    integration: интеграционные тесты с реальной БД
+    e2e: полные end-to-end тесты
+    slow: медленные тесты (исключайте при разработке: pytest -m "not slow")
+
+# Параллельный запуск через pytest-xdist
+# Не используйте с celery_worker фикстурой — Celery + xdist требует настройки
+addopts = --strict-markers -q
+`,
+            },
+            {
+                filename: ".github/workflows/ci.yml",
+                code: `name: CI
+
+on: [push, pull_request]
+
+jobs:
+  # Быстрые unit-тесты на SQLite — запускаются при каждом push
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements-dev.txt
+      - name: Run unit tests (SQLite, parallel)
+        run: pytest -m "unit" -n auto  # pytest-xdist: parallel по CPU
+
+  # Интеграционные тесты на PostgreSQL — параллельно с unit
+  integration-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: test_myapp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        options: --health-cmd "redis-cli ping" --health-interval 10s
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements-dev.txt
+      - name: Run integration tests (PostgreSQL)
+        env:
+          TEST_DB: postgres
+          TEST_PG_PASSWORD: testpass
+          CELERY_BROKER_URL: redis://localhost:6379/0
+        run: pytest -m "integration" -n 4  # 4 параллельных воркера
+`,
+            },
+        ],
+        explanation: `**TransactionTestCase для Celery.** Стандартный \`TestCase\` Django оборачивает каждый тест в транзакцию и откатывает её — быстро и изолировано. Но Celery-воркер работает в отдельном процессе и не видит незакоммиченные данные. \`@pytest.mark.django_db(transaction=True)\` использует \`TransactionTestCase\`: данные реально коммитятся, воркер их видит, но БД нужно очищать после теста (медленнее).
+
+**\`celery_worker\` фикстура из pytest-celery.** Запускает реальный Celery-воркер в фоновом треде на время теста. Задачи выполняются асинхронно — нужен \`time.sleep()\` или \`result.get(timeout=5)\` для ожидания. Более стабильная альтернатива: \`CELERY_TASK_ALWAYS_EAGER=True\` для unit-тестов и реальный воркер только для интеграционных.
+
+**SQLite vs PostgreSQL в тестах.** SQLite — встроен в Python, тесты запускаются без инфраструктуры, в 2–3x быстрее. Ограничения: нет \`JSONB\`, нет некоторых типов индексов, другой SQL диалект, нет транзакционной семантики некоторых операций. PostgreSQL — точность: тесты проверяют ровно то, что будет в production. Стратегия: unit-тесты на SQLite (80% скорости), интеграционные на PostgreSQL (точность критического пути).
+
+**pytest-xdist для параллельного запуска.** \`-n auto\` запускает по одному процессу на CPU. Каждый процесс получает отдельную тестовую БД (\`test_myapp_gw0\`, \`test_myapp_gw1\`, ...). Не совместим с тестами, разделяющими глобальное состояние (например singleton-кэши). Для CI: разделите unit и integration в отдельные jobs — они запускаются параллельно на разных раннерах.
+
+**\`mailoutbox\` фикстура.** Django in-memory email бэкенд сохраняет письма в \`django.core.mail.outbox\` — реальная отправка не происходит. \`mailoutbox\` фикстура сбрасывает список до и после теста. Позволяет проверять subject, recipients, body без SMTP-сервера.`,
+    },
+
+    {
+        id: "django-load-testing",
+        title: "Нагрузочное тестирование и benchmarking",
+        task: `Реализуйте нагрузочный тест для API endpoint с использованием locust. Сценарий: 1000 пользователей, каждый выполняет: аутентификацию, просмотр каталога (с пагинацией), добавление в корзину, оформление заказа. Определите bottleneck, настройте мониторинг во время теста (Prometheus + Grafana), задокументируйте результаты и предложите план оптимизации.`,
+        files: [
+            {
+                filename: "loadtest/locustfile.py",
+                code: `"""
+Locust: нагрузочный тест сценария покупки.
+
+Запуск:
+  locust -f loadtest/locustfile.py --host=http://localhost:8000
+  # → открыть http://localhost:8089 для UI
+
+Headless (CI):
+  locust -f loadtest/locustfile.py \\
+    --host=http://api.example.com \\
+    --users=1000 --spawn-rate=50 \\
+    --run-time=5m --headless \\
+    --html=report.html --csv=results
+"""
+import random
+import string
+
+from locust import HttpUser, TaskSet, between, events, task
+
+
+# ---------------------------------------------------------------------------
+# Вспомогательные функции
+# ---------------------------------------------------------------------------
+
+def random_email() -> str:
+    suffix = "".join(random.choices(string.ascii_lowercase, k=8))
+    return f"loadtest_{suffix}@example.com"
+
+
+# ---------------------------------------------------------------------------
+# TaskSet: логика одного пользователя
+# ---------------------------------------------------------------------------
+
+class ShopTaskSet(TaskSet):
+    """
+    Задачи выполняются в порядке объявления через on_start.
+    Веса @task(N) задают относительную частоту вызова.
+    """
+
+    def on_start(self):
+        """Вызывается при старте каждого виртуального пользователя."""
+        self.token = None
+        self.cart_id = None
+        self._register_and_login()
+
+    def _register_and_login(self):
+        email = random_email()
+        password = "LoadTest!99"
+
+        self.client.post("/api/auth/register/", json={
+            "email": email, "password": password, "username": email,
+        })
+
+        resp = self.client.post("/api/auth/token/", json={
+            "username": email, "password": password,
+        })
+        if resp.status_code == 200:
+            self.token = resp.json().get("access")
+            self.client.headers.update({"Authorization": f"Bearer {self.token}"})
+
+    @task(5)
+    def browse_catalog(self):
+        """Высокочастотная задача: просмотр каталога с пагинацией."""
+        page = random.randint(1, 10)
+        with self.client.get(
+            f"/api/catalog/?page={page}&page_size=20",
+            name="/api/catalog/",   # group URL для агрегации статистики
+            catch_response=True,
+        ) as resp:
+            if resp.status_code != 200:
+                resp.failure(f"Catalog returned {resp.status_code}")
+            elif "results" not in resp.json():
+                resp.failure("Missing 'results' in response")
+
+    @task(2)
+    def view_product(self):
+        """Просмотр карточки товара."""
+        product_id = random.randint(1, 500)
+        self.client.get(
+            f"/api/catalog/{product_id}/",
+            name="/api/catalog/<id>/",
+        )
+
+    @task(2)
+    def add_to_cart(self):
+        """Добавление в корзину."""
+        product_id = random.randint(1, 500)
+        resp = self.client.post(
+            "/api/cart/items/",
+            json={"product_id": product_id, "quantity": 1},
+            name="/api/cart/items/",
+        )
+        if resp.status_code == 201:
+            self.cart_id = resp.json().get("cart_id")
+
+    @task(1)
+    def checkout(self):
+        """Редкая задача: оформление заказа."""
+        if not self.cart_id:
+            return
+        with self.client.post(
+            "/api/orders/",
+            json={"cart_id": self.cart_id, "card_token": "tok_loadtest"},
+            name="/api/orders/",
+            catch_response=True,
+        ) as resp:
+            if resp.status_code not in (200, 201):
+                resp.failure(f"Checkout failed: {resp.status_code}")
+            else:
+                self.cart_id = None  # корзина использована
+
+
+class ShopUser(HttpUser):
+    tasks = [ShopTaskSet]
+    wait_time = between(1, 3)      # пауза между задачами: 1–3 секунды
+
+
+# ---------------------------------------------------------------------------
+# Custom метрики — отправка в Prometheus через pushgateway
+# ---------------------------------------------------------------------------
+
+@events.request.add_listener
+def on_request(request_type, name, response_time, response_length,
+               exception, context, **kwargs):
+    """Хук для отправки метрик в Prometheus Pushgateway после каждого запроса."""
+    import os
+    if not os.environ.get("PROMETHEUS_PUSHGATEWAY"):
+        return
+
+    from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+    registry = CollectorRegistry()
+    g = Gauge("locust_response_time_ms", "Response time",
+              ["method", "name"], registry=registry)
+    g.labels(method=request_type, name=name).set(response_time)
+    try:
+        push_to_gateway(
+            os.environ["PROMETHEUS_PUSHGATEWAY"],
+            job="locust",
+            registry=registry,
+        )
+    except Exception:
+        pass
+`,
+            },
+            {
+                filename: "loadtest/prometheus.yml",
+                code: `# Prometheus конфигурация для сбора метрик во время нагрузочного теста.
+# Scrape: Django (django-prometheus), PostgreSQL (postgres_exporter), Redis (redis_exporter).
+
+global:
+  scrape_interval: 5s      # частый сбор для нагрузочных тестов
+
+scrape_configs:
+  - job_name: django
+    static_configs:
+      - targets: ["app:8000"]
+    metrics_path: /metrics   # django-prometheus экспортирует по этому пути
+
+  - job_name: postgresql
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: locust_pushgateway
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]
+`,
+            },
+            {
+                filename: "loadtest/analysis.md",
+                code: `# Результаты нагрузочного теста и план оптимизации
+
+## Параметры теста
+- Пользователи: 1000 (spawn rate: 50/s)
+- Длительность: 5 минут
+- Сервер: 4 CPU, 8GB RAM, Django 5.x + Gunicorn 4 воркера
+
+## Результаты (до оптимизации)
+
+| Endpoint              | Avg (ms) | p95 (ms) | p99 (ms) | RPS  | Error % |
+|-----------------------|----------|----------|----------|------|---------|
+| GET /api/catalog/     | 850      | 2100     | 4500     | 180  | 2.3%    |
+| GET /api/catalog/<id> | 120      | 380      | 800      | 450  | 0.1%    |
+| POST /api/cart/items/ | 95       | 250      | 600      | 380  | 0.0%    |
+| POST /api/orders/     | 3200     | 8000     | 15000    | 45   | 8.1%    |
+| POST /api/auth/token/ | 180      | 420      | 900      | 200  | 0.2%    |
+
+## Выявленные bottleneck-и
+
+### 1. GET /api/catalog/ — медленно (850ms avg)
+Причина: отсутствие кэша + N+1 запросы.
+EXPLAIN ANALYZE показал: Seq Scan на таблице 500K товаров без индекса на is_active.
+
+### 2. POST /api/orders/ — очень медленно (3200ms) + 8% ошибок
+Причина:
+  a) Синхронная отправка email блокирует запрос (~1500ms SMTP)
+  b) Pool exhaustion: при 1000 юзерах пул соединений (20) исчерпан
+  c) Нет retry при временных DB ошибках
+
+### 3. Connection pool exhausted
+pg_stat_activity показал >100 idle соединений от Django.
+PgBouncer отсутствовал в конфигурации.
+
+## План оптимизации
+
+### Быстрые wins (1–2 дня)
+1. Добавить Redis-кэш для /api/catalog/ с TTL 60s → ожидаемое улучшение: 850ms → 50ms
+2. Индекс на (is_active, created_at) → устранит Seq Scan
+3. Вынести send_mail в Celery-задачу → /api/orders/ 3200ms → ~800ms
+
+### Среднесрочные (1 неделя)
+4. Добавить PgBouncer (transaction mode, pool_size=30) → устранит pool exhaustion
+5. select_related + prefetch_related в catalog view → устранит N+1
+6. CDN для статики и изображений товаров
+
+### Долгосрочные (1 месяц)
+7. Горизонтальное масштабирование: 4 воркера → 3 инстанса × 4 воркера
+8. Read replica для catalog запросов
+9. Elasticsearch для поиска по каталогу
+
+## Результаты после оптимизации (ожидаемые)
+
+| Endpoint              | Avg (ms) | p95 (ms) | RPS   |
+|-----------------------|----------|----------|-------|
+| GET /api/catalog/     | 45       | 120      | 2000  |
+| POST /api/orders/     | 750      | 1800     | 180   |
+`,
+            },
+            {
+                filename: "config/settings.py (django-prometheus)",
+                code: `"""
+django-prometheus: экспорт метрик для Grafana/Prometheus.
+Метрики: HTTP запросы (count, latency), ORM запросы (count, latency),
+         cache hits/misses, кастомные метрики приложения.
+"""
+INSTALLED_APPS += ["django_prometheus"]
+
+MIDDLEWARE = [
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",
+    # ... остальные middleware ...
+    "django_prometheus.middleware.PrometheusAfterMiddleware",
+]
+
+# urls.py — добавьте эндпоинт метрик:
+# from django_prometheus import exports
+# urlpatterns += [path("metrics", exports.ExportToDjangoView, name="prometheus-django-metrics")]
+
+# Кастомные метрики приложения
+from prometheus_client import Counter, Histogram
+
+orders_created = Counter(
+    "app_orders_created_total",
+    "Total orders created",
+    ["status"],
+)
+
+payment_duration = Histogram(
+    "app_payment_duration_seconds",
+    "Time spent processing payment",
+    buckets=[.1, .25, .5, 1.0, 2.5, 5.0, 10.0],
+)
+
+# Использование в коде:
+# orders_created.labels(status="paid").inc()
+# with payment_duration.time():
+#     result = payment_service.charge(order, token)
+`,
+            },
+        ],
+        explanation: `**Веса задач через \`@task(N)\` моделируют реальный трафик.** В реальном приложении просмотр каталога происходит в 5× чаще, чем оформление заказа. \`@task(5)\` для каталога и \`@task(1)\` для checkout воспроизводят это соотношение. Нагрузочный тест с равномерным распределением задач даёт нереалистичную картину.
+
+**\`catch_response=True\` для кастомной валидации.** По умолчанию Locust считает ответ успешным при HTTP 2xx. \`catch_response=True\` позволяет пометить ответ как ошибку даже при 200, если содержимое неожиданное (\`resp.failure("Missing results")\`). Важно для проверки контракта API: HTTP 200 с пустым body или неверной схемой — тоже баг.
+
+**\`name\` параметр для группировки статистики.** Без \`name\` URL \`/api/catalog/1/\`, \`/api/catalog/2/\`, ... будут отдельными строками в статистике — нечитаемо. \`name="/api/catalog/<id>/"\` группирует все запросы под одним именем. Обязательно используйте для параметризованных URL.
+
+**Анализ результатов: p95 важнее среднего.** Среднее значение скрывает выбросы. p95=2100ms при avg=850ms означает: каждый 20-й пользователь ждёт >2 секунды. p99=4500ms — каждый 100-й ждёт >4.5 секунды. При 1000 пользователях это 10 человек одновременно с критическим временем ожидания. SLA обычно задаётся через p95/p99.
+
+**Prometheus + django-prometheus для корреляции.** Grafana дашборд во время нагрузочного теста показывает одновременно: RPS Locust, latency эндпоинтов, количество SQL-запросов (django-prometheus), количество соединений к БД (postgres_exporter). Корреляция по времени позволяет точно установить причину деградации: рост latency совпадает с ростом active DB connections → bottleneck в пуле соединений.`,
+    },
+
+    {
+        id: "django-docker-kubernetes",
+        title: "Django в Docker и Kubernetes",
+        task: `Контейнеризируйте Django-приложение для production. Реализуйте: многоэтапную сборку Docker-образа (minimal production image), отдельные контейнеры для web, celery worker, celery beat, flower, настройку health checks и readiness/liveness probes, graceful shutdown (обработка SIGTERM), управление Django management командами в K8s (миграции как init containers или Jobs).`,
+        files: [
+            {
+                filename: "Dockerfile",
+                code: `# =============================================================================
+# Stage 1: builder — устанавливаем зависимости, компилируем wheels
+# =============================================================================
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+
+# Системные зависимости для сборки (psycopg2, cryptography и т.д.)
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    gcc libpq-dev libffi-dev && \\
+    rm -rf /var/lib/apt/lists/*
+
+# Копируем только requirements — кэш слоя сохраняется при изменении кода
+COPY requirements.txt .
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels -r requirements.txt
+
+
+# =============================================================================
+# Stage 2: production — минимальный образ без инструментов сборки
+# =============================================================================
+FROM python:3.12-slim AS production
+
+# Создаём непривилегированного пользователя
+RUN groupadd --gid 1001 appgroup && \\
+    useradd --uid 1001 --gid appgroup --no-create-home appuser
+
+WORKDIR /app
+
+# Только runtime зависимости (libpq для psycopg2)
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    libpq5 curl && \\
+    rm -rf /var/lib/apt/lists/*
+
+# Копируем pre-built wheels из builder — компилятор в production не нужен
+COPY --from=builder /wheels /wheels
+RUN pip install --no-cache-dir --no-index --find-links=/wheels /wheels/*.whl && \\
+    rm -rf /wheels
+
+COPY --chown=appuser:appgroup . .
+
+# Собираем static files (нельзя делать в runtime — нет доступа на запись)
+RUN python manage.py collectstatic --noinput
+
+USER appuser
+
+# Gunicorn с обработчиком SIGTERM (graceful shutdown)
+# --timeout 30: воркер получает 30s для завершения текущего запроса
+# --graceful-timeout 20: при SIGTERM дополнительные 20s до SIGKILL
+CMD ["gunicorn", "config.wsgi:application", \\
+     "--bind", "0.0.0.0:8000", \\
+     "--workers", "4", \\
+     "--timeout", "30", \\
+     "--graceful-timeout", "20", \\
+     "--access-logfile", "-", \\
+     "--error-logfile", "-"]
+
+EXPOSE 8000
+
+# Docker health check (используется в docker-compose, не в K8s)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \\
+    CMD curl -f http://localhost:8000/health/ || exit 1
+`,
+            },
+            {
+                filename: "docker-compose.prod.yml",
+                code: `version: "3.9"
+
+x-app-common: &app-common
+  image: myapp:latest
+  env_file: .env.prod
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  # Миграции запускаются один раз перед стартом web
+  migrate:
+    <<: *app-common
+    command: python manage.py migrate --noinput
+    restart: "no"
+
+  web:
+    <<: *app-common
+    ports: ["8000:8000"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  celery-worker:
+    <<: *app-common
+    command: celery -A config worker --loglevel=info --concurrency=4
+    restart: unless-stopped
+
+  celery-beat:
+    <<: *app-common
+    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    restart: unless-stopped
+
+  flower:
+    <<: *app-common
+    command: celery -A config flower --port=5555
+    ports: ["5555:5555"]
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: myapp
+      POSTGRES_USER: myapp
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    secrets: [pg_password]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
+
+secrets:
+  pg_password:
+    file: ./secrets/pg_password.txt
+`,
+            },
+            {
+                filename: "k8s/deployment.yaml",
+                code: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-web
+  labels:
+    app: django
+    component: web
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: django
+      component: web
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1         # максимум +1 pod сверх replicas при обновлении
+      maxUnavailable: 0   # ноль pod недоступны в любой момент (zero-downtime)
+  template:
+    metadata:
+      labels:
+        app: django
+        component: web
+    spec:
+      # Время на graceful shutdown: terminationGracePeriodSeconds > gunicorn graceful-timeout
+      terminationGracePeriodSeconds: 60
+
+      # Миграции как Init Container: выполняются до старта web pod-а
+      initContainers:
+        - name: migrate
+          image: myapp:latest
+          command: ["python", "manage.py", "migrate", "--noinput"]
+          envFrom:
+            - secretRef:
+                name: django-secrets
+            - configMapRef:
+                name: django-config
+
+      containers:
+        - name: web
+          image: myapp:latest
+          ports:
+            - containerPort: 8000
+
+          envFrom:
+            - secretRef:
+                name: django-secrets
+            - configMapRef:
+                name: django-config
+
+          # Readiness probe: pod получает трафик только когда готов
+          # Проверяет не только "жив", но и "может обрабатывать запросы"
+          readinessProbe:
+            httpGet:
+              path: /health/ready/
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+
+          # Liveness probe: перезапускает pod если он завис
+          # Менее строгий endpoint — проверяет только что процесс живой
+          livenessProbe:
+            httpGet:
+              path: /health/live/
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 5
+
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+          # SIGTERM → gunicorn graceful shutdown → SIGKILL через 60s
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]   # даём время load balancer убрать pod из rotation
+
+      # Не запускаем два pod на одной ноде — защита от single point of failure
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: django
+                topologyKey: kubernetes.io/hostname
+`,
+            },
+            {
+                filename: "k8s/celery-worker.yaml",
+                code: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: django
+      component: celery-worker
+  template:
+    metadata:
+      labels:
+        app: django
+        component: celery-worker
+    spec:
+      terminationGracePeriodSeconds: 120   # Celery нужно больше времени чем web
+      containers:
+        - name: worker
+          image: myapp:latest
+          command:
+            - celery
+            - -A
+            - config
+            - worker
+            - --loglevel=info
+            - --concurrency=4
+            # --max-tasks-per-child: предотвращает утечки памяти
+            - --max-tasks-per-child=1000
+          envFrom:
+            - secretRef:
+                name: django-secrets
+            - configMapRef:
+                name: django-config
+          # Celery сам обрабатывает SIGTERM: заканчивает текущие задачи, не берёт новые
+          # livenessProbe для воркера — проверяем что процесс не завис
+          livenessProbe:
+            exec:
+              command:
+                - celery
+                - -A
+                - config
+                - inspect
+                - ping
+                - -d
+                - "celery@$(hostname)"
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+---
+# Celery Beat — только один экземпляр (иначе задачи дублируются)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+spec:
+  replicas: 1   # ВСЕГДА 1 — Beat не масштабируется горизонтально
+  selector:
+    matchLabels:
+      app: django
+      component: celery-beat
+  template:
+    metadata:
+      labels:
+        app: django
+        component: celery-beat
+    spec:
+      containers:
+        - name: beat
+          image: myapp:latest
+          command:
+            - celery
+            - -A
+            - config
+            - beat
+            - --loglevel=info
+            - --scheduler
+            - django_celery_beat.schedulers:DatabaseScheduler
+          envFrom:
+            - secretRef:
+                name: django-secrets
+            - configMapRef:
+                name: django-config
+`,
+            },
+            {
+                filename: "core/views_health.py",
+                code: `"""
+Два отдельных health check эндпоинта для K8s:
+
+  /health/live/   — liveness: процесс жив? (не завис)
+                    Минимальная проверка — только что сервер отвечает.
+                    Падение → K8s перезапустит pod.
+
+  /health/ready/  — readiness: готов принимать трафик?
+                    Проверяет БД, Redis, миграции.
+                    Падение → K8s убирает pod из rotation (не перезапускает).
+
+Разделение важно: readiness может падать временно (БД недоступна 5s),
+liveness падает только при deadlock или OOM.
+"""
+from django.db import connection, OperationalError
+from django.core.cache import cache
+from django.http import JsonResponse
+from django.views import View
+
+
+class LivenessView(View):
+    """Минимальная проверка: сервер жив."""
+    def get(self, request):
+        return JsonResponse({"status": "ok"})
+
+
+class ReadinessView(View):
+    """Полная проверка: все зависимости доступны."""
+    def get(self, request):
+        checks = {}
+
+        # БД
+        try:
+            with connection.cursor() as cur:
+                cur.execute("SELECT 1")
+            checks["db"] = "ok"
+        except OperationalError as exc:
+            checks["db"] = f"error: {exc}"
+
+        # Redis (cache)
+        try:
+            cache.set("_health", "1", timeout=5)
+            assert cache.get("_health") == "1"
+            checks["cache"] = "ok"
+        except Exception as exc:
+            checks["cache"] = f"error: {exc}"
+
+        # Миграции применены
+        try:
+            from django.db.migrations.executor import MigrationExecutor
+            executor = MigrationExecutor(connection)
+            plan = executor.migration_plan(executor.loader.graph.leaf_nodes())
+            checks["migrations"] = "ok" if not plan else f"pending: {len(plan)}"
+        except Exception as exc:
+            checks["migrations"] = f"error: {exc}"
+
+        all_ok = all(v == "ok" for v in checks.values())
+        status_code = 200 if all_ok else 503
+        return JsonResponse({"status": "ok" if all_ok else "degraded", **checks},
+                            status=status_code)
+`,
+            },
+        ],
+        explanation: `**Многоэтапная сборка: размер имеет значение.** Builder stage устанавливает gcc, libpq-dev и компилирует C-расширения (psycopg2, cryptography) в .whl файлы. Production stage — минимальный образ: только runtime библиотеки (libpq5), pre-built wheels, никакого компилятора. Итоговый образ меньше в 2–3 раза (800MB → 250MB), меньше attack surface — нет gcc для компиляции эксплоитов.
+
+**Init Container vs Job для миграций.** Init Container: миграции выполняются перед каждым pod-ом — гарантирует применение перед стартом web, но при 3 репликах миграция запустится 3 раза (идемпотентно, но неэффективно). K8s Job: запускается один раз как часть pipeline, надёжнее для production. Компромисс: Init Container проще в настройке, Job правильнее архитектурно.
+
+**Readiness vs Liveness probe — принципиальная разница.** Liveness падает → K8s убивает и перезапускает pod (SIGTERM → ждёт → SIGKILL). Readiness падает → pod убирается из Service endpoints, перестаёт получать трафик, но не перезапускается. Если сделать один probe для обоих — временная недоступность БД вызовет каскадный перезапуск всех pod-ов и thundering herd при восстановлении БД.
+
+**Graceful shutdown: цепочка таймаутов.** K8s отправляет SIGTERM → \`preStop: sleep 5\` (load balancer убирает pod из rotation) → Gunicorn \`graceful-timeout=20\` (завершает in-flight запросы) → \`terminationGracePeriodSeconds=60\` (максимальное ожидание K8s до SIGKILL). Каждый следующий таймаут должен быть больше предыдущего. \`maxUnavailable: 0\` в rolling update гарантирует: старый pod убирается только после того как новый прошёл readiness probe.
+
+**Celery Beat: всегда 1 реплика.** Beat является единственным планировщиком — если запустить 2 реплики, каждая задача будет поставлена в очередь дважды. В K8s нельзя защититься через distributed lock на уровне Beat. Альтернатива для HA: \`redbeat\` (Beat scheduler на базе Redis с distributed lock).`,
+    },
+
+    {
+        id: "django-observability",
+        title: "Observability: логирование, метрики, трейсинг",
+        task: `Настройте полноценный observability-стек для Django-приложения: структурированное логирование через structlog с корреляцией по request_id, метрики через django-prometheus (latency, error rate, DB query count, cache hit rate), distributed tracing через OpenTelemetry с экспортом в Jaeger или Tempo, алерты на аномалии (error rate > 1%, p99 latency > 1s).`,
+        files: [
+            {
+                filename: "core/logging_config.py",
+                code: `"""
+structlog: структурированное логирование в JSON.
+
+Обычный logging:
+  [2024-06-15 12:00:01] ERROR views.py:42 Payment failed
+
+structlog с контекстом:
+  {"event":"payment_failed","level":"error","request_id":"abc-123",
+   "user_id":42,"order_id":99,"amount":5000,"exc":"timeout","timestamp":"..."}
+
+JSON-логи индексируются Elasticsearch/Loki — быстрый поиск по любому полю.
+"""
+import logging
+import structlog
+
+
+def configure_structlog():
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,     # добавляет request_id и др. из контекста
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.add_logger_name,
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer(),          # → JSON строка
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(logging.DEBUG),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+    )
+
+
+# Использование:
+# import structlog
+# log = structlog.get_logger(__name__)
+# log.info("payment_processed", order_id=42, amount=5000, transaction_id="txn_abc")
+`,
+            },
+            {
+                filename: "core/middleware.py",
+                code: `"""
+RequestIdMiddleware: генерирует уникальный request_id и привязывает к structlog контексту.
+Все логи в рамках одного запроса будут содержать одинаковый request_id —
+можно отфильтровать в Kibana/Grafana Loki всю цепочку событий одного запроса.
+"""
+import uuid
+import time
+
+import structlog
+from django.utils.deprecation import MiddlewareMixin
+from prometheus_client import Counter, Histogram
+
+logger = structlog.get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Prometheus метрики
+# ---------------------------------------------------------------------------
+
+REQUEST_COUNT = Counter(
+    "django_http_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status"],
+)
+
+REQUEST_LATENCY = Histogram(
+    "django_http_request_duration_seconds",
+    "HTTP request latency",
+    ["method", "endpoint"],
+    buckets=[.01, .025, .05, .1, .25, .5, 1.0, 2.5, 5.0],
+)
+
+ERROR_COUNT = Counter(
+    "django_http_errors_total",
+    "Total HTTP 5xx errors",
+    ["method", "endpoint"],
+)
+
+
+class ObservabilityMiddleware(MiddlewareMixin):
+    def process_request(self, request):
+        # request_id: берём из заголовка (если есть upstream proxy) или генерируем
+        request_id = (
+            request.headers.get("X-Request-Id")
+            or request.headers.get("X-Correlation-Id")
+            or str(uuid.uuid4())
+        )
+        request.request_id = request_id
+        request._start_time = time.perf_counter()
+
+        # Привязываем к structlog context — все последующие логи в этом запросе
+        # автоматически включат request_id, user_id
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            method=request.method,
+            path=request.path,
+            user_id=getattr(request.user, "id", None),
+        )
+
+    def process_response(self, request, response):
+        elapsed = time.perf_counter() - getattr(request, "_start_time", time.perf_counter())
+        endpoint = self._get_endpoint(request)
+
+        REQUEST_COUNT.labels(
+            method=request.method,
+            endpoint=endpoint,
+            status=response.status_code,
+        ).inc()
+
+        REQUEST_LATENCY.labels(
+            method=request.method,
+            endpoint=endpoint,
+        ).observe(elapsed)
+
+        if response.status_code >= 500:
+            ERROR_COUNT.labels(method=request.method, endpoint=endpoint).inc()
+            logger.error(
+                "request_failed",
+                status=response.status_code,
+                duration_ms=round(elapsed * 1000),
+            )
+        else:
+            logger.info(
+                "request_completed",
+                status=response.status_code,
+                duration_ms=round(elapsed * 1000),
+            )
+
+        response["X-Request-Id"] = getattr(request, "request_id", "")
+        return response
+
+    @staticmethod
+    def _get_endpoint(request) -> str:
+        """Нормализует URL убирая ID из пути: /api/orders/42/ → /api/orders/<id>/"""
+        try:
+            from django.urls import resolve
+            match = resolve(request.path)
+            return match.route or request.path
+        except Exception:
+            return request.path
+`,
+            },
+            {
+                filename: "core/tracing.py",
+                code: `"""
+OpenTelemetry: distributed tracing для отслеживания пути запроса
+через несколько сервисов (Django → Celery → внешний API).
+
+Трейс: дерево span-ов.
+  Span = одна операция с началом, концом, атрибутами и статусом.
+  Все span-ы одного запроса связаны через trace_id.
+
+Экспорт в Jaeger (для разработки) или Tempo (production с Grafana).
+"""
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.celery import CeleryInstrumentor
+from opentelemetry.instrumentation.django import DjangoInstrumentor
+from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+
+def setup_tracing(service_name: str = "django-app", otlp_endpoint: str = ""):
+    """
+    Инициализируем OTel провайдер. Вызывать один раз при старте приложения
+    (например в AppConfig.ready() или settings.py).
+
+    Auto-instrumentation покрывает:
+      - Django: все HTTP запросы → span-ы с атрибутами (метод, URL, статус)
+      - psycopg2: все SQL запросы → span-ы с текстом запроса
+      - Redis: все команды → span-ы
+      - Celery: задачи → span-ы, связанные с родительским HTTP span-ом
+    """
+    resource = Resource.create({"service.name": service_name})
+    provider = TracerProvider(resource=resource)
+
+    if otlp_endpoint:
+        exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
+        provider.add_span_processor(BatchSpanProcessor(exporter))
+
+    trace.set_tracer_provider(provider)
+
+    DjangoInstrumentor().instrument()
+    Psycopg2Instrumentor().instrument(enable_commenter=True)  # добавляет trace_id в SQL комментарии
+    RedisInstrumentor().instrument()
+    CeleryInstrumentor().instrument()
+
+    return provider
+
+
+def get_tracer(name: str = "app"):
+    return trace.get_tracer(name)
+
+
+# ---------------------------------------------------------------------------
+# Кастомные span-ы для бизнес-логики
+# ---------------------------------------------------------------------------
+
+def trace_payment(order_id: int, amount: int):
+    """Context manager для трейсинга операции оплаты."""
+    tracer = get_tracer()
+    return tracer.start_as_current_span(
+        "payment.charge",
+        attributes={
+            "order.id": order_id,
+            "payment.amount": amount,
+        },
+    )
+
+
+# Использование:
+# with trace_payment(order.pk, order.total_cents):
+#     result = payment_service.charge(order, token)
+`,
+            },
+            {
+                filename: "config/apps.py",
+                code: `"""
+Инициализация observability-стека при старте Django.
+"""
+import os
+from django.apps import AppConfig
+
+
+class CoreConfig(AppConfig):
+    name = "core"
+
+    def ready(self):
+        from core.logging_config import configure_structlog
+        configure_structlog()
+
+        otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+        if otlp_endpoint:
+            from core.tracing import setup_tracing
+            setup_tracing(
+                service_name=os.environ.get("OTEL_SERVICE_NAME", "django-app"),
+                otlp_endpoint=otlp_endpoint,
+            )
+`,
+            },
+            {
+                filename: "alerting/prometheus-rules.yaml",
+                code: `# Prometheus alerting rules для Django-приложения.
+# Устанавливается в кластере через PrometheusRule CRD (kube-prometheus-stack).
+
+groups:
+  - name: django.alerts
+    interval: 30s
+    rules:
+
+      # Error rate > 1% за последние 5 минут
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(django_http_errors_total[5m]))
+          /
+          sum(rate(django_http_requests_total[5m])) > 0.01
+        for: 2m     # алерт срабатывает только если условие выполняется 2+ минуты
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP error rate: {{ $value | humanizePercentage }}"
+          description: "Error rate exceeded 1% for 2 minutes."
+
+      # p99 latency > 1s
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(django_http_request_duration_seconds_bucket[5m])) by (le, endpoint)
+          ) > 1.0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p99 latency on {{ $labels.endpoint }}"
+          description: "p99 latency is {{ $value }}s (threshold: 1s)"
+
+      # Нет трафика (возможно проблема с деплоем)
+      - alert: NoTraffic
+        expr: sum(rate(django_http_requests_total[5m])) == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No HTTP traffic for 5 minutes"
+
+      # Много pending Celery задач
+      - alert: CeleryQueueBacklog
+        expr: celery_queue_length > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Celery queue backlog: {{ $value }} tasks"
+`,
+            },
+        ],
+        explanation: `**Три столпа observability: logs, metrics, traces.** Логи отвечают на вопрос "что произошло" (детали конкретного события). Метрики — "как часто и насколько быстро" (агрегированные данные за период). Трейсы — "как запрос прошёл через систему" (связь между операциями в разных сервисах). Все три связаны через \`request_id\` / \`trace_id\`.
+
+**structlog contextvars для автоматической корреляции.** \`bind_contextvars(request_id=...)\` сохраняет значения в \`ContextVar\` текущего треда/корутины. Все последующие вызовы \`log.info(...)\` в этом запросе автоматически включат \`request_id\`, \`user_id\`, \`path\` — не нужно передавать их явно в каждый вызов. \`clear_contextvars()\` в начале каждого запроса предотвращает утечку контекста между запросами.
+
+**OpenTelemetry auto-instrumentation.** \`DjangoInstrumentor()\`, \`Psycopg2Instrumentor()\`, \`RedisInstrumentor()\` автоматически создают span-ы для каждого HTTP-запроса, SQL-запроса, Redis-команды. Celery-задача, запущенная из HTTP-запроса, получает родительский span через context propagation — в Jaeger/Tempo видна полная цепочка: HTTP → SQL → Redis → Celery → SQL.
+
+**Нормализация URL для группировки метрик.** \`/api/orders/42/\` и \`/api/orders/99/\` — разные строки, но одна метрика. Без нормализации в Grafana будет тысяча отдельных серий вместо одной \`/api/orders/<id>/\`. Используйте \`resolve(request.path).route\` — Django возвращает шаблон пути.
+
+**Alerting: \`for\` предотвращает flapping.** Без \`for: 2m\` алерт срабатывает при каждом кратковременном выбросе — ложные срабатывания ночью разрушают доверие к алертам. \`for: 2m\` означает: условие должно быть непрерывно истинным 2 минуты. \`severity: warning\` → Slack, \`severity: critical\` → PagerDuty/SMS.`,
+    },
+
+    {
+        id: "django-zero-downtime-deploy",
+        title: "Zero-downtime деплой и feature flags",
+        task: `Реализуйте процесс zero-downtime деплоя Django-приложения. Включите: стратегию rolling update совместимую с Django (backward-compatible migrations), систему feature flags через django-waffle или flagsmith для постепенного rollout новых фич, canary deployment (5% трафика на новую версию), автоматический rollback при росте error rate. Опишите полный pipeline от merge в main до production.`,
+        files: [
+            {
+                filename: "deploy/migration_strategy.md",
+                code: `# Backward-compatible migrations: правила для zero-downtime
+
+## Проблема
+При rolling update старая и новая версии кода работают одновременно.
+Если новая версия применила миграцию, а старый pod ещё работает —
+старый код должен корректно работать с новой схемой БД.
+
+## Правила
+
+### Добавление столбца: ВСЕГДА nullable или с default
+НЕПРАВИЛЬНО: ALTER TABLE ADD COLUMN name VARCHAR NOT NULL
+  → старый код не передаёт name → INSERT падает
+
+ПРАВИЛЬНО:
+  Шаг 1 (деплой N):   ADD COLUMN name VARCHAR NULL
+  Шаг 2 (деплой N+1): заполнить данные (data migration)
+  Шаг 3 (деплой N+2): ADD NOT NULL CONSTRAINT (или ALTER COLUMN SET DEFAULT)
+
+### Переименование столбца: через промежуточный шаг
+НЕПРАВИЛЬНО: RENAME COLUMN old_name TO new_name
+  → старый код ищет old_name → падает
+
+ПРАВИЛЬНО:
+  Шаг 1: ADD COLUMN new_name, копируем данные триггером
+  Шаг 2 (N+1): переключаем код на new_name
+  Шаг 3 (N+2): DROP COLUMN old_name
+
+### Удаление столбца: сначала удалить из кода
+НЕПРАВИЛЬНО: сразу DROP COLUMN
+  → старый pod ещё обращается к столбцу → ошибка
+
+ПРАВИЛЬНО:
+  Шаг 1: убрать использование в коде, деплоить
+  Шаг 2 (следующий деплой): DROP COLUMN
+
+### Добавление индекса на большую таблицу
+Всегда: CREATE INDEX CONCURRENTLY (не блокирует запись)
+В миграции: atomic = False
+
+## Чеклист перед каждым деплоем
+- [ ] Миграция совместима с текущей версией кода?
+- [ ] Миграция совместима с N-1 версией кода?
+- [ ] Миграция использует CONCURRENTLY для новых индексов?
+- [ ] Есть ли data migration? (может занять минуты на большой таблице)
+`,
+            },
+            {
+                filename: "features/flags.py",
+                code: `"""
+Feature flags через django-waffle: постепенный rollout без деплоя.
+
+Типы флагов:
+  Flag   — включён для % пользователей, групп, суперюзеров, staff
+  Switch — глобальный on/off без привязки к пользователю
+  Sample — включён для % запросов (вероятностно)
+
+Управление через Django Admin или management команды:
+  python manage.py waffle_flag new_checkout_flow --everyone --create
+  python manage.py waffle_flag new_checkout_flow --percent=10
+  python manage.py waffle_flag new_checkout_flow --deactivate
+"""
+from waffle import flag_is_active, switch_is_active, sample_is_active
+from waffle.decorators import waffle_flag
+from django.http import HttpRequest
+
+
+# ---------------------------------------------------------------------------
+# Проверка флагов в бизнес-логике
+# ---------------------------------------------------------------------------
+
+def get_checkout_handler(request: HttpRequest):
+    """
+    Постепенный rollout нового checkout: сначала 5%, потом 50%, потом 100%.
+    Один и тот же пользователь всегда попадает в одну группу (детерминировано).
+    """
+    if flag_is_active(request, "new_checkout_flow"):
+        from orders.checkout_v2 import NewCheckoutHandler
+        return NewCheckoutHandler()
+    else:
+        from orders.checkout import CheckoutHandler
+        return CheckoutHandler()
+
+
+def is_recommendations_enabled(request: HttpRequest) -> bool:
+    """Switch: глобальный on/off. Используйте для аварийного отключения фичи."""
+    return switch_is_active("product_recommendations")
+
+
+def should_log_detailed_analytics(request: HttpRequest) -> bool:
+    """Sample: 10% запросов логируют детальную аналитику (снижает нагрузку)."""
+    return sample_is_active("detailed_analytics_logging")
+
+
+# ---------------------------------------------------------------------------
+# Флаг как декоратор view
+# ---------------------------------------------------------------------------
+from django.views import View
+from django.http import HttpResponseNotFound
+
+
+class NewCheckoutView(View):
+    @waffle_flag("new_checkout_flow", redirect_to="/checkout/")
+    def get(self, request):
+        """Доступен только пользователям с активным флагом."""
+        return ...
+`,
+            },
+            {
+                filename: "deploy/canary.yaml",
+                code: `# Canary deployment через два Deployment + Service с весами трафика.
+# Реализация через Nginx Ingress аннотации (без service mesh).
+# 5% трафика → canary, 95% → stable.
+
+# Stable deployment (текущая версия)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-stable
+  labels:
+    app: django
+    track: stable
+spec:
+  replicas: 19    # 95% трафика при равном распределении по pod-ам
+  template:
+    metadata:
+      labels:
+        app: django
+        track: stable
+    spec:
+      containers:
+        - name: web
+          image: myapp:v1.2.3
+---
+# Canary deployment (новая версия)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: django-canary
+  labels:
+    app: django
+    track: canary
+spec:
+  replicas: 1     # 5% трафика
+  template:
+    metadata:
+      labels:
+        app: django
+        track: canary
+    spec:
+      containers:
+        - name: web
+          image: myapp:v1.3.0
+---
+# Ingress: аннотации nginx для canary routing
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: django-canary-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "5"   # 5% трафика на canary
+    # Sticky canary по cookie: один пользователь всегда попадает на одну версию
+    nginx.ingress.kubernetes.io/canary-by-cookie: "canary-user"
+spec:
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: django-canary-svc
+                port:
+                  number: 80
+`,
+            },
+            {
+                filename: "deploy/pipeline.yaml",
+                code: `# GitHub Actions: полный pipeline от merge в main до production
+# Stages: test → build → staging → canary → production
+
+name: Deploy Pipeline
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -m "unit" -n auto
+      - run: pytest -m "integration" --db=postgres
+        env:
+          TEST_DB: postgres
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: \${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: ghcr.io/myorg/myapp:\${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  staging:
+    needs: build
+    environment: staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to staging
+        run: |
+          kubectl set image deployment/django-web web=ghcr.io/myorg/myapp:\${{ github.sha }}
+          kubectl rollout status deployment/django-web --timeout=300s
+      - name: Smoke tests on staging
+        run: pytest tests/smoke/ --base-url=https://staging.example.com
+
+  canary:
+    needs: staging
+    environment: production-canary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy canary (5% traffic)
+        run: |
+          kubectl set image deployment/django-canary web=ghcr.io/myorg/myapp:\${{ github.sha }}
+          kubectl rollout status deployment/django-canary --timeout=120s
+
+      - name: Monitor canary for 10 minutes
+        run: |
+          # Проверяем error rate каждые 30 секунд
+          for i in $(seq 1 20); do
+            ERROR_RATE=$(curl -s "$PROMETHEUS_URL/api/v1/query" \\
+              --data-urlencode 'query=sum(rate(django_http_errors_total{track="canary"}[2m]))/sum(rate(django_http_requests_total{track="canary"}[2m]))' \\
+              | jq '.data.result[0].value[1]' -r)
+
+            echo "Canary error rate: $ERROR_RATE"
+
+            if (( $(echo "$ERROR_RATE > 0.02" | bc -l) )); then
+              echo "ERROR: Canary error rate exceeded 2% — rolling back"
+              kubectl rollout undo deployment/django-canary
+              exit 1
+            fi
+
+            sleep 30
+          done
+
+  production:
+    needs: canary
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Promote canary to production (rolling update)
+        run: |
+          kubectl set image deployment/django-stable web=ghcr.io/myorg/myapp:\${{ github.sha }}
+          kubectl rollout status deployment/django-stable --timeout=600s
+          # После успешного деплоя stable — обновляем canary на ту же версию
+          kubectl set image deployment/django-canary web=ghcr.io/myorg/myapp:\${{ github.sha }}
+
+      - name: Tag release
+        run: |
+          git tag "v$(date +%Y%m%d-%H%M%S)-\${{ github.sha }}"
+          git push --tags
+`,
+            },
+            {
+                filename: "deploy/rollback.sh",
+                code: `#!/bin/bash
+# Ручной rollback при критической ошибке в production.
+# Вызывается on-call инженером или автоматически из pipeline.
+set -euo pipefail
+
+DEPLOYMENT="\${1:-django-stable}"
+NAMESPACE="\${2:-production}"
+
+echo "=== Rolling back $DEPLOYMENT in $NAMESPACE ==="
+
+# Показываем историю деплоев
+kubectl rollout history deployment/"$DEPLOYMENT" -n "$NAMESPACE"
+
+# Откатываем на предыдущую версию
+kubectl rollout undo deployment/"$DEPLOYMENT" -n "$NAMESPACE"
+
+# Ждём завершения rollback
+kubectl rollout status deployment/"$DEPLOYMENT" -n "$NAMESPACE" --timeout=300s
+
+# Проверяем текущую версию образа
+CURRENT_IMAGE=$(kubectl get deployment "$DEPLOYMENT" -n "$NAMESPACE" \\
+  -o jsonpath='{.spec.template.spec.containers[0].image}')
+echo "=== Rolled back to: $CURRENT_IMAGE ==="
+
+# Быстрая проверка health
+sleep 10
+HEALTH=$(curl -sf "https://api.example.com/health/ready/" | jq -r .status)
+echo "=== Health check: $HEALTH ==="
+`,
+            },
+        ],
+        explanation: `**Backward-compatible migrations — основа zero-downtime.** При rolling update старая и новая версии кода работают одновременно с одной БД. Если новая миграция добавила \`NOT NULL\` столбец без default — старый pod не передаёт это поле и падает с ошибкой. Правило: любое изменение схемы должно быть совместимо с N-1 версией кода. Удаление столбца и переименование — всегда через два деплоя.
+
+**Feature flags для постепенного rollout.** django-waffle позволяет включить фичу для 5% пользователей без деплоя: \`waffle_flag new_checkout_flow --percent=5\`. Один и тот же пользователь детерминированно попадает в ту же группу (через hash user_id). Rollout: 5% → 25% → 50% → 100%. При проблемах: \`--deactivate\` — мгновенное отключение без деплоя. Switch — для аварийного отключения любой фичи.
+
+**Canary: 1 pod = 5% при 19 stable + 1 canary.** Простейший canary без service mesh: разное количество pod-ов. Nginx Ingress \`canary-weight: 5\` маршрутизирует 5% трафика на canary service. \`canary-by-cookie\` делает routing sticky: пользователь, попавший на canary, всегда попадает на неё — важно для UX и для отладки.
+
+**Автоматический rollback по error rate.** Pipeline мониторит error rate canary каждые 30 секунд через Prometheus API. Превышение 2% → \`kubectl rollout undo\` → pipeline завершается с ошибкой → уведомление команде. Порог 2% (не 1%) чтобы избежать ложных срабатываний при малом трафике на canary. После успешного мониторинга stable обновляется rolling update с \`maxUnavailable: 0\`.
+
+**\`preStop: sleep 5\` критичен для zero-downtime.** K8s одновременно: отправляет SIGTERM pod-у И убирает его из Endpoints (куда load balancer роутит трафик). Но обновление Endpoints занимает несколько секунд — без паузы pod получает SIGTERM, начинает shutdown, но ещё несколько секунд получает новые запросы от ничего не знающего load balancer. \`sleep 5\` даёт время синхронизироваться.`,
     },
 
 ];
