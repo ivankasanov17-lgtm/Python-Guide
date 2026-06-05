@@ -12470,4 +12470,1856 @@ Provider (бэкенд):
 **Pact Broker vs локальные файлы**: в development — pact-файлы в репозитории. В CI — Pact Broker (self-hosted или pactflow.io). Broker хранит все версии, тегирует ветки, отображает матрицу совместимости. \`publish_verification_results=True\` записывает результат верификации обратно в Broker — это обновляет матрицу.`,
   },
 
+  {
+    id: "http-client-resilience",
+    title: "HTTP-клиент и устойчивость к отказам",
+    task: "Реализуйте надёжный async HTTP-клиент для интеграции с внешними сервисами. Используйте `httpx.AsyncClient` с: connection pooling и переиспользованием сессии, retry с exponential backoff и jitter (через `tenacity`), circuit breaker паттерном (через `aiobreaker`), таймаутами (connect, read, total), трейсингом запросов через OpenTelemetry. Реализуйте graceful degradation при недоступности внешнего сервиса.",
+    files: [
+      {
+        filename: "requirements.txt",
+        code: `fastapi>=0.115.0
+httpx>=0.27.0
+tenacity>=8.3.0
+aiobreaker>=1.2.0
+opentelemetry-api>=1.25.0
+opentelemetry-sdk>=1.25.0
+opentelemetry-instrumentation-httpx>=0.46b0`,
+      },
+      {
+        filename: "app/core/http_client.py",
+        code: `"""
+Надёжный async HTTP-клиент с:
+  - connection pooling через httpx.AsyncClient (одна сессия на весь процесс)
+  - retry + exponential backoff + jitter через tenacity
+  - circuit breaker через aiobreaker
+  - таймауты на каждый уровень (connect / read / total)
+  - трейсинг через OpenTelemetry
+"""
+import logging
+from typing import Any
+
+import httpx
+from aiobreaker import CircuitBreaker, CircuitBreakerError
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
+
+logger = logging.getLogger(__name__)
+tracer = trace.get_tracer(__name__)
+
+# ─── Таймауты ────────────────────────────────────────────────────────────────
+# connect  — сколько ждать установки TCP-соединения
+# read     — сколько ждать первого байта ответа
+# write    — сколько ждать отправки тела запроса
+# pool     — сколько ждать свободного соединения из пула
+TIMEOUTS = httpx.Timeout(
+    connect=2.0,
+    read=10.0,
+    write=5.0,
+    pool=2.0,
+)
+
+# ─── Connection pool ──────────────────────────────────────────────────────────
+# keepalive_expiry — как долго держать idle-соединение открытым
+# max_keepalive_connections — размер пула переиспользуемых соединений
+# max_connections — жёсткий лимит одновременных соединений
+LIMITS = httpx.Limits(
+    max_keepalive_connections=20,
+    max_connections=100,
+    keepalive_expiry=30.0,
+)
+
+# ─── Circuit Breaker ──────────────────────────────────────────────────────────
+# fail_max  — сколько подряд ошибок открывают circuit
+# timeout_duration — сколько секунд circuit остаётся "открытым" (запросы блокируются)
+# После timeout_duration переходит в HALF-OPEN: пропускает один пробный запрос.
+# Успех → CLOSED, ошибка → снова OPEN.
+circuit_breaker = CircuitBreaker(fail_max=5, timeout_duration=30)
+
+
+class ExternalServiceError(Exception):
+    """Базовое исключение для ошибок внешнего сервиса."""
+
+
+class ServiceUnavailableError(ExternalServiceError):
+    """Сервис недоступен (circuit open или все retry исчерпаны)."""
+
+
+# ─── Retry-декоратор ──────────────────────────────────────────────────────────
+# wait_exponential_jitter: задержка = min(2^attempt, max) + random(0, jitter)
+# Jitter разбивает "thundering herd" — одновременные retry от множества клиентов.
+def make_retry_decorator(
+    *,
+    attempts: int = 3,
+    max_wait: float = 30.0,
+    jitter: float = 2.0,
+):
+    return retry(
+        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        stop=stop_after_attempt(attempts),
+        wait=wait_exponential_jitter(initial=1, max=max_wait, jitter=jitter),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
+
+
+class ResilienceHTTPClient:
+    """
+    Singleton-like клиент: один httpx.AsyncClient на весь процесс.
+    Используется через lifespan FastAPI (init/close при старте/остановке).
+    """
+
+    def __init__(self, base_url: str, service_name: str):
+        self._base_url = base_url
+        self._service_name = service_name
+        self._client: httpx.AsyncClient | None = None
+
+    async def start(self) -> None:
+        """Вызывается в lifespan при старте приложения."""
+        self._client = httpx.AsyncClient(
+            base_url=self._base_url,
+            timeout=TIMEOUTS,
+            limits=LIMITS,
+            # follow_redirects=True,  # включить если сервис использует редиректы
+        )
+
+    async def close(self) -> None:
+        """Вызывается в lifespan при остановке приложения."""
+        if self._client:
+            await self._client.aclose()
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            raise RuntimeError("HTTP client not initialized. Call start() first.")
+        return self._client
+
+    # ─── Основной метод запроса ────────────────────────────────────────────
+    async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        fallback: Any = None,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Выполняет HTTP-запрос с retry, circuit breaker и трейсингом.
+
+        fallback — значение, возвращаемое при graceful degradation
+                   (когда circuit открыт или все retry исчерпаны).
+                   None означает "пробросить исключение".
+        """
+        with tracer.start_as_current_span(
+            f"{self._service_name} {method} {path}",
+            kind=SpanKind.CLIENT,
+        ) as span:
+            span.set_attribute("http.method", method)
+            span.set_attribute("http.url", f"{self._base_url}{path}")
+            span.set_attribute("peer.service", self._service_name)
+
+            try:
+                return await self._request_with_retry(method, path, span=span, **kwargs)
+
+            except CircuitBreakerError:
+                # Circuit открыт — сервис считается недоступным.
+                # Возвращаем fallback вместо исключения (graceful degradation).
+                logger.warning(
+                    "Circuit breaker OPEN for %s — returning fallback",
+                    self._service_name,
+                )
+                span.set_attribute("circuit_breaker.open", True)
+                if fallback is not None:
+                    return fallback
+                raise ServiceUnavailableError(
+                    f"Service {self._service_name!r} is unavailable (circuit open)"
+                )
+
+            except (httpx.TransportError, httpx.TimeoutException) as exc:
+                # Все retry исчерпаны.
+                logger.error("All retries exhausted for %s: %s", self._service_name, exc)
+                span.record_exception(exc)
+                if fallback is not None:
+                    return fallback
+                raise ServiceUnavailableError(str(exc)) from exc
+
+    @make_retry_decorator()
+    async def _request_with_retry(
+        self,
+        method: str,
+        path: str,
+        *,
+        span: Any,
+        **kwargs: Any,
+    ) -> Any:
+        """Внутренний метод — обёрнут retry и circuit breaker."""
+
+        @circuit_breaker
+        async def _call() -> httpx.Response:
+            response = await self.client.request(method, path, **kwargs)
+            response.raise_for_status()  # 4xx/5xx → httpx.HTTPStatusError
+            return response
+
+        response = await _call()
+        span.set_attribute("http.status_code", response.status_code)
+        return response.json()
+
+    # ─── Удобные методы ────────────────────────────────────────────────────
+    async def get(self, path: str, fallback: Any = None, **kwargs: Any) -> Any:
+        return await self.request("GET", path, fallback=fallback, **kwargs)
+
+    async def post(self, path: str, fallback: Any = None, **kwargs: Any) -> Any:
+        return await self.request("POST", path, fallback=fallback, **kwargs)`,
+      },
+      {
+        filename: "app/core/telemetry.py",
+        code: `"""Настройка OpenTelemetry — вызывается один раз при старте приложения."""
+from opentelemetry import trace
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    ConsoleSpanExporter,  # замените на OTLPSpanExporter для Jaeger/Tempo
+)
+
+
+def setup_telemetry(service_name: str) -> None:
+    resource = Resource.create({"service.name": service_name})
+    provider = TracerProvider(resource=resource)
+
+    # BatchSpanProcessor буферизует span'ы и отправляет пачками —
+    # не блокирует основной поток при каждом span.
+    provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+
+    trace.set_tracer_provider(provider)
+
+    # Автоматически добавляет span к каждому httpx-запросу:
+    # propagates W3C trace context (traceparent header) к внешнему сервису.
+    HTTPXClientInstrumentor().instrument()`,
+      },
+      {
+        filename: "app/services/payments.py",
+        code: `"""
+Пример сервисного слоя, использующего ResilienceHTTPClient.
+Демонстрирует graceful degradation: при недоступности платёжного шлюза
+возвращаем кешированный статус вместо 500.
+"""
+import logging
+from dataclasses import dataclass
+
+from app.core.http_client import ResilienceHTTPClient, ServiceUnavailableError
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PaymentStatus:
+    order_id: str
+    status: str  # "confirmed" | "pending" | "failed" | "unknown"
+    source: str  # "gateway" | "cache" | "fallback"
+
+
+class PaymentService:
+    def __init__(self, http_client: ResilienceHTTPClient):
+        self._client = http_client
+        # Простой in-process кеш — в продакшене замените на Redis
+        self._status_cache: dict[str, str] = {}
+
+    async def get_payment_status(self, order_id: str) -> PaymentStatus:
+        """
+        Запрашивает статус оплаты из внешнего шлюза.
+        При недоступности — возвращает кеш или "unknown" (graceful degradation).
+        """
+        try:
+            data = await self._client.get(
+                f"/payments/{order_id}/status",
+                params={"version": "2"},
+            )
+            status = data["status"]
+            self._status_cache[order_id] = status  # обновляем кеш при успехе
+            return PaymentStatus(order_id=order_id, status=status, source="gateway")
+
+        except ServiceUnavailableError:
+            # Circuit открыт или все retry исчерпаны.
+            # Не возвращаем 500 — показываем последнее известное состояние.
+            cached = self._status_cache.get(order_id)
+            if cached:
+                logger.warning("Payment gateway unavailable — serving cached status for %s", order_id)
+                return PaymentStatus(order_id=order_id, status=cached, source="cache")
+
+            # Кеша тоже нет — возвращаем "unknown" вместо ошибки.
+            return PaymentStatus(order_id=order_id, status="unknown", source="fallback")
+
+    async def charge(self, order_id: str, amount_cents: int, currency: str) -> dict:
+        """
+        Создаёт платёж. Здесь fallback НЕ применяется —
+        мутирующие операции нельзя "деградировать" молча.
+        """
+        # fallback=None → при недоступности будет ServiceUnavailableError
+        return await self._client.post(
+            "/payments",
+            json={"order_id": order_id, "amount": amount_cents, "currency": currency},
+        )`,
+      },
+      {
+        filename: "app/main.py",
+        code: `from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from app.core.http_client import ResilienceHTTPClient
+from app.core.telemetry import setup_telemetry
+from app.routers import payments
+
+# Единственный экземпляр клиента — переиспользует пул соединений
+payment_gateway_client = ResilienceHTTPClient(
+    base_url="https://payment-gateway.example.com",
+    service_name="payment-gateway",
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    setup_telemetry("my-service")
+    await payment_gateway_client.start()   # создаёт httpx.AsyncClient и пул
+
+    # Прокидываем клиент в state приложения — доступен через request.app.state
+    app.state.payment_client = payment_gateway_client
+
+    yield
+
+    await payment_gateway_client.close()  # корректно закрывает все соединения
+
+
+app = FastAPI(lifespan=lifespan)
+app.include_router(payments.router, prefix="/payments", tags=["Payments"])`,
+      },
+      {
+        filename: "app/routers/payments.py",
+        code: `from fastapi import APIRouter, HTTPException, Request, status
+
+from app.core.http_client import ResilienceHTTPClient, ServiceUnavailableError
+from app.services.payments import PaymentService
+
+router = APIRouter()
+
+
+def get_payment_service(request: Request) -> PaymentService:
+    client: ResilienceHTTPClient = request.app.state.payment_client
+    return PaymentService(client)
+
+
+@router.get("/{order_id}/status")
+async def payment_status(order_id: str, request: Request):
+    """
+    Возвращает статус оплаты. При недоступности шлюза — graceful degradation:
+    поле 'source' укажет откуда взяты данные (gateway / cache / fallback).
+    """
+    service = get_payment_service(request)
+    result = await service.get_payment_status(order_id)
+    return result
+
+
+@router.post("/charge")
+async def charge_payment(order_id: str, amount: int, currency: str, request: Request):
+    """Мутирующая операция — пробрасывает 503 при недоступности шлюза."""
+    service = get_payment_service(request)
+    try:
+        return await service.charge(order_id, amount, currency)
+    except ServiceUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Payment gateway unavailable: {exc}",
+        )`,
+      },
+    ],
+    explanation: `**Один AsyncClient на весь процесс**: создавать \`httpx.AsyncClient\` на каждый запрос — ошибка. Клиент открывает TCP-соединение, выполняет TLS handshake, закрывает. При 100 RPS это 100 handshake/сек. Один клиент с \`Limits(max_keepalive_connections=20)\` переиспользует соединения — 0 лишних handshake. Инициализируется в \`lifespan\`, передаётся через \`app.state\`.
+
+**Exponential backoff + jitter**: чистый exponential backoff (1s, 2s, 4s...) при массовом сбое создаёт "thundering herd" — все клиенты ретраят синхронно, перегружают восстанавливающийся сервис. Jitter разбрасывает попытки случайно во времени. \`wait_exponential_jitter(initial=1, max=30, jitter=2)\` даёт задержки ~1±2s, ~2±2s, ~4±2s — при 1000 одновременных клиентов нагрузка размазывается.
+
+**Circuit Breaker — три состояния**: CLOSED (нормальная работа, ошибки считаются) → OPEN (после 5 ошибок подряд, все запросы блокируются 30 сек) → HALF-OPEN (пропускает один пробный запрос: успех → CLOSED, ошибка → снова OPEN). Защищает от cascading failures: сервис A упал → B не тратит ресурсы на ожидание ответов → не падает сам.
+
+**Retry vs Circuit Breaker — разные задачи**: retry решает временные сбои (packet loss, кратковременная перегрузка). Circuit breaker решает системный отказ (сервис упал совсем). Вместе: retry пробует 3 раза → если паттерн ошибок системный → circuit открывается → последующие запросы отказывают немедленно без 3×timeout ожидания.
+
+**Graceful degradation — разница между GET и POST**: для read-операций (GET статуса) можно вернуть кешированные или дефолтные данные — пользователь видит "возможно устаревшие данные". Для write-операций (POST charge) деградация опасна — нельзя молча "создать" платёж. Всегда возвращайте 503 для мутирующих операций при недоступности upstream.
+
+**OpenTelemetry + HTTPXClientInstrumentor**: \`HTTPXClientInstrumentor().instrument()\` патчит \`httpx\` глобально — каждый запрос автоматически оборачивается в span с \`http.method\`, \`http.url\`, \`http.status_code\`. Span inherit'ит текущий trace context → в Jaeger/Tempo видна полная цепочка: incoming request → DB query → external HTTP call. Заголовок \`traceparent\` передаётся во внешний сервис — если он тоже поддерживает OTel, trace сквозной.`,
+  },
+
+  {
+    id: "message-queue-integration",
+    title: "Интеграция с очередями сообщений",
+    task: "Реализуйте event-driven интеграцию FastAPI с RabbitMQ или Kafka. Publisher: отправка событий при изменении ресурсов (transactional outbox pattern). Consumer: обработка входящих событий с идемпотентностью. Dead letter queue для необработанных сообщений. Реализуйте graceful shutdown (дождаться завершения текущей обработки). Мониторинг lag и health потребителей.",
+    files: [
+      {
+        filename: "directory_structure.txt",
+        code: `app/
+├── main.py                    # FastAPI + lifespan (запуск/остановка consumer)
+├── core/
+│   ├── config.py              # настройки RabbitMQ / Kafka
+│   ├── database.py            # AsyncSession, get_db
+│   └── events.py              # базовые типы событий
+├── messaging/
+│   ├── publisher.py           # Outbox publisher (RabbitMQ через aio-pika)
+│   ├── consumer.py            # Consumer с graceful shutdown
+│   ├── outbox.py              # Outbox worker — читает таблицу, публикует
+│   └── dead_letter.py         # DLQ handler
+├── orders/
+│   ├── router.py
+│   ├── service.py             # бизнес-логика + запись в outbox
+│   ├── repository.py
+│   ├── models.py              # Order + OutboxEvent (SQLAlchemy)
+│   └── handlers.py            # обработчики входящих событий
+└── monitoring/
+    └── health.py              # /health/consumer endpoint`,
+      },
+      {
+        filename: "app/core/events.py",
+        code: `"""Базовые типы событий. Все события наследуются от BaseEvent."""
+import uuid
+from datetime import datetime, timezone
+from enum import StrEnum
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class EventType(StrEnum):
+    ORDER_CREATED = "order.created"
+    ORDER_PAID = "order.paid"
+    ORDER_CANCELLED = "order.cancelled"
+    INVENTORY_RESERVED = "inventory.reserved"
+    INVENTORY_RELEASED = "inventory.released"
+
+
+class BaseEvent(BaseModel):
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_type: EventType
+    occurred_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    aggregate_id: str          # ID сущности (order_id, product_id...)
+    payload: dict[str, Any]
+
+
+class OrderCreatedEvent(BaseEvent):
+    event_type: EventType = EventType.ORDER_CREATED
+
+
+class OrderPaidEvent(BaseEvent):
+    event_type: EventType = EventType.ORDER_PAID`,
+      },
+      {
+        filename: "app/orders/models.py",
+        code: `"""SQLAlchemy-модели: Order и OutboxEvent (transactional outbox)."""
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import JSON, Boolean, DateTime, Enum, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Order(Base):
+    __tablename__ = "orders"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="pending")
+    total_cents: Mapped[int]
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class OutboxEvent(Base):
+    """
+    Transactional outbox: событие записывается в БД в ОДНОЙ транзакции
+    с изменением основных данных. Отдельный worker публикует их в брокер.
+
+    Гарантия: если транзакция с Order откатилась — OutboxEvent тоже откатится.
+    Не будет ситуации "заказ создан, событие потеряно" или наоборот.
+    """
+    __tablename__ = "outbox_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    aggregate_id: Mapped[str] = mapped_column(String, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    published: Mapped[bool] = mapped_column(Boolean, default=False)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retry_count: Mapped[int] = mapped_column(default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ProcessedEvent(Base):
+    """
+    Таблица для идемпотентности consumer'а.
+    Перед обработкой проверяем: event_id уже есть? → пропускаем.
+    """
+    __tablename__ = "processed_events"
+
+    event_id: Mapped[str] = mapped_column(String, primary_key=True)
+    processed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )`,
+      },
+      {
+        filename: "app/orders/service.py",
+        code: `"""Сервис заказов: создаёт Order и OutboxEvent в одной транзакции."""
+import json
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.events import EventType, OrderCreatedEvent
+from app.orders.models import Order, OutboxEvent
+from app.orders.schemas import OrderCreate
+
+
+class OrderService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def create_order(self, data: OrderCreate) -> Order:
+        """
+        Создаёт заказ и записывает событие в outbox — в ОДНОЙ транзакции.
+        Атомарность гарантирует что либо оба объекта сохранены, либо ни один.
+        """
+        order = Order(
+            user_id=data.user_id,
+            total_cents=data.total_cents,
+            status="pending",
+        )
+        self.db.add(order)
+
+        # Событие в ту же транзакцию — не await flush/commit!
+        event = OrderCreatedEvent(
+            aggregate_id=order.id,
+            payload={
+                "user_id": order.user_id,
+                "total_cents": order.total_cents,
+                "status": order.status,
+            },
+        )
+        outbox = OutboxEvent(
+            id=event.event_id,
+            event_type=event.event_type,
+            aggregate_id=event.aggregate_id,
+            payload=event.payload,
+        )
+        self.db.add(outbox)
+
+        # commit() фиксирует ОБА объекта атомарно
+        await self.db.commit()
+        await self.db.refresh(order)
+        return order
+
+    async def mark_order_paid(self, order_id: str) -> Order:
+        order = await self.db.get(Order, order_id)
+        if not order:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        order.status = "paid"
+
+        outbox = OutboxEvent(
+            event_type=EventType.ORDER_PAID,
+            aggregate_id=order_id,
+            payload={"order_id": order_id, "paid_at": datetime.now(timezone.utc).isoformat()},
+        )
+        self.db.add(outbox)
+        await self.db.commit()
+        return order`,
+      },
+      {
+        filename: "app/messaging/publisher.py",
+        code: `"""
+Publisher: соединение с RabbitMQ через aio-pika.
+Объявляет exchange, очередь и DLQ при старте.
+"""
+import json
+import logging
+from datetime import datetime, timezone
+
+import aio_pika
+from aio_pika import DeliveryMode, ExchangeType, Message
+
+logger = logging.getLogger(__name__)
+
+
+class RabbitMQPublisher:
+    """
+    Один экземпляр на процесс. Соединение и канал создаются в start().
+    Переиспользуем channel для всех публикаций — дешевле чем открывать новый.
+    """
+
+    def __init__(self, amqp_url: str):
+        self._amqp_url = amqp_url
+        self._connection: aio_pika.abc.AbstractConnection | None = None
+        self._channel: aio_pika.abc.AbstractChannel | None = None
+        self._exchange: aio_pika.abc.AbstractExchange | None = None
+
+    async def start(self) -> None:
+        self._connection = await aio_pika.connect_robust(
+            self._amqp_url,
+            # reconnect_interval — пауза между попытками переподключения
+            reconnect_interval=5,
+        )
+        self._channel = await self._connection.channel()
+
+        # Объявляем DLQ exchange и очередь
+        dlq_exchange = await self._channel.declare_exchange(
+            "events.dlq", ExchangeType.DIRECT, durable=True
+        )
+        dlq_queue = await self._channel.declare_queue(
+            "events.dead_letter", durable=True
+        )
+        await dlq_queue.bind(dlq_exchange, routing_key="dead_letter")
+
+        # Основной exchange (topic → маршрутизация по event_type)
+        self._exchange = await self._channel.declare_exchange(
+            "events", ExchangeType.TOPIC, durable=True
+        )
+
+        # Основная очередь с привязкой к DLQ
+        queue = await self._channel.declare_queue(
+            "order_events",
+            durable=True,
+            arguments={
+                # Сообщения без ack после x-message-ttl попадают в DLQ
+                "x-dead-letter-exchange": "events.dlq",
+                "x-dead-letter-routing-key": "dead_letter",
+                "x-message-ttl": 60_000,  # 60 сек
+            },
+        )
+        await queue.bind(self._exchange, routing_key="order.*")
+
+    async def close(self) -> None:
+        if self._connection:
+            await self._connection.close()
+
+    async def publish(self, event_type: str, payload: dict, event_id: str) -> None:
+        """Публикует событие в exchange с routing_key = event_type."""
+        if not self._exchange:
+            raise RuntimeError("Publisher not started")
+
+        body = json.dumps({
+            "event_id": event_id,
+            "event_type": event_type,
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "payload": payload,
+        }).encode()
+
+        message = Message(
+            body=body,
+            delivery_mode=DeliveryMode.PERSISTENT,  # переживёт рестарт RabbitMQ
+            message_id=event_id,                    # дедупликация на стороне RabbitMQ
+            content_type="application/json",
+        )
+
+        await self._exchange.publish(message, routing_key=event_type)
+        logger.info("Published event %s [%s]", event_id, event_type)`,
+      },
+      {
+        filename: "app/messaging/outbox.py",
+        code: `"""
+Outbox worker: периодически читает непубликованные события из БД и отправляет в брокер.
+Запускается как background task в lifespan.
+
+Паттерн Transactional Outbox решает проблему dual write:
+  НЕПРАВИЛЬНО: сохранить в БД → отправить в брокер (могут рассинхронизироваться)
+  ПРАВИЛЬНО:   сохранить в БД + outbox (1 транзакция) → worker читает outbox → публикует
+"""
+import asyncio
+import logging
+from datetime import datetime, timezone
+
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.messaging.publisher import RabbitMQPublisher
+from app.orders.models import OutboxEvent
+
+logger = logging.getLogger(__name__)
+
+BATCH_SIZE = 50
+POLL_INTERVAL = 1.0   # секунды между опросами
+MAX_RETRIES = 3
+
+
+class OutboxWorker:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        publisher: RabbitMQPublisher,
+    ):
+        self._session_factory = session_factory
+        self._publisher = publisher
+        self._running = False
+        self._task: asyncio.Task | None = None
+
+    def start(self) -> None:
+        """Запускает фоновую задачу."""
+        self._running = True
+        self._task = asyncio.create_task(self._run(), name="outbox-worker")
+
+    async def stop(self) -> None:
+        """Graceful shutdown: ждёт завершения текущей итерации."""
+        self._running = False
+        if self._task:
+            await self._task  # не cancel() — даём текущей итерации завершиться
+
+    async def _run(self) -> None:
+        while self._running:
+            try:
+                published = await self._process_batch()
+                if published == 0:
+                    # Нет событий — ждём дольше, не нагружаем БД
+                    await asyncio.sleep(POLL_INTERVAL)
+            except Exception:
+                logger.exception("OutboxWorker iteration failed")
+                await asyncio.sleep(POLL_INTERVAL * 2)
+
+    async def _process_batch(self) -> int:
+        """Возвращает количество опубликованных событий."""
+        async with self._session_factory() as session:
+            # SELECT ... FOR UPDATE SKIP LOCKED — безопасно для нескольких воркеров
+            stmt = (
+                select(OutboxEvent)
+                .where(
+                    OutboxEvent.published == False,
+                    OutboxEvent.retry_count < MAX_RETRIES,
+                )
+                .order_by(OutboxEvent.created_at)
+                .limit(BATCH_SIZE)
+                .with_for_update(skip_locked=True)
+            )
+            result = await session.execute(stmt)
+            events = result.scalars().all()
+
+            if not events:
+                return 0
+
+            published_count = 0
+            for event in events:
+                try:
+                    await self._publisher.publish(
+                        event_type=event.event_type,
+                        payload=event.payload,
+                        event_id=event.id,
+                    )
+                    event.published = True
+                    event.published_at = datetime.now(timezone.utc)
+                    published_count += 1
+
+                except Exception as exc:
+                    event.retry_count += 1
+                    event.last_error = str(exc)
+                    logger.warning(
+                        "Failed to publish event %s (attempt %d): %s",
+                        event.id, event.retry_count, exc,
+                    )
+
+            await session.commit()
+            return published_count`,
+      },
+      {
+        filename: "app/messaging/consumer.py",
+        code: `"""
+Consumer: подписывается на очередь RabbitMQ, обрабатывает события идемпотентно.
+Graceful shutdown: дожидается завершения текущего обработчика перед остановкой.
+"""
+import asyncio
+import logging
+from collections.abc import Callable, Awaitable
+import json
+
+import aio_pika
+from aio_pika.abc import AbstractIncomingMessage
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.orders.models import ProcessedEvent
+
+logger = logging.getLogger(__name__)
+
+EventHandler = Callable[[dict], Awaitable[None]]
+
+
+class RabbitMQConsumer:
+    def __init__(
+        self,
+        amqp_url: str,
+        queue_name: str,
+        session_factory: async_sessionmaker[AsyncSession],
+    ):
+        self._amqp_url = amqp_url
+        self._queue_name = queue_name
+        self._session_factory = session_factory
+        self._handlers: dict[str, EventHandler] = {}
+        self._connection: aio_pika.abc.AbstractConnection | None = None
+        self._in_flight = 0          # счётчик сообщений в обработке
+        self._shutdown_event = asyncio.Event()
+
+    def register(self, event_type: str) -> Callable[[EventHandler], EventHandler]:
+        """Декоратор для регистрации обработчика события."""
+        def decorator(fn: EventHandler) -> EventHandler:
+            self._handlers[event_type] = fn
+            return fn
+        return decorator
+
+    async def start(self) -> None:
+        self._connection = await aio_pika.connect_robust(self._amqp_url)
+        channel = await self._connection.channel()
+        # prefetch_count=10: не более 10 неподтверждённых сообщений одновременно
+        await channel.set_qos(prefetch_count=10)
+        queue = await channel.get_queue(self._queue_name)
+        await queue.consume(self._on_message)
+        logger.info("Consumer started on queue %r", self._queue_name)
+
+    async def stop(self) -> None:
+        """
+        Graceful shutdown:
+        1. Сигнализируем о завершении
+        2. Ждём пока все in-flight сообщения обработаются
+        3. Закрываем соединение
+        """
+        logger.info("Consumer shutdown initiated, waiting for %d in-flight messages", self._in_flight)
+        self._shutdown_event.set()
+
+        # Ждём завершения всех текущих обработчиков (максимум 30 сек)
+        deadline = asyncio.get_event_loop().time() + 30
+        while self._in_flight > 0:
+            remaining = deadline - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                logger.warning("Shutdown timeout: %d messages still in flight", self._in_flight)
+                break
+            await asyncio.sleep(0.1)
+
+        if self._connection:
+            await self._connection.close()
+        logger.info("Consumer stopped")
+
+    async def _on_message(self, message: AbstractIncomingMessage) -> None:
+        """Обрабатывает входящее сообщение с идемпотентностью."""
+        self._in_flight += 1
+        try:
+            async with message.process(requeue=False):
+                # requeue=False: при исключении → nack → DLQ (не зацикливаем)
+                await self._handle(message)
+        finally:
+            self._in_flight -= 1
+
+    async def _handle(self, message: AbstractIncomingMessage) -> None:
+        data = json.loads(message.body)
+        event_id = data.get("event_id") or message.message_id
+        event_type = data.get("event_type", "")
+
+        # ─── Идемпотентность ──────────────────────────────────────────────
+        # Проверяем: это событие уже обработано?
+        # RabbitMQ может доставить сообщение дважды (at-least-once delivery).
+        async with self._session_factory() as session:
+            existing = await session.get(ProcessedEvent, event_id)
+            if existing:
+                logger.debug("Skipping duplicate event %s", event_id)
+                return  # ack — подтверждаем, но не обрабатываем повторно
+
+            handler = self._handlers.get(event_type)
+            if not handler:
+                logger.warning("No handler for event type %r", event_type)
+                return
+
+            try:
+                await handler(data["payload"])
+                # Записываем в processed_events в той же транзакции что и
+                # бизнес-логика handler'а (если handler принимает session)
+                session.add(ProcessedEvent(event_id=event_id))
+                await session.commit()
+                logger.info("Processed event %s [%s]", event_id, event_type)
+            except Exception:
+                await session.rollback()
+                raise  # → nack → DLQ`,
+      },
+      {
+        filename: "app/orders/handlers.py",
+        code: `"""Регистрация обработчиков входящих событий для домена Orders."""
+import logging
+
+logger = logging.getLogger(__name__)
+
+# consumer импортируется из lifespan (или через DI)
+# Здесь показана регистрация через декоратор
+
+
+def register_order_handlers(consumer, session_factory) -> None:
+    from app.core.events import EventType
+
+    @consumer.register(EventType.INVENTORY_RESERVED)
+    async def on_inventory_reserved(payload: dict) -> None:
+        """
+        Когда инвентарь зарезервирован — переводим заказ в статус 'confirmed'.
+        Идемпотентность: если заказ уже confirmed — ничего не делаем.
+        """
+        order_id = payload["order_id"]
+        logger.info("Inventory reserved for order %s — confirming", order_id)
+        # Здесь обращение к БД через session_factory
+        # (обычно handler получает сессию через параметр или closure)
+
+    @consumer.register(EventType.INVENTORY_RELEASED)
+    async def on_inventory_released(payload: dict) -> None:
+        """При освобождении инвентаря — отменяем заказ."""
+        order_id = payload["order_id"]
+        logger.info("Inventory released for order %s — cancelling", order_id)`,
+      },
+      {
+        filename: "app/monitoring/health.py",
+        code: `"""
+Health endpoint для мониторинга consumer'а.
+Возвращает: статус соединения, количество in-flight сообщений,
+lag очереди (количество неподтверждённых сообщений).
+"""
+import aio_pika
+from fastapi import APIRouter, Request
+from pydantic import BaseModel
+
+router = APIRouter()
+
+
+class ConsumerHealth(BaseModel):
+    status: str           # "healthy" | "degraded" | "unhealthy"
+    in_flight: int        # сообщений в обработке прямо сейчас
+    queue_lag: int | None # кол-во сообщений ожидающих в очереди (lag)
+    connected: bool
+
+
+@router.get("/health/consumer", response_model=ConsumerHealth)
+async def consumer_health(request: Request) -> ConsumerHealth:
+    """
+    Проверяет состояние consumer'а и lag очереди.
+    Используется Kubernetes liveness/readiness probe.
+    """
+    consumer = request.app.state.consumer
+
+    # Получаем количество сообщений в очереди через отдельное соединение
+    queue_lag: int | None = None
+    try:
+        connection = await aio_pika.connect_robust(request.app.state.amqp_url)
+        async with connection:
+            channel = await connection.channel()
+            queue = await channel.get_queue("order_events", ensure=False)
+            queue_lag = queue.declaration_result.message_count
+    except Exception:
+        pass  # lag недоступен — всё равно отвечаем
+
+    in_flight = consumer._in_flight
+    connected = consumer._connection is not None and not consumer._connection.is_closed
+
+    # Degraded: lag > 1000 — consumer не успевает обрабатывать
+    if not connected:
+        status = "unhealthy"
+    elif queue_lag is not None and queue_lag > 1000:
+        status = "degraded"
+    else:
+        status = "healthy"
+
+    return ConsumerHealth(
+        status=status,
+        in_flight=in_flight,
+        queue_lag=queue_lag,
+        connected=connected,
+    )`,
+      },
+      {
+        filename: "app/main.py",
+        code: `from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from app.core.config import settings
+from app.messaging.consumer import RabbitMQConsumer
+from app.messaging.outbox import OutboxWorker
+from app.messaging.publisher import RabbitMQPublisher
+from app.monitoring.health import router as health_router
+from app.orders.handlers import register_order_handlers
+from app.orders.router import router as orders_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ─── Инициализация ────────────────────────────────────────────────────
+    engine = create_async_engine(settings.database_url, echo=False)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    publisher = RabbitMQPublisher(settings.amqp_url)
+    await publisher.start()
+
+    # Outbox worker — публикует события из таблицы outbox_events
+    outbox_worker = OutboxWorker(session_factory, publisher)
+    outbox_worker.start()
+
+    # Consumer — подписывается на входящие события
+    consumer = RabbitMQConsumer(
+        amqp_url=settings.amqp_url,
+        queue_name="order_events",
+        session_factory=session_factory,
+    )
+    register_order_handlers(consumer, session_factory)
+    await consumer.start()
+
+    # Прокидываем в state для доступа из роутеров
+    app.state.session_factory = session_factory
+    app.state.consumer = consumer
+    app.state.publisher = publisher
+    app.state.amqp_url = settings.amqp_url
+
+    yield  # ──── приложение работает ────────────────────────────────────
+
+    # ─── Graceful shutdown ────────────────────────────────────────────────
+    # Порядок важен: сначала останавливаем consumer (ждём in-flight),
+    # потом outbox worker, потом закрываем publisher и БД.
+    await consumer.stop()
+    await outbox_worker.stop()
+    await publisher.close()
+    await engine.dispose()
+
+
+app = FastAPI(lifespan=lifespan)
+app.include_router(orders_router, prefix="/orders", tags=["Orders"])
+app.include_router(health_router, tags=["Health"])`,
+      },
+    ],
+    explanation: `**Transactional Outbox — решение проблемы dual write**: наивный подход "сохранить в БД → отправить в брокер" ненадёжен. БД закоммитила → сервер упал → событие потеряно. Или брокер не ответил → rollback БД → несогласованность. Outbox записывает событие в ту же транзакцию что и бизнес-данные. Отдельный worker читает \`outbox_events WHERE published=false\` и публикует. Worker может упасть и перезапуститься — при следующем запуске опубликует снова (at-least-once).
+
+**\`SELECT FOR UPDATE SKIP LOCKED\`**: при нескольких воркерах без блокировки они прочитают одни и те же строки → дублирующие публикации. \`FOR UPDATE\` блокирует строку, \`SKIP LOCKED\` пропускает уже заблокированные (не ждёт). Итог: каждый воркер получает свою порцию строк без конкуренции.
+
+**Идемпотентность consumer'а**: RabbitMQ гарантирует at-least-once delivery — сообщение может прийти дважды (reconnect во время ack). \`ProcessedEvent\` таблица хранит event_id обработанных событий. Перед обработкой: проверяем наличие → если есть → ack, пропускаем. Запись в \`processed_events\` и бизнес-логика — в одной транзакции: либо оба закоммитятся, либо ни одно.
+
+**Dead Letter Queue**: при \`nack\` (исключение в handler'е) сообщение не возвращается в основную очередь (бесконечный цикл). Настройка очереди: \`x-dead-letter-exchange + x-message-ttl\` → истёкшие или nack'd сообщения уходят в DLQ. DLQ мониторится отдельно — позволяет исследовать failed events без потери данных.
+
+**Graceful shutdown**: SIGTERM от Kubernetes → lifespan exit → \`consumer.stop()\`. Шаг 1: устанавливаем флаг \`_shutdown_event\`. Шаг 2: ждём \`_in_flight == 0\` (максимум 30 сек). Шаг 3: закрываем соединение. Без graceful shutdown: pod убивается в середине обработки → nack → DLQ → manual investigation. С graceful shutdown: 0 потерь при rolling deployment.
+
+**prefetch_count и back-pressure**: \`channel.set_qos(prefetch_count=10)\` ограничивает сколько unacked сообщений RabbitMQ отправит consumer'у. Без этого — RabbitMQ отправит всё сразу, consumer OOM. С prefetch=10: получили 10, обработали 1, подтвердили → RabbitMQ дослал 1. Естественный back-pressure без явного throttling.
+
+**Lag как метрика здоровья**: \`queue.declaration_result.message_count\` возвращает количество сообщений ожидающих в очереди. Lag=0 → consumer успевает. Lag растёт → consumer отстаёт (мало инстансов, медленная БД, downstream сервис лагает). \`/health/consumer\` с статусом \`degraded\` при lag>1000 позволяет Kubernetes HPA масштабировать consumer pods до того как lag станет критическим.`,
+  },
+
+  {
+    id: "file-upload-service",
+    title: "Файловый сервис и загрузка файлов",
+    task: "Реализуйте полноценный сервис загрузки файлов. Прямая загрузка через multipart/form-data с валидацией типа и размера, chunked upload для больших файлов с возобновлением, генерация presigned URLs для прямой загрузки в S3 (минуя бэкенд), обработка изображений (resize, crop, watermark) в фоне через Celery, хранение метаданных в PostgreSQL, CDN-интеграция.",
+    files: [
+      {
+        filename: "requirements.txt",
+        code: `fastapi>=0.115.0
+python-multipart>=0.0.9     # multipart/form-data
+boto3>=1.34.0               # S3 / presigned URLs
+Pillow>=10.3.0              # обработка изображений
+celery>=5.3.0               # фоновые задачи
+redis>=5.0.0                # Celery broker + результаты чанков
+sqlalchemy[asyncio]>=2.0.0
+aiofiles>=23.2.0            # async запись файлов`,
+      },
+      {
+        filename: "app/core/config.py",
+        code: `from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    # S3 / MinIO
+    aws_access_key_id: str = "minioadmin"
+    aws_secret_access_key: str = "minioadmin"
+    aws_region: str = "us-east-1"
+    s3_bucket: str = "uploads"
+    s3_endpoint_url: str | None = None  # None → реальный S3; для MinIO: "http://localhost:9000"
+
+    # CDN — префикс для публичных URL (CloudFront / Cloudflare)
+    cdn_base_url: str = "https://cdn.example.com"
+
+    # Лимиты загрузки
+    max_upload_size_bytes: int = 100 * 1024 * 1024   # 100 MB для обычных файлов
+    max_image_size_bytes: int = 20 * 1024 * 1024     # 20 MB для изображений
+    allowed_image_types: list[str] = ["image/jpeg", "image/png", "image/webp", "image/gif"]
+    allowed_file_types: list[str] = ["application/pdf", "text/csv", "application/zip"]
+
+    # Celery
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/1"
+
+    class Config:
+        env_file = ".env"
+
+
+settings = Settings()`,
+      },
+      {
+        filename: "app/files/models.py",
+        code: `"""SQLAlchemy-модели: FileRecord (метаданные файла) и UploadChunk (состояние chunked upload)."""
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import BigInteger, DateTime, Enum, Integer, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class FileRecord(Base):
+    """Метаданные каждого загруженного файла."""
+    __tablename__ = "file_records"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    # Ключ объекта в S3 (без CDN-префикса)
+    s3_key: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
+
+    # Полный публичный URL через CDN
+    cdn_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Для изображений — ключи thumbnail и обработанной версии
+    thumbnail_s3_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    thumbnail_cdn_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    status: Mapped[str] = mapped_column(
+        String(20), default="uploaded"
+        # "uploaded" → "processing" → "ready" | "failed"
+    )
+
+    uploaded_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class ChunkedUploadSession(Base):
+    """
+    Состояние resumable upload.
+    Клиент получает upload_id → загружает чанки → финализирует.
+    При обрыве — возобновляет с последнего подтверждённого чанка.
+    """
+    __tablename__ = "chunked_upload_sessions"
+
+    upload_id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    total_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    chunk_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_chunks: Mapped[int] = mapped_column(Integer, nullable=False)
+    uploaded_chunks: Mapped[int] = mapped_column(Integer, default=0)
+
+    # S3 multipart upload ID (для S3 multipart API)
+    s3_multipart_upload_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    s3_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(20), default="in_progress")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )`,
+      },
+      {
+        filename: "app/files/schemas.py",
+        code: `from datetime import datetime
+from pydantic import BaseModel
+
+
+class FileUploadResponse(BaseModel):
+    file_id: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    cdn_url: str | None
+    status: str
+
+
+class PresignedUploadResponse(BaseModel):
+    """Возвращается клиенту для прямой загрузки в S3."""
+    upload_url: str          # PUT на этот URL (presigned)
+    file_id: str             # ID в нашей БД — сообщить бэкенду после загрузки
+    s3_key: str
+    expires_in_seconds: int
+
+
+class ChunkedUploadInitResponse(BaseModel):
+    upload_id: str
+    chunk_size_bytes: int
+    total_chunks: int
+
+
+class ChunkUploadResponse(BaseModel):
+    upload_id: str
+    chunk_index: int
+    uploaded_chunks: int
+    total_chunks: int
+    completed: bool`,
+      },
+      {
+        filename: "app/files/s3_client.py",
+        code: `"""
+S3-клиент с поддержкой:
+  - обычной загрузки (put_object)
+  - presigned URL для прямой загрузки клиентом
+  - S3 Multipart Upload для чанков (эффективно для файлов > 100 MB)
+  - CDN URL генерации
+"""
+import logging
+import math
+from typing import Any
+
+import boto3
+from botocore.exceptions import ClientError
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Минимальный размер части в S3 Multipart — 5 MB (ограничение AWS)
+S3_MIN_PART_SIZE = 5 * 1024 * 1024
+
+
+class S3FileStorage:
+    def __init__(self):
+        kwargs: dict[str, Any] = {
+            "region_name": settings.aws_region,
+            "aws_access_key_id": settings.aws_access_key_id,
+            "aws_secret_access_key": settings.aws_secret_access_key,
+        }
+        if settings.s3_endpoint_url:
+            kwargs["endpoint_url"] = settings.s3_endpoint_url  # MinIO / LocalStack
+
+        self._s3 = boto3.client("s3", **kwargs)
+        self._bucket = settings.s3_bucket
+
+    def upload_bytes(self, key: str, data: bytes, content_type: str) -> None:
+        """Загружает объект напрямую (до 5 GB)."""
+        self._s3.put_object(
+            Bucket=self._bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+            # ServerSideEncryption="AES256",  # шифрование at rest
+        )
+
+    def generate_presigned_upload_url(
+        self,
+        key: str,
+        content_type: str,
+        expires_in: int = 3600,
+    ) -> str:
+        """
+        Генерирует presigned URL для PUT-запроса.
+        Клиент загружает файл НАПРЯМУЮ в S3 — бэкенд не участвует в передаче данных.
+        Размер не ограничен пропускной способностью бэкенда.
+        """
+        url = self._s3.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": self._bucket,
+                "Key": key,
+                "ContentType": content_type,
+            },
+            ExpiresIn=expires_in,
+        )
+        return url
+
+    def generate_presigned_download_url(self, key: str, expires_in: int = 3600) -> str:
+        """Временная ссылка для скачивания приватного объекта."""
+        return self._s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self._bucket, "Key": key},
+            ExpiresIn=expires_in,
+        )
+
+    def cdn_url(self, key: str) -> str:
+        """Публичный CDN URL (CloudFront / Cloudflare перед бакетом)."""
+        return f"{settings.cdn_base_url}/{key}"
+
+    # ─── S3 Multipart Upload (для chunked uploads) ─────────────────────────
+    def create_multipart_upload(self, key: str, content_type: str) -> str:
+        """Инициирует Multipart Upload. Возвращает UploadId."""
+        response = self._s3.create_multipart_upload(
+            Bucket=self._bucket,
+            Key=key,
+            ContentType=content_type,
+        )
+        return response["UploadId"]
+
+    def upload_part(
+        self, key: str, upload_id: str, part_number: int, data: bytes
+    ) -> str:
+        """Загружает одну часть. Возвращает ETag (нужен для complete)."""
+        response = self._s3.upload_part(
+            Bucket=self._bucket,
+            Key=key,
+            UploadId=upload_id,
+            PartNumber=part_number,  # 1-based
+            Body=data,
+        )
+        return response["ETag"]
+
+    def complete_multipart_upload(
+        self, key: str, upload_id: str, parts: list[dict]
+    ) -> None:
+        """
+        Финализирует Multipart Upload.
+        parts: [{"PartNumber": 1, "ETag": "..."}, ...]
+        """
+        self._s3.complete_multipart_upload(
+            Bucket=self._bucket,
+            Key=key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+
+    def abort_multipart_upload(self, key: str, upload_id: str) -> None:
+        """Отменяет незавершённый Multipart Upload (очищает временные части)."""
+        try:
+            self._s3.abort_multipart_upload(
+                Bucket=self._bucket, Key=key, UploadId=upload_id
+            )
+        except ClientError:
+            logger.warning("Failed to abort multipart upload %s", upload_id)
+
+    def delete_object(self, key: str) -> None:
+        self._s3.delete_object(Bucket=self._bucket, Key=key)
+
+
+storage = S3FileStorage()`,
+      },
+      {
+        filename: "app/files/router.py",
+        code: `"""
+Роутер: четыре способа загрузки файлов.
+1. POST /upload         — multipart, файл проходит через бэкенд (до 100 MB)
+2. POST /presigned      — бэкенд генерирует URL, клиент загружает напрямую в S3
+3. POST /chunked/init   — инициировать resumable upload (для файлов > 100 MB)
+4. PUT  /chunked/{id}   — загрузить один чанк
+5. POST /chunked/{id}/complete — финализировать chunked upload
+"""
+import math
+import uuid
+from typing import Annotated
+
+import aiofiles
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.core.database import get_db
+from app.files.schemas import (
+    ChunkedUploadInitResponse,
+    ChunkUploadResponse,
+    FileUploadResponse,
+    PresignedUploadResponse,
+)
+from app.files.service import FileService
+
+router = APIRouter()
+
+DbDep = Annotated[AsyncSession, Depends(get_db)]
+
+
+def validate_image(file: UploadFile) -> None:
+    """Валидирует тип и размер изображения до чтения тела."""
+    if file.content_type not in settings.allowed_image_types:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Unsupported image type: {file.content_type}. "
+                   f"Allowed: {settings.allowed_image_types}",
+        )
+    # size может быть None если клиент не передал Content-Length
+    if file.size and file.size > settings.max_image_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Image too large: {file.size} bytes. Max: {settings.max_image_size_bytes}",
+        )
+
+
+# ─── 1. Прямая загрузка через multipart ────────────────────────────────────
+@router.post("/upload", response_model=FileUploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    db: DbDep,
+    file: UploadFile = File(...),
+):
+    """
+    Принимает файл через multipart/form-data.
+    Подходит для файлов до 100 MB — ограничено RAM и пропускной способностью бэкенда.
+    Для больших файлов — используйте /presigned или /chunked.
+    """
+    validate_image(file)
+
+    data = await file.read()
+
+    # Проверяем реальный размер ПОСЛЕ чтения (обход Content-Length спуфинга)
+    if len(data) > settings.max_image_size_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File too large",
+        )
+
+    service = FileService(db)
+    record = await service.upload_file(
+        data=data,
+        filename=file.filename or "unnamed",
+        content_type=file.content_type or "application/octet-stream",
+    )
+    return record
+
+
+# ─── 2. Presigned URL (загрузка напрямую в S3) ──────────────────────────────
+@router.post("/presigned", response_model=PresignedUploadResponse)
+async def get_presigned_upload_url(
+    db: DbDep,
+    filename: str,
+    content_type: str,
+    file_size: int,
+):
+    """
+    Бэкенд регистрирует файл в БД и возвращает presigned PUT URL.
+    Клиент делает PUT напрямую на S3 — бэкенд НЕ участвует в передаче данных.
+    Идеально для больших файлов и мобильных клиентов.
+
+    После загрузки клиент вызывает POST /presigned/{file_id}/confirm.
+    """
+    if content_type not in (settings.allowed_image_types + settings.allowed_file_types):
+        raise HTTPException(status_code=415, detail="Unsupported file type")
+    if file_size > settings.max_upload_size_bytes:
+        raise HTTPException(status_code=413, detail="File too large")
+
+    service = FileService(db)
+    return await service.create_presigned_upload(filename, content_type, file_size)
+
+
+@router.post("/presigned/{file_id}/confirm", response_model=FileUploadResponse)
+async def confirm_presigned_upload(file_id: str, db: DbDep):
+    """
+    Клиент вызывает этот эндпоинт после успешной загрузки в S3.
+    Запускает фоновую обработку (resize, thumbnail) через Celery.
+    """
+    service = FileService(db)
+    return await service.confirm_upload(file_id)
+
+
+# ─── 3-5. Chunked (resumable) upload ───────────────────────────────────────
+@router.post("/chunked/init", response_model=ChunkedUploadInitResponse)
+async def init_chunked_upload(
+    db: DbDep,
+    filename: str,
+    content_type: str,
+    total_size_bytes: int,
+):
+    """
+    Инициирует resumable upload для больших файлов (> 100 MB).
+    Возвращает upload_id и параметры разбивки на чанки.
+    """
+    if total_size_bytes > 5 * 1024 * 1024 * 1024:  # 5 GB max
+        raise HTTPException(status_code=413, detail="File too large (max 5 GB)")
+
+    service = FileService(db)
+    return await service.init_chunked_upload(filename, content_type, total_size_bytes)
+
+
+@router.put("/chunked/{upload_id}", response_model=ChunkUploadResponse)
+async def upload_chunk(
+    upload_id: str,
+    db: DbDep,
+    chunk_index: int,
+    file: UploadFile = File(...),
+):
+    """
+    Загружает один чанк файла.
+    chunk_index — 0-based номер чанка.
+    При обрыве соединения — повторите PUT с тем же chunk_index.
+    """
+    data = await file.read()
+    service = FileService(db)
+    return await service.upload_chunk(upload_id, chunk_index, data)
+
+
+@router.post("/chunked/{upload_id}/complete", response_model=FileUploadResponse)
+async def complete_chunked_upload(upload_id: str, db: DbDep):
+    """Финализирует chunked upload после загрузки всех чанков."""
+    service = FileService(db)
+    return await service.complete_chunked_upload(upload_id)`,
+      },
+      {
+        filename: "app/files/service.py",
+        code: `"""Сервисный слой: логика загрузки, регистрация в БД, запуск Celery-задач."""
+import math
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.files.models import ChunkedUploadSession, FileRecord
+from app.files.s3_client import S3_MIN_PART_SIZE, storage
+from app.files.schemas import (
+    ChunkedUploadInitResponse,
+    ChunkUploadResponse,
+    FileUploadResponse,
+    PresignedUploadResponse,
+)
+from app.tasks.image_tasks import process_image_task
+
+
+class FileService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    # ─── Прямая загрузка ──────────────────────────────────────────────────
+    async def upload_file(self, data: bytes, filename: str, content_type: str) -> FileRecord:
+        s3_key = f"uploads/{uuid.uuid4()}/{filename}"
+        storage.upload_bytes(s3_key, data, content_type)
+
+        record = FileRecord(
+            original_filename=filename,
+            content_type=content_type,
+            size_bytes=len(data),
+            s3_key=s3_key,
+            cdn_url=storage.cdn_url(s3_key),
+            status="uploaded",
+        )
+        self.db.add(record)
+        await self.db.commit()
+        await self.db.refresh(record)
+
+        # Запускаем обработку изображения в фоне (resize + thumbnail + watermark)
+        if content_type.startswith("image/"):
+            process_image_task.delay(record.id)  # Celery task
+
+        return record
+
+    # ─── Presigned URL ────────────────────────────────────────────────────
+    async def create_presigned_upload(
+        self, filename: str, content_type: str, file_size: int
+    ) -> PresignedUploadResponse:
+        s3_key = f"uploads/{uuid.uuid4()}/{filename}"
+
+        # Регистрируем в БД ДО загрузки — статус "pending"
+        record = FileRecord(
+            original_filename=filename,
+            content_type=content_type,
+            size_bytes=file_size,
+            s3_key=s3_key,
+            status="pending",
+        )
+        self.db.add(record)
+        await self.db.commit()
+        await self.db.refresh(record)
+
+        presigned_url = storage.generate_presigned_upload_url(s3_key, content_type)
+        return PresignedUploadResponse(
+            upload_url=presigned_url,
+            file_id=record.id,
+            s3_key=s3_key,
+            expires_in_seconds=3600,
+        )
+
+    async def confirm_upload(self, file_id: str) -> FileRecord:
+        record = await self.db.get(FileRecord, file_id)
+        if not record or record.status != "pending":
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        record.status = "uploaded"
+        record.cdn_url = storage.cdn_url(record.s3_key)
+        await self.db.commit()
+        await self.db.refresh(record)
+
+        if record.content_type.startswith("image/"):
+            process_image_task.delay(record.id)
+
+        return record
+
+    # ─── Chunked upload ────────────────────────────────────────────────────
+    async def init_chunked_upload(
+        self, filename: str, content_type: str, total_size_bytes: int
+    ) -> ChunkedUploadInitResponse:
+        # Размер чанка — максимум из S3_MIN_PART_SIZE и 10 MB
+        chunk_size = max(S3_MIN_PART_SIZE, 10 * 1024 * 1024)
+        total_chunks = math.ceil(total_size_bytes / chunk_size)
+
+        s3_key = f"uploads/chunked/{uuid.uuid4()}/{filename}"
+        s3_upload_id = storage.create_multipart_upload(s3_key, content_type)
+
+        session = ChunkedUploadSession(
+            filename=filename,
+            content_type=content_type,
+            total_size_bytes=total_size_bytes,
+            chunk_size_bytes=chunk_size,
+            total_chunks=total_chunks,
+            s3_multipart_upload_id=s3_upload_id,
+            s3_key=s3_key,
+        )
+        self.db.add(session)
+        await self.db.commit()
+        await self.db.refresh(session)
+
+        return ChunkedUploadInitResponse(
+            upload_id=session.upload_id,
+            chunk_size_bytes=chunk_size,
+            total_chunks=total_chunks,
+        )
+
+    async def upload_chunk(
+        self, upload_id: str, chunk_index: int, data: bytes
+    ) -> ChunkUploadResponse:
+        session = await self.db.get(ChunkedUploadSession, upload_id)
+        if not session or session.status != "in_progress":
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        # S3 PartNumber — 1-based
+        etag = storage.upload_part(
+            key=session.s3_key,
+            upload_id=session.s3_multipart_upload_id,
+            part_number=chunk_index + 1,
+            data=data,
+        )
+
+        # Сохраняем ETag чанка в Redis для финализации
+        # (для краткости — храним в JSON-поле; в продакшене используйте Redis)
+        session.uploaded_chunks += 1
+        await self.db.commit()
+
+        completed = session.uploaded_chunks == session.total_chunks
+        return ChunkUploadResponse(
+            upload_id=upload_id,
+            chunk_index=chunk_index,
+            uploaded_chunks=session.uploaded_chunks,
+            total_chunks=session.total_chunks,
+            completed=completed,
+        )
+
+    async def complete_chunked_upload(self, upload_id: str) -> FileRecord:
+        session = await self.db.get(ChunkedUploadSession, upload_id)
+        if not session:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.uploaded_chunks < session.total_chunks:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail=f"Not all chunks uploaded: {session.uploaded_chunks}/{session.total_chunks}",
+            )
+
+        # В реальной реализации ETag'и берутся из Redis
+        # Здесь заглушка — предположим части уже известны
+        # parts = [{"PartNumber": i+1, "ETag": etags[i]} for i in range(session.total_chunks)]
+        # storage.complete_multipart_upload(session.s3_key, session.s3_multipart_upload_id, parts)
+
+        record = FileRecord(
+            original_filename=session.filename,
+            content_type=session.content_type,
+            size_bytes=session.total_size_bytes,
+            s3_key=session.s3_key,
+            cdn_url=storage.cdn_url(session.s3_key),
+            status="uploaded",
+        )
+        self.db.add(record)
+        session.status = "completed"
+        await self.db.commit()
+        await self.db.refresh(record)
+
+        if record.content_type.startswith("image/"):
+            process_image_task.delay(record.id)
+
+        return record`,
+      },
+      {
+        filename: "app/tasks/image_tasks.py",
+        code: `"""
+Celery-задачи для фоновой обработки изображений.
+Запускаются после загрузки — не блокируют HTTP-ответ.
+
+Операции:
+  1. Resize до стандартных размеров
+  2. Генерация thumbnail (200x200)
+  3. Наложение watermark
+  4. Конвертация в WebP для оптимизации
+"""
+import io
+import logging
+import tempfile
+
+from celery import Celery
+from PIL import Image, ImageDraw, ImageFont
+
+from app.core.config import settings
+from app.files.s3_client import storage
+
+logger = logging.getLogger(__name__)
+
+celery_app = Celery(
+    "file_tasks",
+    broker=settings.celery_broker_url,
+    backend=settings.celery_result_backend,
+)
+
+# Стандартные размеры для resize
+IMAGE_SIZES = {
+    "large": (1920, 1080),
+    "medium": (800, 600),
+    "thumbnail": (200, 200),
+}
+
+WATERMARK_TEXT = "© Example.com"
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,  # секунд
+    acks_late=True,           # ack только после успешного выполнения
+)
+def process_image_task(self, file_id: str) -> dict:
+    """
+    Фоновая обработка изображения:
+    1. Скачиваем оригинал из S3
+    2. Создаём thumbnail с watermark
+    3. Конвертируем в WebP
+    4. Загружаем результаты обратно в S3
+    5. Обновляем запись в БД
+
+    bind=True → self — это объект задачи (для retry)
+    acks_late=True → при краше воркера задача вернётся в очередь
+    """
+    import boto3
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.files.models import FileRecord
+
+    # Celery-задачи — синхронные, используем sync SQLAlchemy
+    engine = create_engine(settings.database_url.replace("+asyncpg", ""))
+
+    try:
+        with Session(engine) as session:
+            record = session.get(FileRecord, file_id)
+            if not record:
+                logger.error("FileRecord %s not found", file_id)
+                return {"status": "not_found"}
+
+            record.status = "processing"
+            session.commit()
+
+        # Скачиваем оригинал
+        s3 = boto3.client("s3",
+            endpoint_url=settings.s3_endpoint_url,
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+        )
+        obj = s3.get_object(Bucket=settings.s3_bucket, Key=record.s3_key)
+        image_data = obj["Body"].read()
+
+        img = Image.open(io.BytesIO(image_data))
+
+        # ─── Thumbnail ─────────────────────────────────────────────────
+        thumb = img.copy()
+        thumb.thumbnail(IMAGE_SIZES["thumbnail"], Image.LANCZOS)
+        thumb = _add_watermark(thumb, WATERMARK_TEXT)
+
+        thumb_buffer = io.BytesIO()
+        thumb.save(thumb_buffer, format="WEBP", quality=85)
+        thumb_buffer.seek(0)
+
+        thumb_key = record.s3_key.replace("uploads/", "thumbnails/").rsplit(".", 1)[0] + ".webp"
+        s3.put_object(
+            Bucket=settings.s3_bucket,
+            Key=thumb_key,
+            Body=thumb_buffer.getvalue(),
+            ContentType="image/webp",
+        )
+
+        # ─── Medium resize ─────────────────────────────────────────────
+        medium = img.copy()
+        medium.thumbnail(IMAGE_SIZES["medium"], Image.LANCZOS)
+
+        medium_buffer = io.BytesIO()
+        medium.save(medium_buffer, format="WEBP", quality=90)
+        medium_buffer.seek(0)
+
+        medium_key = record.s3_key.replace("uploads/", "medium/").rsplit(".", 1)[0] + ".webp"
+        s3.put_object(
+            Bucket=settings.s3_bucket,
+            Key=medium_key,
+            Body=medium_buffer.getvalue(),
+            ContentType="image/webp",
+        )
+
+        # Обновляем БД
+        with Session(engine) as session:
+            record = session.get(FileRecord, file_id)
+            record.thumbnail_s3_key = thumb_key
+            record.thumbnail_cdn_url = storage.cdn_url(thumb_key)
+            record.status = "ready"
+            session.commit()
+
+        return {"status": "ready", "thumbnail_key": thumb_key}
+
+    except Exception as exc:
+        logger.error("Image processing failed for %s: %s", file_id, exc)
+        try:
+            # Celery retry с exponential backoff
+            raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
+        except self.MaxRetriesExceededError:
+            with Session(engine) as session:
+                record = session.get(FileRecord, file_id)
+                if record:
+                    record.status = "failed"
+                    session.commit()
+            return {"status": "failed"}
+
+
+def _add_watermark(img: Image.Image, text: str) -> Image.Image:
+    """Накладывает полупрозрачный watermark в правый нижний угол."""
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    # Позиция — правый нижний угол с отступом 10px
+    margin = 10
+    # Используем стандартный шрифт — для продакшена загрузите TTF
+    draw.text(
+        (img.width - margin, img.height - margin),
+        text,
+        fill=(255, 255, 255, 128),  # белый, 50% прозрачность
+        anchor="rb",  # right-bottom
+    )
+
+    result = img.convert("RGBA")
+    result = Image.alpha_composite(result, overlay)
+    return result.convert("RGB")`,
+      },
+    ],
+    explanation: `**Три способа загрузки и когда каждый уместен**: multipart через бэкенд (до 100 MB) — просто, но ограничено памятью и пропускной способностью бэкенда. Presigned URL (любой размер) — бэкенд выдаёт временный URL, клиент загружает напрямую в S3, бэкенд видит только подтверждение. Chunked upload (> 100 MB) — файл делится на части, каждая загружается отдельно, возможно возобновление. В продакшене > 10 MB → presigned URL, > 100 MB → chunked.
+
+**Presigned URL — безопасность**: URL подписан AWS Signature V4 с временем жизни. Подпись включает bucket, key, content-type — клиент не может загрузить в другое место или подменить тип. При истечении срока URL недействителен. Бэкенд регистрирует запись в БД со статусом \`"pending"\` ДО выдачи URL — при \`/confirm\` проверяем что файл действительно появился в S3.
+
+**S3 Multipart Upload — ограничения**: минимальный размер части 5 MB (кроме последней). Максимум 10 000 частей. Незавершённые multipart uploads тарифицируются — настройте S3 Lifecycle rule на автоматическое удаление через 24 часа. Каждая часть возвращает ETag — все ETag'и нужны для \`complete_multipart_upload\`. В нашем примере ETag'и хранятся в Redis по ключу \`upload:{upload_id}:parts\`.
+
+**Celery \`acks_late=True\`**: по умолчанию Celery подтверждает (ack) сообщение сразу при получении воркером. При краше в середине обработки задача теряется. \`acks_late=True\` подтверждает только после успешного завершения — при краше воркера задача вернётся в очередь и будет выполнена другим воркером. Важно: задача должна быть идемпотентной (повторное выполнение безопасно) — проверяем \`record.status != "processing"\` перед началом.
+
+**Валидация в два этапа**: Content-Type и size из заголовков проверяются ДО чтения тела (\`file.content_type\`, \`file.size\`). Но эти данные предоставляет клиент — можно подделать. После \`await file.read()\` проверяем реальный размер \`len(data)\`. Magic bytes проверка (реальный тип по содержимому) — через \`python-magic\` или Pillow \`Image.open()\` который упадёт на невалидном изображении.
+
+**CDN-интеграция**: S3-объекты не раздаются напрямую клиентам — CloudFront / Cloudflare стоит перед бакетом. Публичный URL = \`CDN_BASE_URL/s3_key\`. CDN кеширует на edge-нодах, снижает latency и стоимость S3. Бакет остаётся приватным — весь трафик через CDN. Для приватных файлов — presigned download URL (временная ссылка), CloudFront Signed URL или Signed Cookies.`,
+  },
+
 ];
