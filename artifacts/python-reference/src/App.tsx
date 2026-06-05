@@ -12,6 +12,9 @@ import DjangoPage from "@/pages/django";
 import FastAPIPage from "@/pages/fastapi";
 import DjangoExamplesPage from "@/pages/django-examples";
 import FastAPIExamplesPage from "@/pages/fastapi-examples";
+import PythonInterviewPage from "@/pages/python-interview";
+import DjangoInterviewPage from "@/pages/django-interview";
+import FastAPIInterviewPage from "@/pages/fastapi-interview";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +33,9 @@ function Router() {
           <Route path="/fastapi" component={FastAPIPage} />
           <Route path="/django-examples" component={DjangoExamplesPage} />
           <Route path="/fastapi-examples" component={FastAPIExamplesPage} />
+          <Route path="/python-interview" component={PythonInterviewPage} />
+          <Route path="/django-interview" component={DjangoInterviewPage} />
+          <Route path="/fastapi-interview" component={FastAPIInterviewPage} />
           <Route component={NotFound} />
         </Switch>
       </main>
