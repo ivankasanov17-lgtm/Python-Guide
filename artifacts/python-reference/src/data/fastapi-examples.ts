@@ -17115,5 +17115,1130 @@ echo "Документация опубликована: \$DOCS_OUTPUT_DIR/index
 
 **Теги с описаниями и externalDocs**: \`openapi_tags\` в FastAPI принимает список с \`name\`, \`description\` (Markdown) и \`externalDocs\`. В Swagger UI теги превращаются в секции с описанием — разработчик понимает контекст до чтения эндпоинтов. \`description\` поддерживает полный Markdown: таблицы, код, ссылки. Это особенно важно для объяснения жизненного цикла сущностей (статусы заказа).`,
   },
+ {
+    id: "microservice-architecture",
+    title: "Микросервисная архитектура с FastAPI",
+    task: "Спроектируйте разбиение монолита на микросервисы. Определите bounded contexts и границы сервисов, реализуйте service-to-service коммуникацию (sync через HTTP + async через очередь), API Gateway паттерн, distributed sessions и аутентификацию между сервисами, distributed transactions через Saga паттерн. Обоснуйте, когда микросервисы уместны, а когда модульный монолит лучше.",
+    files: [
+      {
+        filename: "service_client.py",
+        code: `"""
+Типизированный async HTTP-клиент для межсервисного взаимодействия.
+Каждый сервис создаёт своего клиента через зависимость FastAPI.
+"""
+from typing import TypeVar
+import httpx
+from pydantic import BaseModel
 
+T = TypeVar("T", bound=BaseModel)
+
+
+class ServiceError(Exception):
+    def __init__(self, service: str, status: int, detail: str):
+        self.service = service
+        self.status = status
+        super().__init__(f"[{service}] HTTP {status}: {detail}")
+
+
+class ServiceClient:
+    """
+    Обёртка над httpx.AsyncClient с:
+    - автоматической инъекцией service token в заголовки,
+    - десериализацией ответа в Pydantic-модель,
+    - единообразной обработкой ошибок.
+    """
+
+    def __init__(self, base_url: str, service_name: str, service_token: str):
+        self._name = service_name
+        self._client = httpx.AsyncClient(
+            base_url=base_url,
+            headers={"X-Service-Token": service_token},
+            timeout=httpx.Timeout(connect=2.0, read=5.0, write=5.0, pool=1.0),
+        )
+
+    async def get(self, path: str, model: type[T], **params) -> T:
+        r = await self._client.get(path, params=params)
+        self._check(r)
+        return model.model_validate(r.json())
+
+    async def post(self, path: str, body: BaseModel, model: type[T]) -> T:
+        r = await self._client.post(path, json=body.model_dump())
+        self._check(r)
+        return model.model_validate(r.json())
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    def _check(self, response: httpx.Response) -> None:
+        if response.is_error:
+            detail = response.json().get("detail", response.text)
+            raise ServiceError(self._name, response.status_code, detail)
+
+
+# --- Пример использования в сервисе заказов ---
+#
+# from fastapi import Depends
+# from functools import lru_cache
+#
+# @lru_cache
+# def get_inventory_client() -> ServiceClient:
+#     return ServiceClient(
+#         base_url=settings.INVENTORY_SERVICE_URL,
+#         service_name="inventory",
+#         service_token=settings.SERVICE_TOKEN,
+#     )
+#
+# @router.post("/orders")
+# async def create_order(
+#     data: OrderCreate,
+#     inventory: ServiceClient = Depends(get_inventory_client),
+# ):
+#     reservation = await inventory.post(
+#         "/reservations", body=data.items, model=ReservationResult
+#     )`,
+      },
+      {
+        filename: "service_auth.py",
+        code: `"""
+JWT-аутентификация между сервисами.
+
+Каждый сервис имеет свой identity и подписывает запросы
+short-lived токеном. Принимающий сервис верифицирует токен
+и знает, кто обращается (для аудит-лога и rate limiting).
+"""
+import time
+import jwt
+from fastapi import Header, HTTPException, status
+
+
+ALGORITHM = "HS256"
+TOKEN_TTL = 60  # секунд — намеренно коротко
+
+
+def create_service_token(service_name: str, secret: str) -> str:
+    """Создаёт токен сервиса. Вызывается перед каждым исходящим запросом."""
+    return jwt.encode(
+        {"sub": service_name, "type": "service", "exp": time.time() + TOKEN_TTL},
+        secret,
+        algorithm=ALGORITHM,
+    )
+
+
+async def require_service_token(
+    x_service_token: str = Header(),
+    service_secret: str = "",  # прокидывается через DI в реальном приложении
+) -> str:
+    """
+    FastAPI dependency для входящих запросов от других сервисов.
+    Возвращает имя вызывающего сервиса.
+    """
+    try:
+        payload = jwt.decode(x_service_token, service_secret, algorithms=[ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Service token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid service token")
+
+    if payload.get("type") != "service":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a service token")
+
+    return payload["sub"]  # имя вызывающего сервиса
+
+
+# --- Защита эндпоинта ---
+#
+# @router.post("/internal/reservations")
+# async def reserve(
+#     data: ReservationRequest,
+#     caller: str = Depends(require_service_token),
+# ):
+#     logger.info("Reservation requested by service=%s", caller)
+#     ...`,
+      },
+      {
+        filename: "saga.py",
+        code: `"""
+Saga-координатор для распределённых транзакций.
+
+Паттерн: каждый шаг имеет действие (action) и компенсацию (compensation).
+При сбое на любом шаге все предыдущие шаги откатываются в обратном порядке.
+
+Пример: размещение заказа
+  1. Зарезервировать товар       → компенсация: снять резервирование
+  2. Списать оплату              → компенсация: вернуть деньги
+  3. Создать запись заказа       → компенсация: удалить заказ
+"""
+import logging
+from dataclasses import dataclass, field
+from typing import Any, Awaitable, Callable
+
+logger = logging.getLogger(__name__)
+
+Action = Callable[[], Awaitable[Any]]
+Compensation = Callable[[], Awaitable[None]]
+
+
+@dataclass
+class SagaStep:
+    name: str
+    action: Action
+    compensation: Compensation
+
+
+class SagaError(Exception):
+    """Поднимается после компенсации всех выполненных шагов."""
+
+
+async def run_saga(steps: list[SagaStep]) -> list[Any]:
+    """
+    Выполняет шаги последовательно.
+    При ошибке — компенсирует все завершённые шаги в обратном порядке.
+    Возвращает список результатов каждого шага.
+    """
+    results: list[Any] = []
+    completed: list[SagaStep] = []
+
+    for step in steps:
+        try:
+            result = await step.action()
+            results.append(result)
+            completed.append(step)
+        except Exception as exc:
+            logger.error("Saga step '%s' failed: %s", step.name, exc)
+            await _compensate(completed)
+            raise SagaError(f"Saga aborted at step '{step.name}'") from exc
+
+    return results
+
+
+async def _compensate(completed: list[SagaStep]) -> None:
+    for step in reversed(completed):
+        try:
+            await step.compensation()
+            logger.info("Compensated step '%s'", step.name)
+        except Exception as exc:
+            # Компенсация не должна бросать — логируем как критическую ошибку
+            # и продолжаем откатывать остальные шаги
+            logger.critical(
+                "Compensation for '%s' failed — manual intervention required: %s",
+                step.name,
+                exc,
+            )
+
+
+# --- Пример использования в order service ---
+#
+# async def place_order(order_data: OrderCreate) -> Order:
+#     reservation_id = None
+#     payment_id = None
+#
+#     steps = [
+#         SagaStep(
+#             name="reserve_inventory",
+#             action=lambda: inventory_client.post("/reservations", order_data.items),
+#             compensation=lambda: inventory_client.delete(f"/reservations/{reservation_id}"),
+#         ),
+#         SagaStep(
+#             name="charge_payment",
+#             action=lambda: payment_client.post("/charges", order_data.payment),
+#             compensation=lambda: payment_client.post(f"/refunds/{payment_id}"),
+#         ),
+#         SagaStep(
+#             name="create_order",
+#             action=lambda: order_repo.create(order_data),
+#             compensation=lambda: order_repo.delete(order_id),
+#         ),
+#     ]
+#
+#     reservation, payment, order = await run_saga(steps)
+#     return order`,
+      },
+    ],
+    explanation: `**service_client.py** инкапсулирует всё, что нужно для надёжного межсервисного HTTP-вызова: токен аутентификации, таймауты и единообразную обработку ошибок. Каждый сервис создаёт typed клиент через \`lru_cache\`-фабрику — один экземпляр на процесс с пулом соединений.
+
+**service_auth.py** — short-lived JWT (TTL 60 с) вместо долгоживущих API-ключей. Если токен утечёт — через минуту он станет бесполезным. Принимающий сервис знает имя вызывающего, что позволяет вести аудит и применять rate limiting на уровне сервиса, а не IP.
+
+**saga.py** реализует choreography-based saga: координатор последовательно вызывает действия и при сбое компенсирует завершённые шаги в обратном порядке. Компенсация не должна бросать исключения — если она упала, это требует ручного вмешательства (incident), но остальные компенсации должны продолжиться.
+
+**Когда микросервисы уместны**: независимые команды деплоят сервисы разной скоростью; критическая разница в нагрузке (один сервис нужно масштабировать отдельно); разные технологические требования (ML-сервис на Python + транзакционный сервис на Go). **Когда лучше модульный монолит**: команда до 15–20 человек; bounded contexts ещё не устоялись; нет DevOps-зрелости для управления распределёнными системами. Распределённые транзакции, сетевые партиции и observability в микросервисах стоят дорого — переходите к ним осознанно, а не потому что "так делают Netflix".`,
+  },
+
+  {
+    id: "http-caching",
+    title: "Кэширование на уровне HTTP и CDN",
+    task: "Реализуйте корректные HTTP cache headers для FastAPI. Cache-Control с подходящими директивами для разных эндпоинтов: публичный контент (CDN cache), приватный контент пользователя, API-ответы без кэширования. ETag и Last-Modified для conditional requests. Vary для content negotiation. Stale-while-revalidate для улучшения perceived performance. Настройте Nginx как reverse proxy с кэшированием.",
+    files: [
+      {
+        filename: "cache.py",
+        code: `"""
+Утилиты для HTTP-кэширования в FastAPI.
+
+Три политики покрывают большинство случаев:
+- PUBLIC  — публичный контент, кэшируется CDN и браузером
+- PRIVATE — данные конкретного пользователя, только в браузере
+- NO_STORE — чувствительные данные, никакого кэша
+"""
+import hashlib
+import json
+from typing import Any
+
+from fastapi import Request
+from fastapi.responses import JSONResponse, Response
+
+
+# ---------------------------------------------------------------------------
+# Cache-Control директивы
+# ---------------------------------------------------------------------------
+
+def cache_control(**directives: Any) -> dict[str, str]:
+    """
+    Строит Cache-Control заголовок из именованных аргументов.
+
+    cache_control(public=True, max_age=3600, stale_while_revalidate=60)
+    → {"Cache-Control": "public, max-age=3600, stale-while-revalidate=60"}
+    """
+    parts = []
+    for key, value in directives.items():
+        directive = key.replace("_", "-")
+        if value is True:
+            parts.append(directive)
+        elif value is not False and value is not None:
+            parts.append(f"{directive}={value}")
+    return {"Cache-Control": ", ".join(parts)}
+
+
+# Готовые политики — используйте как есть или корректируйте max-age
+PUBLIC = cache_control(public=True, max_age=3600, stale_while_revalidate=60)
+PRIVATE = cache_control(private=True, max_age=300, must_revalidate=True)
+NO_STORE = cache_control(no_store=True, no_cache=True)
+
+
+# ---------------------------------------------------------------------------
+# ETag и conditional requests
+# ---------------------------------------------------------------------------
+
+def make_etag(data: Any) -> str:
+    """Слабый ETag на основе содержимого ответа."""
+    raw = json.dumps(data, sort_keys=True, default=str).encode()
+    digest = hashlib.md5(raw).hexdigest()
+    return f'W/"{digest}"'
+
+
+def cached_json(
+    request: Request,
+    data: Any,
+    headers: dict[str, str] | None = None,
+) -> Response:
+    """
+    Возвращает 304 Not Modified если ETag совпадает,
+    иначе — JSON с ETag заголовком.
+
+    Позволяет браузеру и CDN переиспользовать кэш:
+    клиент отправляет If-None-Match, сервер сверяет.
+    """
+    etag = make_etag(data)
+    extra = headers or {}
+
+    if request.headers.get("If-None-Match") == etag:
+        return Response(status_code=304, headers={"ETag": etag, **extra})
+
+    return JSONResponse(content=data, headers={"ETag": etag, **extra})
+
+
+# ---------------------------------------------------------------------------
+# Примеры использования в роутерах
+# ---------------------------------------------------------------------------
+#
+# @router.get("/products/{id}")
+# async def get_product(id: int, request: Request) -> Response:
+#     product = await product_repo.get(id)
+#     # Публичный контент — CDN кэширует на час, stale-while-revalidate на 60 сек
+#     return cached_json(request, product.model_dump(), headers=PUBLIC)
+#
+#
+# @router.get("/me/orders")
+# async def my_orders(request: Request, user=Depends(current_user)) -> Response:
+#     orders = await order_repo.get_by_user(user.id)
+#     # Приватный контент — только браузер, 5 минут
+#     return cached_json(request, [o.model_dump() for o in orders], headers=PRIVATE)
+#
+#
+# @router.post("/checkout")
+# async def checkout(...) -> Response:
+#     ...
+#     # Мутирующий эндпоинт — никакого кэша
+#     return JSONResponse(content=result.model_dump(), headers=NO_STORE)`,
+      },
+      {
+        filename: "vary_middleware.py",
+        code: `"""
+Middleware для заголовка Vary.
+
+Vary сообщает кэшу, что ответ зависит от указанных заголовков запроса.
+Без Vary CDN может отдать gzip-ответ клиенту без Accept-Encoding.
+"""
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+
+class VaryMiddleware(BaseHTTPMiddleware):
+    """
+    Добавляет Vary к ответам с Cache-Control: public.
+
+    Accept-Encoding — обязателен, иначе CDN перепутает
+    сжатые и несжатые версии одного ресурса.
+
+    Accept — если API поддерживает JSON и MessagePack
+    одновременно, CDN должен кэшировать их раздельно.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+
+        cache_control = response.headers.get("Cache-Control", "")
+        if "public" in cache_control:
+            existing = response.headers.get("Vary", "")
+            vary_values = {v.strip() for v in existing.split(",") if v.strip()}
+            vary_values.update(["Accept-Encoding", "Accept"])
+            response.headers["Vary"] = ", ".join(sorted(vary_values))
+
+        return response
+
+
+# Подключение в main.py:
+#
+# from fastapi import FastAPI
+# from .vary_middleware import VaryMiddleware
+#
+# app = FastAPI()
+# app.add_middleware(VaryMiddleware)`,
+      },
+      {
+        filename: "nginx.conf",
+        code: `# Nginx как reverse proxy с кэшированием для FastAPI
+#
+# Зоны кэша:
+#   api_public  — публичный контент (товары, категории, статические данные)
+#   api_private — не кэшируется Nginx, только браузер (через Cache-Control)
+
+proxy_cache_path /var/cache/nginx/public
+    levels=1:2
+    keys_zone=api_public:10m
+    max_size=2g
+    inactive=1h
+    use_temp_path=off;
+
+upstream fastapi {
+    server app:8000;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    server_name api.example.com;
+
+    # --- Публичный контент: кэшируется Nginx ---
+    location ~ ^/api/v1/(products|categories|catalog) {
+        proxy_pass         http://fastapi;
+        proxy_cache        api_public;
+        proxy_cache_valid  200 1h;
+        proxy_cache_valid  404 1m;
+
+        # Ключ кэша: метод + URI (без тела — только GET/HEAD кэшируются)
+        proxy_cache_key    "$request_method$request_uri";
+
+        # Передаём If-None-Match на бэкенд — FastAPI вернёт 304 при совпадении ETag
+        proxy_set_header   If-None-Match $http_if_none_match;
+
+        # stale-while-revalidate: отдаём устаревший кэш, пока обновляем в фоне
+        proxy_cache_use_stale updating error timeout;
+        proxy_cache_background_update on;
+        proxy_cache_lock on;
+
+        add_header X-Cache-Status $upstream_cache_status always;
+    }
+
+    # --- Приватный и мутирующий контент: кэш Nginx отключён ---
+    location /api/v1/ {
+        proxy_pass         http://fastapi;
+        proxy_no_cache     1;
+        proxy_cache_bypass 1;
+
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+
+        # HTTP/1.1 для keepalive с upstream
+        proxy_http_version 1.1;
+        proxy_set_header   Connection "";
+    }
+}`,
+      },
+    ],
+    explanation: `**cache_control()** — простой builder вместо ручного склеивания строк. Именованные аргументы читаются как документация: \`cache_control(public=True, max_age=3600, stale_while_revalidate=60)\` однозначно выражает намерение.
+
+**stale-while-revalidate** улучшает perceived performance: кэш возвращает устаревший ответ мгновенно и одновременно обновляет его в фоне. Пользователь не ждёт — следующий запрос уже получит свежие данные. Директива работает и на уровне браузера, и в Nginx (\`proxy_cache_use_stale updating\` + \`proxy_cache_background_update on\`).
+
+**ETag** — хэш от содержимого ответа. Браузер отправляет его в \`If-None-Match\`, сервер сравнивает: если данные не изменились, возвращает 304 без тела. Экономит трафик при частых повторных запросах. Слабый ETag (\`W/"..."\`) допускает семантически эквивалентные ответы (разный порядок полей JSON).
+
+**Vary: Accept-Encoding** обязателен для любого публичного кэша. Без него CDN кэширует gzip-ответ и отдаёт его клиенту без поддержки gzip — браузер получает мусор. \`Vary: Accept\` нужен, если API отдаёт разные форматы (JSON, MessagePack).
+
+**Nginx как кэш** снимает нагрузку с FastAPI для публичного контента: популярные товары обслуживаются прямо из памяти Nginx без единого Python-запроса. \`proxy_cache_lock on\` предотвращает thundering herd — когда кэш протух, только один запрос идёт на бэкенд, остальные ждут результата.`,
+  },
+
+  {
+    id: "feature-flags",
+    title: "Feature Flags и конфигурация во время выполнения",
+    task: "Реализуйте систему feature flags для постепенного rollout новых функций. Хранение флагов в Redis с instant update без перезапуска приложения. Targeting rules: % rollout, whitelist пользователей, сегменты (plan, region, cohort). A/B тестирование с равномерным распределением. Аудит изменений флагов. Интеграция как FastAPI dependency.",
+    files: [
+      {
+        filename: "feature_flags.py",
+        code: `"""
+Система feature flags с targeting rules.
+
+Хранение: Redis (instant update без перезапуска приложения).
+Targeting (в порядке приоритета):
+  1. Whitelist — конкретные user_id всегда получают флаг
+  2. Segment  — атрибут пользователя должен входить в список значений
+  3. Rollout  — детерминированное распределение по % (A/B-тест)
+"""
+import hashlib
+import logging
+from typing import Any
+
+import redis.asyncio as aioredis
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Модели
+# ---------------------------------------------------------------------------
+
+class WhitelistRule(BaseModel):
+    user_ids: list[int] = Field(default_factory=list)
+
+
+class SegmentRule(BaseModel):
+    attribute: str            # e.g. "plan", "region", "cohort"
+    values: list[str]         # e.g. ["pro", "enterprise"]
+
+
+class RolloutRule(BaseModel):
+    percentage: float         # 0.0 – 100.0
+
+
+class FeatureFlag(BaseModel):
+    key: str
+    enabled: bool = False
+    whitelist: WhitelistRule | None = None
+    segment: SegmentRule | None = None
+    rollout: RolloutRule | None = None
+    description: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Хранилище
+# ---------------------------------------------------------------------------
+
+class FlagStore:
+    _PREFIX = "ff:"
+
+    def __init__(self, redis: aioredis.Redis):
+        self._redis = redis
+
+    async def get(self, key: str) -> FeatureFlag | None:
+        raw = await self._redis.get(f"{self._PREFIX}{key}")
+        return FeatureFlag.model_validate_json(raw) if raw else None
+
+    async def save(self, flag: FeatureFlag) -> None:
+        await self._redis.set(f"{self._PREFIX}{flag.key}", flag.model_dump_json())
+
+    async def delete(self, key: str) -> None:
+        await self._redis.delete(f"{self._PREFIX}{key}")
+
+    async def list_all(self) -> list[FeatureFlag]:
+        keys = await self._redis.keys(f"{self._PREFIX}*")
+        if not keys:
+            return []
+        values = await self._redis.mget(*keys)
+        return [
+            FeatureFlag.model_validate_json(v)
+            for v in values
+            if v is not None
+        ]
+
+
+# ---------------------------------------------------------------------------
+# Движок оценки флага
+# ---------------------------------------------------------------------------
+
+def is_enabled(
+    flag: FeatureFlag,
+    user_id: int,
+    user_attrs: dict[str, str] | None = None,
+) -> bool:
+    """
+    Возвращает True, если флаг включён для данного пользователя.
+    Оценка идёт по приоритету правил.
+    """
+    if not flag.enabled:
+        return False
+
+    attrs = user_attrs or {}
+
+    # 1. Whitelist — наивысший приоритет
+    if flag.whitelist and user_id in flag.whitelist.user_ids:
+        return True
+
+    # 2. Segment — пользователь должен принадлежать сегменту
+    if flag.segment:
+        actual = attrs.get(flag.segment.attribute)
+        if actual not in flag.segment.values:
+            return False
+
+    # 3. Rollout — детерминированный bucket по (flag_key, user_id)
+    if flag.rollout:
+        return _bucket(flag.key, user_id) < flag.rollout.percentage
+
+    # Флаг включён без правил — работает для всех
+    return True
+
+
+def _bucket(flag_key: str, user_id: int) -> float:
+    """
+    Стабильно отображает (flag_key, user_id) на [0, 100).
+
+    Детерминированность гарантирует, что один пользователь
+    всегда попадает в одну и ту же группу — A/B-тест воспроизводим.
+    Разные флаги используют разные bucket-распределения.
+    """
+    seed = f"{flag_key}:{user_id}".encode()
+    value = int.from_bytes(hashlib.md5(seed).digest()[:4], "big")
+    return (value / 0xFFFFFFFF) * 100`,
+      },
+      {
+        filename: "dependency.py",
+        code: `"""
+FastAPI-зависимости для работы с feature flags.
+
+Паттерн использования:
+    @router.get("/checkout")
+    async def checkout(
+        flags: UserFlags = Depends(get_user_flags),
+    ):
+        if flags.is_enabled("new_checkout_flow"):
+            return await new_checkout()
+        return await legacy_checkout()
+"""
+from dataclasses import dataclass
+from functools import lru_cache
+
+import redis.asyncio as aioredis
+from fastapi import Depends
+
+from .feature_flags import FeatureFlag, FlagStore, is_enabled
+
+
+# ---------------------------------------------------------------------------
+# Подключение к Redis (синглтон на процесс)
+# ---------------------------------------------------------------------------
+
+@lru_cache
+def get_redis() -> aioredis.Redis:
+    return aioredis.from_url("redis://localhost:6379", decode_responses=True)
+
+
+def get_flag_store(redis: aioredis.Redis = Depends(get_redis)) -> FlagStore:
+    return FlagStore(redis)
+
+
+# ---------------------------------------------------------------------------
+# Контекст флагов для текущего пользователя
+# ---------------------------------------------------------------------------
+
+@dataclass
+class UserFlags:
+    """
+    Контекст флагов для одного запроса.
+    Флаги загружаются лениво и кэшируются внутри запроса.
+    """
+    _store: FlagStore
+    _user_id: int
+    _attrs: dict[str, str]
+    _cache: dict[str, bool | None] = None
+
+    def __post_init__(self):
+        self._cache = {}
+
+    async def is_enabled(self, key: str) -> bool:
+        if key in self._cache:
+            return self._cache[key]  # type: ignore[return-value]
+
+        flag = await self._store.get(key)
+        result = is_enabled(flag, self._user_id, self._attrs) if flag else False
+        self._cache[key] = result
+        return result
+
+
+async def get_user_flags(
+    store: FlagStore = Depends(get_flag_store),
+    # В реальном приложении user берётся из JWT-зависимости
+    # user: User = Depends(current_user),
+) -> UserFlags:
+    # Заглушка — замените на реального пользователя из JWT
+    return UserFlags(
+        _store=store,
+        _user_id=0,
+        _attrs={},
+    )`,
+      },
+      {
+        filename: "router.py",
+        code: `"""
+Admin API для управления feature flags.
+
+Все изменения записываются в аудит-лог.
+В продакшене эти эндпоинты должны быть защищены отдельной
+admin-аутентификацией, не пользовательской.
+"""
+import logging
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+
+from .dependency import get_flag_store
+from .feature_flags import FeatureFlag, FlagStore
+
+router = APIRouter(prefix="/admin/flags", tags=["feature-flags"])
+audit_logger = logging.getLogger("audit.flags")
+
+
+class FlagUpdate(BaseModel):
+    flag: FeatureFlag
+    reason: str  # обязательное поле — кто и зачем меняет флаг
+
+
+@router.get("/", response_model=list[FeatureFlag])
+async def list_flags(store: FlagStore = Depends(get_flag_store)):
+    return await store.list_all()
+
+
+@router.get("/{key}", response_model=FeatureFlag)
+async def get_flag(key: str, store: FlagStore = Depends(get_flag_store)):
+    flag = await store.get(key)
+    if flag is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Flag '{key}' not found")
+    return flag
+
+
+@router.put("/{key}", response_model=FeatureFlag)
+async def upsert_flag(
+    key: str,
+    body: FlagUpdate,
+    store: FlagStore = Depends(get_flag_store),
+    # admin: Admin = Depends(require_admin),  # добавьте в продакшене
+):
+    if body.flag.key != key:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Key mismatch")
+
+    await store.save(body.flag)
+    _audit("upsert", key, body.reason)
+    return body.flag
+
+
+@router.delete("/{key}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_flag(
+    key: str,
+    reason: str,
+    store: FlagStore = Depends(get_flag_store),
+):
+    flag = await store.get(key)
+    if flag is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Flag '{key}' not found")
+
+    await store.delete(key)
+    _audit("delete", key, reason)
+
+
+def _audit(action: str, key: str, reason: str) -> None:
+    audit_logger.info(
+        "flag_change",
+        extra={
+            "action": action,
+            "flag_key": key,
+            "reason": reason,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        },
+    )`,
+      },
+    ],
+    explanation: `**Детерминированный bucket** через MD5 от \`"{flag_key}:{user_id}"\` — ключевое решение для A/B-тестирования. Один пользователь всегда попадает в одну группу: повторные запросы возвращают одинаковый результат без хранения состояния. Включение \`flag_key\` в seed гарантирует, что для разных флагов один и тот же пользователь может быть в разных группах.
+
+**Приоритет правил** (whitelist → segment → rollout) даёт гибкость: разработчиков добавляют в whitelist для тестирования в продакшене, сегментация ограничивает rollout по плану подписки, процентный rollout контролирует постепенное распространение. Правила независимы и применяются последовательно.
+
+**Хранение в Redis** обеспечивает instant update: изменение флага через API применяется к следующему запросу без перезапуска. Для снижения нагрузки на Redis кэшируйте флаги в памяти на 5–10 секунд через \`asyncio.get_event_loop().call_later\` или TTL-кэш.
+
+**UserFlags как dataclass** кэширует результаты оценки внутри одного HTTP-запроса. Если один обработчик проверяет один флаг в нескольких местах — Redis-запрос делается только один раз.
+
+**Аудит изменений** через отдельный logger позволяет направить его в отдельный sink (файл, Elasticsearch, Datadog) без загрязнения основного лога приложения. Поле \`reason\` в \`FlagUpdate\` — обязательное: без него через месяц никто не вспомнит, зачем был включён флаг.
+
+**Vs LaunchDarkly/Flagsmith**: внешние сервисы дают готовый UI, SDK для множества языков, аналитику и надёжность. Собственная реализация оправдана при жёстких требованиях к latency (нет внешней зависимости в hot path), data residency, или когда правила простые и не меняются часто.`,
+  },
+
+  {
+    id: "zero-downtime-deploy",
+    title: "Zero-downtime деплой и graceful shutdown",
+    task: "Реализуйте production-ready деплой FastAPI-приложения с нулевым даунтаймом. Настройте uvicorn с --workers и правильными сигналами (SIGTERM → graceful shutdown), реализуйте health checks (/health/live и /health/ready с разной семантикой), rolling update в Kubernetes с readiness probe, pre-stop hook для drain соединений, дождаться завершения in-flight запросов перед остановкой. Настройте горизонтальное масштабирование (HPA по CPU/RPS).",
+    files: [
+      {
+        filename: "health.py",
+        code: `"""
+Health check эндпоинты с разной семантикой.
+
+/health/live  — Liveness probe:  процесс жив и не завис.
+               Kubernetes УБИВАЕТ pod, если этот эндпоинт не отвечает.
+               Должен быть максимально дешёвым — никаких обращений к БД.
+
+/health/ready — Readiness probe: приложение готово принимать трафик.
+               Kubernetes ПРЕКРАЩАЕТ маршрутизировать запросы, если не отвечает.
+               Проверяет все критичные зависимости (БД, Redis, очереди).
+"""
+import logging
+from enum import StrEnum
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+import redis.asyncio as aioredis
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/health", tags=["health"])
+
+
+class CheckStatus(StrEnum):
+    OK = "ok"
+    FAIL = "fail"
+
+
+@router.get("/live", status_code=200)
+async def liveness():
+    """
+    Отвечает 200, пока процесс жив.
+    Единственная причина для 500 — полностью сломанный event loop,
+    что означает: пора убивать pod и поднимать новый.
+    """
+    return {"status": CheckStatus.OK}
+
+
+@router.get("/ready")
+async def readiness(
+    db: AsyncSession = Depends(get_db),
+    cache: aioredis.Redis = Depends(get_redis),
+) -> JSONResponse:
+    """
+    Проверяет все зависимости. 503 → Kubernetes убирает pod из балансировщика,
+    но НЕ убивает его — pod ждёт восстановления зависимостей.
+    """
+    checks: dict[str, str] = {}
+
+    try:
+        await db.execute("SELECT 1")
+        checks["database"] = CheckStatus.OK
+    except Exception as exc:
+        logger.warning("Database health check failed: %s", exc)
+        checks["database"] = CheckStatus.FAIL
+
+    try:
+        await cache.ping()
+        checks["redis"] = CheckStatus.OK
+    except Exception as exc:
+        logger.warning("Redis health check failed: %s", exc)
+        checks["redis"] = CheckStatus.FAIL
+
+    healthy = all(v == CheckStatus.OK for v in checks.values())
+    return JSONResponse(
+        content={"status": "ready" if healthy else "degraded", "checks": checks},
+        status_code=200 if healthy else 503,
+    )`,
+      },
+      {
+        filename: "lifespan.py",
+        code: `"""
+Graceful shutdown: дожидаемся завершения текущих запросов перед остановкой.
+
+Последовательность событий при SIGTERM в Kubernetes:
+  1. Pod получает SIGTERM
+  2. preStop hook спит N секунд (даёт load balancer убрать pod из rotation)
+  3. Uvicorn начинает shutdown — вызывается код после yield в lifespan()
+  4. Middleware отклоняет новые запросы с 503
+  5. Ждём завершения in-flight запросов (до DRAIN_TIMEOUT секунд)
+  6. Закрываем соединения с БД / Redis
+  7. Процесс завершается
+  8. Kubernetes убивает pod через terminationGracePeriodSeconds, если не завершился сам
+"""
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+from fastapi import FastAPI, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+
+logger = logging.getLogger(__name__)
+
+DRAIN_TIMEOUT = 25  # секунд; должно быть < terminationGracePeriodSeconds
+
+
+class _ShutdownState:
+    """
+    Счётчик in-flight запросов и флаг режима shutdown.
+    Asyncio-safe: event loop однопоточный, переключение только на await.
+    """
+
+    def __init__(self):
+        self.shutting_down = False
+        self._in_flight = 0
+
+    def acquire(self) -> bool:
+        """Захватить слот. Возвращает False, если shutdown уже начался."""
+        if self.shutting_down:
+            return False
+        self._in_flight += 1
+        return True
+
+    def release(self) -> None:
+        self._in_flight -= 1
+
+    async def drain(self) -> None:
+        logger.info("Draining %d in-flight request(s)...", self._in_flight)
+        elapsed = 0.0
+        interval = 0.05
+
+        while self._in_flight > 0 and elapsed < DRAIN_TIMEOUT:
+            await asyncio.sleep(interval)
+            elapsed += interval
+
+        if self._in_flight > 0:
+            logger.warning(
+                "Drain timeout: %d request(s) still in flight after %.0fs",
+                self._in_flight,
+                DRAIN_TIMEOUT,
+            )
+        else:
+            logger.info("All requests drained in %.1fs", elapsed)
+
+
+shutdown_state = _ShutdownState()
+
+
+class GracefulShutdownMiddleware(BaseHTTPMiddleware):
+    """Отклоняет входящие запросы во время shutdown и отслеживает in-flight."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        # Health checks пропускаем всегда — Kubernetes должен видеть 503 из /health/ready,
+        # а не эту заглушку, иначе pod убьют раньше завершения drain
+        if request.url.path.startswith("/health"):
+            return await call_next(request)
+
+        if not shutdown_state.acquire():
+            return Response(
+                content="Service is shutting down, please retry",
+                status_code=503,
+                headers={"Retry-After": "10"},
+            )
+        try:
+            return await call_next(request)
+        finally:
+            shutdown_state.release()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    # ---- Startup ----
+    logger.info("Application startup complete")
+    # Инициализация пула БД, Redis и прочих ресурсов — здесь
+
+    yield
+
+    # ---- Shutdown (после получения SIGTERM) ----
+    logger.info("Shutdown initiated")
+    shutdown_state.shutting_down = True
+    await shutdown_state.drain()
+    # Закрытие соединений — здесь
+    logger.info("Shutdown complete")
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(lifespan=lifespan)
+    app.add_middleware(GracefulShutdownMiddleware)
+    return app
+
+
+# Запуск в продакшене (в Dockerfile или Kubernetes command):
+#
+#   uvicorn app.main:app \\
+#       --host 0.0.0.0 --port 8000 \\
+#       --workers 4 \\
+#       --timeout-graceful-shutdown 30`,
+      },
+      {
+        filename: "kubernetes.yaml",
+        code: `# Zero-downtime деплой FastAPI в Kubernetes
+#
+# Ключевые решения:
+#   maxUnavailable: 0    — никогда не убиваем старый pod до запуска нового
+#   readinessProbe       — трафик идёт только в готовые pods
+#   preStop sleep        — даём load balancer время убрать pod из rotation
+#   terminationGrace...  — должно быть > preStop sleep + DRAIN_TIMEOUT
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fastapi-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # поднять на 1 новый pod перед удалением старого
+      maxUnavailable: 0  # не убивать ни одного pod до готовности замены
+
+  template:
+    metadata:
+      labels:
+        app: fastapi-app
+    spec:
+      terminationGracePeriodSeconds: 45  # preStop(10) + drain(25) + запас(10)
+
+      containers:
+        - name: app
+          image: myregistry/fastapi-app:latest
+          command:
+            - uvicorn
+            - app.main:app
+            - --host=0.0.0.0
+            - --port=8000
+            - --workers=4
+            - --timeout-graceful-shutdown=30
+
+          ports:
+            - containerPort: 8000
+
+          # Ресурсы обязательны для работы HPA
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+
+          # Readiness: трафик идёт только в готовый pod
+          # Проверяем /health/ready — там проверяются БД и Redis
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+
+          # Liveness: убиваем pod только если он полностью завис
+          # Порог высокий — не хотим убивать pod при кратковременных сбоях
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 5
+
+          lifecycle:
+            preStop:
+              exec:
+                # Спим до получения SIGTERM:
+                # даём Kubernetes и load balancer убрать pod из rotation.
+                # Без этого ~5% запросов получат connection refused.
+                command: ["/bin/sh", "-c", "sleep 10"]
+
+---
+# PodDisruptionBudget: при node drain / rolling update
+# Kubernetes гарантирует минимум 2 работающих пода одновременно
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: fastapi-app-pdb
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: fastapi-app
+
+---
+# HPA: масштабирование по CPU и количеству RPS (custom metric)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fastapi-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fastapi-app
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    # CPU — простой и надёжный метрик для большинства случаев
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+    # RPS — более точный сигнал для I/O-bound сервисов,
+    # где CPU низкий, но очередь запросов растёт.
+    # Требует Prometheus Adapter или KEDA.
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "150"
+
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30   # быстро реагируем на рост нагрузки
+      policies:
+        - type: Pods
+          value: 3
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300  # медленно уменьшаем — избегаем флаппинга`,
+      },
+    ],
+    explanation: `**Разница между liveness и readiness** принципиальна. Liveness говорит "процесс жив" — при провале Kubernetes убивает и перезапускает pod. Readiness говорит "pod готов к трафику" — при провале pod остаётся живым, но выводится из балансировщика. Проверять БД в liveness probe — ошибка: кратковременный сбой базы убьёт все поды одновременно вместо простого снятия трафика.
+
+**preStop sleep** — критически важный шаг, который часто пропускают. После SIGTERM Kubernetes одновременно удаляет pod из Endpoints и начинает shutdown. Но iptables-правила на нодах обновляются с задержкой ~1–5 секунд — в это окно load balancer всё ещё шлёт трафик на умирающий pod. Sleep 10 с покрывает этот gap с запасом.
+
+**terminationGracePeriodSeconds** должен быть больше суммы: preStop sleep + время drain. Здесь: 10 (sleep) + 25 (drain) + 10 (запас) = 45 с. Если Kubernetes убьёт pod раньше завершения drain — in-flight запросы получат обрыв соединения.
+
+**maxUnavailable: 0** — единственная настройка для zero-downtime rolling update. Kubernetes сначала поднимает новый pod, ждёт readiness probe, и только потом убирает старый. С \`maxUnavailable: 1\` один pod убирается сразу — в момент между убийством старого и готовностью нового возникает просадка capacity.
+
+**PodDisruptionBudget** защищает от непреднамеренного простоя при \`kubectl drain\` (обслуживание ноды, обновление кластера). Без PDB оператор может случайно вывести все поды одновременно.
+
+**HPA по RPS** точнее CPU для I/O-bound сервисов (FastAPI с async): при большом количестве asyncio-ожиданий CPU может быть низким, но очередь запросов растёт. \`stabilizationWindowSeconds: 300\` при scale-down предотвращает flapping — когда кластер постоянно добавляет и убирает поды при пульсирующей нагрузке.`,
+  },
 ];
