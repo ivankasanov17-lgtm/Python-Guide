@@ -58,7 +58,7 @@ function NavLink({ href, label, icon }: { href: string; label: string; icon: Rea
 export function Navbar() {
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8 overflow-x-auto scrollbar-hide">
+      <div className="mx-auto flex h-16 items-center gap-6 px-4 sm:px-6 lg:px-8 overflow-x-auto scrollbar-hide">
 
         {/* Logo */}
         <div className="flex items-center gap-2 flex-shrink-0">
