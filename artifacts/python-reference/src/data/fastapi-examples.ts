@@ -14321,5 +14321,2799 @@ def _add_watermark(img: Image.Image, text: str) -> Image.Image:
 
 **CDN-интеграция**: S3-объекты не раздаются напрямую клиентам — CloudFront / Cloudflare стоит перед бакетом. Публичный URL = \`CDN_BASE_URL/s3_key\`. CDN кеширует на edge-нодах, снижает latency и стоимость S3. Бакет остаётся приватным — весь трафик через CDN. Для приватных файлов — presigned download URL (временная ссылка), CloudFront Signed URL или Signed Cookies.`,
   },
+  {
+    id: "graphql-strawberry",
+    title: "GraphQL с Strawberry",
+    task: "Реализуйте GraphQL API с использованием Strawberry (Python-first GraphQL). Схема: типы, запросы, мутации, подписки (через WebSocket). DataLoader для устранения N+1 в GraphQL. Пагинация по спецификации Relay. Разграничение доступа на уровне resolver-ов. Depth limiting и complexity limiting для защиты от DoS. Сравните REST vs GraphQL для вашего use case.",
+    files: [
+      {
+        filename: "requirements.txt",
+        code: `fastapi>=0.115.0
+strawberry-graphql[fastapi]>=0.243.0
+sqlalchemy[asyncio]>=2.0.0
+aiosqlite>=0.20.0
+uvicorn[standard]>=0.30.0
+strawberry-graphql[dataloader]>=0.243.0`,
+      },
+      {
+        filename: "app/models.py",
+        code: `from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Author(Base):
+    __tablename__ = "authors"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    bio: Mapped[str | None] = mapped_column(Text)
+    books: Mapped[list["Book"]] = relationship(back_populates="author")
+
+
+class Book(Base):
+    __tablename__ = "books"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(300))
+    year: Mapped[int]
+    author_id: Mapped[int] = mapped_column(ForeignKey("authors.id"))
+    author: Mapped["Author"] = relationship(back_populates="books")`,
+      },
+      {
+        filename: "app/database.py",
+        code: `from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.models import Base
+
+engine = create_async_engine("sqlite+aiosqlite:///./library.db", echo=False)
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def init_db() -> None:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
+        yield session`,
+      },
+      {
+        filename: "app/dataloaders.py",
+        code: `"""DataLoader-ы для устранения проблемы N+1 в GraphQL.
+
+Без DataLoader: при запросе 100 книг каждый resolver fields author
+выполняет отдельный SELECT -> 100 запросов к БД.
+С DataLoader: все author_id за один тик event loop батчатся в один
+SELECT ... WHERE id IN (1, 2, 3, ...) -> 1 запрос.
+"""
+from collections import defaultdict
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from strawberry.dataloader import DataLoader
+
+from app.models import Author, Book
+
+
+async def load_authors_by_ids(
+    keys: list[int],
+    session: AsyncSession,
+) -> list[Author | None]:
+    """Загружает авторов по списку ID одним запросом."""
+    result = await session.execute(
+        select(Author).where(Author.id.in_(keys))
+    )
+    authors = {a.id: a for a in result.scalars().all()}
+    # Сохраняем порядок ключей (DataLoader требует соответствия)
+    return [authors.get(key) for key in keys]
+
+
+async def load_books_by_author_ids(
+    keys: list[int],
+    session: AsyncSession,
+) -> list[list[Book]]:
+    """Загружает все книги для списка авторов одним запросом."""
+    result = await session.execute(
+        select(Book).where(Book.author_id.in_(keys))
+    )
+    books_by_author: dict[int, list[Book]] = defaultdict(list)
+    for book in result.scalars().all():
+        books_by_author[book.author_id].append(book)
+    return [books_by_author.get(key, []) for key in keys]
+
+
+def make_author_loader(session: AsyncSession) -> DataLoader:
+    return DataLoader(
+        load_fn=lambda keys: load_authors_by_ids(list(keys), session)
+    )
+
+
+def make_books_loader(session: AsyncSession) -> DataLoader:
+    return DataLoader(
+        load_fn=lambda keys: load_books_by_author_ids(list(keys), session)
+    )`,
+      },
+      {
+        filename: "app/permissions.py",
+        code: `"""Разграничение доступа на уровне resolver-ов.
+
+Strawberry поддерживает permission-классы — они проверяются ДО вызова
+resolver-а. При нарушении возвращается GraphQL-ошибка без выполнения логики.
+"""
+from typing import Any
+
+import strawberry
+from strawberry.permission import BasePermission
+from strawberry.types import Info
+
+
+class IsAuthenticated(BasePermission):
+    message = "Требуется аутентификация"
+
+    def has_permission(self, source: Any, info: Info, **kwargs: Any) -> bool:
+        request = info.context["request"]
+        # В реальном проекте: проверяем JWT из заголовка Authorization
+        token = request.headers.get("Authorization", "")
+        return token.startswith("Bearer ")
+
+
+class IsAdmin(BasePermission):
+    message = "Доступ только для администраторов"
+
+    def has_permission(self, source: Any, info: Info, **kwargs: Any) -> bool:
+        request = info.context["request"]
+        token = request.headers.get("Authorization", "")
+        # В реальном проекте: декодируем JWT и проверяем роль
+        return token == "Bearer admin-secret-token"`,
+      },
+      {
+        filename: "app/schema.py",
+        code: `"""GraphQL-схема: типы, запросы, мутации, подписки.
+
+Структура файла:
+  1. Strawberry-типы (аналог Pydantic-схем, но для GraphQL)
+  2. Relay-пагинация (Connection / Edge / PageInfo)
+  3. Query — только чтение
+  4. Mutation — запись
+  5. Subscription — real-time через WebSocket
+"""
+from __future__ import annotations
+
+import asyncio
+import base64
+from typing import AsyncGenerator
+
+import strawberry
+from sqlalchemy import select
+from strawberry.scalars import JSON
+from strawberry.types import Info
+
+from app.models import Author as AuthorModel
+from app.models import Book as BookModel
+from app.permissions import IsAdmin, IsAuthenticated
+
+# -----------------------------------------------------------------
+# 1. Типы
+# -----------------------------------------------------------------
+
+@strawberry.type
+class BookType:
+    id: int
+    title: str
+    year: int
+    author_id: int
+
+    @strawberry.field
+    async def author(self, info: Info) -> AuthorType | None:
+        # DataLoader батчит все запросы за один тик event loop
+        loader = info.context["author_loader"]
+        return await loader.load(self.author_id)
+
+
+@strawberry.type
+class AuthorType:
+    id: int
+    name: str
+    bio: str | None
+
+    @strawberry.field
+    async def books(self, info: Info) -> list[BookType]:
+        loader = info.context["books_loader"]
+        db_books = await loader.load(self.id)
+        return [
+            BookType(id=b.id, title=b.title, year=b.year, author_id=b.author_id)
+            for b in db_books
+        ]
+
+
+# -----------------------------------------------------------------
+# 2. Relay-пагинация
+# -----------------------------------------------------------------
+
+@strawberry.type
+class PageInfo:
+    has_next_page: bool
+    has_previous_page: bool
+    start_cursor: str | None
+    end_cursor: str | None
+
+
+@strawberry.type
+class BookEdge:
+    node: BookType
+    # cursor — base64(id) по спецификации Relay
+    cursor: str
+
+
+@strawberry.type
+class BookConnection:
+    edges: list[BookEdge]
+    page_info: PageInfo
+    total_count: int
+
+
+def encode_cursor(node_id: int) -> str:
+    return base64.b64encode(f"Book:{node_id}".encode()).decode()
+
+
+def decode_cursor(cursor: str) -> int:
+    raw = base64.b64decode(cursor.encode()).decode()
+    return int(raw.split(":")[1])
+
+
+# -----------------------------------------------------------------
+# 3. Входные типы для мутаций
+# -----------------------------------------------------------------
+
+@strawberry.input
+class CreateAuthorInput:
+    name: str
+    bio: str | None = None
+
+
+@strawberry.input
+class CreateBookInput:
+    title: str
+    year: int
+    author_id: int
+
+
+# -----------------------------------------------------------------
+# 4. Query
+# -----------------------------------------------------------------
+
+@strawberry.type
+class Query:
+    @strawberry.field
+    async def books(
+        self,
+        info: Info,
+        first: int = 10,
+        after: str | None = None,
+    ) -> BookConnection:
+        """Пагинация по спецификации Relay (cursor-based)."""
+        session = info.context["session"]
+
+        query = select(BookModel).order_by(BookModel.id)
+
+        # Cursor-based пагинация: загружаем записи ПОСЛЕ курсора
+        if after:
+            after_id = decode_cursor(after)
+            query = query.where(BookModel.id > after_id)
+
+        # +1 для определения has_next_page
+        query = query.limit(first + 1)
+
+        result = await session.execute(query)
+        db_books = list(result.scalars().all())
+
+        has_next = len(db_books) > first
+        db_books = db_books[:first]
+
+        edges = [
+            BookEdge(
+                node=BookType(
+                    id=b.id, title=b.title,
+                    year=b.year, author_id=b.author_id,
+                ),
+                cursor=encode_cursor(b.id),
+            )
+            for b in db_books
+        ]
+
+        count_result = await session.execute(select(BookModel))
+        total = len(list(count_result.scalars().all()))
+
+        return BookConnection(
+            edges=edges,
+            page_info=PageInfo(
+                has_next_page=has_next,
+                has_previous_page=after is not None,
+                start_cursor=edges[0].cursor if edges else None,
+                end_cursor=edges[-1].cursor if edges else None,
+            ),
+            total_count=total,
+        )
+
+    @strawberry.field
+    async def author(self, info: Info, id: int) -> AuthorType | None:
+        session = info.context["session"]
+        result = await session.execute(
+            select(AuthorModel).where(AuthorModel.id == id)
+        )
+        a = result.scalar_one_or_none()
+        if not a:
+            return None
+        return AuthorType(id=a.id, name=a.name, bio=a.bio)
+
+    @strawberry.field(permission_classes=[IsAuthenticated])
+    async def my_stats(self, info: Info) -> JSON:
+        """Только для аутентифицированных пользователей."""
+        return {"books_read": 42, "favourite_genre": "sci-fi"}
+
+
+# -----------------------------------------------------------------
+# 5. Mutation
+# -----------------------------------------------------------------
+
+@strawberry.type
+class Mutation:
+    @strawberry.mutation(permission_classes=[IsAuthenticated])
+    async def create_author(
+        self, info: Info, input: CreateAuthorInput
+    ) -> AuthorType:
+        session = info.context["session"]
+        author = AuthorModel(name=input.name, bio=input.bio)
+        session.add(author)
+        await session.commit()
+        await session.refresh(author)
+        return AuthorType(id=author.id, name=author.name, bio=author.bio)
+
+    @strawberry.mutation(permission_classes=[IsAdmin])
+    async def create_book(
+        self, info: Info, input: CreateBookInput
+    ) -> BookType:
+        """Только для администраторов."""
+        session = info.context["session"]
+        book = BookModel(
+            title=input.title, year=input.year, author_id=input.author_id
+        )
+        session.add(book)
+        await session.commit()
+        await session.refresh(book)
+        return BookType(
+            id=book.id, title=book.title,
+            year=book.year, author_id=book.author_id,
+        )
+
+    @strawberry.mutation(permission_classes=[IsAdmin])
+    async def delete_book(self, info: Info, id: int) -> bool:
+        session = info.context["session"]
+        result = await session.execute(
+            select(BookModel).where(BookModel.id == id)
+        )
+        book = result.scalar_one_or_none()
+        if not book:
+            return False
+        await session.delete(book)
+        await session.commit()
+        return True
+
+
+# -----------------------------------------------------------------
+# 6. Subscription (WebSocket)
+# -----------------------------------------------------------------
+
+@strawberry.type
+class Subscription:
+    @strawberry.subscription
+    async def book_added(self) -> AsyncGenerator[BookType, None]:
+        """
+        Клиент подключается через WebSocket и получает уведомления
+        о новых книгах в реальном времени.
+
+        В продакшене: используйте Redis Pub/Sub или asyncio.Queue
+        вместо простого счётчика.
+        """
+        book_id = 1
+        while True:
+            await asyncio.sleep(5)
+            yield BookType(
+                id=book_id,
+                title=f"New Book #{book_id}",
+                year=2024,
+                author_id=1,
+            )
+            book_id += 1`,
+      },
+      {
+        filename: "app/extensions.py",
+        code: `"""Depth Limiting и Complexity Limiting для защиты от DoS.
+
+Без ограничений злоумышленник может отправить:
+  { author { books { author { books { author { ... } } } } } }
+Это exponential рост запросов к БД — классическая DoS-атака на GraphQL.
+
+Depth limiting: ограничение глубины вложенности запроса.
+Complexity limiting: каждый field имеет «стоимость», сумма не должна
+  превышать лимит.
+"""
+from strawberry.extensions import MaxAliasesLimiter, MaxTokensLimiter
+from strawberry.extensions.query_depth_limiter import QueryDepthLimiter
+
+
+def get_extensions() -> list:
+    return [
+        # Запрещаем запросы глубже 7 уровней
+        QueryDepthLimiter(max_depth=7),
+
+        # Ограничиваем количество токенов в запросе (защита от огромных запросов)
+        MaxTokensLimiter(max_token_count=1000),
+
+        # Ограничиваем количество алиасов (защита от alias-based DoS)
+        MaxAliasesLimiter(max_alias_count=15),
+    ]`,
+      },
+      {
+        filename: "app/main.py",
+        code: `from contextlib import asynccontextmanager
+
+import strawberry
+from fastapi import FastAPI, Request
+from strawberry.fastapi import GraphQLRouter
+from strawberry.subscriptions import GRAPHQL_TRANSPORT_WS_PROTOCOL, GRAPHQL_WS_PROTOCOL
+
+from app.database import AsyncSessionLocal, init_db
+from app.dataloaders import make_author_loader, make_books_loader
+from app.extensions import get_extensions
+from app.schema import Mutation, Query, Subscription
+
+
+async def get_context(request: Request) -> dict:
+    """
+    Выполняется на каждый запрос. Предоставляет resolver-ам:
+      - session: AsyncSession с БД
+      - author_loader / books_loader: DataLoader-ы (per-request)
+      - request: объект FastAPI Request (нужен для permission-классов)
+    """
+    async with AsyncSessionLocal() as session:
+        return {
+            "request": request,
+            "session": session,
+            "author_loader": make_author_loader(session),
+            "books_loader": make_books_loader(session),
+        }
+
+
+schema = strawberry.Schema(
+    query=Query,
+    mutation=Mutation,
+    subscription=Subscription,
+    extensions=get_extensions(),
+)
+
+graphql_router = GraphQLRouter(
+    schema,
+    context_getter=get_context,
+    # Поддержка обоих WebSocket-протоколов для максимальной совместимости
+    subscription_protocols=[
+        GRAPHQL_TRANSPORT_WS_PROTOCOL,
+        GRAPHQL_WS_PROTOCOL,
+    ],
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    yield
+
+
+app = FastAPI(title="Library GraphQL API", lifespan=lifespan)
+app.include_router(graphql_router, prefix="/graphql")
+
+
+# Примеры GraphQL-запросов:
+#
+# query GetBooks {
+#   books(first: 5) {
+#     edges { cursor node { id title year author { name } } }
+#     pageInfo { hasNextPage endCursor }
+#     totalCount
+#   }
+# }
+#
+# mutation CreateAuthor {         # требует Authorization: Bearer <token>
+#   createAuthor(input: { name: "Лев Толстой", bio: "Русский писатель" }) {
+#     id name
+#   }
+# }
+#
+# mutation CreateBook {           # требует Authorization: Bearer admin-secret-token
+#   createBook(input: { title: "Война и мир", year: 1869, authorId: 1 }) {
+#     id title author { name }
+#   }
+# }
+#
+# subscription OnBookAdded {      # ws://localhost:8000/graphql
+#   bookAdded { id title year }
+# }`,
+      },
+    ],
+    explanation: `**Почему Strawberry, а не Graphene?** Strawberry — Python-first: типы описываются через dataclass-декораторы и аннотации, а не через отдельные классы с \`Meta\`. Полная поддержка \`async/await\`, автоматическая генерация SDL-схемы, нативная интеграция с FastAPI. Graphene старше, но API verbose и не использует стандартные Python type hints.
+
+**DataLoader и N+1**: классическая проблема GraphQL — при запросе списка объектов каждый вложенный resolver выполняет отдельный SQL-запрос. Для 100 книг с полем \`author\` это 101 запрос (1 для книг + 100 для авторов). DataLoader решает через батчинг: все \`load(author_id)\` за один тик event loop собираются в список и выполняются одним \`SELECT ... WHERE id IN (...)\`. Каждый DataLoader живёт только в рамках одного запроса (создаётся в \`get_context\`).
+
+**Relay-пагинация vs offset**: \`LIMIT/OFFSET\` нестабилен при вставках — вставка записи сдвигает все последующие, страница может повториться или пропуститься. Cursor-based пагинация (cursor = opaque base64 от ID) стабильна: \`WHERE id > cursor_id LIMIT n\`. Relay-спецификация стандартизирует формат: \`Connection → edges[] → {node, cursor} + pageInfo\`. Клиенты (Relay, Apollo) умеют работать с этим форматом автоматически.
+
+**Разграничение доступа**: permission-классы проверяются ДО вызова resolver-а. Strawberry вызывает \`has_permission()\` для каждого поля с \`permission_classes\`, если проверка провалилась — возвращается GraphQL-ошибка, resolver не выполняется. Это лучше чем проверки внутри resolver-а: декларативно, переиспользуемо, невозможно забыть.
+
+**Depth + Complexity limiting**: \`QueryDepthLimiter(max_depth=7)\` считает максимальную глубину вложенности полей и отклоняет запросы-«матрёшки». \`MaxTokensLimiter\` ограничивает общий размер запроса. В реальных проектах добавляют \`QueryComplexityLimiter\`: каждому полю назначается стоимость (\`@strawberry.field(complexity=lambda args, child_complexity: 1 + child_complexity)\`), сумма не должна превышать лимит.
+
+**REST vs GraphQL**: REST оптимален когда клиент один (BFF-паттерн), ресурсы хорошо соответствуют URL, кеширование по URL критично (CDN). GraphQL оптимален когда несколько клиентов с разными потребностями (mobile vs web), частые проблемы overfetch/underfetch, сложные связанные данные, быстрая frontend-итерация без изменений бэкенда. Не используйте GraphQL для простых CRUD-API — это overhead без выгоды.
+
+**Подписки через WebSocket**: Strawberry поддерживает два протокола — \`graphql-ws\` (новый, рекомендуется) и \`subscriptions-transport-ws\` (устаревший, для совместимости). В продакшене подписки требуют stateful-соединения — не работают с autoscale/serverless без sticky sessions или внешней шины (Redis Pub/Sub, Kafka).`,
+  },
+  {
+    id: "structured-logging",
+    title: "Структурированное логирование",
+    task: "Настройте структурированное логирование для FastAPI через structlog. Каждый лог должен содержать: request_id, user_id (если аутентифицирован), endpoint, duration, http_status. Реализуйте correlation ID для трейсинга через несколько сервисов. Настройте разные форматы для dev (human-readable) и production (JSON для ELK/Loki). Обеспечьте маскировку чувствительных данных в логах.",
+    files: [
+      {
+        filename: "requirements.txt",
+        code: `fastapi>=0.115.0
+structlog>=24.4.0
+uvicorn[standard]>=0.30.0
+python-jose[cryptography]>=3.3.0
+httpx>=0.27.0`,
+      },
+      {
+        filename: "app/core/logging.py",
+        code: `"""Настройка structlog.
+
+Два режима:
+  - development: цветной human-readable вывод в консоль
+  - production:  JSON-строки для ELK/Loki/Grafana
+
+Процессоры (pipeline) выполняются последовательно слева направо.
+Каждый получает (logger, method, event_dict) и возвращает изменённый event_dict.
+Последний процессор рендерит итоговую строку/объект.
+"""
+import logging
+import os
+import re
+import sys
+from typing import Any
+
+import structlog
+
+# -----------------------------------------------------------------
+# Маскировка чувствительных данных
+# -----------------------------------------------------------------
+
+# Поля, значения которых полностью скрываются
+_SENSITIVE_KEYS = frozenset({
+    "password", "passwd", "secret", "token", "access_token",
+    "refresh_token", "authorization", "api_key", "private_key",
+    "credit_card", "cvv", "ssn",
+})
+
+# Паттерны для частичного маскирования в строках
+_PATTERNS = [
+    # Bearer <token>  ->  Bearer ***
+    (re.compile(r"(Bearer\\s+)\\S+", re.IGNORECASE), r"\\1***"),
+    # email@example.com  ->  e***@example.com
+    (re.compile(r"([a-zA-Z0-9])[a-zA-Z0-9._%+-]+(@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})"),
+     r"\\1***\\2"),
+    # card number  ->  **** **** **** 1234
+    (re.compile(r"\\b(\\d{4})[- ]?\\d{4}[- ]?\\d{4}[- ]?(\\d{4})\\b"),
+     r"**** **** **** \\2"),
+]
+
+
+def mask_sensitive(value: Any) -> Any:
+    """Рекурсивно маскирует чувствительные данные в строках и словарях."""
+    if isinstance(value, dict):
+        return {
+            k: "***MASKED***" if k.lower() in _SENSITIVE_KEYS else mask_sensitive(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, str):
+        for pattern, replacement in _PATTERNS:
+            value = pattern.sub(replacement, value)
+        return value
+    if isinstance(value, (list, tuple)):
+        return type(value)(mask_sensitive(v) for v in value)
+    return value
+
+
+def sensitive_data_processor(
+    logger: Any, method: str, event_dict: dict
+) -> dict:
+    """Structlog-процессор: маскирует чувствительные поля перед записью."""
+    return mask_sensitive(event_dict)  # type: ignore[return-value]
+
+
+# -----------------------------------------------------------------
+# Общие процессоры (dev + prod)
+# -----------------------------------------------------------------
+
+SHARED_PROCESSORS: list[Any] = [
+    structlog.stdlib.add_log_level,
+    structlog.processors.TimeStamper(fmt="iso"),
+    structlog.stdlib.add_logger_name,
+    structlog.processors.format_exc_info,
+    # Маскируем чувствительные данные ПЕРЕД рендерингом
+    sensitive_data_processor,
+]
+
+
+# -----------------------------------------------------------------
+# Инициализация
+# -----------------------------------------------------------------
+
+def setup_logging() -> None:
+    env = os.getenv("APP_ENV", "development")
+    is_production = env == "production"
+
+    if is_production:
+        # Production: JSON для ELK / Loki / Grafana
+        renderer: Any = structlog.processors.JSONRenderer()
+    else:
+        # Development: цветной человекочитаемый вывод
+        renderer = structlog.dev.ConsoleRenderer(colors=True)
+
+    structlog.configure(
+        processors=[
+            *SHARED_PROCESSORS,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        wrapper_class=structlog.stdlib.BoundLogger,
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=renderer,
+        foreign_pre_chain=SHARED_PROCESSORS,
+    )
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+    root_logger.setLevel(logging.INFO if is_production else logging.DEBUG)
+
+    # Подавляем шумные uvicorn-логи (они дублируются через middleware)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)`,
+      },
+      {
+        filename: "app/core/context.py",
+        code: `"""Context Variables для хранения request-scoped данных.
+
+contextvars.ContextVar — thread-safe и async-safe хранилище.
+Каждый HTTP-запрос (coroutine) видит свои значения изолированно.
+Это безопаснее, чем глобальные переменные или threading.local.
+"""
+import contextvars
+
+# Уникальный ID каждого входящего запроса (генерируется в middleware)
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "request_id", default="-"
+)
+
+# Correlation ID для трейсинга через несколько сервисов.
+# Если запрос пришёл от другого сервиса — берём его X-Correlation-ID,
+# иначе генерируем новый и распространяем дальше.
+correlation_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "correlation_id", default="-"
+)
+
+# ID аутентифицированного пользователя (None если анонимный)
+user_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "user_id", default=None
+)`,
+      },
+      {
+        filename: "app/middleware/logging.py",
+        code: `"""Logging Middleware: логирует каждый HTTP-запрос/ответ.
+
+Выполняется для каждого запроса:
+  1. Генерирует request_id (UUID) и correlation_id
+  2. Сохраняет их в ContextVar (доступны везде в рамках запроса)
+  3. Вызывает следующий обработчик (endpoint)
+  4. Логирует результат: метод, путь, статус, время выполнения
+"""
+import time
+import uuid
+
+import structlog
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+from app.core.context import correlation_id_var, request_id_var, user_id_var
+
+logger = structlog.get_logger(__name__)
+
+
+class LoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        # Генерация ID
+        request_id = str(uuid.uuid4())
+        correlation_id = (
+            request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
+        )
+
+        request_id_var.set(request_id)
+        correlation_id_var.set(correlation_id)
+
+        # Замеряем время выполнения
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+
+        # Логируем результат (user_id уже установлен AuthMiddleware)
+        log_level = "warning" if response.status_code >= 400 else "info"
+        getattr(logger, log_level)(
+            "http_request",
+            method=request.method,
+            endpoint=str(request.url.path),
+            http_status=response.status_code,
+            duration_ms=duration_ms,
+            request_id=request_id,
+            correlation_id=correlation_id,
+            user_id=user_id_var.get(),
+            client_ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+
+        # Пробрасываем ID в заголовках ответа (для клиентской отладки)
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Correlation-ID"] = correlation_id
+        return response`,
+      },
+      {
+        filename: "app/middleware/auth.py",
+        code: `"""Auth Middleware: извлекает user_id из JWT и сохраняет в контекст.
+
+Выполняется ПОСЛЕ LoggingMiddleware (add_middleware — LIFO-порядок).
+При успешной аутентификации user_id_var будет доступен в логах.
+При ошибке — просто не устанавливает user_id (анонимный запрос).
+"""
+import structlog
+from jose import JWTError, jwt
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+from app.core.context import user_id_var
+
+logger = structlog.get_logger(__name__)
+
+SECRET_KEY = "your-secret-key"  # В реальном проекте — из os.environ
+ALGORITHM = "HS256"
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        token = (
+            request.headers.get("Authorization", "")
+            .removeprefix("Bearer ")
+            .strip()
+        )
+
+        if token:
+            try:
+                payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                user_id = str(payload.get("sub", ""))
+                if user_id:
+                    user_id_var.set(user_id)
+            except JWTError:
+                # Невалидный токен — анонимный запрос, не ошибка
+                logger.debug("invalid_jwt_token", reason="decode_failed")
+
+        return await call_next(request)`,
+      },
+      {
+        filename: "app/core/http_client.py",
+        code: `"""HTTP-клиент с автоматической передачей Correlation ID.
+
+При обращении к другим микросервисам прокидываем:
+  - X-Correlation-ID: тот же ID, что пришёл в исходном запросе
+  - X-Request-ID: новый ID для этого конкретного sub-запроса
+  - X-Parent-Request-ID: ID родительского запроса
+
+Так в Loki/ELK можно восстановить полную цепочку вызовов
+по correlation_id, даже если запрос проходит через 5 сервисов.
+"""
+import uuid
+
+import httpx
+import structlog
+
+from app.core.context import correlation_id_var, request_id_var
+
+logger = structlog.get_logger(__name__)
+
+
+def get_tracing_headers() -> dict[str, str]:
+    """Возвращает заголовки для трейсинга в исходящих запросах."""
+    return {
+        "X-Correlation-ID": correlation_id_var.get("-"),
+        "X-Request-ID": str(uuid.uuid4()),
+        "X-Parent-Request-ID": request_id_var.get("-"),
+    }
+
+
+async def call_service(url: str, method: str = "GET", **kwargs) -> httpx.Response:
+    """Выполняет HTTP-запрос к другому сервису с трейсинг-заголовками."""
+    headers = {**kwargs.pop("headers", {}), **get_tracing_headers()}
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.request(method, url, headers=headers, **kwargs)
+
+    logger.info(
+        "outbound_http_request",
+        url=url,
+        method=method,
+        status_code=response.status_code,
+        correlation_id=correlation_id_var.get(),
+    )
+    return response`,
+      },
+      {
+        filename: "app/main.py",
+        code: `from contextlib import asynccontextmanager
+
+import structlog
+from fastapi import FastAPI, HTTPException, Request
+
+from app.core.context import correlation_id_var, request_id_var, user_id_var
+from app.core.logging import setup_logging
+from app.middleware.auth import AuthMiddleware
+from app.middleware.logging import LoggingMiddleware
+
+# Инициализация логирования ДО создания приложения
+setup_logging()
+
+logger = structlog.get_logger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("application_startup", environment="development")
+    yield
+    logger.info("application_shutdown")
+
+
+app = FastAPI(title="Logging Demo API", lifespan=lifespan)
+
+# Middleware добавляются в LIFO-порядке:
+# AuthMiddleware добавляем первым → выполнится ВТОРЫМ (после LoggingMiddleware)
+app.add_middleware(AuthMiddleware)
+app.add_middleware(LoggingMiddleware)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.get("/items/{item_id}")
+async def get_item(item_id: int):
+    log = logger.bind(
+        request_id=request_id_var.get(),
+        correlation_id=correlation_id_var.get(),
+        user_id=user_id_var.get(),
+        item_id=item_id,
+    )
+
+    log.info("fetching_item")
+
+    if item_id == 0:
+        log.warning("item_not_found", item_id=item_id)
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    # Поля password и token будут автоматически заменены на ***MASKED***
+    log.debug(
+        "item_fetched",
+        item={"id": item_id, "name": "Widget", "price": 9.99},
+        token="secret-token-12345",
+        password="hunter2",
+    )
+
+    return {"id": item_id, "name": "Widget", "price": 9.99}
+
+
+@app.post("/users/login")
+async def login(credentials: dict):
+    """Пример: password в логах будет замаскирован автоматически."""
+    logger.info(
+        "login_attempt",
+        username=credentials.get("username"),
+        password=credentials.get("password"),  # -> ***MASKED***
+        request_id=request_id_var.get(),
+    )
+    return {"access_token": "eyJ..."}`,
+      },
+      {
+        filename: "log_output_examples.txt",
+        code: `# === Development (ConsoleRenderer, цветной вывод) =========================
+
+2024-01-15T10:23:45.123Z [info     ] http_request           [app.middleware.logging]
+  method=GET endpoint=/items/42 http_status=200 duration_ms=12.5
+  request_id=a1b2c3d4-... correlation_id=x9y8z7-... user_id=user_99
+
+2024-01-15T10:23:46.000Z [warning  ] http_request           [app.middleware.logging]
+  method=GET endpoint=/items/0 http_status=404 duration_ms=3.1
+  request_id=f1e2d3-... user_id=None
+
+2024-01-15T10:23:47.000Z [debug    ] item_fetched           [app.main]
+  item={'id': 42, 'name': 'Widget'} token=***MASKED*** password=***MASKED***
+
+
+# === Production (JSONRenderer, одна строка на лог) ==========================
+
+{"timestamp":"2024-01-15T10:23:45.123Z","level":"info","event":"http_request",
+ "logger":"app.middleware.logging","method":"GET","endpoint":"/items/42",
+ "http_status":200,"duration_ms":12.5,"request_id":"a1b2c3d4-...",
+ "correlation_id":"x9y8z7-...","user_id":"user_99","client_ip":"192.168.1.1"}
+
+{"timestamp":"2024-01-15T10:23:47.000Z","level":"debug","event":"item_fetched",
+ "logger":"app.main","item":{"id":42,"name":"Widget"},
+ "token":"***MASKED***","password":"***MASKED***"}
+
+
+# === Трейсинг цепочки вызовов через микросервисы ============================
+#
+# Сервис A: получает запрос, генерирует correlation_id=CID-111
+# Сервис A -> Сервис B: передаёт X-Correlation-ID: CID-111
+# Сервис B -> Сервис C: передаёт X-Correlation-ID: CID-111
+#
+# В Loki: {correlation_id="CID-111"} показывает ВСЕ логи по всем сервисам:
+
+# api-gateway:
+{"event":"http_request","correlation_id":"CID-111","service":"api-gateway",...}
+{"event":"outbound_http_request","correlation_id":"CID-111","url":"http://orders-svc/api/orders",...}
+
+# orders-svc:
+{"event":"http_request","correlation_id":"CID-111","service":"orders-svc",...}
+{"event":"outbound_http_request","correlation_id":"CID-111","url":"http://payments-svc/api/charge",...}
+
+# payments-svc:
+{"event":"http_request","correlation_id":"CID-111","service":"payments-svc",...}`,
+      },
+    ],
+    explanation: `**Почему structlog, а не стандартный logging?** Стандартный \`logging\` работает со строками — для добавления полей нужен форматтер. structlog работает с dict: \`logger.info("event", key=value)\`. Результат — строго структурированные JSON-логи без парсинга текста на стороне ELK. Кроме того, structlog поддерживает иммутабельный контекст (\`bind\`) — поля добавляются раз и присутствуют во всех последующих вызовах.
+
+**ContextVar и async-безопасность**: \`threading.local\` не работает в async-коде — все корутины выполняются в одном потоке. \`contextvars.ContextVar\` предоставляет изолированный контекст для каждой корутины: \`request_id_var.set(id)\` в middleware → \`request_id_var.get()\` в любом endpoint видит именно свой ID. При передаче в \`asyncio.create_task\` контекст копируется автоматически.
+
+**Порядок middleware в FastAPI**: \`app.add_middleware()\` добавляет в стек — последний добавленный выполняется первым (LIFO). \`LoggingMiddleware\` добавляется вторым → выполняется первым → устанавливает \`request_id\` и \`correlation_id\`. Затем \`AuthMiddleware\` → устанавливает \`user_id\`. К моменту логирования ответа в \`LoggingMiddleware\` \`user_id\` уже установлен.
+
+**Correlation ID и распределённый трейсинг**: каждый входящий запрос получает \`correlation_id\` (из заголовка \`X-Correlation-ID\` или новый UUID). При обращении к другим сервисам этот ID передаётся дальше. В Loki/Grafana запрос \`{correlation_id="CID-111"}\` показывает полную цепочку вызовов по всем сервисам. Это упрощённая версия — в продакшене используйте OpenTelemetry (\`opentelemetry-instrumentation-fastapi\`) для совместимости с Jaeger/Zipkin.
+
+**Маскировка чувствительных данных**: процессор \`sensitive_data_processor\` применяется ДО рендеринга — чувствительные данные никогда не попадают в финальный лог. Два уровня защиты: 1) ключи из \`_SENSITIVE_KEYS\` → полная замена на \`***MASKED***\`, 2) regex-паттерны в строковых значениях (Bearer-токены, email-адреса, номера карт). Даже если разработчик случайно залогирует \`password=user_input\` — он будет скрыт.
+
+**dev vs production форматы**: \`ConsoleRenderer\` с \`colors=True\` — читаемый вывод для разработчика, стек трейса форматируется красиво. \`JSONRenderer\` — каждый лог = одна строка JSON, легко парсится Logstash/Promtail, индексируется Elasticsearch/Loki. Переключение через \`APP_ENV\` переменную окружения. В production \`DEBUG\`-логи выключены — они слишком многословны для продакшен-нагрузки.`,
+  },
+  {
+    id: "prometheus-metrics",
+    title: "Метрики и мониторинг с Prometheus",
+    task: "Интегрируйте Prometheus-метрики в FastAPI-приложение через prometheus-fastapi-instrumentator. Добавьте кастомные метрики: бизнес-метрики (orders_created_total, revenue_total), технические метрики (db_query_duration_seconds, cache_hit_ratio, external_api_errors_total). Настройте Grafana-дашборд. Реализуйте SLO-алерты (error budget, latency p99).",
+    files: [
+      {
+        filename: "requirements.txt",
+        code: `fastapi>=0.115.0
+prometheus-fastapi-instrumentator>=7.0.0
+prometheus-client>=0.21.0
+uvicorn[standard]>=0.30.0
+sqlalchemy[asyncio]>=2.0.0
+aiosqlite>=0.20.0`,
+      },
+      {
+        filename: "app/metrics.py",
+        code: `"""Реестр всех Prometheus-метрик приложения.
+
+Типы метрик:
+  Counter   — монотонно растущий счётчик (запросы, ошибки, заказы)
+  Histogram — распределение значений с bucket-ами (latency, размер)
+  Gauge     — текущее значение, может убывать (активные сессии, CPU)
+  Summary   — percentiles на стороне клиента (устарел, предпочитайте Histogram)
+
+Правило именования: <namespace>_<subsystem>_<name>_<unit>
+  namespace  = имя приложения/команды (orders, payments)
+  subsystem  = компонент (db, cache, http)
+  name       = что измеряем
+  unit       = единица измерения в суффиксе (_total, _seconds, _bytes, _ratio)
+"""
+from prometheus_client import Counter, Gauge, Histogram
+
+# ─────────────────────────────────────────────
+# Бизнес-метрики
+# ─────────────────────────────────────────────
+
+orders_created_total = Counter(
+    name="orders_created_total",
+    documentation="Общее число созданных заказов",
+    labelnames=["status", "payment_method"],
+    # status: success | failed | pending
+    # payment_method: card | wallet | bank_transfer
+)
+
+revenue_total = Counter(
+    name="revenue_total_rub",
+    documentation="Суммарная выручка в рублях (только успешные заказы)",
+    labelnames=["currency", "payment_method"],
+)
+
+active_users_gauge = Gauge(
+    name="active_users_total",
+    documentation="Текущее число активных пользовательских сессий",
+)
+
+# ─────────────────────────────────────────────
+# Технические метрики
+# ─────────────────────────────────────────────
+
+db_query_duration = Histogram(
+    name="db_query_duration_seconds",
+    documentation="Время выполнения SQL-запросов",
+    labelnames=["operation", "table"],
+    # Bucket-ы подобраны под типичные latency БД:
+    # 1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s
+    buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5],
+)
+
+cache_hits_total = Counter(
+    name="cache_hits_total",
+    documentation="Число попаданий в кеш",
+    labelnames=["cache_name"],
+)
+
+cache_misses_total = Counter(
+    name="cache_misses_total",
+    documentation="Число промахов кеша",
+    labelnames=["cache_name"],
+)
+
+external_api_errors_total = Counter(
+    name="external_api_errors_total",
+    documentation="Ошибки при обращении к внешним API",
+    labelnames=["service", "error_type"],
+    # service: payment_gateway | sms_provider | email_service
+    # error_type: timeout | connection_error | http_4xx | http_5xx
+)
+
+external_api_duration = Histogram(
+    name="external_api_duration_seconds",
+    documentation="Время ответа внешних API",
+    labelnames=["service", "endpoint"],
+    buckets=[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0],
+)`,
+      },
+      {
+        filename: "app/instrumentation.py",
+        code: `"""Вспомогательные контекстные менеджеры для удобного сбора метрик."""
+import time
+from contextlib import asynccontextmanager, contextmanager
+
+from app.metrics import (
+    cache_hits_total,
+    cache_misses_total,
+    db_query_duration,
+    external_api_duration,
+    external_api_errors_total,
+)
+
+
+@contextmanager
+def track_db_query(operation: str, table: str):
+    """
+    Контекстный менеджер для замера времени SQL-запроса.
+
+    Использование:
+        with track_db_query("select", "orders"):
+            result = await session.execute(query)
+    """
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        elapsed = time.perf_counter() - start
+        db_query_duration.labels(operation=operation, table=table).observe(elapsed)
+
+
+@asynccontextmanager
+async def track_external_api(service: str, endpoint: str):
+    """
+    Контекстный менеджер для замера и учёта ошибок внешних API.
+
+    Использование:
+        async with track_external_api("payment_gateway", "/charge"):
+            response = await httpx_client.post(...)
+    """
+    start = time.perf_counter()
+    try:
+        yield
+    except TimeoutError:
+        external_api_errors_total.labels(
+            service=service, error_type="timeout"
+        ).inc()
+        raise
+    except ConnectionError:
+        external_api_errors_total.labels(
+            service=service, error_type="connection_error"
+        ).inc()
+        raise
+    except Exception as exc:
+        # HTTP 4xx/5xx от внешнего сервиса
+        error_type = getattr(exc, "status_code", None)
+        if error_type and 400 <= error_type < 500:
+            label = "http_4xx"
+        elif error_type and error_type >= 500:
+            label = "http_5xx"
+        else:
+            label = "unknown"
+        external_api_errors_total.labels(
+            service=service, error_type=label
+        ).inc()
+        raise
+    finally:
+        elapsed = time.perf_counter() - start
+        external_api_duration.labels(
+            service=service, endpoint=endpoint
+        ).observe(elapsed)
+
+
+def record_cache_access(cache_name: str, hit: bool) -> None:
+    """Записывает результат обращения к кешу."""
+    if hit:
+        cache_hits_total.labels(cache_name=cache_name).inc()
+    else:
+        cache_misses_total.labels(cache_name=cache_name).inc()`,
+      },
+      {
+        filename: "app/main.py",
+        code: `from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
+
+from app.metrics import (
+    active_users_gauge,
+    orders_created_total,
+    revenue_total,
+)
+from app.instrumentation import record_cache_access, track_db_query
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Устанавливаем начальное значение gauge
+    active_users_gauge.set(0)
+    yield
+
+
+app = FastAPI(title="Orders API", lifespan=lifespan)
+
+# ─── Подключение prometheus-fastapi-instrumentator ─────────────────────────────
+# Автоматически добавляет метрики для всех HTTP-эндпоинтов:
+#   http_requests_total{method, handler, status}
+#   http_request_duration_seconds{method, handler}  (Histogram)
+#   http_request_size_bytes (Histogram)
+#   http_response_size_bytes (Histogram)
+
+instrumentator = Instrumentator(
+    should_group_status_codes=False,   # раздельные метрики для 200, 201, 404 и т.д.
+    should_ignore_untemplated=True,    # игнорировать /favicon.ico и подобные
+    should_respect_env_var=True,       # можно отключить через ENV=false
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=["/metrics", "/health"],
+    inprogress_name="http_requests_inprogress",
+    inprogress_labels=True,
+)
+instrumentator.instrument(app).expose(
+    app,
+    endpoint="/metrics",
+    include_in_schema=False,  # скрываем из Swagger
+    tags=["monitoring"],
+)
+
+
+# ─── Эндпоинты ────────────────────────────────────────────────────────────────
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.post("/orders")
+async def create_order(payment_method: str, amount: float):
+    """Создаёт заказ и обновляет бизнес-метрики."""
+    try:
+        # Имитация работы с БД
+        with track_db_query("insert", "orders"):
+            pass  # await session.execute(...)
+
+        # Проверка кеша
+        cached = None  # await redis.get(f"user:{user_id}")
+        record_cache_access("user_profile", hit=cached is not None)
+
+        # Обновляем бизнес-метрики после успешного создания
+        orders_created_total.labels(
+            status="success",
+            payment_method=payment_method,
+        ).inc()
+
+        revenue_total.labels(
+            currency="RUB",
+            payment_method=payment_method,
+        ).inc(amount)
+
+        active_users_gauge.inc()  # условно — пользователь активен
+
+        return {"order_id": 12345, "status": "created"}
+
+    except Exception:
+        orders_created_total.labels(
+            status="failed",
+            payment_method=payment_method,
+        ).inc()
+        raise`,
+      },
+      {
+        filename: "grafana_dashboard.json",
+        code: `{
+  "title": "Orders API — SLO Dashboard",
+  "panels": [
+    {
+      "title": "Request Rate (RPS)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total[5m])) by (handler)",
+          "legendFormat": "{{handler}}"
+        }
+      ]
+    },
+    {
+      "title": "Error Rate (%) — SLO: < 1%",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "100 * sum(rate(http_requests_total{status=~'5..'}[5m])) / sum(rate(http_requests_total[5m]))",
+          "legendFormat": "error_rate_%"
+        }
+      ],
+      "thresholds": [
+        {"value": 1, "color": "red"}
+      ]
+    },
+    {
+      "title": "Latency p99 (ms) — SLO: < 500ms",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler)) * 1000",
+          "legendFormat": "p99 {{handler}}"
+        }
+      ],
+      "thresholds": [
+        {"value": 500, "color": "red"}
+      ]
+    },
+    {
+      "title": "DB Query Duration p95 (ms)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(db_query_duration_seconds_bucket[5m])) by (le, operation, table)) * 1000",
+          "legendFormat": "{{operation}}/{{table}}"
+        }
+      ]
+    },
+    {
+      "title": "Cache Hit Ratio (%)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "100 * sum(rate(cache_hits_total[5m])) / (sum(rate(cache_hits_total[5m])) + sum(rate(cache_misses_total[5m])))",
+          "legendFormat": "hit_ratio_%"
+        }
+      ]
+    },
+    {
+      "title": "Orders Created / min",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(rate(orders_created_total{status='success'}[1m])) * 60",
+          "legendFormat": "orders/min"
+        }
+      ]
+    },
+    {
+      "title": "Revenue (RUB / hour)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(rate(revenue_total_rub[1h])) * 3600",
+          "legendFormat": "RUB/hour"
+        }
+      ]
+    },
+    {
+      "title": "Error Budget Burn Rate (SLO 99.9%)",
+      "type": "timeseries",
+      "description": "Burn rate > 1 означает что error budget тратится быстрее, чем восстанавливается. > 14.4 = критично (полный бюджет за 1 час).",
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{status=~'5..'}[1h])) / sum(rate(http_requests_total[1h])) / 0.001",
+          "legendFormat": "burn_rate_1h"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{status=~'5..'}[5m])) / sum(rate(http_requests_total[5m])) / 0.001",
+          "legendFormat": "burn_rate_5m"
+        }
+      ],
+      "thresholds": [
+        {"value": 1,    "color": "yellow"},
+        {"value": 14.4, "color": "red"}
+      ]
+    }
+  ]
+}`,
+      },
+      {
+        filename: "alerts.yaml",
+        code: `# Prometheus Alerting Rules — SLO-based alerts
+# Загружается в Prometheus через rule_files: [alerts.yaml]
+
+groups:
+  - name: slo_alerts
+    rules:
+
+      # ── Latency SLO: p99 < 500ms ─────────────────────────────────────────────
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 latency > 500ms для {{ $labels.handler }}"
+          description: "Текущее значение: {{ $value | humanizeDuration }}"
+
+      # ── Error Rate SLO: < 1% ─────────────────────────────────────────────────
+      - alert: HighErrorRate
+        expr: |
+          100 * sum(rate(http_requests_total{status=~"5.."}[5m]))
+              / sum(rate(http_requests_total[5m])) > 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error rate превысил 1% SLO"
+          description: "Текущий error rate: {{ $value | humanize }}%"
+
+      # ── Error Budget Burn Rate (многоуровневый алерт) ────────────────────────
+      # Fast burn: за 1 час тратим > 2% годового бюджета → критично
+      - alert: ErrorBudgetFastBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[1h]))
+            / sum(rate(http_requests_total[1h]))
+          ) / 0.001 > 14.4
+        for: 2m
+        labels:
+          severity: critical
+          page: "true"
+        annotations:
+          summary: "Критичный расход error budget (fast burn)"
+          description: |
+            Burn rate: {{ $value | humanize }}x.
+            При таком темпе месячный error budget истечёт за 1 час.
+
+      # Slow burn: за 6 часов тратим > 5% месячного бюджета → warning
+      - alert: ErrorBudgetSlowBurn
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[6h]))
+            / sum(rate(http_requests_total[6h]))
+          ) / 0.001 > 6
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Медленный расход error budget (slow burn)"
+
+      # ── Бизнес-алерты ────────────────────────────────────────────────────────
+      - alert: HighOrderFailureRate
+        expr: |
+          100 * sum(rate(orders_created_total{status="failed"}[5m]))
+              / sum(rate(orders_created_total[5m])) > 5
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Более 5% заказов завершаются ошибкой"
+
+      - alert: ExternalAPIErrors
+        expr: |
+          sum(rate(external_api_errors_total[5m])) by (service) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ошибки при обращении к {{ $labels.service }}"
+          description: "{{ $value | humanize }} ошибок/сек"
+
+      # ── DB latency ───────────────────────────────────────────────────────────
+      - alert: SlowDBQueries
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(db_query_duration_seconds_bucket[5m])) by (le, operation, table)
+          ) > 0.25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Медленные запросы к таблице {{ $labels.table }} ({{ $labels.operation }})"
+          description: "p95 = {{ $value | humanizeDuration }}"`,
+      },
+      {
+        filename: "docker-compose.monitoring.yml",
+        code: `# Стек мониторинга: Prometheus + Grafana
+# Запуск: docker compose -f docker-compose.monitoring.yml up -d
+
+version: "3.9"
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alerts.yaml:/etc/prometheus/alerts.yaml
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/api.json
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana_dashboard.json:/etc/grafana/dashboards/api.json
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+# prometheus.yml (создать отдельно):
+#
+# global:
+#   scrape_interval: 15s
+#   evaluation_interval: 15s
+#
+# rule_files:
+#   - alerts.yaml
+#
+# scrape_configs:
+#   - job_name: fastapi
+#     static_configs:
+#       - targets: ['host.docker.internal:8000']
+#     metrics_path: /metrics`,
+      },
+    ],
+    explanation: `**Типы метрик Prometheus и когда какой использовать**: \`Counter\` — только растёт (запросы, ошибки, деньги), запрашивайте как \`rate(counter[5m])\`. \`Histogram\` — распределение с bucket-ами (latency, размер) — позволяет считать \`histogram_quantile(0.99, ...)\` на стороне Prometheus. \`Gauge\` — текущее значение (активные соединения, размер очереди). Избегайте \`Summary\` — percentiles считаются на стороне клиента и не агрегируются между инстансами.
+
+**prometheus-fastapi-instrumentator**: автоматически добавляет метрики для всех HTTP-эндпоинтов без ручного кода — счётчик запросов, histogram latency, размер запроса/ответа. Важные параметры: \`should_group_status_codes=False\` даёт раздельные метрики для каждого кода (200, 201, 404), \`excluded_handlers=["/metrics"]\` исключает endpoint метрик из самих метрик (иначе самореференция). \`expose()\` добавляет \`GET /metrics\` в формате Prometheus text format.
+
+**Бизнес-метрики vs технические**: технические метрики (latency, RPS, error rate) отвечают на вопрос «работает ли система». Бизнес-метрики (orders_created, revenue) отвечают на вопрос «работает ли бизнес» — система может быть технически здорова, но заказы не создаются из-за бага в логике. Обе группы необходимы. Метки (labels) позволяют сегментировать: \`orders_created_total{payment_method="card"}\` vs \`{payment_method="wallet"}\`.
+
+**SLO и Error Budget**: SLO (Service Level Objective) — цель по надёжности, например 99.9% запросов без ошибок. Error budget = 100% - SLO = 0.1% ошибок в месяц ≈ 43 минуты даунтайма. Burn rate показывает насколько быстро тратится бюджет относительно нормы: burn rate 1 = тратим ровно по плану, 14.4 = за 1 час потратим месячный бюджет. Многоуровневые алерты (fast burn 5м + slow burn 6ч) покрывают как острые инциденты, так и хронические проблемы.
+
+**Контекстные менеджеры для трейсинга**: оборачивание \`track_db_query\` и \`track_external_api\` позволяет добавить метрики без загрязнения бизнес-логики: \`with track_db_query("select", "orders"): ...\` автоматически замерит время и запишет в Histogram. \`async with track_external_api(...)\` плюс перехватывает исключения и классифицирует их по типу ошибки.
+
+**Cache hit ratio**: нельзя использовать \`Gauge\` для hit ratio напрямую (значение нестабильно). Правильный подход — два \`Counter\` (hits + misses) и вычисление ratio в PromQL: \`rate(hits[5m]) / (rate(hits[5m]) + rate(misses[5m]))\`. Это работает корректно при нескольких инстансах — \`sum(rate(...))\` агрегирует все.`,
+  },
+  {
+    id: "opentelemetry-tracing",
+    title: "Distributed Tracing с OpenTelemetry",
+    task: "Настройте distributed tracing через OpenTelemetry для FastAPI-приложения. Автоматическая инструментация FastAPI, SQLAlchemy, httpx, Redis. Кастомные span-ы для бизнес-операций с атрибутами. Propagation контекста через HTTP-заголовки (W3C TraceContext). Экспорт в Jaeger или Grafana Tempo. Реализуйте sampling стратегию (100% dev, 10% prod, 100% errors).",
+    files: [
+      {
+        filename: "requirements.txt",
+        code: `fastapi>=0.115.0
+opentelemetry-api>=1.27.0
+opentelemetry-sdk>=1.27.0
+opentelemetry-instrumentation-fastapi>=0.48b0
+opentelemetry-instrumentation-sqlalchemy>=0.48b0
+opentelemetry-instrumentation-httpx>=0.48b0
+opentelemetry-instrumentation-redis>=0.48b0
+opentelemetry-exporter-otlp-proto-grpc>=1.27.0
+uvicorn[standard]>=0.30.0
+sqlalchemy[asyncio]>=2.0.0
+httpx>=0.27.0`,
+      },
+      {
+        filename: "app/telemetry.py",
+        code: `"""Инициализация OpenTelemetry.
+
+OpenTelemetry = стандарт (vendor-neutral) для distributed tracing, метрик и логов.
+Основные концепции:
+  Trace   — полная цепочка вызовов для одного пользовательского запроса
+  Span    — один шаг в цепочке (HTTP-запрос, SQL-запрос, вызов функции)
+  Context — привязка span-ов друг к другу через trace_id + span_id
+"""
+import os
+
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.trace.sampling import (
+    ALWAYS_OFF,
+    ALWAYS_ON,
+    DEFAULT_OFF,
+    ParentBased,
+    TraceIdRatioBased,
+)
+
+
+def _build_sampler():
+    """
+    Стратегия сэмплирования:
+      - development: 100% трейсов (ALWAYS_ON)
+      - production:  10% трейсов (TraceIdRatioBased(0.1))
+      - Ошибки всегда записываются — реализуется через кастомный sampler ниже
+
+    ParentBased уважает решение родительского сервиса: если upstream уже
+    принял решение включить трейс — мы продолжаем его, даже если наш
+    sampler говорит «выключить».
+    """
+    env = os.getenv("APP_ENV", "development")
+
+    if env == "production":
+        # 10% трейсов в prod, но уважаем решение родительского сервиса
+        return ParentBased(root=TraceIdRatioBased(0.1))
+    else:
+        # 100% в development
+        return ParentBased(root=ALWAYS_ON)
+
+
+def setup_telemetry(service_name: str = "orders-api") -> trace.Tracer:
+    """
+    Инициализирует OpenTelemetry SDK и возвращает Tracer.
+    Вызывать ОДИН РАЗ при старте приложения.
+    """
+    # Resource — метаданные сервиса, появляются в каждом span-е
+    resource = Resource.create({
+        "service.name": service_name,
+        "service.version": os.getenv("APP_VERSION", "1.0.0"),
+        "deployment.environment": os.getenv("APP_ENV", "development"),
+    })
+
+    provider = TracerProvider(
+        resource=resource,
+        sampler=_build_sampler(),
+    )
+
+    # ── Выбор экспортёра ──────────────────────────────────────────────────────
+    env = os.getenv("APP_ENV", "development")
+    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+
+    if env == "production" and otlp_endpoint:
+        # Production: экспорт в Jaeger / Grafana Tempo через OTLP/gRPC
+        exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
+    else:
+        # Development: печать в консоль (для отладки)
+        exporter = ConsoleSpanExporter()
+
+    # BatchSpanProcessor буферизует span-ы и отправляет пачками — не блокирует основной поток
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+
+    # Регистрируем провайдер глобально
+    trace.set_tracer_provider(provider)
+
+    return trace.get_tracer(service_name)
+
+
+# Глобальный tracer (используется в бизнес-коде)
+tracer = trace.get_tracer("orders-api")`,
+      },
+      {
+        filename: "app/instrumentation.py",
+        code: `"""Автоматическая инструментация FastAPI, SQLAlchemy, httpx, Redis.
+
+OpenTelemetry предоставляет готовые пакеты инструментации — они
+monkey-patching библиотеки и автоматически создают span-ы без
+изменений в бизнес-коде.
+"""
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
+
+def instrument_app(app, engine: AsyncEngine | None = None) -> None:
+    """
+    Инструментирует FastAPI и все используемые библиотеки.
+
+    FastAPI инструментация:
+      - Создаёт span для каждого HTTP-запроса
+      - Добавляет атрибуты: http.method, http.route, http.status_code
+      - Пропагирует W3C TraceContext из входящих заголовков
+
+    SQLAlchemy инструментация:
+      - Создаёт span для каждого SQL-запроса
+      - Добавляет: db.statement (SQL), db.operation, db.name
+
+    httpx инструментация:
+      - Создаёт span для каждого исходящего HTTP-запроса
+      - Внедряет W3C TraceContext в заголовки исходящего запроса
+
+    Redis инструментация:
+      - Создаёт span для каждой Redis-команды
+      - Добавляет: db.statement (GET/SET/...), net.peer.name
+    """
+    # FastAPI — инструментируем ПЕРВЫМ
+    FastAPIInstrumentor.instrument_app(
+        app,
+        excluded_urls="health,metrics",   # не трейсим health-check и /metrics
+        server_request_hook=_enrich_span_from_request,
+    )
+
+    # SQLAlchemy — передаём engine для связи span-ов с соединениями
+    if engine:
+        SQLAlchemyInstrumentor().instrument(
+            engine=engine.sync_engine,
+            enable_commenter=True,       # добавляет tracing-комментарий в SQL
+        )
+
+    # httpx — все исходящие запросы автоматически получат заголовки трейсинга
+    HTTPXClientInstrumentor().instrument()
+
+    # Redis — автоматически для всех redis.Redis и aioredis.Redis
+    RedisInstrumentor().instrument()
+
+
+def _enrich_span_from_request(span, scope) -> None:
+    """
+    Хук, вызываемый для каждого входящего запроса.
+    Добавляем user_id из контекста аутентификации (если доступен).
+    """
+    from app.core.context import user_id_var
+    user_id = user_id_var.get()
+    if user_id and span.is_recording():
+        span.set_attribute("enduser.id", user_id)`,
+      },
+      {
+        filename: "app/tracing.py",
+        code: `"""Утилиты для создания кастомных span-ов в бизнес-коде.
+
+Автоматическая инструментация покрывает HTTP/SQL/Redis.
+Для бизнес-операций (создание заказа, начисление баллов, отправка email)
+нужны кастомные span-ы — они дают полную картину в Jaeger/Tempo.
+"""
+from contextlib import asynccontextmanager, contextmanager
+from typing import Any
+
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+
+tracer = trace.get_tracer("orders-api")
+
+
+@contextmanager
+def span(name: str, attributes: dict[str, Any] | None = None):
+    """
+    Контекстный менеджер для синхронного кастомного span-а.
+
+    Использование:
+        with span("validate_payment", {"payment.method": "card", "amount": 100.0}):
+            result = validate(...)
+    """
+    with tracer.start_as_current_span(name) as s:
+        if attributes:
+            for key, value in attributes.items():
+                s.set_attribute(key, value)
+        try:
+            yield s
+        except Exception as exc:
+            # Помечаем span как ошибку — важно для фильтрации в Jaeger
+            s.set_status(Status(StatusCode.ERROR, str(exc)))
+            s.record_exception(exc)
+            raise
+
+
+@asynccontextmanager
+async def async_span(name: str, attributes: dict[str, Any] | None = None):
+    """Контекстный менеджер для асинхронного кастомного span-а."""
+    with tracer.start_as_current_span(name) as s:
+        if attributes:
+            for key, value in attributes.items():
+                s.set_attribute(key, value)
+        try:
+            yield s
+        except Exception as exc:
+            s.set_status(Status(StatusCode.ERROR, str(exc)))
+            s.record_exception(exc)
+            raise
+
+
+def add_event(name: str, attributes: dict[str, Any] | None = None) -> None:
+    """
+    Добавляет именованное событие к текущему span-у.
+    Событие — точка во времени (в отличие от span-а, у которого есть длительность).
+
+    Использование:
+        add_event("payment.authorized", {"payment.id": "pay_123"})
+        add_event("inventory.reserved", {"sku": "PROD-42", "qty": 2})
+    """
+    current_span = trace.get_current_span()
+    if current_span.is_recording():
+        current_span.add_event(name, attributes or {})
+
+
+def set_user(user_id: str) -> None:
+    """Связывает текущий trace с пользователем."""
+    current_span = trace.get_current_span()
+    if current_span.is_recording():
+        current_span.set_attribute("enduser.id", user_id)
+
+
+def record_error(exc: Exception, context: dict[str, Any] | None = None) -> None:
+    """Записывает исключение в текущий span и помечает его как ошибку."""
+    current_span = trace.get_current_span()
+    if current_span.is_recording():
+        current_span.set_status(Status(StatusCode.ERROR, str(exc)))
+        current_span.record_exception(exc, attributes=context or {})`,
+      },
+      {
+        filename: "app/services/order_service.py",
+        code: `"""Пример бизнес-сервиса с кастомными span-ами.
+
+Структура trace для создания заказа:
+  POST /orders                           [FastAPI auto-span]
+  └─ order.create                        [бизнес span]
+     ├─ order.validate                   [бизнес span]
+     │  └─ SELECT users WHERE id=?       [SQLAlchemy auto-span]
+     ├─ inventory.check                  [бизнес span]
+     │  └─ GET inventory:sku:42          [Redis auto-span]
+     ├─ payment.charge                   [бизнес span]
+     │  └─ POST https://payment-gw/charge [httpx auto-span]
+     └─ INSERT orders (...)              [SQLAlchemy auto-span]
+"""
+import httpx
+
+from app.tracing import add_event, async_span, set_user, span
+
+
+async def create_order(user_id: str, items: list[dict], payment_method: str) -> dict:
+    """
+    Полный цикл создания заказа с трейсингом.
+    Все дочерние span-ы автоматически становятся дочерними к текущему
+    контексту трейсинга (FastAPI-span входящего запроса).
+    """
+    set_user(user_id)  # связываем trace с пользователем
+
+    async with async_span("order.create", {
+        "order.user_id": user_id,
+        "order.items_count": len(items),
+        "order.payment_method": payment_method,
+    }) as order_span:
+
+        # ── Валидация ──────────────────────────────────────────────────────────
+        total_amount = 0.0
+        with span("order.validate", {"order.items_count": len(items)}):
+            for item in items:
+                # SELECT из БД — SQLAlchemy автоматически создаст дочерний span
+                price = item.get("price", 0.0)
+                total_amount += price * item.get("quantity", 1)
+
+            if total_amount <= 0:
+                raise ValueError("Order amount must be positive")
+
+        add_event("order.validated", {"order.total": total_amount})
+
+        # ── Проверка склада ────────────────────────────────────────────────────
+        with span("inventory.check", {"inventory.items_count": len(items)}):
+            for item in items:
+                # Redis GET — автоматический span от RedisInstrumentor
+                pass  # available = await redis.get(f"inventory:{item['sku']}")
+
+        add_event("inventory.reserved")
+
+        # ── Списание оплаты ───────────────────────────────────────────────────
+        async with async_span("payment.charge", {
+            "payment.method": payment_method,
+            "payment.amount": total_amount,
+            "payment.currency": "RUB",
+        }):
+            async with httpx.AsyncClient() as client:
+                # httpx автоматически внедрит W3C traceparent в заголовки
+                # → payment-gateway получит trace_id и создаст дочерний span
+                response = await client.post(
+                    "https://payment-gateway.example.com/charge",
+                    json={
+                        "amount": total_amount,
+                        "method": payment_method,
+                        "currency": "RUB",
+                    },
+                )
+                response.raise_for_status()
+
+        add_event("payment.charged", {"payment.transaction_id": "txn_123"})
+
+        # ── Сохранение в БД ───────────────────────────────────────────────────
+        # INSERT — SQLAlchemy автоматически создаст span
+        order_id = "ord_12345"
+
+        order_span.set_attribute("order.id", order_id)
+        add_event("order.saved", {"order.id": order_id})
+
+        return {"order_id": order_id, "total": total_amount, "status": "created"}`,
+      },
+      {
+        filename: "app/sampling.py",
+        code: `"""Кастомная стратегия сэмплирования: 100% ошибок всегда записываются.
+
+Проблема стандартного TraceIdRatioBased(0.1): если ошибка попала в 90%
+«выброшенных» трейсов — мы её никогда не увидим.
+
+Решение: кастомный sampler, который после окончания span-а проверяет
+статус и форсирует запись если это ошибка.
+
+Важно: OpenTelemetry принимает решение о сэмплировании в начале span-а
+(head-based sampling). Для корректной работы «100% ошибок» нужен либо
+tail-based sampling (в Grafana Agent / Tempo), либо отдельный подход:
+  1. Записывать 100% → дорого
+  2. Использовать tail-based sampler в коллекторе (рекомендуется)
+
+Код ниже демонстрирует кастомный head-based sampler как учебный пример.
+"""
+from opentelemetry.sdk.trace.sampling import Decision, Sampler, SamplingResult
+from opentelemetry.trace import SpanKind
+from opentelemetry.trace.span import TraceState
+
+
+class ErrorAwareSampler(Sampler):
+    """
+    Записывает все ошибки + случайную выборку остальных.
+
+    В продакшене комбинируйте с Grafana Agent tail-based sampler —
+    он анализирует завершённые трейсы и принимает решения задним числом.
+    """
+
+    def __init__(self, base_ratio: float = 0.1):
+        self._base_ratio = base_ratio
+        self._ratio_sampler_decisions: set[str] = set()
+
+    def should_sample(
+        self,
+        parent_context,
+        trace_id: int,
+        name: str,
+        kind: SpanKind = SpanKind.INTERNAL,
+        attributes=None,
+        links=None,
+        trace_state: TraceState | None = None,
+    ) -> SamplingResult:
+        import random
+
+        # Всегда записываем health-check и metrics пропускаем
+        if name in ("/health", "/metrics"):
+            return SamplingResult(Decision.DROP)
+
+        # Базовая выборка по ratio
+        if random.random() < self._base_ratio:
+            return SamplingResult(Decision.RECORD_AND_SAMPLE)
+
+        # RECORD_ONLY: span записывается локально, но не экспортируется
+        # Это позволяет нам пересмотреть решение если возникнет ошибка
+        # (через SpanProcessor — см. ниже)
+        return SamplingResult(Decision.RECORD_ONLY)
+
+    def get_description(self) -> str:
+        return f"ErrorAwareSampler(ratio={self._base_ratio})"
+
+
+# Рекомендуемая конфигурация для production:
+#
+# 1. В FastAPI/OpenTelemetry SDK: записываем 100% (ALWAYS_ON)
+# 2. В OpenTelemetry Collector добавляем tail_sampling processor:
+#
+# processors:
+#   tail_sampling:
+#     decision_wait: 10s
+#     policies:
+#       - name: errors-policy
+#         type: status_code
+#         status_code: {status_codes: [ERROR]}
+#       - name: slow-policy
+#         type: latency
+#         latency: {threshold_ms: 1000}
+#       - name: probabilistic-policy
+#         type: probabilistic
+#         probabilistic: {sampling_percentage: 10}
+#
+# Это даёт: 100% ошибок + 100% медленных + 10% остальных`,
+      },
+      {
+        filename: "app/main.py",
+        code: `from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from app.telemetry import setup_telemetry
+from app.instrumentation import instrument_app
+from app.services.order_service import create_order
+
+# Инициализируем OpenTelemetry ДО создания приложения
+setup_telemetry(service_name="orders-api")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+
+
+app = FastAPI(title="Orders API with Tracing", lifespan=lifespan)
+
+# Инструментируем ПОСЛЕ создания app, ДО добавления роутов
+instrument_app(app)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.post("/orders")
+async def create_order_endpoint(
+    user_id: str,
+    payment_method: str = "card",
+):
+    """
+    Создаёт заказ.
+
+    В Jaeger/Tempo этот запрос будет виден как дерево span-ов:
+      POST /orders
+      └─ order.create
+         ├─ order.validate
+         │  └─ SELECT users ...
+         ├─ inventory.check
+         │  └─ redis GET inventory:...
+         ├─ payment.charge
+         │  └─ POST https://payment-gateway/charge
+         └─ INSERT orders ...
+    """
+    items = [{"sku": "PROD-42", "price": 999.0, "quantity": 1}]
+    result = await create_order(user_id, items, payment_method)
+    return result`,
+      },
+      {
+        filename: "docker-compose.tracing.yml",
+        code: `# Запуск Jaeger для локальной разработки
+# docker compose -f docker-compose.tracing.yml up -d
+# UI: http://localhost:16686
+
+version: "3.9"
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP/gRPC (куда экспортируем)
+      - "4318:4318"     # OTLP/HTTP
+
+# Настройка FastAPI → Jaeger:
+# OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+# APP_ENV=production   (иначе будет ConsoleExporter)
+
+# Для Grafana Tempo (production):
+# OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+# В docker-compose добавьте:
+#
+# tempo:
+#   image: grafana/tempo:latest
+#   command: ["-config.file=/etc/tempo.yaml"]
+#   ports:
+#     - "4317:4317"
+#     - "3200:3200"   # Tempo HTTP API (для Grafana datasource)`,
+      },
+    ],
+    explanation: `**OpenTelemetry vs vendor-specific SDK**: раньше каждый вендор (Datadog, New Relic, Jaeger) имел свой SDK — переход стоил переписки кода. OpenTelemetry — vendor-neutral стандарт: пишем код один раз, а куда экспортировать (Jaeger, Tempo, Datadog, Honeycomb) — настройка конфигурации, не код. OTLP (OpenTelemetry Protocol) — единый формат передачи телеметрии.
+
+**Автоматическая инструментация**: пакеты \`opentelemetry-instrumentation-*\` используют monkey-patching — они перехватывают вызовы библиотек и создают span-ы автоматически. \`FastAPIInstrumentor\` оборачивает Starlette middleware. \`SQLAlchemyInstrumentor\` оборачивает \`execute()\`. \`HTTPXClientInstrumentor\` оборачивает \`AsyncClient.request()\`. Никаких изменений в бизнес-коде.
+
+**W3C TraceContext propagation**: когда сервис A делает HTTP-запрос к сервису B, httpx автоматически добавляет заголовок \`traceparent: 00-{trace_id}-{span_id}-{flags}\`. Сервис B (через FastAPIInstrumentor) читает этот заголовок и продолжает тот же trace — в Jaeger вы видите единое дерево через несколько сервисов. \`tracestate\` несёт vendor-специфичные данные (например, sampling decision от upstream).
+
+**Head-based vs Tail-based sampling**: head-based принимает решение в начале span-а — быстро, но нельзя учесть ошибки (решение принято до их возникновения). Tail-based (OpenTelemetry Collector \`tail_sampling\` processor) буферизует завершённые трейсы и принимает решение после — можно записать 100% ошибок и медленных запросов, 10% остальных. В продакшене используйте tail-based через коллектор.
+
+**Span vs Event**: Span — операция с началом и концом (имеет длительность), создаётся через \`tracer.start_as_current_span()\`. Event — точечная аннотация к span-у (\`span.add_event()\`), например «платёж авторизован» или «кеш промахнулся». В Jaeger events отображаются как метки на временной шкале span-а — удобно для диагностики.
+
+**BatchSpanProcessor vs SimpleSpanProcessor**: \`Simple\` отправляет каждый span немедленно — блокирует поток, подходит только для отладки. \`Batch\` буферизует span-ы и отправляет пачками в фоновом потоке — не влияет на latency запросов. В продакшене всегда используйте \`BatchSpanProcessor\`. Параметры: \`max_queue_size=2048\`, \`max_export_batch_size=512\`, \`export_timeout_millis=30000\`.`,
+  },
+  {
+    id: "openapi-documentation",
+    title: "OpenAPI и документация API",
+    task: "Настройте и расширьте автоматически генерируемую OpenAPI-документацию. Кастомизируйте Swagger UI и ReDoc (брендинг, аутентификация прямо в UI). Добавьте rich descriptions, examples для всех схем и эндпоинтов, корректные response codes и их описания, deprecation markers для устаревших эндпоинтов, группировку через tags с описаниями. Настройте автоматическую публикацию документации при деплое.",
+    files: [
+      {
+        filename: "requirements.txt",
+        code: `fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.9.0`,
+      },
+      {
+        filename: "app/docs/config.py",
+        code: `"""Кастомизация OpenAPI-документации.
+
+FastAPI генерирует OpenAPI 3.1 схему автоматически из:
+  - аннотаций типов (Pydantic-модели)
+  - параметров декораторов (@app.get, summary, description, ...)
+  - Field(description=..., example=...)
+  - response_model и responses={...}
+
+Здесь мы расширяем базовую конфигурацию.
+"""
+
+# ── Метаданные API ─────────────────────────────────────────────────────────────
+
+OPENAPI_TITLE = "E-Commerce Orders API"
+OPENAPI_VERSION = "2.1.0"
+
+OPENAPI_DESCRIPTION = """
+## Обзор
+
+REST API для управления заказами интернет-магазина.
+
+Поддерживает создание, отслеживание и отмену заказов,
+управление корзиной и историей покупок.
+
+## Аутентификация
+
+Все защищённые эндпоинты требуют JWT-токен в заголовке:
+
+    Authorization: Bearer <your_token>
+
+Получить токен: POST /auth/token
+
+## Версионирование
+
+API следует SemVer. Текущая версия: **v2**.
+Версия v1 устарела и будет отключена **01.07.2025**.
+
+## Rate Limiting
+
+- Анонимные запросы: **60 req/min**
+- Аутентифицированные: **600 req/min**
+- Bulk-операции: **10 req/min**
+
+## Коды ошибок
+
+| Код | Описание |
+|-----|----------|
+| 400 | Неверный формат запроса |
+| 401 | Требуется аутентификация |
+| 403 | Недостаточно прав |
+| 404 | Ресурс не найден |
+| 409 | Конфликт (дубликат) |
+| 422 | Ошибка валидации |
+| 429 | Превышен rate limit |
+| 503 | Сервис временно недоступен |
+"""
+
+# ── Описания тегов (группировка эндпоинтов в Swagger UI) ──────────────────────
+
+OPENAPI_TAGS = [
+    {
+        "name": "Orders",
+        "description": """
+Управление заказами: создание, просмотр, обновление, отмена.
+
+Жизненный цикл заказа:
+draft -> confirmed -> processing -> shipped -> delivered
+
+Отмена возможна только в статусах draft и confirmed.
+        """,
+        "externalDocs": {
+            "description": "Документация по статусам заказов",
+            "url": "https://docs.example.com/orders/lifecycle",
+        },
+    },
+    {
+        "name": "Cart",
+        "description": "Управление корзиной пользователя. Корзина хранится в Redis TTL=24h.",
+    },
+    {
+        "name": "Auth",
+        "description": "Аутентификация и управление токенами.",
+    },
+    {
+        "name": "Legacy v1",
+        "description": "**Устаревшие эндпоинты v1.** Будут удалены 01.07.2025. Используйте v2.",
+    },
+]
+
+# ── Security schemes ───────────────────────────────────────────────────────────
+# Добавляются в OpenAPI схему и отображаются в Swagger UI как кнопка "Authorize"
+
+SECURITY_SCHEMES = {
+    "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT-токен. Получить через POST /auth/token",
+    },
+    "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API-ключ для серверных интеграций",
+    },
+}`,
+      },
+      {
+        filename: "app/schemas/order.py",
+        code: `"""Pydantic-схемы с rich descriptions и examples.
+
+Правила хорошей документации схем:
+  - title: краткое имя поля (отображается в Swagger)
+  - description: подробное объяснение смысла поля
+  - example: конкретный реалистичный пример
+  - examples: несколько примеров для разных сценариев
+  - ge/le/min_length/max_length: ограничения с явным смыслом
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+from enum import Enum
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+class OrderStatus(str, Enum):
+    DRAFT = "draft"
+    CONFIRMED = "confirmed"
+    PROCESSING = "processing"
+    SHIPPED = "shipped"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"
+
+    class Config:
+        # Описание появится в OpenAPI enum-секции
+        use_enum_values = True
+
+
+class OrderItem(BaseModel):
+    """Позиция в заказе."""
+
+    sku: str = Field(
+        title="Артикул товара",
+        description="Уникальный идентификатор товара в каталоге. Формат: [A-Z]{3}-[0-9]{4}.",
+        pattern=r"^[A-Z]{3}-[0-9]{4}$",
+        examples=["ELC-0042", "CLT-1337", "FRN-0099"],
+    )
+    quantity: int = Field(
+        title="Количество",
+        description="Количество единиц товара. Минимум 1, максимум 99 на позицию.",
+        ge=1,
+        le=99,
+        example=2,
+    )
+    unit_price: Decimal = Field(
+        title="Цена за единицу",
+        description="Цена в рублях на момент добавления в корзину. Фиксируется при подтверждении заказа.",
+        ge=Decimal("0.01"),
+        decimal_places=2,
+        example=Decimal("1499.99"),
+    )
+
+    @property
+    def total_price(self) -> Decimal:
+        return self.unit_price * self.quantity
+
+
+class CreateOrderRequest(BaseModel):
+    """
+    Запрос на создание нового заказа.
+
+    Заказ создаётся в статусе draft. Для подтверждения используйте
+    PATCH /orders/{order_id}/confirm.
+    """
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": {
+                "Простой заказ": {
+                    "summary": "Заказ с одним товаром",
+                    "value": {
+                        "customer_id": "usr_9f3a2b",
+                        "items": [{"sku": "ELC-0042", "quantity": 1, "unit_price": 1499.99}],
+                        "delivery_address": "г. Москва, ул. Тверская, д. 1",
+                        "payment_method": "card",
+                    },
+                },
+                "Bulk-заказ": {
+                    "summary": "Заказ с несколькими товарами и промокодом",
+                    "value": {
+                        "customer_id": "usr_9f3a2b",
+                        "items": [
+                            {"sku": "ELC-0042", "quantity": 2, "unit_price": 1499.99},
+                            {"sku": "CLT-1337", "quantity": 1, "unit_price": 3299.00},
+                        ],
+                        "delivery_address": "г. Санкт-Петербург, Невский пр., д. 28",
+                        "payment_method": "wallet",
+                        "promo_code": "SUMMER2024",
+                    },
+                },
+            }
+        }
+    }
+
+    customer_id: str = Field(
+        title="ID клиента",
+        description="Идентификатор клиента. Должен соответствовать аутентифицированному пользователю.",
+        pattern=r"^usr_[a-z0-9]{6}$",
+        example="usr_9f3a2b",
+    )
+    items: list[OrderItem] = Field(
+        title="Позиции заказа",
+        description="Минимум 1, максимум 50 позиций. Дубликаты SKU будут объединены.",
+        min_length=1,
+        max_length=50,
+    )
+    delivery_address: str = Field(
+        title="Адрес доставки",
+        description="Полный адрес доставки включая город, улицу и номер дома.",
+        min_length=10,
+        max_length=500,
+        example="г. Москва, ул. Тверская, д. 1, кв. 42",
+    )
+    payment_method: str = Field(
+        title="Метод оплаты",
+        description="Доступные методы: card (банковская карта), wallet (кошелёк), bank_transfer.",
+        pattern=r"^(card|wallet|bank_transfer)$",
+        example="card",
+    )
+    promo_code: str | None = Field(
+        default=None,
+        title="Промокод",
+        description="Необязательный промокод для скидки. Применяется к итоговой сумме.",
+        max_length=32,
+        example="SUMMER2024",
+    )
+
+    @field_validator("customer_id")
+    @classmethod
+    def validate_customer_id(cls, v: str) -> str:
+        if not v.startswith("usr_"):
+            raise ValueError("customer_id должен начинаться с 'usr_'")
+        return v
+
+    @model_validator(mode="after")
+    def check_items_unique_skus(self) -> "CreateOrderRequest":
+        skus = [item.sku for item in self.items]
+        if len(skus) != len(set(skus)):
+            raise ValueError("Дублирующиеся SKU: объедините позиции вручную")
+        return self
+
+
+class OrderResponse(BaseModel):
+    """Ответ с данными созданного или полученного заказа."""
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "order_id": "ord_a1b2c3",
+                "status": "draft",
+                "customer_id": "usr_9f3a2b",
+                "total_amount": 2999.98,
+                "currency": "RUB",
+                "created_at": "2024-01-15T10:30:00Z",
+                "items": [
+                    {"sku": "ELC-0042", "quantity": 2, "unit_price": 1499.99},
+                ],
+            }
+        }
+    }
+
+    order_id: str = Field(description="Уникальный ID заказа. Формат: ord_[a-z0-9]{6}.")
+    status: OrderStatus = Field(description="Текущий статус заказа.")
+    customer_id: str
+    total_amount: Decimal = Field(description="Итоговая сумма с учётом скидок и доставки, в рублях.")
+    currency: str = Field(default="RUB", description="Валюта заказа. Всегда RUB.")
+    created_at: datetime
+    items: list[OrderItem]
+
+
+class ErrorResponse(BaseModel):
+    """Стандартный формат ошибки."""
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "error_code": "ORDER_NOT_FOUND",
+                "message": "Заказ ord_a1b2c3 не найден",
+                "details": {"order_id": "ord_a1b2c3"},
+                "request_id": "req_x9y8z7",
+            }
+        }
+    }
+
+    error_code: str = Field(description="Машиночитаемый код ошибки в snake_UPPER_CASE.")
+    message: str = Field(description="Человекочитаемое описание ошибки.")
+    details: dict | None = Field(default=None, description="Дополнительные данные об ошибке.")
+    request_id: str | None = Field(default=None, description="ID запроса для поддержки.")`,
+      },
+      {
+        filename: "app/routers/orders.py",
+        code: `"""Router с полной документацией эндпоинтов."""
+from fastapi import APIRouter, HTTPException, Path, Query, status
+from fastapi.responses import JSONResponse
+
+from app.schemas.order import (
+    CreateOrderRequest,
+    ErrorResponse,
+    OrderResponse,
+    OrderStatus,
+)
+
+router = APIRouter(
+    prefix="/v2/orders",
+    tags=["Orders"],
+    # Применяется ко всем эндпоинтам роутера
+    responses={
+        401: {"model": ErrorResponse, "description": "Не аутентифицирован"},
+        429: {"description": "Превышен rate limit"},
+        503: {"description": "Сервис временно недоступен"},
+    },
+)
+
+
+@router.post(
+    "",
+    response_model=OrderResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Создать новый заказ",
+    description="""
+Создаёт заказ в статусе **draft**.
+
+После создания:
+1. Резервируется товар на складе
+2. Отправляется email с подтверждением
+3. Заказ доступен в личном кабинете
+
+Для подтверждения и оплаты используйте PATCH /v2/orders/{order_id}/confirm.
+
+**Важно**: позиции с дублирующимися SKU вернут ошибку 422.
+    """,
+    responses={
+        201: {
+            "description": "Заказ успешно создан",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "order_id": "ord_a1b2c3",
+                        "status": "draft",
+                        "total_amount": 2999.98,
+                    }
+                }
+            },
+        },
+        400: {"model": ErrorResponse, "description": "Товар недоступен или недостаточно на складе"},
+        409: {"model": ErrorResponse, "description": "Дубликат заказа (идемпотентный ключ)"},
+        422: {"model": ErrorResponse, "description": "Ошибка валидации данных"},
+    },
+)
+async def create_order(order: CreateOrderRequest) -> OrderResponse:
+    from decimal import Decimal
+    from datetime import datetime
+
+    total = sum(item.unit_price * item.quantity for item in order.items)
+    return OrderResponse(
+        order_id="ord_a1b2c3",
+        status=OrderStatus.DRAFT,
+        customer_id=order.customer_id,
+        total_amount=total,
+        currency="RUB",
+        created_at=datetime.utcnow(),
+        items=order.items,
+    )
+
+
+@router.get(
+    "/{order_id}",
+    response_model=OrderResponse,
+    summary="Получить заказ по ID",
+    responses={
+        200: {"description": "Данные заказа"},
+        404: {"model": ErrorResponse, "description": "Заказ не найден"},
+    },
+)
+async def get_order(
+    order_id: str = Path(
+        title="ID заказа",
+        description="Уникальный идентификатор заказа. Формат: ord_[a-z0-9]{6}.",
+        pattern=r"^ord_[a-z0-9]{6}$",
+        example="ord_a1b2c3",
+    ),
+) -> OrderResponse:
+    raise HTTPException(
+        status_code=404,
+        detail={"error_code": "ORDER_NOT_FOUND", "message": f"Заказ {order_id} не найден"},
+    )
+
+
+@router.get(
+    "",
+    response_model=list[OrderResponse],
+    summary="Список заказов клиента",
+    responses={
+        200: {"description": "Список заказов (может быть пустым)"},
+    },
+)
+async def list_orders(
+    customer_id: str = Query(
+        title="ID клиента",
+        description="Фильтр по ID клиента. Обязателен для анонимных запросов.",
+        example="usr_9f3a2b",
+    ),
+    status: OrderStatus | None = Query(
+        default=None,
+        title="Фильтр по статусу",
+        description="Если не указан — возвращаются заказы всех статусов.",
+        example=OrderStatus.CONFIRMED,
+    ),
+    limit: int = Query(
+        default=20,
+        ge=1,
+        le=100,
+        title="Количество результатов",
+        description="Пагинация: количество заказов на странице.",
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+        title="Смещение",
+        description="Пагинация: пропустить первые N заказов.",
+    ),
+) -> list[OrderResponse]:
+    return []
+
+
+@router.patch(
+    "/{order_id}/cancel",
+    response_model=OrderResponse,
+    summary="Отменить заказ",
+    description="""
+Отменяет заказ. Возможно только в статусах **draft** и **confirmed**.
+
+При отмене:
+- Снимается резервирование товара
+- Инициируется возврат если была оплата
+- Отправляется уведомление клиенту
+
+Отмена заказов в статусе shipped и delivered недоступна через API.
+    """,
+    responses={
+        200: {"description": "Заказ успешно отменён"},
+        409: {"model": ErrorResponse, "description": "Заказ нельзя отменить в текущем статусе"},
+        404: {"model": ErrorResponse, "description": "Заказ не найден"},
+    },
+)
+async def cancel_order(
+    order_id: str = Path(pattern=r"^ord_[a-z0-9]{6}$", example="ord_a1b2c3"),
+) -> OrderResponse:
+    raise HTTPException(status_code=404, detail="Not found")`,
+      },
+      {
+        filename: "app/routers/legacy.py",
+        code: `"""Устаревшие v1-эндпоинты с deprecation-маркерами.
+
+Deprecated-эндпоинты:
+  - отображаются в Swagger UI перечёркнутыми
+  - содержат предупреждение в description
+  - возвращают заголовок Deprecation с датой удаления
+"""
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+router = APIRouter(
+    prefix="/v1",
+    tags=["Legacy v1"],
+)
+
+
+@router.get(
+    "/orders",
+    deprecated=True,  # ← ключевой параметр — помечает в OpenAPI как deprecated
+    summary="[DEPRECATED] Список заказов",
+    description="""
+> ⚠️ **Устаревший эндпоинт.** Будет удалён **01.07.2025**.
+>
+> Используйте GET /v2/orders — он поддерживает пагинацию, фильтрацию по статусу
+> и возвращает расширенную информацию о заказе.
+
+Возвращает все заказы без пагинации (устаревшее поведение).
+    """,
+    responses={
+        200: {"description": "Список всех заказов (без пагинации)"},
+    },
+)
+async def legacy_list_orders():
+    response = JSONResponse(content={"orders": [], "total": 0})
+    # Стандартные заголовки для deprecated API
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = "Tue, 01 Jul 2025 00:00:00 GMT"
+    response.headers["Link"] = '</v2/orders>; rel="successor-version"'
+    return response
+
+
+@router.post(
+    "/orders",
+    deprecated=True,
+    summary="[DEPRECATED] Создать заказ (v1)",
+    description="""
+> ⚠️ **Устаревший эндпоинт.** Будет удалён **01.07.2025**.
+>
+> Используйте POST /v2/orders — он поддерживает промокоды,
+> множественные методы оплаты и имеет строгую валидацию.
+    """,
+)
+async def legacy_create_order(order: dict):
+    response = JSONResponse(
+        status_code=201,
+        content={"order_id": "ord_legacy_001"},
+    )
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = "Tue, 01 Jul 2025 00:00:00 GMT"
+    return response`,
+      },
+      {
+        filename: "app/main.py",
+        code: `"""FastAPI-приложение с полностью настроенной документацией.
+
+Особенности конфигурации:
+  - Кастомный Swagger UI (тема, persist authorization)
+  - ReDoc с развёрнутыми примерами
+  - Security schemes для JWT и API Key
+  - Кастомный OpenAPI-генератор для добавления security schemes
+"""
+from contextlib import asynccontextmanager
+
+import fastapi.openapi.utils as openapi_utils
+from fastapi import FastAPI
+from fastapi.openapi.docs import (
+    get_redoc_html,
+    get_swagger_ui_html,
+    get_swagger_ui_oauth2_redirect_html,
+)
+from fastapi.staticfiles import StaticFiles
+
+from app.docs.config import (
+    OPENAPI_DESCRIPTION,
+    OPENAPI_TAGS,
+    OPENAPI_TITLE,
+    OPENAPI_VERSION,
+    SECURITY_SCHEMES,
+)
+from app.routers.legacy import router as legacy_router
+from app.routers.orders import router as orders_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+
+
+# ── Создание приложения ────────────────────────────────────────────────────────
+# docs_url=None / redoc_url=None — отключаем дефолтные UI,
+# чтобы настроить их вручную ниже
+
+app = FastAPI(
+    title=OPENAPI_TITLE,
+    version=OPENAPI_VERSION,
+    description=OPENAPI_DESCRIPTION,
+    openapi_tags=OPENAPI_TAGS,
+    contact={
+        "name": "API Support Team",
+        "email": "api-support@example.com",
+        "url": "https://docs.example.com",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    terms_of_service="https://example.com/terms",
+    docs_url=None,    # отключаем дефолтный Swagger
+    redoc_url=None,   # отключаем дефолтный ReDoc
+    lifespan=lifespan,
+)
+
+# ── Роутеры ────────────────────────────────────────────────────────────────────
+app.include_router(orders_router)
+app.include_router(legacy_router)
+
+
+# ── Кастомный OpenAPI с security schemes ──────────────────────────────────────
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = openapi_utils.get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        openapi_version=app.openapi_version,
+        tags=app.openapi_tags,
+        routes=app.routes,
+        contact=app.contact,
+        license_info=app.license_info,
+    )
+
+    # Добавляем security schemes (JWT + API Key)
+    schema.setdefault("components", {})
+    schema["components"]["securitySchemes"] = SECURITY_SCHEMES
+
+    # Применяем BearerAuth ко всем эндпоинтам по умолчанию
+    # (можно переопределить на уровне роутера или эндпоинта)
+    for path_data in schema.get("paths", {}).values():
+        for operation in path_data.values():
+            if isinstance(operation, dict):
+                operation.setdefault("security", [{"BearerAuth": []}])
+
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = custom_openapi  # type: ignore[method-assign]
+
+
+# ── Кастомный Swagger UI ──────────────────────────────────────────────────────
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui():
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title=f"{OPENAPI_TITLE} — Swagger UI",
+        # CDN или self-hosted для production
+        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
+        swagger_ui_parameters={
+            "persistAuthorization": True,      # токен сохраняется после обновления страницы
+            "displayRequestDuration": True,    # показывает время запроса
+            "filter": True,                    # поиск по эндпоинтам
+            "tryItOutEnabled": True,           # кнопка Try it out активна по умолчанию
+            "defaultModelsExpandDepth": 2,     # раскрывает модели на 2 уровня
+            "docExpansion": "list",            # "list" | "full" | "none"
+            "syntaxHighlight.theme": "monokai",
+            "tagsSorter": "alpha",             # теги в алфавитном порядке
+        },
+    )
+
+
+@app.get("/docs/oauth2-redirect", include_in_schema=False)
+async def swagger_oauth2_redirect():
+    return get_swagger_ui_oauth2_redirect_html()
+
+
+# ── Кастомный ReDoc ────────────────────────────────────────────────────────────
+
+@app.get("/redoc", include_in_schema=False)
+async def custom_redoc():
+    return get_redoc_html(
+        openapi_url="/openapi.json",
+        title=f"{OPENAPI_TITLE} — ReDoc",
+        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@latest/bundles/redoc.standalone.js",
+        redoc_favicon_url="https://example.com/favicon.ico",
+        with_google_fonts=False,  # отключаем для production (GDPR)
+    )
+
+
+# ── Health check ───────────────────────────────────────────────────────────────
+
+@app.get(
+    "/health",
+    include_in_schema=False,  # не показываем в документации
+    tags=["System"],
+)
+async def health():
+    return {"status": "ok", "version": OPENAPI_VERSION}`,
+      },
+      {
+        filename: "publish_docs.sh",
+        code: `#!/bin/bash
+# Автоматическая публикация документации при деплое.
+# Экспортирует OpenAPI-схему и публикует в нескольких форматах.
+
+set -euo pipefail
+
+API_BASE_URL="\${API_BASE_URL:-http://localhost:8000}"
+DOCS_OUTPUT_DIR="\${DOCS_OUTPUT_DIR:-./docs-output}"
+
+mkdir -p "\$DOCS_OUTPUT_DIR"
+
+echo ">>> Дожидаемся запуска API..."
+for i in \$(seq 1 30); do
+  if curl -sf "\$API_BASE_URL/health" > /dev/null 2>&1; then
+    echo "API доступен"
+    break
+  fi
+  sleep 2
+done
+
+echo ">>> Экспорт OpenAPI JSON..."
+curl -sf "\$API_BASE_URL/openapi.json" \\
+  -o "\$DOCS_OUTPUT_DIR/openapi.json"
+
+echo ">>> Генерация HTML-документации через Redocly CLI..."
+# npm install -g @redocly/cli
+redocly build-docs \\
+  "\$DOCS_OUTPUT_DIR/openapi.json" \\
+  --output "\$DOCS_OUTPUT_DIR/index.html" \\
+  --title "E-Commerce API Docs"
+
+echo ">>> Валидация OpenAPI-схемы..."
+redocly lint "\$DOCS_OUTPUT_DIR/openapi.json"
+
+echo ">>> Публикация на GitHub Pages / S3..."
+# Вариант 1: GitHub Pages
+# git subtree push --prefix docs-output origin gh-pages
+
+# Вариант 2: AWS S3
+# aws s3 sync "\$DOCS_OUTPUT_DIR" s3://your-docs-bucket --delete
+
+# Вариант 3: Cloudflare Pages
+# npx wrangler pages publish "\$DOCS_OUTPUT_DIR" --project-name api-docs
+
+echo "Документация опубликована: \$DOCS_OUTPUT_DIR/index.html"`,
+      },
+    ],
+    explanation: `**Автогенерация OpenAPI из кода**: FastAPI строит OpenAPI 3.1 схему автоматически из аннотаций типов, Pydantic-моделей и параметров декораторов. Принцип «single source of truth» — документация не устаревает, потому что она и есть код. \`Field(description=..., example=...)\` → попадает в \`properties\` OpenAPI. \`response_model=OrderResponse\` → попадает в \`responses.200.schema\`.
+
+**\`json_schema_extra\` и multiple examples**: стандартный \`example\` задаёт один пример. \`json_schema_extra.examples\` задаёт именованные примеры — в Swagger UI появляется выпадающий список «Простой заказ» / «Bulk-заказ». Это критично для сложных запросов: разработчик сразу видит реалистичные данные вместо Lorem ipsum.
+
+**Кастомный Swagger UI с \`docs_url=None\`**: отключаем встроенный UI и создаём собственный endpoint. Ключевые параметры: \`persistAuthorization: true\` — токен не сбрасывается при обновлении страницы (удобно при разработке), \`tryItOutEnabled: true\` — «Try it out» активен по умолчанию, не нужно жать кнопку. \`filter: true\` — поиск по эндпоинтам при большом API.
+
+**Security schemes и кнопка Authorize**: \`components.securitySchemes\` в OpenAPI → кнопка «Authorize» в Swagger UI. Пользователь вводит JWT один раз и он применяется ко всем запросам в «Try it out». В коде добавляем через переопределение \`app.openapi()\` — штатный \`generate_unique_id_function\` не поддерживает security schemes напрямую.
+
+**\`deprecated=True\` и deprecation headers**: \`deprecated=True\` в декораторе → эндпоинт отображается перечёркнутым в Swagger UI и ReDoc. По HTTP-стандарту (RFC 8594) устаревшие API должны возвращать заголовок \`Deprecation: true\` и \`Sunset: <дата>\`. Заголовок \`Link: </v2/orders>; rel="successor-version"\` указывает на актуальный эндпоинт — клиенты могут автоматически обновить URL.
+
+**Теги с описаниями и externalDocs**: \`openapi_tags\` в FastAPI принимает список с \`name\`, \`description\` (Markdown) и \`externalDocs\`. В Swagger UI теги превращаются в секции с описанием — разработчик понимает контекст до чтения эндпоинтов. \`description\` поддерживает полный Markdown: таблицы, код, ссылки. Это особенно важно для объяснения жизненного цикла сущностей (статусы заказа).`,
+  },
 
 ];
