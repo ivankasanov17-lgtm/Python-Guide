@@ -6640,4 +6640,5834 @@ test-migrations:
 **Тестирование rollback**: CI должен проверять не только \`upgrade head\`, но и \`downgrade base\`. Иначе \`downgrade()\` в методе будет нерабочим в момент когда он действительно нужен — при откате в production.`,
   },
 
+  {
+    id: "sqlalchemy-query-optimization",
+    title: "Оптимизация запросов в async SQLAlchemy",
+    task: "Проведите оптимизацию ORM-запросов в FastAPI-приложении. Устраните N+1 через selectinload и joinedload, правильно используйте lazy=\"raise\" для обнаружения непреднамеренных lazy load, реализуйте batch loading для связанных объектов, используйте with_loader_criteria для row-level security, настройте connection pool (pool_size, max_overflow, pool_timeout).",
+    files: [
+      {
+        filename: "app/core/database.py",
+        code: `from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from app.core.config import settings
+
+engine = create_async_engine(
+    settings.database_url,
+    # ── Pool settings ────────────────────────────────────────────────────────
+    # pool_size: постоянные соединения в пуле.
+    # Правило: pool_size = кол-во worker-процессов × (avg concurrency per worker).
+    # Для uvicorn с 4 воркерами и ~5 одновременных запросов: 4×5 = 20.
+    pool_size=20,
+    # max_overflow: временные соединения сверх pool_size при пиковой нагрузке.
+    # Итого максимум = pool_size + max_overflow = 20 + 10 = 30 соединений к PG.
+    max_overflow=10,
+    # pool_timeout: сколько секунд ждать свободного соединения из пула.
+    # По истечении — PoolTimeout. Лучше упасть быстро, чем зависнуть.
+    pool_timeout=30,
+    # pool_recycle: пересоздаёт соединения старше N секунд.
+    # Защита от "stale connection" когда PG закрыл со своей стороны.
+    pool_recycle=1800,
+    # pool_pre_ping: перед выдачей из пула делает SELECT 1.
+    # Немного медленнее, но гарантирует живое соединение.
+    pool_pre_ping=True,
+    # echo="debug" выводит все SQL + параметры — только для локальной отладки
+    echo=settings.debug,
+)
+
+async_session_factory = async_sessionmaker(
+    engine,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)`,
+      },
+      {
+        filename: "app/models/blog.py",
+        code: `from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import Base, TimestampMixin
+
+
+class User(Base, TimestampMixin):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # lazy="raise" — любой необъявленный доступ к posts бросает
+    # sqlalchemy.exc.InvalidRequestError: 'User.posts' is not available due to lazy='raise'
+    # Это инструмент разработки: заставляет явно прописывать загрузку.
+    posts: Mapped[list["Post"]] = relationship(
+        back_populates="author",
+        lazy="raise",
+    )
+
+
+class Post(Base, TimestampMixin):
+    __tablename__ = "posts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str] = mapped_column(Text)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+    author: Mapped["User"] = relationship(back_populates="posts", lazy="raise")
+    comments: Mapped[list["Comment"]] = relationship(
+        back_populates="post",
+        lazy="raise",
+        cascade="all, delete-orphan",
+    )
+
+
+class Comment(Base, TimestampMixin):
+    __tablename__ = "comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    body: Mapped[str] = mapped_column(Text)
+    is_visible: Mapped[bool] = mapped_column(Boolean, default=True)
+    post_id: Mapped[int] = mapped_column(ForeignKey("posts.id"), index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+    post: Mapped["Post"] = relationship(back_populates="comments", lazy="raise")
+    author: Mapped["User"] = relationship(lazy="raise")`,
+      },
+      {
+        filename: "app/repositories/post_repository.py",
+        code: `from sqlalchemy import select, func
+from sqlalchemy.orm import (
+    joinedload,
+    selectinload,
+    contains_eager,
+    with_loader_criteria,
+    raiseload,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.blog import Comment, Post, User
+
+
+class PostRepository:
+    def __init__(self, session: AsyncSession, current_user_id: int | None = None) -> None:
+        self.session = session
+        self.current_user_id = current_user_id
+
+    # ── N+1 антипаттерн и его устранение ────────────────────────────────────
+
+    async def get_posts_bad(self) -> list[Post]:
+        """
+        ПЛОХО: N+1 запросов.
+        Цикл с await post.awaitable_attrs.author делает SELECT на каждый пост.
+        100 постов = 101 запрос к БД.
+        """
+        result = await self.session.execute(select(Post))
+        posts = list(result.scalars().all())
+        # ↓ каждый вызов — отдельный SELECT users WHERE id = ?
+        # for post in posts:
+        #     author = await post.awaitable_attrs.author
+        return posts
+
+    async def get_posts_with_author(self, *, limit: int = 20) -> list[Post]:
+        """
+        ХОРОШО: joinedload для to-one (Post→User).
+        Один SQL с LEFT OUTER JOIN — автор загружается вместе с постом.
+        Для to-one оптимально: нет дублирования строк.
+        """
+        result = await self.session.execute(
+            select(Post)
+            .options(joinedload(Post.author))
+            .where(Post.is_published.is_(True))
+            .order_by(Post.created_at.desc())
+            .limit(limit)
+        )
+        # unique() обязателен при joinedload — убирает дубли из картезианского произведения
+        return list(result.unique().scalars().all())
+
+    async def get_post_full(self, post_id: int) -> Post | None:
+        """
+        Полная загрузка: автор (to-one) + комментарии с авторами (to-many → to-one).
+
+        Стратегия:
+        - joinedload(Post.author): JOIN в основном запросе
+        - selectinload(Post.comments): отдельный SELECT WHERE post_id IN (...)
+        - .joinedload(Comment.author): JOIN к запросу комментариев
+        """
+        result = await self.session.execute(
+            select(Post)
+            .where(Post.id == post_id)
+            .options(
+                joinedload(Post.author),
+                selectinload(Post.comments).joinedload(Comment.author),
+            )
+        )
+        return result.unique().scalar_one_or_none()
+
+    # ── with_loader_criteria — row-level security ────────────────────────────
+
+    async def get_posts_with_visible_comments(self, post_id: int) -> Post | None:
+        """
+        with_loader_criteria добавляет WHERE-условие к загрузке конкретного relationship.
+        Здесь: грузим только комментарии где is_visible=True.
+
+        Это row-level фильтр на уровне ORM — работает прозрачно для всего кода,
+        который обращается к post.comments после этого запроса.
+        """
+        result = await self.session.execute(
+            select(Post)
+            .where(Post.id == post_id)
+            .options(
+                joinedload(Post.author),
+                selectinload(Post.comments).joinedload(Comment.author),
+                # Фильтруем комментарии прямо при загрузке
+                with_loader_criteria(
+                    Comment,
+                    Comment.is_visible.is_(True),
+                    include_aliases=True,
+                ),
+            )
+        )
+        return result.unique().scalar_one_or_none()
+
+    async def get_my_posts_with_all_comments(self) -> list[Post]:
+        """
+        Комбинация: обычные пользователи видят только visible комментарии,
+        автор поста видит все свои комментарии.
+        """
+        if self.current_user_id is None:
+            criteria = Comment.is_visible.is_(True)
+        else:
+            # Автор видит все комментарии к своим постам
+            criteria = (
+                Comment.is_visible.is_(True)
+                | (Post.author_id == self.current_user_id)
+            )
+
+        result = await self.session.execute(
+            select(Post)
+            .where(Post.is_published.is_(True))
+            .options(
+                joinedload(Post.author),
+                selectinload(Post.comments),
+                with_loader_criteria(Comment, criteria, include_aliases=True),
+            )
+        )
+        return list(result.unique().scalars().all())
+
+    # ── Batch loading вручную ────────────────────────────────────────────────
+
+    async def get_posts_batch(self, post_ids: list[int]) -> dict[int, Post]:
+        """
+        Загружаем несколько постов одним запросом (IN-clause).
+        Возвращаем dict для O(1) доступа по id в вызывающем коде.
+        """
+        if not post_ids:
+            return {}
+        result = await self.session.execute(
+            select(Post)
+            .where(Post.id.in_(post_ids))
+            .options(joinedload(Post.author))
+        )
+        posts = result.unique().scalars().all()
+        return {post.id: post for post in posts}
+
+    # ── contains_eager — фильтрация + загрузка за один JOIN ─────────────────
+
+    async def get_users_with_published_posts(self) -> list[User]:
+        """
+        contains_eager: делаем явный JOIN, и говорим SQLAlchemy
+        использовать его результат для заполнения relationship.
+
+        Преимущество перед joinedload: можно фильтровать по полям joined-таблицы
+        (WHERE posts.is_published = true) — joinedload так не умеет.
+        """
+        result = await self.session.execute(
+            select(User)
+            .join(User.posts)                       # явный JOIN
+            .where(Post.is_published.is_(True))     # фильтр по joined-таблице
+            .options(contains_eager(User.posts))    # использовать JOIN для relationship
+            .order_by(User.id)
+        )
+        return list(result.unique().scalars().all())
+
+    # ── raiseload — явный запрет всей ленивой загрузки ───────────────────────
+
+    async def get_posts_safe(self, *, limit: int = 50) -> list[Post]:
+        """
+        raiseload("*") — запрещает ленивую загрузку ВСЕХ relationship.
+        Любой непредвиденный доступ к незагруженному атрибуту бросает исключение.
+        Жёстче чем lazy="raise" в модели: работает на уровне конкретного запроса.
+        """
+        result = await self.session.execute(
+            select(Post)
+            .options(
+                joinedload(Post.author),   # явно загружаем автора
+                raiseload("*"),            # всё остальное — запрещено
+            )
+            .limit(limit)
+        )
+        return list(result.unique().scalars().all())
+
+    # ── Агрегация без загрузки объектов ─────────────────────────────────────
+
+    async def get_comment_counts(self, post_ids: list[int]) -> dict[int, int]:
+        """
+        Считаем комментарии агрегацией — не грузим объекты Comment в память.
+        GROUP BY + COUNT вместо len(post.comments) для каждого поста.
+        """
+        if not post_ids:
+            return {}
+        result = await self.session.execute(
+            select(Comment.post_id, func.count(Comment.id).label("cnt"))
+            .where(Comment.post_id.in_(post_ids))
+            .where(Comment.is_visible.is_(True))
+            .group_by(Comment.post_id)
+        )
+        return {row.post_id: row.cnt for row in result}`,
+      },
+      {
+        filename: "app/middleware/query_profiling.py",
+        code: `"""
+Query profiling middleware: логирует медленные запросы.
+Подключается к SQLAlchemy event system — не меняет код репозиториев.
+"""
+
+import time
+import logging
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncEngine
+
+logger = logging.getLogger("sqlalchemy.slow")
+
+SLOW_QUERY_THRESHOLD_MS = 100  # запросы дольше 100 мс — в лог
+
+
+def setup_query_profiling(engine: AsyncEngine) -> None:
+    @event.listens_for(engine.sync_engine, "before_cursor_execute")
+    def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        conn.info.setdefault("query_start_time", []).append(time.monotonic())
+
+    @event.listens_for(engine.sync_engine, "after_cursor_execute")
+    def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        elapsed_ms = (time.monotonic() - conn.info["query_start_time"].pop()) * 1000
+        if elapsed_ms > SLOW_QUERY_THRESHOLD_MS:
+            logger.warning(
+                "Slow query (%.1f ms): %s | params: %s",
+                elapsed_ms,
+                statement[:200],
+                str(parameters)[:100],
+            )`,
+      },
+    ],
+    explanation: `**N+1 проблема**: возникает когда для списка из N объектов делается N дополнительных запросов для загрузки связанных данных. SQLAlchemy с \`lazy="raise"\` превращает это в явную ошибку на этапе разработки — лучше упасть локально, чем молча деградировать в production.
+
+**joinedload vs selectinload**: \`joinedload\` добавляет JOIN к основному SELECT — одним запросом. Идеален для to-one (Post→User): нет дублирования строк. Для to-many (Post→[Comments]) создаёт декартово произведение: 1 пост × 100 комментариев = 100 строк в ответе БД. \`selectinload\` делает отдельный \`WHERE post_id IN (...)\` — эффективнее для to-many. Смешивание — стандартная практика.
+
+**\`result.unique()\`**: при joinedload SQLAlchemy получает дублированные строки (из-за JOIN). \`unique()\` дедуплицирует их по identity map. Без \`unique()\` получите список с повторами. Правило: всегда вызывать \`unique()\` после запроса с \`joinedload\`.
+
+**\`with_loader_criteria\`**: применяет дополнительный WHERE к загрузке relationship без изменения основного запроса. Мощный инструмент для row-level security: один раз настроили через Depends — и все запросы автоматически фильтруют данные по пользователю.
+
+**\`contains_eager\`**: позволяет фильтровать по полям joined-таблицы (чего не умеет \`joinedload\`) и переиспользовать JOIN для заполнения relationship. Паттерн: явный \`join()\` + \`where()\` по joined-таблице + \`options(contains_eager(...))\`.
+
+**Pool sizing**: формула — \`pool_size ≈ workers × avg_concurrent_queries_per_worker\`. PostgreSQL по умолчанию разрешает 100 соединений; суммарный pool всех инстансов приложения не должен превышать \`max_connections - 10\` (резерв для psql/мониторинга). \`pool_pre_ping=True\` добавляет ~0.1 мс на запрос, но исключает ошибки "connection already closed".
+
+**Query profiling через events**: SQLAlchemy event system — неинвазивный способ добавить логирование/метрики без изменения кода репозиториев. \`before_cursor_execute\` / \`after_cursor_execute\` работают для всех запросов через данный engine. В production используйте OpenTelemetry вместо логов.`,
+  },
+
+  {
+    id: "mongodb-motor-async",
+    title: "MongoDB и Motor — async ODM",
+    task: "Реализуйте async-слой для работы с MongoDB через motor. Создайте базовый репозиторий с CRUD, сложный агрегационный pipeline для аналитики, индексы для оптимизации запросов (включая text, geospatial), реализуйте пагинацию через cursor. Сравните подход с MongoDB и SQL для разных сценариев. Реализуйте миграции схемы для MongoDB (schema validation).",
+    files: [
+      {
+        filename: "app/core/mongo.py",
+        code: `from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from app.core.config import settings
+
+# Motor — асинхронная обёртка над pymongo.
+# Клиент создаётся один раз и переиспользуется: он thread-safe и connection-pooling внутри.
+_client: AsyncIOMotorClient | None = None
+
+
+def get_client() -> AsyncIOMotorClient:
+    global _client
+    if _client is None:
+        _client = AsyncIOMotorClient(
+            settings.mongodb_url,
+            # maxPoolSize: максимум соединений в пуле (default 100)
+            maxPoolSize=50,
+            # minPoolSize: минимум — держим соединения тёплыми
+            minPoolSize=5,
+            # serverSelectionTimeoutMS: сколько ждём выбора сервера при старте
+            serverSelectionTimeoutMS=5000,
+        )
+    return _client
+
+
+def get_database() -> AsyncIOMotorDatabase:
+    return get_client()[settings.mongodb_database]
+
+
+async def close_client() -> None:
+    global _client
+    if _client is not None:
+        _client.close()
+        _client = None`,
+      },
+      {
+        filename: "app/repositories/mongo_base.py",
+        code: `from typing import Any, Generic, TypeVar
+from datetime import datetime, UTC
+
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
+
+T = TypeVar("T", bound=dict)
+
+
+class MongoRepository(Generic[T]):
+    """
+    Базовый репозиторий для MongoDB.
+    В отличие от SQLAlchemy, MongoDB не требует ORM — работаем с dict напрямую
+    или через Pydantic-модели для валидации.
+    """
+
+    collection_name: str  # переопределить в подклассе
+
+    def __init__(self, db: AsyncIOMotorDatabase) -> None:
+        self.collection: AsyncIOMotorCollection = db[self.collection_name]
+
+    # ── CREATE ───────────────────────────────────────────────────────────────
+
+    async def create(self, document: dict[str, Any]) -> str:
+        """Вставляет документ, возвращает строковый id."""
+        document["created_at"] = datetime.now(UTC)
+        document["updated_at"] = datetime.now(UTC)
+        result = await self.collection.insert_one(document)
+        return str(result.inserted_id)
+
+    async def bulk_create(self, documents: list[dict[str, Any]]) -> list[str]:
+        now = datetime.now(UTC)
+        for doc in documents:
+            doc["created_at"] = now
+            doc["updated_at"] = now
+        result = await self.collection.insert_many(documents)
+        return [str(oid) for oid in result.inserted_ids]
+
+    # ── READ ─────────────────────────────────────────────────────────────────
+
+    async def get_by_id(self, id: str) -> dict[str, Any] | None:
+        document = await self.collection.find_one({"_id": ObjectId(id)})
+        if document:
+            document["id"] = str(document.pop("_id"))
+        return document
+
+    async def find(
+        self,
+        filter: dict[str, Any] | None = None,
+        *,
+        projection: dict[str, Any] | None = None,
+        sort: list[tuple[str, int]] | None = None,
+        limit: int = 20,
+        skip: int = 0,
+    ) -> list[dict[str, Any]]:
+        cursor = self.collection.find(filter or {}, projection)
+        if sort:
+            cursor = cursor.sort(sort)
+        cursor = cursor.skip(skip).limit(limit)
+        documents = await cursor.to_list(length=limit)
+        for doc in documents:
+            doc["id"] = str(doc.pop("_id"))
+        return documents
+
+    async def count(self, filter: dict[str, Any] | None = None) -> int:
+        return await self.collection.count_documents(filter or {})
+
+    # ── UPDATE ───────────────────────────────────────────────────────────────
+
+    async def update(self, id: str, updates: dict[str, Any]) -> bool:
+        updates["updated_at"] = datetime.now(UTC)
+        result = await self.collection.update_one(
+            {"_id": ObjectId(id)},
+            {"$set": updates},
+        )
+        return result.modified_count > 0
+
+    async def upsert(self, filter: dict[str, Any], document: dict[str, Any]) -> str:
+        """Обновляет если существует, создаёт если нет."""
+        document["updated_at"] = datetime.now(UTC)
+        result = await self.collection.find_one_and_update(
+            filter,
+            {"$set": document, "$setOnInsert": {"created_at": datetime.now(UTC)}},
+            upsert=True,
+            return_document=True,   # возвращает документ после операции
+        )
+        return str(result["_id"])
+
+    # ── DELETE ───────────────────────────────────────────────────────────────
+
+    async def delete(self, id: str) -> bool:
+        result = await self.collection.delete_one({"_id": ObjectId(id)})
+        return result.deleted_count > 0`,
+      },
+      {
+        filename: "app/repositories/product_repository.py",
+        code: `from typing import Any
+from datetime import datetime
+
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo import ASCENDING, DESCENDING, GEOSPHERE, TEXT, IndexModel
+
+from app.repositories.mongo_base import MongoRepository
+
+
+class ProductRepository(MongoRepository):
+    collection_name = "products"
+
+    @classmethod
+    async def create_indexes(cls, db: AsyncIOMotorDatabase) -> None:
+        """
+        Создаём индексы при старте приложения (idempotent — безопасно запускать повторно).
+        В production создавайте индексы заранее (через миграцию), не при деплое:
+        на большой коллекции это может занять минуты.
+        """
+        collection = db[cls.collection_name]
+        await collection.create_indexes([
+            # Составной индекс: часто фильтруем по категории + сортируем по цене
+            IndexModel([("category", ASCENDING), ("price", ASCENDING)], name="idx_category_price"),
+            # Уникальный индекс на slug
+            IndexModel([("slug", ASCENDING)], unique=True, name="idx_slug_unique"),
+            # Text index для полнотекстового поиска по нескольким полям
+            # Weights задают приоритет: совпадение в title важнее чем в description
+            IndexModel(
+                [("title", TEXT), ("description", TEXT), ("tags", TEXT)],
+                weights={"title": 10, "description": 5, "tags": 3},
+                default_language="russian",
+                name="idx_text_search",
+            ),
+            # Geospatial index для поиска по координатам (магазины поблизости)
+            IndexModel([("location", GEOSPHERE)], name="idx_geo"),
+            # Sparse index: только документы у которых есть поле discount_until
+            IndexModel(
+                [("discount_until", ASCENDING)],
+                sparse=True,   # документы без поля не попадают в индекс
+                name="idx_discount_expiry",
+            ),
+        ])
+
+    # ── Полнотекстовый поиск ─────────────────────────────────────────────────
+
+    async def search(
+        self, query: str, *, category: str | None = None, limit: int = 20
+    ) -> list[dict]:
+        """
+        $text search использует text index.
+        $meta: "textScore" — релевантность совпадения, используем для сортировки.
+        """
+        filter: dict = {"$text": {"$search": query}}
+        if category:
+            filter["category"] = category
+
+        cursor = self.collection.find(
+            filter,
+            # Проекция: включаем score в результат
+            {"score": {"$meta": "textScore"}},
+        ).sort(
+            [("score", {"$meta": "textScore"})]  # сортировка по релевантности
+        ).limit(limit)
+
+        docs = await cursor.to_list(length=limit)
+        for doc in docs:
+            doc["id"] = str(doc.pop("_id"))
+        return docs
+
+    # ── Геопоиск ─────────────────────────────────────────────────────────────
+
+    async def find_nearby(
+        self,
+        longitude: float,
+        latitude: float,
+        *,
+        max_distance_meters: int = 5000,
+        limit: int = 20,
+    ) -> list[dict]:
+        """
+        $near требует GEOSPHERE индекс.
+        Возвращает документы отсортированные по расстоянию (ближайшие первые).
+        """
+        docs = await self.find(
+            filter={
+                "location": {
+                    "$near": {
+                        "$geometry": {
+                            "type": "Point",
+                            "coordinates": [longitude, latitude],
+                        },
+                        "$maxDistance": max_distance_meters,
+                    }
+                }
+            },
+            limit=limit,
+        )
+        return docs
+
+    # ── Cursor pagination ────────────────────────────────────────────────────
+
+    async def paginate_by_cursor(
+        self,
+        *,
+        after_id: str | None = None,
+        limit: int = 20,
+        category: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Cursor pagination по _id — более эффективна чем skip/limit на больших коллекциях.
+        _id монотонно растёт (ObjectId содержит timestamp) — используем как курсор.
+
+        Плюсы vs offset pagination:
+        - O(log n) вместо O(n) для поиска страницы
+        - Стабильна при вставках: новые документы не сдвигают страницы
+        """
+        from bson import ObjectId
+
+        filter: dict = {}
+        if category:
+            filter["category"] = category
+        if after_id:
+            # Берём документы с _id > курсора (после последнего виденного)
+            filter["_id"] = {"$gt": ObjectId(after_id)}
+
+        cursor = (
+            self.collection.find(filter)
+            .sort("_id", ASCENDING)
+            .limit(limit + 1)  # берём на 1 больше чтобы знать есть ли следующая страница
+        )
+        docs = await cursor.to_list(length=limit + 1)
+
+        has_next = len(docs) > limit
+        if has_next:
+            docs = docs[:-1]
+
+        for doc in docs:
+            doc["id"] = str(doc.pop("_id"))
+
+        next_cursor = docs[-1]["id"] if has_next and docs else None
+        return {
+            "items": docs,
+            "next_cursor": next_cursor,
+            "has_next": has_next,
+        }`,
+      },
+      {
+        filename: "app/repositories/analytics_repository.py",
+        code: `from datetime import datetime
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+
+class OrderAnalyticsRepository:
+    """Аналитические запросы через MongoDB Aggregation Pipeline."""
+
+    def __init__(self, db: AsyncIOMotorDatabase) -> None:
+        self.collection = db["orders"]
+
+    async def revenue_by_category(
+        self,
+        date_from: datetime,
+        date_to: datetime,
+    ) -> list[dict]:
+        """
+        Pipeline: фильтр → разворачиваем массив items → группируем → сортируем.
+
+        $unwind разворачивает массив: документ с items:[A,B,C]
+        превращается в 3 документа с item:A, item:B, item:C.
+        """
+        pipeline = [
+            # Шаг 1: фильтруем по диапазону дат и статусу
+            {
+                "$match": {
+                    "created_at": {"$gte": date_from, "$lte": date_to},
+                    "status": "completed",
+                }
+            },
+            # Шаг 2: разворачиваем массив позиций заказа
+            {"$unwind": "$items"},
+            # Шаг 3: группируем по категории товара
+            {
+                "$group": {
+                    "_id": "$items.category",
+                    "total_revenue": {
+                        "$sum": {"$multiply": ["$items.price", "$items.quantity"]}
+                    },
+                    "orders_count": {"$sum": 1},
+                    "avg_order_value": {"$avg": "$items.price"},
+                    "unique_products": {"$addToSet": "$items.product_id"},
+                }
+            },
+            # Шаг 4: добавляем вычисляемые поля
+            {
+                "$addFields": {
+                    "unique_products_count": {"$size": "$unique_products"},
+                    "category": "$_id",
+                }
+            },
+            # Шаг 5: убираем служебные поля
+            {"$project": {"_id": 0, "unique_products": 0}},
+            # Шаг 6: сортируем по выручке
+            {"$sort": {"total_revenue": -1}},
+        ]
+        return await self.collection.aggregate(pipeline).to_list(length=None)
+
+    async def daily_cohort_analysis(self, year: int, month: int) -> list[dict]:
+        """
+        Когортный анализ: группируем пользователей по дню регистрации,
+        смотрим их активность.
+
+        $dateToString — форматирует дату в строку для группировки по дням.
+        $lookup — аналог JOIN с другой коллекцией.
+        """
+        pipeline = [
+            {
+                "$match": {
+                    "created_at": {
+                        "$gte": datetime(year, month, 1),
+                        "$lt": datetime(year, month + 1, 1) if month < 12
+                               else datetime(year + 1, 1, 1),
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": {
+                        "$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}
+                    },
+                    "new_users": {"$addToSet": "$user_id"},
+                    "total_orders": {"$sum": 1},
+                    "total_revenue": {"$sum": "$total_amount"},
+                }
+            },
+            {
+                "$addFields": {
+                    "date": "$_id",
+                    "new_users_count": {"$size": "$new_users"},
+                    "avg_revenue_per_user": {
+                        "$divide": [
+                            "$total_revenue",
+                            {"$size": "$new_users"},
+                        ]
+                    },
+                }
+            },
+            {"$project": {"_id": 0, "new_users": 0}},
+            {"$sort": {"date": 1}},
+        ]
+        return await self.collection.aggregate(pipeline).to_list(length=None)
+
+    async def top_products_with_lookup(self, limit: int = 10) -> list[dict]:
+        """
+        $lookup — JOIN с коллекцией products.
+        $facet — параллельно вычисляет несколько sub-pipeline.
+        """
+        pipeline = [
+            {"$match": {"status": "completed"}},
+            {"$unwind": "$items"},
+            {
+                "$group": {
+                    "_id": "$items.product_id",
+                    "sold_qty": {"$sum": "$items.quantity"},
+                    "revenue": {"$sum": {"$multiply": ["$items.price", "$items.quantity"]}},
+                }
+            },
+            {"$sort": {"revenue": -1}},
+            {"$limit": limit},
+            # JOIN с коллекцией products по product_id
+            {
+                "$lookup": {
+                    "from": "products",
+                    "localField": "_id",
+                    "foreignField": "_id",
+                    "as": "product_info",
+                    "pipeline": [                        # sub-pipeline для фильтрации полей
+                        {"$project": {"title": 1, "category": 1, "slug": 1}},
+                    ],
+                }
+            },
+            # Разворачиваем массив из lookup (всегда один элемент при lookup по _id)
+            {"$unwind": {"path": "$product_info", "preserveNullAndEmpty": True}},
+            {
+                "$project": {
+                    "product_id": {"$toString": "$_id"},
+                    "title": "$product_info.title",
+                    "category": "$product_info.category",
+                    "sold_qty": 1,
+                    "revenue": 1,
+                    "_id": 0,
+                }
+            },
+        ]
+        return await self.collection.aggregate(pipeline).to_list(length=None)`,
+      },
+      {
+        filename: "app/migrations/mongo_schema_validation.py",
+        code: `"""
+MongoDB не имеет встроенного инструмента миграций как Alembic.
+Подход: скрипты-миграции с версионированием, применяемые через CLI.
+
+Schema Validation — JSON Schema на уровне коллекции:
+MongoDB отклоняет документы не соответствующие схеме.
+"""
+
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+
+PRODUCTS_SCHEMA = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["title", "price", "category", "slug", "created_at", "updated_at"],
+        "additionalProperties": True,   # False — строгий режим, не допускает лишних полей
+        "properties": {
+            "title": {
+                "bsonType": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Название товара — обязательно",
+            },
+            "price": {
+                "bsonType": "decimal",
+                "minimum": 0,
+                "description": "Цена — неотрицательное число",
+            },
+            "category": {
+                "bsonType": "string",
+                "enum": ["electronics", "clothing", "food", "books", "other"],
+            },
+            "slug": {
+                "bsonType": "string",
+                "pattern": "^[a-z0-9-]+$",
+            },
+            "tags": {
+                "bsonType": "array",
+                "items": {"bsonType": "string"},
+            },
+            "location": {
+                "bsonType": "object",
+                "required": ["type", "coordinates"],
+                "properties": {
+                    "type": {"bsonType": "string", "enum": ["Point"]},
+                    "coordinates": {
+                        "bsonType": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                    },
+                },
+            },
+        },
+    }
+}
+
+
+async def migration_001_create_products(db: AsyncIOMotorDatabase) -> None:
+    """Создаём коллекцию products со schema validation."""
+    existing = await db.list_collection_names()
+    if "products" not in existing:
+        await db.create_collection(
+            "products",
+            validator=PRODUCTS_SCHEMA,
+            # "error" — отклоняет невалидные документы (строгий режим)
+            # "warn" — вставляет, но пишет в лог (для мягкой миграции)
+            validationAction="error",
+            validationLevel="strict",
+        )
+
+
+async def migration_002_update_products_schema(db: AsyncIOMotorDatabase) -> None:
+    """
+    Обновляем schema validation для существующей коллекции.
+    collMod — команда MongoDB для изменения параметров коллекции.
+    """
+    await db.command(
+        "collMod",
+        "products",
+        validator=PRODUCTS_SCHEMA,
+        validationAction="error",
+        validationLevel="strict",
+    )
+
+
+async def migration_003_add_stock_field(db: AsyncIOMotorDatabase) -> None:
+    """
+    Data migration: добавляем поле stock = 0 для всех документов без него.
+    updateMany с $setOnInsert не подходит — используем $set + exists.
+    """
+    result = await db["products"].update_many(
+        {"stock": {"$exists": False}},       # документы без поля stock
+        {"$set": {"stock": 0}},
+    )
+    print(f"Migrated {result.modified_count} documents: added stock=0")
+
+
+# ── Migration runner ─────────────────────────────────────────────────────────
+
+MIGRATIONS = [
+    ("001_create_products", migration_001_create_products),
+    ("002_update_schema", migration_002_update_products_schema),
+    ("003_add_stock", migration_003_add_stock_field),
+]
+
+
+async def run_migrations(db: AsyncIOMotorDatabase) -> None:
+    """
+    Простой migration runner: хранит применённые миграции в коллекции _migrations.
+    """
+    applied = {
+        doc["name"]
+        async for doc in db["_migrations"].find({}, {"name": 1})
+    }
+
+    for name, migration_func in MIGRATIONS:
+        if name in applied:
+            print(f"[skip] {name}")
+            continue
+
+        print(f"[apply] {name}...")
+        await migration_func(db)
+        await db["_migrations"].insert_one(
+            {"name": name, "applied_at": __import__("datetime").datetime.utcnow()}
+        )
+        print(f"[done] {name}")`,
+      },
+      {
+        filename: "docs/mongodb_vs_sql.md",
+        code: `# MongoDB vs SQL — когда что выбирать
+
+## Используйте MongoDB когда:
+
+### 1. Схема документа нестабильна или сильно варьируется
+\`\`\`
+# Товары разных категорий имеют разные атрибуты:
+electronics: {cpu, ram, display_size, battery}
+clothing:    {size, color, material, season}
+books:       {author, isbn, pages, genre}
+\`\`\`
+В SQL — EAV (Entity-Attribute-Value) или JSONB. В MongoDB — нативно.
+
+### 2. Иерархические / вложенные данные
+\`\`\`json
+{
+  "order_id": "...",
+  "items": [
+    {"product_id": "...", "qty": 2, "options": {"color": "red"}},
+    {"product_id": "...", "qty": 1, "options": {"size": "XL"}}
+  ],
+  "shipping": {"address": {...}, "method": "express"}
+}
+\`\`\`
+Один документ = один запрос. В SQL: 3+ таблицы + JOIN.
+
+### 3. Высокая частота write-операций на документ
+Атомарное обновление вложенного поля: $inc, $push, $set.
+Без блокировки всей строки как в SQL UPDATE.
+
+### 4. Time-series / event log (с TTL-индексами)
+\`\`\`python
+# TTL-индекс: MongoDB автоматически удаляет документы старше N секунд
+await collection.create_index("created_at", expireAfterSeconds=86400*30)
+\`\`\`
+
+## Используйте PostgreSQL когда:
+
+### 1. Сложные JOIN между сущностями
+Заказы + пользователи + продукты + скидки — реляционная модель здесь выигрывает.
+
+### 2. ACID-транзакции между несколькими коллекциями
+MongoDB поддерживает multi-document transactions с версии 4.0,
+но они значительно медленнее чем PostgreSQL-транзакции.
+
+### 3. Агрегации по большим объёмам данных
+PostgreSQL с партиционированием и материализованными view быстрее
+MongoDB Aggregation Pipeline на аналитических запросах.
+
+### 4. Строгая схема с FK-constraints
+Целостность данных на уровне БД — только в SQL.
+
+## Гибридный подход (наш проект):
+- PostgreSQL: пользователи, заказы, транзакции (ACID, FK)
+- MongoDB: каталог товаров (гибкая схема), сессии, логи событий`,
+      },
+    ],
+    explanation: `**Motor vs pymongo**: Motor — асинхронная обёртка над pymongo, использует тот же API. Клиент Motor управляет connection pool внутри — создаём один экземпляр на всё приложение. \`AsyncIOMotorClient\` совместим с asyncio event loop FastAPI.
+
+**ObjectId как курсор**: ObjectId содержит 4 байта timestamp — монотонно возрастает. Cursor pagination через \`{"_id": {"$gt": last_id}}\` использует первичный индекс (_id индексируется всегда). Значительно эффективнее \`skip(N)\` на больших коллекциях: skip сканирует N документов чтобы их пропустить.
+
+**Text index**: один text index на коллекцию, может покрывать несколько полей. \`weights\` задают относительный приоритет полей в релевантности. \`default_language\` влияет на стемминг (русский: "покупки" и "покупать" — одно слово). Запрос через \`$text: {$search: "..."}\` — поддерживает фразы ("exact phrase"), исключения (-word).
+
+**\$unwind + \$group**: классический паттерн для агрегации по элементам массива. \$unwind "разворачивает" документ по массиву — аналог CROSS JOIN LATERAL в SQL. После \$group — агрегируем как обычно. \$lookup — аналог LEFT JOIN с другой коллекцией, поддерживает sub-pipeline для фильтрации возвращаемых полей.
+
+**Schema Validation**: JSON Schema применяется на уровне коллекции. \`validationAction: "error"\` — MongoDB отклоняет невалидные документы. \`validationLevel: "strict"\` — проверяет и вставки, и обновления. Для постепенного внедрения: сначала \`warn\` (логирует нарушения без отклонения), потом \`error\`.
+
+**Migration runner**: MongoDB не имеет встроенного инструмента как Alembic. Простой паттерн — коллекция \`_migrations\` с именами применённых скриптов. Для production используйте mongock или migrate-mongo. Ключевое требование: миграции должны быть идемпотентными (\`$exists: false\`, \`create_collection\` с проверкой).`,
+  },
+
+  {
+    id: "redis-caching-advanced",
+    title: "Кэширование с Redis — продвинутые паттерны",
+    task: "Реализуйте многоуровневое кэширование через redis-py async. Создайте декоратор @cache(ttl=300, key_builder=...) для автоматического кэширования результатов функций, реализуйте cache stampede protection (probabilistic early expiration или locking), cache invalidation по тегам, distributed rate limiting через Redis sliding window. Используйте Redis data structures (Sorted Sets, HyperLogLog) для специфических задач.",
+    files: [
+      {
+        filename: "app/core/redis.py",
+        code: `import redis.asyncio as aioredis
+from app.core.config import settings
+
+# Единственный пул соединений на всё приложение
+# decode_responses=True — автоматически декодирует bytes → str
+_redis: aioredis.Redis | None = None
+
+
+def get_redis() -> aioredis.Redis:
+    global _redis
+    if _redis is None:
+        _redis = aioredis.from_url(
+            settings.redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+            max_connections=20,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+            retry_on_timeout=True,
+        )
+    return _redis
+
+
+async def close_redis() -> None:
+    global _redis
+    if _redis is not None:
+        await _redis.aclose()
+        _redis = None`,
+      },
+      {
+        filename: "app/cache/decorator.py",
+        code: `"""
+@cache decorator: кэширует результат async-функции в Redis.
+
+Возможности:
+- Настраиваемый TTL
+- Кастомный key_builder
+- Tag-based invalidation
+- Cache stampede protection через probabilistic early expiration
+"""
+
+import asyncio
+import functools
+import hashlib
+import json
+import math
+import random
+import time
+from collections.abc import Callable
+from typing import Any
+
+import redis.asyncio as aioredis
+
+from app.core.redis import get_redis
+
+# ── Сериализация ─────────────────────────────────────────────────────────────
+
+def _serialize(value: Any) -> str:
+    """JSON + fallback через repr для несериализуемых типов."""
+    try:
+        return json.dumps(value, default=str, ensure_ascii=False)
+    except TypeError:
+        return json.dumps(repr(value))
+
+
+def _deserialize(value: str) -> Any:
+    return json.loads(value)
+
+
+# ── Key builder ───────────────────────────────────────────────────────────────
+
+def default_key_builder(func: Callable, *args: Any, **kwargs: Any) -> str:
+    """
+    Строит ключ из модуля, имени функции и хэша аргументов.
+    Хэш нужен чтобы ключ не вырастал бесконечно при сложных аргументах.
+    """
+    args_repr = _serialize({"args": args, "kwargs": kwargs})
+    args_hash = hashlib.md5(args_repr.encode()).hexdigest()[:12]
+    return f"cache:{func.__module__}.{func.__qualname__}:{args_hash}"
+
+
+# ── Probabilistic early expiration (XFetch) ──────────────────────────────────
+
+def _should_recompute(expiry_ts: float, ttl: int, beta: float = 1.0) -> bool:
+    """
+    XFetch алгоритм: вероятностное раннее обновление кэша до истечения TTL.
+
+    Когда TTL почти истёк, некоторые запросы начинают "видеть" кэш просроченным
+    раньше реального истечения — и перевычисляют значение. Это размазывает
+    нагрузку вместо одновременного шторма запросов при expiry.
+
+    delta: время последнего вычисления (сек) — более дорогие функции
+           перевычисляются раньше (больше delta → раньше обновление).
+    beta: регулятор агрессивности. beta=1.0 — стандарт.
+    """
+    delta = ttl * 0.1          # предполагаем 10% от TTL как время вычисления
+    now = time.time()
+    return now - delta * beta * math.log(random.random()) >= expiry_ts
+
+
+# ── Декоратор ────────────────────────────────────────────────────────────────
+
+def cache(
+    ttl: int = 300,
+    key_builder: Callable | None = None,
+    tags: list[str] | None = None,
+    stampede_protection: bool = True,
+):
+    """
+    Декоратор для кэширования результатов async-функций.
+
+    Args:
+        ttl: время жизни кэша в секундах
+        key_builder: функция(func, *args, **kwargs) → str; по умолчанию default_key_builder
+        tags: теги для групповой инвалидации (cache.invalidate_tag("users"))
+        stampede_protection: probabilistic early expiration для защиты от stampede
+
+    Пример:
+        @cache(ttl=60, tags=["products"])
+        async def get_product(product_id: int) -> dict:
+            ...
+    """
+    def decorator(func: Callable):
+        _key_builder = key_builder or (lambda *a, **kw: default_key_builder(func, *a, **kw))
+
+        @functools.wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            redis: aioredis.Redis = get_redis()
+            cache_key = _key_builder(*args, **kwargs)
+            meta_key = f"{cache_key}:meta"   # хранит expiry timestamp для XFetch
+
+            # 1. Читаем кэш
+            cached_raw = await redis.get(cache_key)
+            if cached_raw is not None:
+                # Проверяем нужно ли раннее перевычисление
+                if stampede_protection:
+                    meta_raw = await redis.get(meta_key)
+                    if meta_raw:
+                        expiry_ts = float(meta_raw)
+                        if not _should_recompute(expiry_ts, ttl):
+                            return _deserialize(cached_raw)
+                else:
+                    return _deserialize(cached_raw)
+
+            # 2. Вычисляем значение
+            result = await func(*args, **kwargs)
+
+            # 3. Сохраняем в кэш атомарно через pipeline
+            pipe = redis.pipeline()
+            pipe.set(cache_key, _serialize(result), ex=ttl)
+            if stampede_protection:
+                expiry_ts = time.time() + ttl
+                pipe.set(meta_key, str(expiry_ts), ex=ttl)
+
+            # Tag-based invalidation: добавляем ключ в set каждого тега
+            if tags:
+                for tag in tags:
+                    tag_key = f"tag:{tag}"
+                    pipe.sadd(tag_key, cache_key)
+                    pipe.expire(tag_key, ttl + 60)   # тег живёт чуть дольше ключей
+
+            await pipe.execute()
+            return result
+
+        # Добавляем методы для управления кэшем прямо на декорированную функцию
+        async def invalidate(*args: Any, **kwargs: Any) -> None:
+            """Инвалидирует кэш для конкретных аргументов."""
+            redis = get_redis()
+            cache_key = _key_builder(*args, **kwargs)
+            await redis.delete(cache_key, f"{cache_key}:meta")
+
+        wrapper.invalidate = invalidate  # type: ignore[attr-defined]
+        return wrapper
+
+    return decorator
+
+
+# ── Tag invalidation ─────────────────────────────────────────────────────────
+
+async def invalidate_tag(tag: str) -> int:
+    """
+    Инвалидирует все ключи, помеченные данным тегом.
+    Возвращает количество удалённых ключей.
+    """
+    redis = get_redis()
+    tag_key = f"tag:{tag}"
+
+    # Получаем все ключи тега
+    keys = await redis.smembers(tag_key)
+    if not keys:
+        return 0
+
+    # Удаляем все ключи + метаданные + сам тег
+    all_keys = list(keys) + [f"{k}:meta" for k in keys] + [tag_key]
+    deleted = await redis.delete(*all_keys)
+    return deleted`,
+      },
+      {
+        filename: "app/cache/stampede_lock.py",
+        code: `"""
+Альтернативная защита от cache stampede: distributed lock.
+
+Только один запрос вычисляет значение, остальные ждут.
+Подходит когда вычисление очень дорогое и XFetch не достаточно.
+"""
+
+import asyncio
+import uuid
+from contextlib import asynccontextmanager
+from typing import Any
+
+import redis.asyncio as aioredis
+
+from app.core.redis import get_redis
+
+
+class RedisLock:
+    """
+    Distributed lock на Redis через SET NX (SET if Not eXists).
+    Автоматически освобождается по TTL даже если процесс упал.
+    """
+
+    def __init__(self, key: str, ttl: int = 10) -> None:
+        self.key = f"lock:{key}"
+        self.ttl = ttl
+        self.token = str(uuid.uuid4())   # уникальный токен владельца
+        self._redis: aioredis.Redis | None = None
+
+    @property
+    def redis(self) -> aioredis.Redis:
+        if self._redis is None:
+            self._redis = get_redis()
+        return self._redis
+
+    async def acquire(self, timeout: float = 5.0) -> bool:
+        """Пытается взять блокировку. Возвращает True при успехе."""
+        deadline = asyncio.get_event_loop().time() + timeout
+        while asyncio.get_event_loop().time() < deadline:
+            # SET key token NX EX ttl — атомарная операция
+            acquired = await self.redis.set(
+                self.key, self.token, nx=True, ex=self.ttl
+            )
+            if acquired:
+                return True
+            await asyncio.sleep(0.05)   # 50 мс между попытками
+        return False
+
+    async def release(self) -> None:
+        """Освобождает блокировку только если она наша (по токену)."""
+        # Lua-скрипт: проверка + удаление атомарно
+        script = """
+        if redis.call("GET", KEYS[1]) == ARGV[1] then
+            return redis.call("DEL", KEYS[1])
+        else
+            return 0
+        end
+        """
+        await self.redis.eval(script, 1, self.key, self.token)  # type: ignore[attr-defined]
+
+    @asynccontextmanager
+    async def __aenter__(self):
+        acquired = await self.acquire()
+        if not acquired:
+            raise TimeoutError(f"Could not acquire lock: {self.key}")
+        try:
+            yield self
+        finally:
+            await self.release()
+
+    async def __aexit__(self, *args: Any) -> None:
+        pass
+
+
+async def get_or_compute_with_lock(
+    key: str,
+    compute_fn,
+    *,
+    ttl: int = 300,
+    lock_ttl: int = 30,
+) -> Any:
+    """
+    Cache-aside с distributed lock:
+    1. Читаем кэш — если есть, возвращаем
+    2. Берём блокировку
+    3. Перечитываем кэш (double-check) — пока ждали, другой поток мог записать
+    4. Вычисляем и сохраняем
+    5. Освобождаем блокировку
+    """
+    import json
+    redis = get_redis()
+
+    cached = await redis.get(key)
+    if cached:
+        return json.loads(cached)
+
+    lock = RedisLock(key, ttl=lock_ttl)
+    async with lock:
+        # Double-check: пока ждали блокировку, значение могло появиться
+        cached = await redis.get(key)
+        if cached:
+            return json.loads(cached)
+
+        result = await compute_fn()
+        await redis.set(key, json.dumps(result, default=str), ex=ttl)
+        return result`,
+      },
+      {
+        filename: "app/cache/rate_limiter.py",
+        code: `"""
+Distributed Rate Limiting через Redis Sliding Window.
+
+Алгоритмы:
+1. Fixed Window — простой, но пропускает burst на границе окна
+2. Sliding Window Log — точный, но хранит каждый запрос
+3. Sliding Window Counter — баланс точности и памяти (реализован здесь)
+"""
+
+import time
+from dataclasses import dataclass
+
+import redis.asyncio as aioredis
+
+from app.core.redis import get_redis
+
+
+@dataclass
+class RateLimitResult:
+    allowed: bool
+    limit: int
+    remaining: int
+    reset_after: float   # секунд до сброса
+
+
+class SlidingWindowRateLimiter:
+    """
+    Sliding Window через Sorted Set.
+
+    Каждый запрос добавляется как элемент Sorted Set со score=timestamp.
+    Для подсчёта запросов в окне: ZREMRANGEBYSCORE удаляет старые,
+    ZCARD считает оставшиеся. Всё атомарно через Lua.
+    """
+
+    def __init__(
+        self,
+        limit: int,
+        window_seconds: int,
+        key_prefix: str = "ratelimit",
+    ) -> None:
+        self.limit = limit
+        self.window = window_seconds
+        self.key_prefix = key_prefix
+
+    # Lua-скрипт выполняется атомарно — нет race condition
+    _LUA_SCRIPT = """
+    local key = KEYS[1]
+    local now = tonumber(ARGV[1])
+    local window = tonumber(ARGV[2])
+    local limit = tonumber(ARGV[3])
+    local request_id = ARGV[4]
+
+    -- Удаляем запросы старше window
+    redis.call('ZREMRANGEBYSCORE', key, 0, now - window * 1000)
+
+    -- Считаем текущее количество запросов
+    local count = redis.call('ZCARD', key)
+
+    if count < limit then
+        -- Добавляем текущий запрос (score = timestamp в мс)
+        redis.call('ZADD', key, now, request_id)
+        redis.call('EXPIRE', key, window + 1)
+        return {1, limit - count - 1}   -- {allowed, remaining}
+    else
+        return {0, 0}                   -- {denied, 0}
+    end
+    """
+
+    async def check(self, identifier: str) -> RateLimitResult:
+        """
+        Проверяет лимит для identifier (IP, user_id, api_key...).
+        """
+        redis: aioredis.Redis = get_redis()
+        key = f"{self.key_prefix}:{identifier}"
+        now_ms = int(time.time() * 1000)
+        request_id = f"{now_ms}-{id(object())}"   # уникальный id запроса
+
+        result = await redis.eval(  # type: ignore[attr-defined]
+            self._LUA_SCRIPT,
+            1,
+            key,
+            now_ms,
+            self.window,
+            self.limit,
+            request_id,
+        )
+
+        allowed = bool(result[0])
+        remaining = int(result[1])
+        return RateLimitResult(
+            allowed=allowed,
+            limit=self.limit,
+            remaining=remaining,
+            reset_after=self.window,
+        )
+
+
+# ── FastAPI middleware / dependency ──────────────────────────────────────────
+
+from fastapi import Depends, HTTPException, Request, status
+
+
+_api_limiter = SlidingWindowRateLimiter(limit=100, window_seconds=60)
+_auth_limiter = SlidingWindowRateLimiter(limit=5, window_seconds=60, key_prefix="auth_limit")
+
+
+async def rate_limit_api(request: Request) -> None:
+    """Depends: 100 запросов/минуту по IP."""
+    client_ip = request.client.host if request.client else "unknown"
+    result = await _api_limiter.check(client_ip)
+
+    if not result.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded",
+            headers={
+                "X-RateLimit-Limit": str(result.limit),
+                "X-RateLimit-Remaining": "0",
+                "Retry-After": str(int(result.reset_after)),
+            },
+        )`,
+      },
+      {
+        filename: "app/cache/redis_structures.py",
+        code: `"""
+Специфические Redis data structures для конкретных задач:
+- Sorted Set: leaderboard, очередь с приоритетом
+- HyperLogLog: подсчёт уникальных значений без хранения самих значений
+- Pub/Sub: real-time уведомления
+- Streams: надёжная очередь событий
+"""
+
+import json
+import time
+from typing import Any
+
+import redis.asyncio as aioredis
+
+from app.core.redis import get_redis
+
+
+class Leaderboard:
+    """
+    Топ игроков через Sorted Set.
+    Score = очки. ZADD обновляет score если ключ уже существует.
+    ZREVRANGE возвращает элементы в порядке убывания score.
+    """
+
+    def __init__(self, name: str) -> None:
+        self.key = f"leaderboard:{name}"
+
+    async def add_score(self, user_id: str, score: float) -> None:
+        redis = get_redis()
+        await redis.zadd(self.key, {user_id: score})
+
+    async def increment_score(self, user_id: str, delta: float) -> float:
+        """Атомарный инкремент — не нужен WATCH/MULTI."""
+        redis = get_redis()
+        return await redis.zincrby(self.key, delta, user_id)
+
+    async def get_top(self, n: int = 10) -> list[dict]:
+        redis = get_redis()
+        # withscores=True возвращает [(member, score), ...]
+        results = await redis.zrevrange(self.key, 0, n - 1, withscores=True)
+        return [
+            {"rank": i + 1, "user_id": member, "score": score}
+            for i, (member, score) in enumerate(results)
+        ]
+
+    async def get_rank(self, user_id: str) -> int | None:
+        """Ранг пользователя (0-based с конца, конвертируем в 1-based с начала)."""
+        redis = get_redis()
+        rank = await redis.zrevrank(self.key, user_id)
+        return (rank + 1) if rank is not None else None
+
+    async def get_score(self, user_id: str) -> float | None:
+        redis = get_redis()
+        return await redis.zscore(self.key, user_id)
+
+
+class UniqueVisitorsCounter:
+    """
+    HyperLogLog для подсчёта уникальных посетителей.
+
+    HyperLogLog: вероятностная структура данных.
+    - Занимает максимум 12 KB независимо от числа элементов
+    - Погрешность ~0.81%
+    - Нельзя получить список элементов — только COUNT
+    Идеально: DAU, MAU, уникальные просмотры страниц.
+    """
+
+    async def track(self, page: str, user_id: str) -> None:
+        redis = get_redis()
+        today = time.strftime("%Y-%m-%d")
+        key = f"hll:visitors:{page}:{today}"
+        await redis.pfadd(key, user_id)
+        await redis.expire(key, 86400 * 30)   # храним 30 дней
+
+    async def count(self, page: str, date: str | None = None) -> int:
+        redis = get_redis()
+        date = date or time.strftime("%Y-%m-%d")
+        key = f"hll:visitors:{page}:{date}"
+        return await redis.pfcount(key)
+
+    async def count_range(self, page: str, dates: list[str]) -> int:
+        """
+        PFMERGE объединяет несколько HyperLogLog — уникальные за период.
+        Не сумма дневных, а честный union (дубли между днями не считаются).
+        """
+        redis = get_redis()
+        keys = [f"hll:visitors:{page}:{d}" for d in dates]
+        merge_key = f"hll:merge:{page}:{'_'.join(dates[:3])}"
+        await redis.pfmerge(merge_key, *keys)
+        await redis.expire(merge_key, 3600)
+        return await redis.pfcount(merge_key)
+
+
+class EventStream:
+    """
+    Redis Streams: надёжная очередь событий с consumer groups.
+    В отличие от Pub/Sub, сохраняет сообщения — subscriber может отстать и догнать.
+    """
+
+    def __init__(self, stream_name: str) -> None:
+        self.stream = stream_name
+
+    async def publish(self, event_type: str, data: dict[str, Any]) -> str:
+        """Публикует событие. Возвращает stream ID."""
+        redis = get_redis()
+        entry_id = await redis.xadd(
+            self.stream,
+            {
+                "type": event_type,
+                "data": json.dumps(data, default=str),
+                "timestamp": str(time.time()),
+            },
+            maxlen=10_000,   # MAXLEN: удаляет старые при превышении
+            approximate=True,  # ~ — приближённая очистка (быстрее)
+        )
+        return entry_id
+
+    async def consume(
+        self,
+        group: str,
+        consumer: str,
+        count: int = 10,
+        block_ms: int = 1000,
+    ) -> list[dict]:
+        """
+        XREADGROUP: читает непрочитанные сообщения из consumer group.
+        > означает "новые сообщения которые никто не читал".
+        После обработки нужно XACK.
+        """
+        redis = get_redis()
+        try:
+            await redis.xgroup_create(self.stream, group, id="0", mkstream=True)
+        except Exception:
+            pass   # группа уже существует
+
+        messages = await redis.xreadgroup(
+            groupname=group,
+            consumername=consumer,
+            streams={self.stream: ">"},
+            count=count,
+            block=block_ms,
+        )
+
+        result = []
+        if messages:
+            for stream_name, entries in messages:
+                for entry_id, fields in entries:
+                    result.append({
+                        "id": entry_id,
+                        "type": fields.get("type"),
+                        "data": json.loads(fields.get("data", "{}")),
+                    })
+        return result
+
+    async def ack(self, group: str, *message_ids: str) -> None:
+        """Подтверждает обработку сообщений."""
+        redis = get_redis()
+        await redis.xack(self.stream, group, *message_ids)`,
+      },
+      {
+        filename: "app/services/product_service.py",
+        code: `"""
+Пример использования всех cache-паттернов в сервисном слое.
+"""
+
+from app.cache.decorator import cache, invalidate_tag
+from app.cache.redis_structures import Leaderboard, UniqueVisitorsCounter
+
+
+class ProductService:
+    leaderboard = Leaderboard("products_views")
+    visitor_counter = UniqueVisitorsCounter()
+
+    @cache(ttl=300, tags=["products", "catalog"])
+    async def get_product(self, product_id: int) -> dict:
+        """
+        Результат кэшируется на 5 минут.
+        При изменении продукта — вызываем invalidate_tag("products").
+        """
+        # ... запрос к БД
+        return {"id": product_id, "title": "Product"}
+
+    @cache(
+        ttl=60,
+        # Кастомный key_builder: игнорируем user_id для общего кэша
+        key_builder=lambda category, page, *a, **kw: f"cache:products:{category}:{page}",
+        tags=["catalog"],
+    )
+    async def list_products(self, category: str, page: int, user_id: int) -> list[dict]:
+        """
+        Кэш общий для всех пользователей одной категории и страницы,
+        но user_id нужен для персонализации внутри — не в ключе.
+        """
+        return []
+
+    async def view_product(self, product_id: int, user_id: str) -> dict:
+        """Трекинг просмотров через Redis structures."""
+        # Инкрементируем счётчик просмотров в leaderboard
+        await self.leaderboard.increment_score(str(product_id), 1)
+        # Считаем уникальных пользователей которые видели продукт
+        await self.visitor_counter.track(f"product:{product_id}", user_id)
+        return await self.get_product(product_id)
+
+    async def update_product(self, product_id: int, data: dict) -> dict:
+        """После обновления — инвалидируем весь кэш продуктов."""
+        # ... обновление в БД
+
+        # Инвалидируем конкретный ключ
+        await self.get_product.invalidate(self, product_id)  # type: ignore
+        # Инвалидируем все ключи с тегом "products"
+        await invalidate_tag("products")
+        return {}`,
+      },
+    ],
+    explanation: `**Декоратор @cache**: использует \`functools.wraps\` для сохранения метаданных оригинальной функции. Pipeline Redis (pipe.execute()) отправляет SET + SADD атомарно за одно сетевое обращение. Key builder на основе MD5 хэша аргументов — компромисс между уникальностью и размером ключа. Метод \`.invalidate\` прикрепляется к декорированной функции — удобно для точечной инвалидации.
+
+**XFetch (probabilistic early expiration)**: при TTL → 0 вероятность "раннего видения" просроченного кэша растёт. Формула: \`now - delta × beta × ln(random())\`. Результат: разные запросы начинают перевычислять кэш в разное время — stampede размазывается. Альтернатива — distributed lock: один перевычисляет, остальные ждут. Lock лучше для очень дорогих вычислений; XFetch — для умеренно дорогих.
+
+**Lua-скрипт для rate limiter**: Redis выполняет Lua атомарно — нет race condition между ZREMRANGEBYSCORE, ZCARD и ZADD. Без Lua пришлось бы использовать WATCH/MULTI/EXEC (оптимистичная блокировка), что сложнее и менее эффективно. Sliding window через Sorted Set точнее Fixed Window (нет burst на границе окна) и экономнее Sliding Window Log (не хранит каждый запрос индивидуально бесконечно — ZREMRANGEBYSCORE чистит старые).
+
+**Tag-based invalidation**: каждый кэш-ключ добавляется в Sorted Set своих тегов. При инвалидации тега — читаем все ключи тега и удаляем их разом. Проблема: при большом числе ключей SMEMBERS блокирует Redis. Для production: SSCAN + batch delete или отдельный сервис инвалидации.
+
+**HyperLogLog**: занимает фиксированные 12 KB независимо от числа элементов. \`PFADD\` добавляет элемент, \`PFCOUNT\` возвращает приближённое количество уникальных (погрешность 0.81%). \`PFMERGE\` объединяет несколько HLL — для подсчёта уникальных за период без дублей. Нельзя получить список элементов — только COUNT. Идеально для DAU/MAU/UV.
+
+**Redis Streams vs Pub/Sub**: Pub/Sub — fire-and-forget, сообщение теряется если нет подписчиков. Streams сохраняют сообщения (MAXLEN ограничивает размер). Consumer groups позволяют нескольким воркерам читать из одного стрима без дублей. XACK подтверждает обработку — непрочитанные можно перечитать через PEL (Pending Entry List).`,
+  },
+
+  {
+    id: "jwt-refresh-tokens",
+    title: "JWT-аутентификация с refresh-токенами",
+    task: "Реализуйте полноценную систему JWT-аутентификации без сторонних библиотек. Access-токен (15 мин) + refresh-токен (30 дней) с ротацией. Хранение refresh-токенов в Redis с возможностью инвалидации. Детекция повторного использования отозванного токена (reuse detection с семейством токенов). Блокировка подозрительных сессий. Возврат корректных HTTP-кодов (401 vs 403).",
+    files: [
+      {
+        filename: "app/auth/tokens.py",
+        code: `"""
+JWT без сторонних auth-библиотек: только PyJWT + стандартная библиотека.
+
+Структура токенов:
+  Access:  {"sub": "42", "type": "access",  "jti": "<uuid>", "exp": ...}
+  Refresh: {"sub": "42", "type": "refresh", "jti": "<uuid>", "fid": "<family_id>", "exp": ...}
+
+fid (family_id) — UUID всего семейства refresh-токенов одной сессии.
+При обнаружении reuse (старый refresh предъявлен снова) — блокируем
+весь family, что завершает ВСЕ сессии злоумышленника в этой ветке.
+"""
+
+import uuid
+from datetime import datetime, timedelta, UTC
+
+import jwt
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
+
+from app.core.config import settings
+
+# ── Константы ─────────────────────────────────────────────────────────────
+
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
+REFRESH_TOKEN_EXPIRE_DAYS = 30
+
+ALGORITHM = "HS256"
+
+
+# ── Создание токенов ──────────────────────────────────────────────────────
+
+def create_access_token(user_id: int) -> str:
+    now = datetime.now(UTC)
+    payload = {
+        "sub": str(user_id),
+        "type": "access",
+        "jti": str(uuid.uuid4()),           # JWT ID — уникален для каждого токена
+        "iat": now,
+        "exp": now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)
+
+
+def create_refresh_token(user_id: int, family_id: str | None = None) -> tuple[str, str]:
+    """
+    Возвращает (token, family_id).
+    family_id передаётся при ротации — новый токен наследует семейство.
+    При первом логине family_id=None → создаём новое семейство.
+    """
+    fid = family_id or str(uuid.uuid4())
+    now = datetime.now(UTC)
+    jti = str(uuid.uuid4())
+    payload = {
+        "sub": str(user_id),
+        "type": "refresh",
+        "jti": jti,
+        "fid": fid,
+        "iat": now,
+        "exp": now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+    }
+    token = jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)
+    return token, fid
+
+
+# ── Декодирование и валидация ─────────────────────────────────────────────
+
+class TokenError(Exception):
+    """Базовое исключение для ошибок токена."""
+    def __init__(self, message: str, status_code: int = 401) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def decode_token(token: str, expected_type: str) -> dict:
+    """
+    Декодирует и валидирует токен.
+    Поднимает TokenError с правильным HTTP-кодом:
+      401 Unauthorized — токен невалиден или истёк (нужна повторная аутентификация)
+      403 Forbidden    — токен валиден, но доступ запрещён (не та роль/тип)
+    """
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+    except ExpiredSignatureError:
+        raise TokenError("Token has expired", status_code=401)
+    except InvalidTokenError as exc:
+        raise TokenError(f"Invalid token: {exc}", status_code=401)
+
+    if payload.get("type") != expected_type:
+        # Токен валиден, но не того типа — 403
+        raise TokenError(
+            f"Expected '{expected_type}' token, got '{payload.get('type')}'",
+            status_code=403,
+        )
+    return payload`,
+      },
+      {
+        filename: "app/auth/session_store.py",
+        code: `"""
+Redis-хранилище refresh-токенов.
+
+Ключи Redis:
+  refresh:{jti}         → user_id           TTL = 30 дней
+  family:{fid}          → "active"|"blocked" TTL = 30 дней
+  user_sessions:{uid}   → set of family_ids  (для logout all devices)
+
+Алгоритм reuse detection:
+  1. Клиент предъявляет refresh-токен с jti=J, fid=F
+  2. Проверяем family:{F}:
+     - "blocked" → кто-то уже использовал отозванный токен из этого семейства.
+                   Завершаем все сессии пользователя. Отвечаем 401.
+     - не существует → токен уже был инвалидирован при ротации. Reuse detected.
+                       Блокируем family. Отвечаем 401.
+  3. Проверяем refresh:{J}:
+     - не существует → jti уже был использован (ротация). Блокируем family. 401.
+  4. Всё ок → удаляем старый jti, создаём новый refresh (тот же fid), сохраняем.
+"""
+
+from datetime import timedelta
+
+import redis.asyncio as aioredis
+
+from app.core.redis import get_redis
+
+REFRESH_TTL = int(timedelta(days=30).total_seconds())
+
+
+class SessionStore:
+
+    @property
+    def redis(self) -> aioredis.Redis:
+        return get_redis()
+
+    # ── Сохранение / удаление ─────────────────────────────────────────────
+
+    async def save_refresh_token(
+        self, jti: str, fid: str, user_id: int
+    ) -> None:
+        """Атомарно сохраняем jti и активируем family."""
+        pipe = self.redis.pipeline()
+        pipe.set(f"refresh:{jti}", str(user_id), ex=REFRESH_TTL)
+        # SETNX — создаём family только если не существует (ротация не перезаписывает)
+        pipe.set(f"family:{fid}", "active", ex=REFRESH_TTL, nx=True)
+        pipe.sadd(f"user_sessions:{user_id}", fid)
+        pipe.expire(f"user_sessions:{user_id}", REFRESH_TTL)
+        await pipe.execute()
+
+    async def revoke_refresh_token(self, jti: str) -> None:
+        """Удаляем jti после использования (ротация)."""
+        await self.redis.delete(f"refresh:{jti}")
+
+    # ── Валидация с reuse detection ───────────────────────────────────────
+
+    async def validate_and_rotate(
+        self, jti: str, fid: str
+    ) -> str | None:
+        """
+        Проверяет refresh-токен и выполняет ротацию.
+
+        Возвращает user_id при успехе.
+        Возвращает None при reuse (семейство заблокировано, сессии завершены).
+
+        Используем Lua для атомарности: проверка + удаление в одной операции.
+        """
+        LUA = """
+        local family_key = KEYS[1]
+        local jti_key    = KEYS[2]
+
+        local family_status = redis.call('GET', family_key)
+        -- Family заблокирована или не существует → reuse
+        if family_status ~= 'active' then
+            return nil
+        end
+
+        local user_id = redis.call('GET', jti_key)
+        -- jti уже использован → reuse
+        if not user_id then
+            redis.call('SET', family_key, 'blocked', 'XX', 'KEEPTTL')
+            return nil
+        end
+
+        -- Всё ок: удаляем использованный jti
+        redis.call('DEL', jti_key)
+        return user_id
+        """
+        result = await self.redis.eval(LUA, 2, f"family:{fid}", f"refresh:{jti}")  # type: ignore
+        return result  # str(user_id) или None
+
+    # ── Блокировка family (reuse detected) ───────────────────────────────
+
+    async def block_family(self, fid: str) -> None:
+        """Блокирует семейство токенов — все дальнейшие попытки будут отклонены."""
+        await self.redis.set(f"family:{fid}", "blocked", xx=True, keepttl=True)
+
+    # ── Logout ────────────────────────────────────────────────────────────
+
+    async def revoke_family(self, fid: str) -> None:
+        """Logout с одного устройства: удаляем family."""
+        await self.redis.delete(f"family:{fid}")
+
+    async def revoke_all_user_sessions(self, user_id: int) -> None:
+        """Logout со всех устройств: блокируем все семейства пользователя."""
+        sessions_key = f"user_sessions:{user_id}"
+        family_ids = await self.redis.smembers(sessions_key)
+
+        if family_ids:
+            pipe = self.redis.pipeline()
+            for fid in family_ids:
+                pipe.set(f"family:{fid}", "blocked", xx=True, keepttl=True)
+            pipe.delete(sessions_key)
+            await pipe.execute()
+
+
+session_store = SessionStore()`,
+      },
+      {
+        filename: "app/auth/dependencies.py",
+        code: `from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from app.auth.tokens import TokenError, decode_token
+from app.models.user import User
+from app.repositories.user_repository import UserRepository
+from app.core.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# HTTPBearer автоматически извлекает токен из заголовка Authorization: Bearer <token>
+# auto_error=False — не бросаем 403 сразу, обрабатываем сами для правильного кода
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """
+    Зависимость: извлекает и валидирует access-токен.
+    401 — нет токена или токен невалиден/истёк.
+    403 — токен валиден, но не того типа.
+    """
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header missing",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        payload = decode_token(credentials.credentials, expected_type="access")
+    except TokenError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=str(exc),
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user_id = int(payload["sub"])
+    repo = UserRepository(db)
+    user = await repo.get_by_id(user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    if not user.is_active:
+        # Пользователь есть, но заблокирован — 403 (не 401)
+        raise HTTPException(status_code=403, detail="User account is disabled")
+
+    return user
+
+
+async def get_current_active_user(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Алиас — явно именован для читаемости в роутерах."""
+    return current_user`,
+      },
+      {
+        filename: "app/auth/router.py",
+        code: `from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.dependencies import get_current_user
+from app.auth.session_store import session_store
+from app.auth.tokens import (
+    TokenError,
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+)
+from app.core.database import get_db
+from app.core.security import verify_password
+from app.models.user import User
+from app.repositories.user_repository import UserRepository
+from app.schemas.auth import LoginRequest, TokenResponse
+
+router = APIRouter(prefix="/auth", tags=["Auth"])
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login(
+    payload: LoginRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    repo = UserRepository(db)
+    user = await repo.get_by_email(payload.email)
+
+    if not user or not verify_password(payload.password, user.hashed_password):
+        # Одинаковый ответ для "нет пользователя" и "неверный пароль"
+        # — не раскрываем существование аккаунта
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
+
+    access_token = create_access_token(user.id)
+    refresh_token, fid = create_refresh_token(user.id)
+
+    # Сохраняем refresh-токен в Redis
+    from app.auth.tokens import decode_token as _dt
+    rt_payload = _dt(refresh_token, "refresh")
+    await session_store.save_refresh_token(
+        jti=rt_payload["jti"], fid=fid, user_id=user.id
+    )
+
+    # Refresh-токен в httpOnly cookie — не доступен из JS
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,      # только HTTPS
+        samesite="strict",
+        max_age=30 * 24 * 3600,
+    )
+
+    return TokenResponse(access_token=access_token, token_type="bearer")
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh(
+    response: Response,
+    request_obj: "Request",  # для чтения cookie
+):
+    from fastapi import Request as _Request
+    refresh_token = request_obj.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token missing")
+
+    try:
+        payload = decode_token(refresh_token, expected_type="refresh")
+    except TokenError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
+
+    jti = payload["jti"]
+    fid = payload["fid"]
+    user_id = int(payload["sub"])
+
+    # validate_and_rotate атомарно проверяет jti + family и удаляет старый jti
+    result = await session_store.validate_and_rotate(jti=jti, fid=fid)
+
+    if result is None:
+        # Reuse detected: блокируем family и завершаем ВСЕ сессии пользователя
+        await session_store.block_family(fid)
+        await session_store.revoke_all_user_sessions(user_id)
+        # Удаляем cookie
+        response.delete_cookie("refresh_token")
+        raise HTTPException(
+            status_code=401,
+            detail="Token reuse detected. All sessions have been terminated.",
+        )
+
+    # Ротация: создаём новую пару, старый jti уже удалён в Lua-скрипте
+    new_access = create_access_token(user_id)
+    new_refresh, _ = create_refresh_token(user_id, family_id=fid)  # тот же fid
+
+    new_payload = decode_token(new_refresh, "refresh")
+    await session_store.save_refresh_token(
+        jti=new_payload["jti"], fid=fid, user_id=user_id
+    )
+
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=30 * 24 * 3600,
+    )
+    return TokenResponse(access_token=new_access, token_type="bearer")
+
+
+@router.post("/logout")
+async def logout(
+    response: Response,
+    request_obj: "Request",
+    current_user: User = Depends(get_current_user),
+):
+    """Logout с текущего устройства."""
+    refresh_token = request_obj.cookies.get("refresh_token")
+    if refresh_token:
+        try:
+            payload = decode_token(refresh_token, "refresh")
+            await session_store.revoke_family(payload["fid"])
+        except TokenError:
+            pass   # токен уже невалиден — не страшно
+    response.delete_cookie("refresh_token")
+    return {"detail": "Logged out"}
+
+
+@router.post("/logout-all")
+async def logout_all(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+):
+    """Logout со всех устройств."""
+    await session_store.revoke_all_user_sessions(current_user.id)
+    response.delete_cookie("refresh_token")
+    return {"detail": "All sessions terminated"}`,
+      },
+      {
+        filename: "app/core/security.py",
+        code: `from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)`,
+      },
+      {
+        filename: "app/schemas/auth.py",
+        code: `from pydantic import BaseModel, EmailStr
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    # refresh_token НЕ в теле ответа — только в httpOnly cookie`,
+      },
+    ],
+    explanation: `**401 vs 403**: разница критична. \`401 Unauthorized\` — "я не знаю кто ты, аутентифицируйся". \`403 Forbidden\` — "я знаю кто ты, но у тебя нет доступа". Истёкший/невалидный токен → 401. Валидный токен, но заблокированный аккаунт → 403. Правило: если клиент может исправить ситуацию повторной аутентификацией — 401; если нет — 403.
+
+**Token Family + Reuse Detection**: каждая сессия получает \`family_id\`. При ротации новый refresh наследует \`fid\` родителя, старый jti удаляется. Если злоумышленник перехватил старый refresh и предъявил его после ротации — jti уже не существует → reuse detected. Блокируем всё семейство: и токен жертвы (следующее обновление тоже заблокируется), и токен атакующего.
+
+**Lua-скрипт для атомарности**: проверка family + получение user_id из jti + удаление jti должны быть атомарны. Без Lua: два параллельных запроса с одним refresh-токеном оба пройдут проверку до того, как первый успеет удалить jti — race condition. Lua-скрипт Redis выполняется в одном потоке, без прерываний.
+
+**httpOnly cookie для refresh-токена**: JS-код на странице не может прочитать \`document.cookie\` для httpOnly. XSS-атака получает доступ к access-токену из памяти, но не к refresh-токену. Access живёт 15 минут — урон ограничен. \`SameSite=Strict\` блокирует CSRF: браузер не отправит cookie при кросс-сайтовом запросе.
+
+**Refresh в cookie, Access в памяти**: access-токен возвращается в теле ответа и хранится в памяти JS (\`useState\`, \`useRef\`). При перезагрузке страницы — запрашивается новый access через \`/auth/refresh\` (refresh в cookie отправляется автоматически). Никаких токенов в \`localStorage\` — защита от XSS-кражи.`,
+  },
+
+  {
+    id: "oauth2-social-login",
+    title: "OAuth2 и Social Login",
+    task: "Реализуйте OAuth2-аутентификацию через Google и GitHub. Используйте authlib или реализуйте flow вручную: authorization code flow с PKCE, обмен кода на токен, получение профиля пользователя, создание/привязка локального аккаунта, обработка конфликтов email. Реализуйте state parameter для CSRF-защиты. Поддержите multiple providers для одного аккаунта.",
+    files: [
+      {
+        filename: "app/oauth/providers.py",
+        code: `"""
+OAuth2 Authorization Code Flow с PKCE — реализация вручную без authlib.
+
+PKCE (Proof Key for Code Exchange):
+  1. Клиент генерирует code_verifier (случайная строка 43-128 символов)
+  2. code_challenge = BASE64URL(SHA256(code_verifier))
+  3. Отправляет code_challenge в /authorize
+  4. При обмене кода на токен — отправляет code_verifier
+  5. Сервер провайдера проверяет: SHA256(verifier) == challenge
+  
+  Защищает от перехвата authorization code: без verifier код бесполезен.
+"""
+
+import base64
+import hashlib
+import os
+import urllib.parse
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class OAuthProvider:
+    name: str
+    client_id: str
+    client_secret: str
+    authorize_url: str
+    token_url: str
+    userinfo_url: str
+    scopes: list[str]
+
+    def build_authorize_url(
+        self,
+        redirect_uri: str,
+        state: str,
+        code_challenge: str,
+    ) -> str:
+        params = {
+            "client_id": self.client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": " ".join(self.scopes),
+            "state": state,
+            # PKCE параметры
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+        }
+        return f"{self.authorize_url}?{urllib.parse.urlencode(params)}"
+
+
+def get_google_provider() -> OAuthProvider:
+    from app.core.config import settings
+    return OAuthProvider(
+        name="google",
+        client_id=settings.google_client_id,
+        client_secret=settings.google_client_secret,
+        authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
+        token_url="https://oauth2.googleapis.com/token",
+        userinfo_url="https://www.googleapis.com/oauth2/v3/userinfo",
+        scopes=["openid", "email", "profile"],
+    )
+
+
+def get_github_provider() -> OAuthProvider:
+    from app.core.config import settings
+    return OAuthProvider(
+        name="github",
+        client_id=settings.github_client_id,
+        client_secret=settings.github_client_secret,
+        authorize_url="https://github.com/login/oauth/authorize",
+        token_url="https://github.com/login/oauth/access_token",
+        userinfo_url="https://api.github.com/user",
+        scopes=["read:user", "user:email"],
+    )
+
+
+PROVIDERS: dict[str, OAuthProvider] = {
+    "google": get_google_provider(),
+    "github": get_github_provider(),
+}
+
+
+# ── PKCE helpers ──────────────────────────────────────────────────────────
+
+def generate_code_verifier() -> str:
+    """RFC 7636: verifier — 43-128 символов из unreserved chars."""
+    return base64.urlsafe_b64encode(os.urandom(32)).rstrip(b"=").decode()
+
+
+def generate_code_challenge(verifier: str) -> str:
+    """S256: BASE64URL(SHA256(ASCII(verifier)))"""
+    digest = hashlib.sha256(verifier.encode()).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+def generate_state() -> str:
+    """CSRF-защита: случайная строка, сохраняемая в сессии."""
+    return base64.urlsafe_b64encode(os.urandom(16)).decode()`,
+      },
+      {
+        filename: "app/oauth/state_store.py",
+        code: `"""
+Хранение OAuth state + PKCE verifier в Redis.
+
+State живёт ровно столько, сколько нужно для завершения flow (10 минут).
+После использования — удаляем (one-time use).
+"""
+
+import json
+
+import redis.asyncio as aioredis
+
+from app.core.redis import get_redis
+
+STATE_TTL = 600   # 10 минут — достаточно для OAuth flow
+
+
+class OAuthStateStore:
+    @property
+    def redis(self) -> aioredis.Redis:
+        return get_redis()
+
+    async def save(
+        self,
+        state: str,
+        provider: str,
+        code_verifier: str,
+        redirect_after: str = "/",
+    ) -> None:
+        key = f"oauth_state:{state}"
+        await self.redis.set(
+            key,
+            json.dumps({
+                "provider": provider,
+                "code_verifier": code_verifier,
+                "redirect_after": redirect_after,
+            }),
+            ex=STATE_TTL,
+        )
+
+    async def consume(self, state: str) -> dict | None:
+        """
+        Атомарно читает и удаляет state (GETDEL).
+        Возвращает None если state не найден или истёк.
+        One-time use: повторное предъявление того же state невозможно.
+        """
+        key = f"oauth_state:{state}"
+        raw = await self.redis.getdel(key)   # GETDEL — атомарный GET + DEL
+        if raw is None:
+            return None
+        return json.loads(raw)
+
+
+oauth_state_store = OAuthStateStore()`,
+      },
+      {
+        filename: "app/oauth/client.py",
+        code: `"""HTTP-клиент для обмена кода на токен и получения профиля."""
+
+import httpx
+from typing import Any
+
+
+async def exchange_code_for_token(
+    provider_token_url: str,
+    client_id: str,
+    client_secret: str,
+    code: str,
+    redirect_uri: str,
+    code_verifier: str,
+) -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            provider_token_url,
+            data={
+                "grant_type": "authorization_code",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "code_verifier": code_verifier,   # PKCE: провайдер верифицирует
+            },
+            headers={"Accept": "application/json"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def get_user_profile(
+    userinfo_url: str,
+    access_token: str,
+) -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            userinfo_url,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def get_github_emails(access_token: str) -> list[dict]:
+    """
+    GitHub не всегда возвращает email в /user.
+    Отдельный запрос к /user/emails с scope user:email.
+    """
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.get(
+            "https://api.github.com/user/emails",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()`,
+      },
+      {
+        filename: "app/oauth/normalizer.py",
+        code: `"""Нормализует профили от разных провайдеров в единый формат."""
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class NormalizedProfile:
+    provider: str
+    provider_user_id: str   # уникальный id у провайдера
+    email: str | None
+    name: str | None
+    avatar_url: str | None
+    raw: dict                # исходные данные от провайдера
+
+
+def normalize_google(data: dict[str, Any]) -> NormalizedProfile:
+    return NormalizedProfile(
+        provider="google",
+        provider_user_id=data["sub"],
+        email=data.get("email"),
+        name=data.get("name"),
+        avatar_url=data.get("picture"),
+        raw=data,
+    )
+
+
+def normalize_github(
+    data: dict[str, Any],
+    emails: list[dict] | None = None,
+) -> NormalizedProfile:
+    # GitHub: email может быть в основном профиле или только в /user/emails
+    email = data.get("email")
+    if not email and emails:
+        # Берём primary + verified email
+        primary = next(
+            (e["email"] for e in emails if e.get("primary") and e.get("verified")),
+            None,
+        )
+        email = primary or (emails[0]["email"] if emails else None)
+
+    return NormalizedProfile(
+        provider="github",
+        provider_user_id=str(data["id"]),
+        email=email,
+        name=data.get("name") or data.get("login"),
+        avatar_url=data.get("avatar_url"),
+        raw=data,
+    )
+
+
+NORMALIZERS = {
+    "google": normalize_google,
+    "github": normalize_github,
+}`,
+      },
+      {
+        filename: "app/oauth/router.py",
+        code: `from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.router import _issue_tokens   # хелпер: создаёт пару токенов
+from app.auth.tokens import create_access_token, create_refresh_token
+from app.auth.session_store import session_store
+from app.core.config import settings
+from app.core.database import get_db
+from app.oauth.client import exchange_code_for_token, get_github_emails, get_user_profile
+from app.oauth.normalizer import NORMALIZERS
+from app.oauth.providers import (
+    PROVIDERS,
+    generate_code_challenge,
+    generate_code_verifier,
+    generate_state,
+)
+from app.oauth.state_store import oauth_state_store
+from app.repositories.oauth_account_repository import OAuthAccountRepository
+from app.repositories.user_repository import UserRepository
+
+router = APIRouter(prefix="/oauth", tags=["OAuth"])
+
+
+@router.get("/{provider}/authorize")
+async def oauth_authorize(
+    provider: str,
+    redirect_after: str = "/",
+):
+    """
+    Шаг 1: генерируем state + PKCE, редиректим на провайдера.
+    """
+    if provider not in PROVIDERS:
+        raise HTTPException(status_code=404, detail=f"Provider '{provider}' not supported")
+
+    oauth_provider = PROVIDERS[provider]
+    state = generate_state()
+    code_verifier = generate_code_verifier()
+    code_challenge = generate_code_challenge(code_verifier)
+
+    # Сохраняем state + verifier в Redis (one-time, TTL 10 мин)
+    await oauth_state_store.save(
+        state=state,
+        provider=provider,
+        code_verifier=code_verifier,
+        redirect_after=redirect_after,
+    )
+
+    redirect_uri = f"{settings.base_url}/oauth/{provider}/callback"
+    authorize_url = oauth_provider.build_authorize_url(
+        redirect_uri=redirect_uri,
+        state=state,
+        code_challenge=code_challenge,
+    )
+
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=authorize_url)
+
+
+@router.get("/{provider}/callback")
+async def oauth_callback(
+    provider: str,
+    code: str,
+    state: str,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Шаг 2: callback от провайдера.
+    Проверяем state, обмениваем code → token, получаем профиль,
+    создаём/привязываем локальный аккаунт.
+    """
+    # 1. Валидируем state (CSRF) + получаем verifier (PKCE)
+    state_data = await oauth_state_store.consume(state)
+    if not state_data or state_data["provider"] != provider:
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+
+    oauth_provider = PROVIDERS[provider]
+    redirect_uri = f"{settings.base_url}/oauth/{provider}/callback"
+
+    # 2. Обмен code → access_token провайдера
+    try:
+        token_data = await exchange_code_for_token(
+            provider_token_url=oauth_provider.token_url,
+            client_id=oauth_provider.client_id,
+            client_secret=oauth_provider.client_secret,
+            code=code,
+            redirect_uri=redirect_uri,
+            code_verifier=state_data["code_verifier"],
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Token exchange failed: {exc}")
+
+    provider_access_token = token_data.get("access_token")
+
+    # 3. Получаем профиль пользователя от провайдера
+    raw_profile = await get_user_profile(oauth_provider.userinfo_url, provider_access_token)
+
+    # GitHub: отдельный запрос для email если нужен
+    emails = None
+    if provider == "github" and not raw_profile.get("email"):
+        emails = await get_github_emails(provider_access_token)
+
+    normalizer = NORMALIZERS[provider]
+    profile = normalizer(raw_profile, emails) if provider == "github" else normalizer(raw_profile)
+
+    # 4. Создаём/привязываем аккаунт
+    user_repo = UserRepository(db)
+    oauth_repo = OAuthAccountRepository(db)
+
+    # Ищем существующую OAuth-привязку
+    oauth_account = await oauth_repo.get(provider=provider, provider_user_id=profile.provider_user_id)
+
+    if oauth_account:
+        # Уже привязан → просто логиним
+        user = await user_repo.get_by_id(oauth_account.user_id)
+    else:
+        # Новая OAuth-привязка
+        if profile.email:
+            # Проверяем: есть ли локальный аккаунт с таким email
+            existing_user = await user_repo.get_by_email(profile.email)
+            if existing_user:
+                # Привязываем OAuth к существующему аккаунту
+                user = existing_user
+            else:
+                # Создаём новый аккаунт
+                user = await user_repo.create(
+                    email=profile.email,
+                    name=profile.name or profile.email.split("@")[0],
+                    avatar_url=profile.avatar_url,
+                    is_verified=True,   # email подтверждён провайдером
+                )
+        else:
+            # Провайдер не вернул email — создаём без него
+            user = await user_repo.create(
+                email=None,
+                name=profile.name,
+                avatar_url=profile.avatar_url,
+            )
+
+        # Сохраняем OAuth-привязку
+        await oauth_repo.create(
+            user_id=user.id,
+            provider=provider,
+            provider_user_id=profile.provider_user_id,
+            access_token=provider_access_token,
+        )
+        await db.commit()
+
+    # 5. Выдаём наши JWT-токены
+    access_token = create_access_token(user.id)
+    refresh_token, fid = create_refresh_token(user.id)
+    rt_payload = __import__("app.auth.tokens", fromlist=["decode_token"]).decode_token(refresh_token, "refresh")
+    await session_store.save_refresh_token(jti=rt_payload["jti"], fid=fid, user_id=user.id)
+
+    response.set_cookie("refresh_token", refresh_token, httponly=True, secure=True, samesite="strict", max_age=30*24*3600)
+
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"{state_data['redirect_after']}?access_token={access_token}")`,
+      },
+      {
+        filename: "app/models/oauth_account.py",
+        code: `"""
+OAuthAccount — связь между локальным User и OAuth-провайдером.
+Один пользователь может иметь несколько провязок (Google + GitHub).
+"""
+
+from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import Base, TimestampMixin
+
+
+class OAuthAccount(Base, TimestampMixin):
+    __tablename__ = "oauth_accounts"
+    __table_args__ = (
+        # Один провайдер — один аккаунт у этого провайдера
+        UniqueConstraint("provider", "provider_user_id", name="uq_provider_user"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(50))          # "google", "github"
+    provider_user_id: Mapped[str] = mapped_column(String(255)) # id у провайдера
+    # access_token провайдера — для доступа к API провайдера от имени пользователя
+    # Храним в зашифрованном виде (в реальном проекте — Vault / KMS)
+    access_token: Mapped[str | None] = mapped_column(String(2048))
+
+    user: Mapped["User"] = relationship(back_populates="oauth_accounts", lazy="raise")`,
+      },
+    ],
+    explanation: `**Authorization Code Flow + PKCE**: классический OAuth2 flow для серверных приложений. PKCE (RFC 7636) добавляет защиту: \`code_challenge\` отправляется провайдеру при старте, \`code_verifier\` — при обмене кода. Даже если authorization code перехвачен (open redirect, referer header), без verifier он бесполезен. S256: \`BASE64URL(SHA256(verifier))\` — провайдер хэширует verifier и сравнивает с challenge.
+
+**State parameter (CSRF-защита)**: state — случайная строка, хранится в Redis с TTL. Провайдер возвращает её в callback. Если state в callback не совпадает с сохранённым — атака CSRF: злоумышленник подсунул свой authorization code. \`GETDEL\` в Redis делает state одноразовым — повторный callback с тем же state провалится.
+
+**Конфликт email при OAuth**: если пользователь ранее зарегистрировался с email=user@gmail.com, а потом входит через Google (тот же email) — мы привязываем OAuth к существующему аккаунту, не создаём дубль. Это UX-решение, альтернатива — предложить явно слить аккаунты.
+
+**Multiple providers**: таблица \`oauth_accounts\` — отдельная сущность. Один \`User\` → много \`OAuthAccount\`. \`UniqueConstraint("provider", "provider_user_id")\` гарантирует что один OAuth-аккаунт привязан только к одному локальному пользователю. Для поиска: сначала ищем OAuth-привязку по (provider, provider_user_id), затем User по user_id.
+
+**GitHub email quirk**: GitHub по умолчанию не возвращает email если пользователь скрыл его в настройках. Нужен отдельный запрос к \`/user/emails\` со scope \`user:email\`. Берём primary+verified email из списка.`,
+  },
+
+  {
+    id: "rbac-permissions",
+    title: "Система разрешений и RBAC",
+    task: "Реализуйте гибкую систему разрешений поверх FastAPI Depends. Roles: admin, moderator, user. Permissions: articles:read, articles:write, articles:delete. Реализуйте: проверку разрешений как DI-зависимость (require_permission(\"articles:write\")), row-level security (пользователь видит только свои ресурсы), делегирование прав, временные разрешения с TTL, аудит всех проверок прав.",
+    files: [
+      {
+        filename: "app/rbac/permissions.py",
+        code: `"""
+RBAC: Role-Based Access Control с поддержкой:
+- Статических разрешений через роли
+- Временных разрешений с TTL
+- Делегирования разрешений
+- Row-level security
+
+Иерархия:
+  Role → set[Permission]
+  User → set[Role] + set[TemporaryPermission]
+
+Permission format: "<resource>:<action>"
+  articles:read, articles:write, articles:delete
+  users:read, users:manage
+  admin:*  — wildcard (все разрешения ресурса)
+"""
+
+from enum import StrEnum
+
+
+class Role(StrEnum):
+    ADMIN = "admin"
+    MODERATOR = "moderator"
+    USER = "user"
+
+
+class Permission(StrEnum):
+    # Articles
+    ARTICLES_READ = "articles:read"
+    ARTICLES_WRITE = "articles:write"
+    ARTICLES_DELETE = "articles:delete"
+    ARTICLES_PUBLISH = "articles:publish"
+    # Users
+    USERS_READ = "users:read"
+    USERS_MANAGE = "users:manage"
+    # Comments
+    COMMENTS_READ = "comments:read"
+    COMMENTS_WRITE = "comments:write"
+    COMMENTS_DELETE = "comments:delete"
+    COMMENTS_MODERATE = "comments:moderate"
+
+
+# Матрица ролей: какие permissions получает каждая роль
+ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
+    Role.ADMIN: frozenset(Permission),   # все разрешения
+
+    Role.MODERATOR: frozenset({
+        Permission.ARTICLES_READ,
+        Permission.ARTICLES_WRITE,
+        Permission.ARTICLES_DELETE,
+        Permission.ARTICLES_PUBLISH,
+        Permission.COMMENTS_READ,
+        Permission.COMMENTS_WRITE,
+        Permission.COMMENTS_DELETE,
+        Permission.COMMENTS_MODERATE,
+        Permission.USERS_READ,
+    }),
+
+    Role.USER: frozenset({
+        Permission.ARTICLES_READ,
+        Permission.ARTICLES_WRITE,   # создать, но не удалить чужие
+        Permission.COMMENTS_READ,
+        Permission.COMMENTS_WRITE,
+    }),
+}
+
+
+def get_role_permissions(role: Role) -> frozenset[Permission]:
+    return ROLE_PERMISSIONS.get(role, frozenset())
+
+
+def has_permission(
+    user_roles: list[Role],
+    permission: Permission,
+    extra_permissions: set[Permission] | None = None,
+) -> bool:
+    """
+    Проверяет разрешение с учётом:
+    - статических разрешений ролей
+    - дополнительных (временных/делегированных) разрешений
+    """
+    # Проверяем статические разрешения ролей
+    for role in user_roles:
+        if permission in get_role_permissions(role):
+            return True
+    # Проверяем дополнительные разрешения
+    if extra_permissions and permission in extra_permissions:
+        return True
+    return False`,
+      },
+      {
+        filename: "app/rbac/models.py",
+        code: `from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import Base, TimestampMixin
+
+
+class UserRole(Base, TimestampMixin):
+    """Связь пользователь ↔ роль."""
+    __tablename__ = "user_roles"
+    __table_args__ = (
+        UniqueConstraint("user_id", "role", name="uq_user_role"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    role: Mapped[str] = mapped_column(String(50))
+    granted_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+
+class TemporaryPermission(Base):
+    """
+    Временное разрешение с TTL — истекает в expires_at.
+    Используется для делегирования: "дать модератору право удалять статьи на 24ч".
+    """
+    __tablename__ = "temporary_permissions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    permission: Mapped[str] = mapped_column(String(100))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    granted_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str | None] = mapped_column(String(500))
+
+    @property
+    def is_active(self) -> bool:
+        from datetime import UTC
+        return datetime.now(UTC) < self.expires_at
+
+
+class PermissionAuditLog(Base):
+    """
+    Аудит-лог всех проверок разрешений.
+    Что, кто, когда, результат — для compliance и forensics.
+    """
+    __tablename__ = "permission_audit_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    permission: Mapped[str] = mapped_column(String(100))
+    resource_type: Mapped[str | None] = mapped_column(String(100))
+    resource_id: Mapped[int | None] = mapped_column()
+    granted: Mapped[bool]
+    reason: Mapped[str | None] = mapped_column(String(500))
+    ip_address: Mapped[str | None] = mapped_column(String(45))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: __import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+    )`,
+      },
+      {
+        filename: "app/rbac/dependencies.py",
+        code: `"""
+RBAC как FastAPI Depends.
+
+require_permission("articles:write") — фабрика зависимостей.
+Возвращает зависимость которая:
+  1. Получает текущего пользователя
+  2. Загружает его роли + временные разрешения
+  3. Проверяет permission
+  4. Пишет в audit log
+  5. Бросает 403 при отказе
+"""
+
+from datetime import datetime, UTC
+from typing import Callable
+
+from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.dependencies import get_current_user
+from app.core.database import get_db
+from app.models.user import User
+from app.rbac.models import PermissionAuditLog, TemporaryPermission, UserRole
+from app.rbac.permissions import Permission, Role, has_permission
+
+
+async def _get_user_roles(user_id: int, db: AsyncSession) -> list[Role]:
+    result = await db.execute(
+        select(UserRole.role).where(UserRole.user_id == user_id)
+    )
+    return [Role(row.role) for row in result]
+
+
+async def _get_temporary_permissions(user_id: int, db: AsyncSession) -> set[Permission]:
+    """Активные временные разрешения (не истёкшие)."""
+    now = datetime.now(UTC)
+    result = await db.execute(
+        select(TemporaryPermission.permission)
+        .where(TemporaryPermission.user_id == user_id)
+        .where(TemporaryPermission.expires_at > now)
+    )
+    return {Permission(row.permission) for row in result}
+
+
+async def _audit(
+    db: AsyncSession,
+    user_id: int | None,
+    permission: str,
+    granted: bool,
+    resource_type: str | None = None,
+    resource_id: int | None = None,
+    reason: str | None = None,
+    ip_address: str | None = None,
+) -> None:
+    """Асинхронная запись в audit log. Не блокирует основной запрос."""
+    log = PermissionAuditLog(
+        user_id=user_id,
+        permission=permission,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        granted=granted,
+        reason=reason,
+        ip_address=ip_address,
+    )
+    db.add(log)
+    # Не делаем commit здесь — он произойдёт вместе с основной транзакцией запроса
+
+
+def require_permission(
+    permission: Permission,
+    resource_type: str | None = None,
+) -> Callable:
+    """
+    Фабрика зависимостей для проверки разрешений.
+
+    Использование:
+        @router.post("/articles")
+        async def create_article(
+            _: None = Depends(require_permission(Permission.ARTICLES_WRITE)),
+            current_user: User = Depends(get_current_user),
+        ):
+            ...
+    """
+    async def dependency(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> User:
+        roles = await _get_user_roles(current_user.id, db)
+        temp_perms = await _get_temporary_permissions(current_user.id, db)
+
+        granted = has_permission(roles, permission, temp_perms)
+        ip = request.client.host if request.client else None
+
+        await _audit(
+            db=db,
+            user_id=current_user.id,
+            permission=permission,
+            granted=granted,
+            resource_type=resource_type,
+            ip_address=ip,
+            reason="role_check",
+        )
+
+        if not granted:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission '{permission}' required",
+            )
+
+        return current_user  # возвращаем пользователя для удобства
+
+    return dependency
+
+
+def require_any_permission(*permissions: Permission) -> Callable:
+    """Достаточно любого из перечисленных разрешений."""
+    async def dependency(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> User:
+        roles = await _get_user_roles(current_user.id, db)
+        temp_perms = await _get_temporary_permissions(current_user.id, db)
+
+        for perm in permissions:
+            if has_permission(roles, perm, temp_perms):
+                ip = request.client.host if request.client else None
+                await _audit(db, current_user.id, perm, True, ip_address=ip, reason="any_check")
+                return current_user
+
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    return dependency`,
+      },
+      {
+        filename: "app/rbac/row_level.py",
+        code: `"""
+Row-Level Security (RLS): пользователь видит/изменяет только свои ресурсы.
+Реализован через Depends-фабрики, которые возвращают проверенный объект.
+"""
+
+from fastapi import Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.dependencies import get_current_user
+from app.core.database import get_db
+from app.models.article import Article
+from app.models.user import User
+from app.rbac.permissions import Permission, Role, has_permission
+from app.rbac.dependencies import _get_user_roles
+from app.repositories.article_repository import ArticleRepository
+
+
+def get_own_article(permission_for_others: Permission | None = None):
+    """
+    Фабрика зависимостей для row-level security на статьях.
+
+    Логика:
+    - Всегда разрешаем доступ к своей статье
+    - Для чужих статей: проверяем permission_for_others (если задан)
+    - Если permission_for_others=None — только свои
+
+    Использование:
+        # Только свои статьи
+        @router.delete("/{article_id}")
+        async def delete(article = Depends(get_own_article())):
+            ...
+
+        # Свои + модераторы/админы могут удалять любые
+        @router.delete("/{article_id}")
+        async def delete(
+            article = Depends(get_own_article(Permission.ARTICLES_DELETE))
+        ):
+            ...
+    """
+    async def dependency(
+        article_id: int,
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> Article:
+        repo = ArticleRepository(db)
+        article = await repo.get_or_raise(article_id)
+
+        # Своя статья — всегда разрешено
+        if article.author_id == current_user.id:
+            return article
+
+        # Чужая: проверяем permission
+        if permission_for_others is not None:
+            roles = await _get_user_roles(current_user.id, db)
+            if has_permission(roles, permission_for_others):
+                return article
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have access to this resource",
+        )
+
+    return dependency`,
+      },
+      {
+        filename: "app/rbac/delegation.py",
+        code: `"""
+Делегирование разрешений: пользователь A временно передаёт право B.
+
+Ограничения:
+- Нельзя делегировать разрешение которого у тебя нет
+- Нельзя делегировать дольше чем у тебя остаётся (нет "privilege escalation through time")
+- Аудит: кто, кому, что, на сколько
+"""
+
+from datetime import datetime, timedelta, UTC
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.dependencies import get_current_user
+from app.core.database import get_db
+from app.models.user import User
+from app.rbac.dependencies import (
+    _get_temporary_permissions,
+    _get_user_roles,
+)
+from app.rbac.models import TemporaryPermission
+from app.rbac.permissions import Permission, has_permission
+
+router = APIRouter(prefix="/permissions", tags=["Permissions"])
+
+
+class DelegateRequest(BaseModel):
+    target_user_id: int
+    permission: Permission
+    duration_hours: int        # на сколько часов
+    reason: str | None = None
+
+
+@router.post("/delegate", status_code=status.HTTP_201_CREATED)
+async def delegate_permission(
+    payload: DelegateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Текущий пользователь делегирует разрешение другому.
+    """
+    # Проверяем что у делегирующего есть это право
+    roles = await _get_user_roles(current_user.id, db)
+    temp_perms = await _get_temporary_permissions(current_user.id, db)
+
+    if not has_permission(roles, payload.permission, temp_perms):
+        raise HTTPException(
+            status_code=403,
+            detail="You cannot delegate a permission you don't have",
+        )
+
+    # Ограничиваем длительность: не дольше 7 дней
+    if payload.duration_hours > 24 * 7:
+        raise HTTPException(
+            status_code=400,
+            detail="Maximum delegation duration is 7 days",
+        )
+
+    expires_at = datetime.now(UTC) + timedelta(hours=payload.duration_hours)
+
+    temp_perm = TemporaryPermission(
+        user_id=payload.target_user_id,
+        permission=payload.permission,
+        expires_at=expires_at,
+        granted_by_id=current_user.id,
+        reason=payload.reason,
+    )
+    db.add(temp_perm)
+    await db.commit()
+
+    return {
+        "detail": "Permission delegated",
+        "permission": payload.permission,
+        "expires_at": expires_at.isoformat(),
+    }
+
+
+@router.delete("/delegate/{permission_id}")
+async def revoke_delegation(
+    permission_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отзываем делегированное разрешение досрочно."""
+    from sqlalchemy import select
+    result = await db.execute(
+        select(TemporaryPermission).where(TemporaryPermission.id == permission_id)
+    )
+    temp_perm = result.scalar_one_or_none()
+
+    if not temp_perm:
+        raise HTTPException(status_code=404, detail="Permission not found")
+
+    # Только тот кто выдал, или admin
+    roles = await _get_user_roles(current_user.id, db)
+    from app.rbac.permissions import Role
+    is_admin = Role.ADMIN in roles
+    if temp_perm.granted_by_id != current_user.id and not is_admin:
+        raise HTTPException(status_code=403, detail="Cannot revoke this delegation")
+
+    await db.delete(temp_perm)
+    await db.commit()
+    return {"detail": "Delegation revoked"}`,
+      },
+      {
+        filename: "app/articles/router.py",
+        code: `"""Пример использования всех RBAC-паттернов в одном роутере."""
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.dependencies import get_current_user
+from app.core.database import get_db
+from app.models.article import Article
+from app.models.user import User
+from app.rbac.dependencies import require_permission
+from app.rbac.permissions import Permission
+from app.rbac.row_level import get_own_article
+from app.repositories.article_repository import ArticleRepository
+
+router = APIRouter(prefix="/articles", tags=["Articles"])
+
+
+@router.get("/")
+async def list_articles(
+    db: AsyncSession = Depends(get_db),
+    # Читать статьи может любой аутентифицированный пользователь
+    current_user: User = Depends(require_permission(Permission.ARTICLES_READ)),
+):
+    repo = ArticleRepository(db)
+    return await repo.get_all(limit=20)
+
+
+@router.post("/", status_code=201)
+async def create_article(
+    # Писать могут все у кого есть articles:write
+    current_user: User = Depends(require_permission(Permission.ARTICLES_WRITE)),
+    db: AsyncSession = Depends(get_db),
+):
+    ...
+
+
+@router.put("/{article_id}")
+async def update_article(
+    # RLS: только автор или тот у кого есть articles:write (модератор/админ)
+    article: Article = Depends(get_own_article(Permission.ARTICLES_WRITE)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Автор редактирует свою, модератор — любую."""
+    ...
+
+
+@router.delete("/{article_id}")
+async def delete_article(
+    # RLS: только автор или тот у кого есть articles:delete
+    article: Article = Depends(get_own_article(Permission.ARTICLES_DELETE)),
+    db: AsyncSession = Depends(get_db),
+):
+    ...
+
+
+@router.post("/{article_id}/publish")
+async def publish_article(
+    article_id: int,
+    # Публиковать могут только модераторы и выше
+    current_user: User = Depends(require_permission(Permission.ARTICLES_PUBLISH)),
+    db: AsyncSession = Depends(get_db),
+):
+    ...`,
+      },
+    ],
+    explanation: `**Фабрика зависимостей**: \`require_permission(Permission.ARTICLES_WRITE)\` возвращает новую async-функцию при каждом вызове. FastAPI кэширует зависимости по идентичности объекта — каждый вызов фабрики создаёт уникальный объект, поэтому кэширование не мешает. Зависимость возвращает \`User\` — можно использовать и как проверку, и как источник текущего пользователя.
+
+**Временные разрешения**: хранятся в PostgreSQL с \`expires_at\`. При каждой проверке делаем запрос с \`WHERE expires_at > NOW()\`. Для высоконагруженных систем — кэшируйте в Redis с TTL равным \`expires_at - now()\`. При делегировании нельзя выдать разрешение которого у вас нет (no privilege escalation) и нельзя выдать на срок дольше 7 дней.
+
+**Row-level security через Depends**: \`get_own_article(permission_for_others)\` — фабрика которая возвращает зависимость. Зависимость загружает ресурс, проверяет владельца, при необходимости проверяет дополнительное разрешение. Логика RLS не дублируется в каждом endpoint — декларативно через параметр фабрики.
+
+**Audit log**: пишется в той же транзакции что и основная операция — атомарно. Если запрос откатится, откатится и запись в лог. Для систем где аудит критически важен (compliance, forensics) — используйте отдельную транзакцию или запись через фоновую задачу в append-only хранилище.
+
+**ROLE_PERMISSIONS как frozenset**: неизменяемые множества, определённые один раз при старте приложения. Проверка \`permission in frozenset\` — O(1). Матрица ролей — единственная точка правды. Добавить новое разрешение: 1) добавить в \`Permission\`, 2) добавить в нужные роли в \`ROLE_PERMISSIONS\`. Никаких изменений в коде endpoint-ов.`,
+  },
+
+  {
+    id: "api-security-hardening",
+    title: "Защита от атак и безопасность API",
+    task: "Проведите hardening FastAPI-приложения. Реализуйте: rate limiting на уровне IP и пользователя через Redis, защиту от brute force на /auth/login (exponential backoff + captcha после N попыток), Input sanitization и защиту от injection через параметризованные запросы, корректные CORS-заголовки с whitelist, security headers (CSP, HSTS, X-Frame-Options), сокрытие технических деталей из error responses.",
+    files: [
+      {
+        filename: "app/middleware/security_headers.py",
+        code: `"""
+Security headers middleware.
+Добавляет заголовки безопасности к каждому ответу.
+Монтируется один раз — не нужно трогать каждый endpoint.
+"""
+
+from fastapi import Request
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+
+        # Запрещает браузеру угадывать Content-Type (MIME sniffing атаки)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+
+        # Блокирует встраивание страницы в <iframe> (clickjacking)
+        response.headers["X-Frame-Options"] = "DENY"
+
+        # XSS-фильтр браузера (legacy, CSP важнее)
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+
+        # HTTPS обязателен минимум 1 год, включая субдомены
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains; preload"
+        )
+
+        # Не отправлять Referer при переходе на внешние сайты
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Запрет браузерных API по умолчанию (камера, геолокация и т.д.)
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        )
+
+        # Content Security Policy: разрешаем ресурсы только со своего домена.
+        # 'self' — текущий origin. Для API-only сервиса это максимально строго.
+        # Для приложений с JS/CSS — расширяйте под свои нужды.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self'; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "   # дублирует X-Frame-Options для CSP2+
+            "base-uri 'self'; "
+            "form-action 'self'"
+        )
+
+        # Скрываем информацию о сервере (убираем "uvicorn" из Server-заголовка)
+        response.headers.pop("server", None)
+
+        return response`,
+      },
+      {
+        filename: "app/middleware/cors.py",
+        code: `"""
+CORS-конфигурация с явным whitelist.
+
+НЕ используйте allow_origins=["*"] для API с аутентификацией:
+браузер отправит cookies/credentials на любой домен.
+Whitelist — единственный безопасный подход для credentialed requests.
+"""
+
+from fastapi.middleware.cors import CORSMiddleware
+
+
+def setup_cors(app, allowed_origins: list[str]) -> None:
+    app.add_middleware(
+        CORSMiddleware,
+        # Явный список доменов — никаких wildcards
+        allow_origins=allowed_origins,
+        # True — разрешаем cookies и Authorization header в кросс-доменных запросах.
+        # Требует явного списка в allow_origins (несовместимо с "*")
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Accept",
+            "Authorization",
+            "Content-Type",
+            "X-Request-ID",    # трассировка запросов
+            "X-CSRF-Token",
+        ],
+        # Заголовки которые браузер может читать из ответа
+        expose_headers=["X-Request-ID", "X-RateLimit-Remaining"],
+        # Кэш preflight-ответа на 1 час (уменьшает число OPTIONS запросов)
+        max_age=3600,
+    )
+
+
+# В main.py:
+# from app.core.config import settings
+# setup_cors(app, allowed_origins=settings.cors_allowed_origins)
+#
+# settings.cors_allowed_origins = [
+#     "https://app.example.com",
+#     "https://admin.example.com",
+# ]
+# В development добавляем "http://localhost:3000"`,
+      },
+      {
+        filename: "app/middleware/error_handler.py",
+        code: `"""
+Централизованная обработка ошибок.
+
+Принципы:
+- Пользователь видит безопасное сообщение без технических деталей
+- Разработчик видит полный traceback в логах
+- request_id позволяет найти запрос в логах по id из ответа клиента
+- В development — показываем детали; в production — скрываем
+"""
+
+import traceback
+import uuid
+
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def setup_error_handlers(app: FastAPI) -> None:
+
+    @app.middleware("http")
+    async def add_request_id(request: Request, call_next):
+        """Добавляет уникальный ID к каждому запросу — для трассировки."""
+        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        request_id = getattr(request.state, "request_id", "unknown")
+        # HTTP-ошибки — клиентские, логируем на уровне WARNING
+        logger.warning(
+            "HTTP %d: %s | path=%s | request_id=%s",
+            exc.status_code, exc.detail, request.url.path, request_id,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": _safe_http_message(exc.status_code),
+                "detail": exc.detail,   # detail из HTTPException — уже безопасен
+                "request_id": request_id,
+            },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        """Pydantic validation errors — 422, показываем что именно невалидно."""
+        request_id = getattr(request.state, "request_id", "unknown")
+        # Очищаем значения из ошибок — не логируем пользовательские данные
+        safe_errors = [
+            {"field": ".".join(str(loc) for loc in e["loc"]), "message": e["msg"]}
+            for e in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "error": "Validation failed",
+                "errors": safe_errors,
+                "request_id": request_id,
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        """Все необработанные исключения — 500, технические детали только в логах."""
+        request_id = getattr(request.state, "request_id", "unknown")
+        # Полный traceback — только в логах, никогда в ответе клиенту
+        logger.error(
+            "Unhandled exception | path=%s | request_id=%s\n%s",
+            request.url.path,
+            request_id,
+            traceback.format_exc(),
+        )
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                # Ни stacktrace, ни имена классов, ни SQL — ничего технического
+                "error": "Internal server error",
+                "request_id": request_id,   # клиент отправляет в поддержку
+            },
+        )
+
+
+def _safe_http_message(status_code: int) -> str:
+    messages = {
+        400: "Bad request",
+        401: "Authentication required",
+        403: "Access denied",
+        404: "Not found",
+        405: "Method not allowed",
+        409: "Conflict",
+        410: "Gone",
+        422: "Validation failed",
+        429: "Too many requests",
+        500: "Internal server error",
+        502: "Bad gateway",
+        503: "Service unavailable",
+    }
+    return messages.get(status_code, "Error")`,
+      },
+      {
+        filename: "app/auth/brute_force.py",
+        code: `"""
+Защита от brute force на /auth/login:
+
+Стратегия:
+  1-4 попытки:  немедленный ответ (нет задержки)
+  5-9 попытки:  exponential backoff (2, 4, 8, 16, 32 сек)
+  10+ попытки:  аккаунт временно заблокирован + требуем captcha
+  20+ попытки:  IP блокируется на 24 часа
+
+Счётчики хранятся в Redis с автоматическим TTL — сбрасываются сами.
+При успешном входе — счётчик обнуляется.
+"""
+
+import asyncio
+import time
+from dataclasses import dataclass
+
+import redis.asyncio as aioredis
+
+from app.core.redis import get_redis
+
+# ── Пороги ───────────────────────────────────────────────────────────────────
+
+BACKOFF_START = 5          # с этой попытки начинается backoff
+CAPTCHA_START = 10         # с этой попытки требуем captcha
+IP_BLOCK_START = 20        # с этой попытки блокируем IP
+ACCOUNT_LOCK_TTL = 900     # 15 минут блокировки аккаунта
+IP_BLOCK_TTL = 86400       # 24 часа блокировки IP
+ATTEMPT_WINDOW = 3600      # окно подсчёта попыток (1 час)
+
+
+@dataclass
+class LoginCheckResult:
+    allowed: bool
+    requires_captcha: bool
+    locked_until: float | None    # timestamp разблокировки
+    wait_seconds: float           # сколько ждать перед следующей попыткой
+
+
+class BruteForceProtection:
+
+    @property
+    def redis(self) -> aioredis.Redis:
+        return get_redis()
+
+    def _email_key(self, email: str) -> str:
+        import hashlib
+        # Хэшируем email — не храним PII в Redis-ключах
+        h = hashlib.sha256(email.lower().encode()).hexdigest()[:16]
+        return f"bf:email:{h}"
+
+    def _ip_key(self, ip: str) -> str:
+        return f"bf:ip:{ip}"
+
+    def _ip_block_key(self, ip: str) -> str:
+        return f"bf:ip_block:{ip}"
+
+    async def check_and_increment(
+        self, email: str, ip: str
+    ) -> LoginCheckResult:
+        """
+        Проверяет лимиты и инкрементирует счётчик попыток.
+        Вызывается ДО проверки пароля.
+        """
+        # Проверяем блокировку IP
+        if await self.redis.exists(self._ip_block_key(ip)):
+            return LoginCheckResult(
+                allowed=False,
+                requires_captcha=False,
+                locked_until=time.time() + IP_BLOCK_TTL,
+                wait_seconds=IP_BLOCK_TTL,
+            )
+
+        pipe = self.redis.pipeline()
+        email_key = self._email_key(email)
+        ip_key = self._ip_key(ip)
+
+        # Атомарно инкрементируем оба счётчика
+        pipe.incr(email_key)
+        pipe.expire(email_key, ATTEMPT_WINDOW)
+        pipe.incr(ip_key)
+        pipe.expire(ip_key, ATTEMPT_WINDOW)
+        results = await pipe.execute()
+
+        email_count = int(results[0])
+        ip_count = int(results[2])
+        count = max(email_count, ip_count)
+
+        # IP-блокировка при превышении порога
+        if ip_count >= IP_BLOCK_START:
+            await self.redis.set(self._ip_block_key(ip), "1", ex=IP_BLOCK_TTL)
+            return LoginCheckResult(
+                allowed=False,
+                requires_captcha=False,
+                locked_until=time.time() + IP_BLOCK_TTL,
+                wait_seconds=IP_BLOCK_TTL,
+            )
+
+        # Временная блокировка аккаунта
+        if email_count >= CAPTCHA_START:
+            locked_until = time.time() + ACCOUNT_LOCK_TTL
+            return LoginCheckResult(
+                allowed=False,
+                requires_captcha=True,
+                locked_until=locked_until,
+                wait_seconds=ACCOUNT_LOCK_TTL,
+            )
+
+        # Exponential backoff
+        if count >= BACKOFF_START:
+            backoff = min(2 ** (count - BACKOFF_START), 32)
+            # Добавляем jitter ±20% чтобы не все клиенты пришли одновременно
+            import random
+            jitter = backoff * 0.2 * (random.random() * 2 - 1)
+            wait = backoff + jitter
+            await asyncio.sleep(wait)
+
+        return LoginCheckResult(
+            allowed=True,
+            requires_captcha=count >= CAPTCHA_START - 2,  # предупреждаем заранее
+            locked_until=None,
+            wait_seconds=0,
+        )
+
+    async def reset(self, email: str, ip: str) -> None:
+        """Сбрасываем счётчики после успешного входа."""
+        pipe = self.redis.pipeline()
+        pipe.delete(self._email_key(email))
+        pipe.delete(self._ip_key(ip))
+        await pipe.execute()
+
+
+brute_force = BruteForceProtection()`,
+      },
+      {
+        filename: "app/auth/login_protected.py",
+        code: `"""
+/auth/login с полной защитой от brute force.
+Заменяет наивную реализацию из router.py.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.brute_force import brute_force
+from app.auth.session_store import session_store
+from app.auth.tokens import create_access_token, create_refresh_token, decode_token
+from app.core.database import get_db
+from app.core.security import verify_password
+from app.repositories.user_repository import UserRepository
+from app.schemas.auth import LoginRequest, TokenResponse
+
+router = APIRouter()
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
+    client_ip = request.client.host if request.client else "unknown"
+
+    # 1. Проверка brute force ДО проверки пароля
+    check = await brute_force.check_and_increment(
+        email=payload.email, ip=client_ip
+    )
+
+    if not check.allowed:
+        headers = {}
+        if check.locked_until:
+            headers["Retry-After"] = str(int(check.wait_seconds))
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "message": "Too many login attempts. Try again later.",
+                # Не указываем точное время чтобы не облегчать timing-атаки
+                "requires_captcha": check.requires_captcha,
+            },
+            headers=headers,
+        )
+
+    # 2. Проверяем credentials
+    repo = UserRepository(db)
+    user = await repo.get_by_email(payload.email)
+
+    if not user or not verify_password(payload.password, user.hashed_password):
+        # Одинаковый ответ для "нет пользователя" и "неверный пароль"
+        # Одинаковая задержка (уже выполнена в check_and_increment)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
+
+    # 3. Успешный вход — сбрасываем счётчики
+    await brute_force.reset(email=payload.email, ip=client_ip)
+
+    # 4. Выдаём токены
+    access_token = create_access_token(user.id)
+    refresh_token, fid = create_refresh_token(user.id)
+    rt_payload = decode_token(refresh_token, "refresh")
+    await session_store.save_refresh_token(
+        jti=rt_payload["jti"], fid=fid, user_id=user.id
+    )
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=30 * 24 * 3600,
+    )
+    return TokenResponse(access_token=access_token, token_type="bearer")`,
+      },
+      {
+        filename: "app/main.py",
+        code: `from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from app.core.config import settings
+from app.middleware.cors import setup_cors
+from app.middleware.error_handler import setup_error_handlers
+from app.middleware.security_headers import SecurityHeadersMiddleware
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # startup
+    yield
+    # shutdown
+    from app.core.redis import close_redis
+    await close_redis()
+
+
+app = FastAPI(
+    title="Secure API",
+    # В production отключаем /docs и /redoc — не раскрываем схему API публично
+    docs_url="/docs" if settings.debug else None,
+    redoc_url="/redoc" if settings.debug else None,
+    # Отключаем стандартную OpenAPI-схему в production
+    openapi_url="/openapi.json" if settings.debug else None,
+    lifespan=lifespan,
+)
+
+# Порядок middleware важен: выполняются в обратном порядке добавления
+# (последний добавленный — первый выполняется)
+
+# 1. Security headers — оборачивает все ответы
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 2. CORS — должен быть до бизнес-логики
+setup_cors(app, allowed_origins=settings.cors_allowed_origins)
+
+# 3. Error handlers — перехватывают исключения до клиента
+setup_error_handlers(app)
+
+# Роутеры
+from app.auth.login_protected import router as auth_router
+app.include_router(auth_router, prefix="/auth", tags=["Auth"])`,
+      },
+      {
+        filename: "app/core/input_validation.py",
+        code: `"""
+Input sanitization: дополнительный слой поверх Pydantic.
+
+Pydantic уже защищает от неправильных типов.
+Этот модуль добавляет:
+- Ограничение длины строк (DOS через гигантский input)
+- Нормализацию Unicode (гомогляф-атаки: "аdmin" с кириллической "а")
+- Базовую проверку на SQL/HTML-инъекции (defence in depth)
+  (основная защита — параметризованные запросы SQLAlchemy)
+"""
+
+import unicodedata
+import re
+from typing import Annotated
+
+from pydantic import AfterValidator, Field
+
+
+def normalize_unicode(value: str) -> str:
+    """
+    NFC-нормализация: разные Unicode-представления одного символа
+    превращаются в каноническую форму.
+    Пример: é (e + combining accent) → é (precomposed)
+    """
+    return unicodedata.normalize("NFC", value)
+
+
+def strip_control_chars(value: str) -> str:
+    """Удаляем control characters (\\x00-\\x1f, \\x7f) кроме \\t\\n\\r."""
+    return re.sub(r"[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]", "", value)
+
+
+def validate_no_null_bytes(value: str) -> str:
+    """Null bytes в строках — признак попытки инъекции."""
+    if "\\x00" in value or "\\0" in value:
+        raise ValueError("Null bytes are not allowed")
+    return value
+
+
+# Типы-алиасы для использования в Pydantic-схемах
+SafeStr = Annotated[
+    str,
+    AfterValidator(normalize_unicode),
+    AfterValidator(strip_control_chars),
+    AfterValidator(validate_no_null_bytes),
+    Field(max_length=1000),
+]
+
+EmailStr = Annotated[
+    str,
+    AfterValidator(lambda v: v.lower().strip()),
+    Field(max_length=255),
+]
+
+SearchQuery = Annotated[
+    str,
+    AfterValidator(strip_control_chars),
+    Field(min_length=1, max_length=200),
+]
+
+
+# ── Параметризованные запросы — главная защита от SQL injection ───────────────
+#
+# ВСЕГДА используйте SQLAlchemy параметры вместо f-строк:
+#
+# ПЛОХО (SQL injection):
+#   await db.execute(text(f"SELECT * FROM users WHERE email = '{email}'"))
+#
+# ХОРОШО (параметризованный запрос):
+#   await db.execute(
+#       select(User).where(User.email == email)
+#   )
+#
+# ХОРОШО (явный text с параметром):
+#   await db.execute(
+#       text("SELECT * FROM users WHERE email = :email"),
+#       {"email": email}
+#   )`,
+      },
+    ],
+    explanation: `**Security headers через middleware**: один класс защищает все endpoint-ы. \`X-Content-Type-Options: nosniff\` — браузер не угадывает MIME-тип (MIME confusion атаки). \`X-Frame-Options: DENY\` — страница не может быть встроена в iframe (clickjacking). \`Strict-Transport-Security\` — браузер запоминает что сайт только HTTPS (HSTS preloading). \`Content-Security-Policy\` — белый список источников для скриптов/стилей/картинок.
+
+**CORS с allow_credentials=True требует явного списка origins**: спецификация запрещает \`Access-Control-Allow-Origin: *\` совместно с \`Access-Control-Allow-Credentials: true\`. Если попытаться — браузер заблокирует запрос. Whitelist + credentials = единственная безопасная комбинация для API с куки/токенами.
+
+**Brute force: exponential backoff с jitter**: \`2^(attempt-5)\` секунд начиная с 5-й попытки: 2, 4, 8, 16, 32 сек. Jitter ±20% предотвращает thundering herd — когда все клиенты одновременно ретраятся после одного и того же backoff. Счётчики хранятся отдельно по email и IP — атака с разных IP на один аккаунт (credential stuffing) поймается по email-счётчику.
+
+**Одинаковый ответ для "нет пользователя" и "неверный пароль"**: различие в ответах позволяет атакующему перебирать существующие email-адреса (username enumeration). Одинаковый текст + одинаковая задержка (backoff выполняется до проверки пароля) — нет observable difference.
+
+**Сокрытие деталей в 500**: \`traceback.format_exc()\` только в логах. Клиент получает \`{"error": "Internal server error", "request_id": "..."\}\`. По request_id разработчик находит точный traceback в логах. Стек вызовов и имена внутренних модулей не раскрываются — не помогаем атакующему.
+
+**Unicode normalization**: гомогляф-атаки используют похожие символы из разных алфавитов (\`аdmin\` с кириллической 'а' ≠ \`admin\`). NFC-нормализация приводит все представления к единой канонической форме. \`strip_control_chars\` удаляет невидимые символы которые могут обойти проверки или сломать downstream-системы.`,
+  },
+
+  {
+    id: "api-keys-m2m",
+    title: "API Keys и machine-to-machine аутентификация",
+    task: "Реализуйте систему API-ключей для M2M-аутентификации. Генерация ключей (prefix + secret, хешируется для хранения), scopes для ограничения доступа конкретного ключа, rate limiting per key, ротация ключей без даунтайма, аудит использования (last used, request count), отзыв ключей с grace period. Реализуйте через Depends прозрачно для endpoint-хэндлеров.",
+    files: [
+      {
+        filename: "app/apikeys/models.py",
+        code: `"""
+Модель API-ключа.
+
+Формат ключа: <prefix>_<secret>
+  prefix: 8 символов, хранится открыто — для быстрого поиска по БД
+  secret: 32 байта, хранится только SHA-256 хэш
+
+Пример: sk_live_a1b2c3d4_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  - "sk_live" — тип ключа (secret key, live environment)
+  - "a1b2c3d4" — prefix для поиска
+  - "xxxx..." — secret (32 байта в hex)
+
+Пользователь видит ключ ОДИН раз при создании.
+В БД хранится только prefix + hash(secret).
+"""
+
+from datetime import datetime
+from sqlalchemy import (
+    ARRAY, Boolean, DateTime, ForeignKey,
+    Integer, String, UniqueConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.models.base import Base, TimestampMixin
+
+
+class APIKey(Base, TimestampMixin):
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+    # Отображаемое имя ключа — для UI ("Production server", "CI pipeline")
+    name: Mapped[str] = mapped_column(String(255))
+
+    # Первые 8 символов secret-части — для поиска в БД без сканирования
+    key_prefix: Mapped[str] = mapped_column(String(16), index=True)
+
+    # SHA-256 хэш полного ключа — для верификации
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True)
+
+    # Scopes — список разрешённых действий для этого ключа
+    # ["articles:read", "articles:write"] или ["*"] для полного доступа
+    scopes: Mapped[list[str]] = mapped_column(ARRAY(String))
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Ротация: новый ключ создаётся, старый живёт ещё grace_period секунд
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Аудит использования
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    request_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Ключ отозван (но не удалён — для аудита)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_reason: Mapped[str | None] = mapped_column(String(500))
+
+    owner: Mapped["User"] = relationship(lazy="raise")`,
+      },
+      {
+        filename: "app/apikeys/generator.py",
+        code: `"""
+Генерация и верификация API-ключей.
+
+Формат: {type_prefix}_{key_prefix}_{secret}
+
+  type_prefix: "sk_live" | "sk_test" | "pk_live"
+  key_prefix:  8 hex-символов (первые байты secret) — для поиска в БД
+  secret:      32 случайных байта в hex (256 бит энтропии)
+
+Итого: ~80 символов, 256 бит энтропии в secret-части.
+"""
+
+import hashlib
+import secrets
+from dataclasses import dataclass
+
+
+@dataclass
+class GeneratedKey:
+    full_key: str      # показываем пользователю ОДИН РАЗ
+    key_prefix: str    # храним в БД (для поиска)
+    key_hash: str      # храним в БД (для верификации)
+
+
+def generate_api_key(type_prefix: str = "sk_live") -> GeneratedKey:
+    """
+    Генерирует новый API-ключ.
+    secrets.token_hex — криптографически стойкий CSPRNG.
+    """
+    secret_bytes = secrets.token_bytes(32)      # 256 бит
+    secret_hex = secret_bytes.hex()             # 64 hex-символа
+    key_prefix = secret_hex[:8]                 # первые 8 символов — prefix
+
+    full_key = f"{type_prefix}_{key_prefix}_{secret_hex}"
+    key_hash = hash_key(full_key)
+
+    return GeneratedKey(
+        full_key=full_key,
+        key_prefix=key_prefix,
+        key_hash=key_hash,
+    )
+
+
+def hash_key(full_key: str) -> str:
+    """SHA-256 хэш ключа для хранения в БД."""
+    return hashlib.sha256(full_key.encode()).hexdigest()
+
+
+def extract_prefix(full_key: str) -> str | None:
+    """
+    Извлекает prefix из предъявленного ключа для поиска в БД.
+    Формат: type_prefix_keyprefix_secret → ищем по keyprefix.
+    """
+    parts = full_key.split("_")
+    # sk_live_a1b2c3d4_xxxx → parts = ["sk", "live", "a1b2c3d4", "xxxx"]
+    if len(parts) < 4:
+        return None
+    return parts[2]   # key_prefix — третья часть`,
+      },
+      {
+        filename: "app/apikeys/repository.py",
+        code: `from datetime import datetime, UTC
+
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.apikeys.generator import extract_prefix, hash_key
+from app.apikeys.models import APIKey
+
+
+class APIKeyRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def find_by_key(self, full_key: str) -> APIKey | None:
+        """
+        Двухэтапный поиск:
+        1. По key_prefix — быстрый индексный поиск, сужает выборку
+        2. По key_hash — точная верификация (константное время)
+
+        Без prefix пришлось бы хэшировать все ключи в таблице
+        или делать полный скан.
+        """
+        prefix = extract_prefix(full_key)
+        if not prefix:
+            return None
+
+        key_hash = hash_key(full_key)
+
+        result = await self.session.execute(
+            select(APIKey)
+            .where(APIKey.key_prefix == prefix)
+            .where(APIKey.key_hash == key_hash)
+            .where(APIKey.is_active.is_(True))
+            .where(APIKey.revoked_at.is_(None))
+        )
+        return result.scalar_one_or_none()
+
+    async def create(
+        self,
+        owner_id: int,
+        name: str,
+        key_prefix: str,
+        key_hash: str,
+        scopes: list[str],
+        expires_at: datetime | None = None,
+    ) -> APIKey:
+        key = APIKey(
+            owner_id=owner_id,
+            name=name,
+            key_prefix=key_prefix,
+            key_hash=key_hash,
+            scopes=scopes,
+            expires_at=expires_at,
+        )
+        self.session.add(key)
+        await self.session.flush()
+        return key
+
+    async def update_usage(self, key_id: int) -> None:
+        """
+        Обновляет last_used_at и request_count.
+        Атомарный инкремент через UPDATE — нет race condition.
+        Не делаем это синхронно в критическом пути — см. примечание ниже.
+        """
+        await self.session.execute(
+            update(APIKey)
+            .where(APIKey.id == key_id)
+            .values(
+                last_used_at=datetime.now(UTC),
+                request_count=APIKey.request_count + 1,
+            )
+        )
+
+    async def revoke(self, key_id: int, reason: str) -> None:
+        await self.session.execute(
+            update(APIKey)
+            .where(APIKey.id == key_id)
+            .values(
+                revoked_at=datetime.now(UTC),
+                revoked_reason=reason,
+                is_active=False,
+            )
+        )
+
+    async def list_by_owner(self, owner_id: int) -> list[APIKey]:
+        result = await self.session.execute(
+            select(APIKey)
+            .where(APIKey.owner_id == owner_id)
+            .order_by(APIKey.created_at.desc())
+        )
+        return list(result.scalars().all())`,
+      },
+      {
+        filename: "app/apikeys/dependencies.py",
+        code: `"""
+FastAPI Depends для API-ключей.
+
+Поддерживает два способа передачи ключа:
+  1. Authorization: Bearer sk_live_...
+  2. X-API-Key: sk_live_...   (стандартный заголовок для M2M)
+
+Порядок проверки:
+  X-API-Key → Bearer → 401
+"""
+
+import asyncio
+from datetime import datetime, UTC
+from typing import Callable
+
+from fastapi import Depends, Header, HTTPException, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.apikeys.models import APIKey
+from app.apikeys.repository import APIKeyRepository
+from app.cache.rate_limiter import SlidingWindowRateLimiter
+from app.core.database import get_db
+
+# Rate limiter отдельный для API-ключей: 1000 req/мин по умолчанию
+_key_rate_limiter = SlidingWindowRateLimiter(
+    limit=1000,
+    window_seconds=60,
+    key_prefix="apikey_rl",
+)
+
+
+async def _extract_raw_key(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    authorization: str | None = Header(default=None),
+) -> str | None:
+    if x_api_key:
+        return x_api_key
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:]
+        # Если токен выглядит как API-ключ (содержит наш разделитель) — используем
+        if token.count("_") >= 3:
+            return token
+    return None
+
+
+async def get_api_key(
+    request: Request,
+    raw_key: str | None = Depends(_extract_raw_key),
+    db: AsyncSession = Depends(get_db),
+) -> APIKey:
+    """
+    Базовая зависимость: извлекает и валидирует API-ключ.
+    Не проверяет scopes — это делают специализированные зависимости.
+    """
+    if not raw_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    repo = APIKeyRepository(db)
+    api_key = await repo.find_by_key(raw_key)
+
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or revoked API key",
+        )
+
+    # Проверяем истечение срока действия
+    if api_key.expires_at and datetime.now(UTC) > api_key.expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key has expired",
+        )
+
+    # Rate limiting per key (по key_prefix — не раскрываем полный hash)
+    rl_result = await _key_rate_limiter.check(api_key.key_prefix)
+    if not rl_result.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="API key rate limit exceeded",
+            headers={
+                "X-RateLimit-Limit": str(rl_result.limit),
+                "X-RateLimit-Remaining": "0",
+                "Retry-After": "60",
+            },
+        )
+
+    # Обновляем статистику использования асинхронно — не блокируем ответ.
+    # fire-and-forget: если упадёт — не критично (аудит, не бизнес-логика)
+    asyncio.create_task(_update_usage(api_key.id))
+
+    return api_key
+
+
+async def _update_usage(key_id: int) -> None:
+    """Обновляем счётчик использования в фоне."""
+    from app.core.database import async_session_factory
+    async with async_session_factory() as session:
+        repo = APIKeyRepository(session)
+        await repo.update_usage(key_id)
+        await session.commit()
+
+
+def require_scope(*required_scopes: str) -> Callable:
+    """
+    Фабрика зависимостей для проверки scopes.
+
+    Использование:
+        @router.get("/data")
+        async def get_data(
+            api_key: APIKey = Depends(require_scope("data:read"))
+        ):
+            ...
+
+    Поддерживает wildcard: scope "*" — доступ ко всему.
+    """
+    async def dependency(
+        api_key: APIKey = Depends(get_api_key),
+    ) -> APIKey:
+        key_scopes = set(api_key.scopes)
+
+        # Wildcard: ключ с "*" имеет все права
+        if "*" in key_scopes:
+            return api_key
+
+        # Проверяем что все требуемые scopes присутствуют
+        missing = set(required_scopes) - key_scopes
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"API key missing required scopes: {', '.join(sorted(missing))}",
+            )
+        return api_key
+
+    return dependency`,
+      },
+      {
+        filename: "app/apikeys/rotation.py",
+        code: `"""
+Ротация API-ключей без даунтайма.
+
+Стратегия:
+  1. Создаём новый ключ (возвращаем пользователю)
+  2. Старый ключ помечаем как "rotating" с expires_at = now + grace_period
+  3. В течение grace_period оба ключа работают
+  4. После grace_period старый ключ автоматически отвергается (expires_at истёк)
+
+Grace period по умолчанию = 24 часа.
+Это время чтобы обновить конфигурацию на всех серверах/сервисах.
+"""
+
+from datetime import datetime, timedelta, UTC
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.apikeys.generator import generate_api_key
+from app.apikeys.models import APIKey
+from app.apikeys.repository import APIKeyRepository
+from app.auth.dependencies import get_current_user
+from app.core.database import get_db
+from app.models.user import User
+
+router = APIRouter(prefix="/api-keys", tags=["API Keys"])
+
+GRACE_PERIOD_HOURS = 24
+
+
+class CreateKeyRequest(BaseModel):
+    name: str
+    scopes: list[str] = ["*"]
+    expires_in_days: int | None = None    # None = бессрочный
+
+
+class CreateKeyResponse(BaseModel):
+    id: int
+    name: str
+    # Полный ключ — показываем ОДИН РАЗ. После этого запроса восстановить нельзя.
+    key: str
+    scopes: list[str]
+    expires_at: datetime | None
+
+
+class KeyInfoResponse(BaseModel):
+    id: int
+    name: str
+    key_prefix: str   # показываем prefix для идентификации в UI
+    scopes: list[str]
+    is_active: bool
+    last_used_at: datetime | None
+    request_count: int
+    expires_at: datetime | None
+    created_at: datetime
+
+
+@router.post("/", response_model=CreateKeyResponse, status_code=status.HTTP_201_CREATED)
+async def create_api_key(
+    payload: CreateKeyRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    repo = APIKeyRepository(db)
+    generated = generate_api_key()
+
+    expires_at = None
+    if payload.expires_in_days:
+        expires_at = datetime.now(UTC) + timedelta(days=payload.expires_in_days)
+
+    key = await repo.create(
+        owner_id=current_user.id,
+        name=payload.name,
+        key_prefix=generated.key_prefix,
+        key_hash=generated.key_hash,
+        scopes=payload.scopes,
+        expires_at=expires_at,
+    )
+    await db.commit()
+
+    return CreateKeyResponse(
+        id=key.id,
+        name=key.name,
+        key=generated.full_key,   # единственный раз когда показываем полный ключ
+        scopes=key.scopes,
+        expires_at=key.expires_at,
+    )
+
+
+@router.post("/{key_id}/rotate", response_model=CreateKeyResponse)
+async def rotate_api_key(
+    key_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Ротация: создаём новый ключ, старый истекает через grace period.
+    Оба ключа работают параллельно в течение grace period.
+    """
+    repo = APIKeyRepository(db)
+
+    # Находим существующий ключ
+    from sqlalchemy import select
+    result = await db.execute(
+        select(APIKey)
+        .where(APIKey.id == key_id)
+        .where(APIKey.owner_id == current_user.id)
+    )
+    old_key = result.scalar_one_or_none()
+
+    if not old_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    # Создаём новый ключ с теми же scopes
+    generated = generate_api_key()
+    new_key = await repo.create(
+        owner_id=current_user.id,
+        name=f"{old_key.name} (rotated)",
+        key_prefix=generated.key_prefix,
+        key_hash=generated.key_hash,
+        scopes=old_key.scopes,
+        expires_at=old_key.expires_at,   # наследуем срок действия
+    )
+
+    # Старый ключ истекает через grace_period
+    grace_expires = datetime.now(UTC) + timedelta(hours=GRACE_PERIOD_HOURS)
+    from sqlalchemy import update
+    await db.execute(
+        update(APIKey)
+        .where(APIKey.id == key_id)
+        .values(expires_at=grace_expires, name=f"{old_key.name} (deprecated)")
+    )
+
+    await db.commit()
+
+    return CreateKeyResponse(
+        id=new_key.id,
+        name=new_key.name,
+        key=generated.full_key,
+        scopes=new_key.scopes,
+        expires_at=new_key.expires_at,
+    )
+
+
+@router.delete("/{key_id}")
+async def revoke_api_key(
+    key_id: int,
+    reason: str = "Revoked by owner",
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Немедленный отзыв ключа (без grace period)."""
+    repo = APIKeyRepository(db)
+
+    from sqlalchemy import select
+    result = await db.execute(
+        select(APIKey)
+        .where(APIKey.id == key_id)
+        .where(APIKey.owner_id == current_user.id)
+    )
+    key = result.scalar_one_or_none()
+
+    if not key:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    await repo.revoke(key_id, reason=reason)
+    await db.commit()
+
+    return {"detail": "API key revoked"}
+
+
+@router.get("/", response_model=list[KeyInfoResponse])
+async def list_api_keys(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    repo = APIKeyRepository(db)
+    keys = await repo.list_by_owner(current_user.id)
+    return [
+        KeyInfoResponse(
+            id=k.id,
+            name=k.name,
+            key_prefix=k.key_prefix,   # показываем prefix для идентификации
+            scopes=k.scopes,
+            is_active=k.is_active,
+            last_used_at=k.last_used_at,
+            request_count=k.request_count,
+            expires_at=k.expires_at,
+            created_at=k.created_at,
+        )
+        for k in keys
+    ]`,
+      },
+      {
+        filename: "app/routes/data.py",
+        code: `"""
+Пример endpoint-ов защищённых API-ключами.
+Прозрачно для хэндлеров — scopes проверяются в Depends.
+"""
+
+from fastapi import APIRouter, Depends
+
+from app.apikeys.dependencies import require_scope
+from app.apikeys.models import APIKey
+
+router = APIRouter(prefix="/data", tags=["Data API"])
+
+
+@router.get("/export")
+async def export_data(
+    # Только ключи со scope "data:read" или "*"
+    api_key: APIKey = Depends(require_scope("data:read")),
+):
+    """M2M endpoint: экспорт данных. Требует scope data:read."""
+    return {
+        "data": [...],
+        # Возвращаем какой ключ использован — для отладки клиентского кода
+        "authenticated_as": f"API key: {api_key.name} ({api_key.key_prefix}...)",
+    }
+
+
+@router.post("/import")
+async def import_data(
+    # Требуем оба scope одновременно
+    api_key: APIKey = Depends(require_scope("data:read", "data:write")),
+):
+    """M2M endpoint: импорт данных. Требует scope data:read + data:write."""
+    return {"status": "imported"}
+
+
+@router.delete("/records/{record_id}")
+async def delete_record(
+    record_id: int,
+    # Административный endpoint — только ключи с admin scope
+    api_key: APIKey = Depends(require_scope("admin")),
+):
+    return {"deleted": record_id}`,
+      },
+    ],
+    explanation: `**Prefix + Hash**: хранить полный ключ в БД небезопасно (утечка БД = компрометация всех ключей). Хранить только hash — нельзя искать без полного скана (нет индекса). Решение: prefix (первые 8 символов secret-части) хранится открыто для индексного поиска, hash используется для точной верификации. Поиск: O(log n) по prefix-индексу → один hash-compare. Утечка БД компрометирует только prefix, но не полный ключ.
+
+**secrets.token_bytes(32)**: 256 бит энтропии — невозможно перебрать даже на квантовом компьютере. \`random\` модуль Python использует Mersenne Twister — не криптографически стойкий, предсказуем. \`secrets\` использует \`os.urandom\` → системный CSPRNG (getrandom syscall на Linux).
+
+**Ротация без даунтайма**: grace period = оба ключа работают параллельно. Клиентские сервисы обновляют конфигурацию в течение grace period (перезапускают контейнеры, обновляют secrets в K8s). После grace period старый ключ автоматически отвергается по \`expires_at\`. Альтернатива — немедленная ротация — вызывает даунтайм пока не все сервисы обновились.
+
+**Fire-and-forget для аудита**: \`asyncio.create_task(_update_usage(key_id))\` — не блокирует ответ клиенту. Обновление счётчика — некритичная операция, допускает редкие потери (при crash воркера). Альтернатива: буферизация в Redis INCR + периодическая синхронизация в БД через Celery/фоновую задачу.
+
+**Scopes как строки**: гибче enum — новые scopes добавляются без изменения кода (только данные). Wildcard \`"*"\` — full access key для admin/internal. Проверка через set difference: \`missing = required - key_scopes\` — одна операция независимо от числа scopes. Scopes хранятся в ARRAY PostgreSQL — нативный тип, нет JSON-сериализации.`,
+  },
+
+  {
+    id: "fastapi-testing-pytest",
+    title: "Тестирование FastAPI с pytest",
+    task: "Настройте полноценное тестовое окружение для FastAPI-приложения. Реализуйте: TestClient и AsyncClient (httpx) для sync/async тестов, фикстуры для тестовой БД с транзакционным откатом после каждого теста, мокирование внешних HTTP-сервисов через respx, factory-фикстуры через factory_boy, параметризованные тесты для edge cases. Структурируйте тесты по уровням: unit, integration, e2e.",
+    files: [
+      {
+        filename: "pyproject.toml (pytest секция)",
+        code: `[tool.pytest.ini_options]
+asyncio_mode = "auto"          # pytest-asyncio: все async-тесты автоматически
+testpaths = ["tests"]
+addopts = [
+    "-v",
+    "--tb=short",              # короткий traceback по умолчанию
+    "--strict-markers",        # неизвестные маркеры = ошибка
+    "--no-header",
+]
+markers = [
+    "unit: isolated unit tests (no DB, no network)",
+    "integration: tests with real DB in transaction",
+    "e2e: full stack tests, no mocks",
+    "slow: tests that take more than 1 second",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/migrations/*", "app/core/config.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]`,
+      },
+      {
+        filename: "tests/conftest.py",
+        code: `"""
+Корневые фикстуры — доступны во всех тестах без импорта.
+
+Стратегия тестовой БД:
+  1. Один раз создаём схему (session-scoped engine)
+  2. Каждый тест получает транзакцию, которая откатывается после теста
+  3. Никаких DELETE в teardown — rollback быстрее и надёжнее
+
+Откат транзакции вместо DELETE:
+  - Быстрее: нет I/O на запись, только освобождение locks
+  - Детерминировано: нет зависимости от CASCADE правил
+  - Параллельно: каждый тест в своей транзакции не мешает другим
+"""
+
+import asyncio
+from collections.abc import AsyncGenerator
+
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from app.core.config import settings
+from app.core.database import get_db
+from app.main import app
+from app.models.base import Base
+
+# ── Движок для тестов ──────────────────────────────────────────────────────────
+
+# Отдельная тестовая БД — никогда не трогаем production
+TEST_DATABASE_URL = settings.database_url.replace("/app_db", "/app_test")
+
+# echo=False — не засоряем вывод тестов SQL-логами
+# pool_size=1 — для транзакционного отката нужен один коннект на тест
+_test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, pool_size=5)
+
+
+# ── Session-level: создаём схему один раз ─────────────────────────────────────
+
+@pytest.fixture(scope="session", autouse=True)
+async def create_test_schema():
+    """Создаёт таблицы перед всей тестовой сессией, удаляет после."""
+    async with _test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    async with _test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+
+# ── Function-level: транзакция с откатом ─────────────────────────────────────
+
+@pytest_asyncio.fixture
+async def db_conn() -> AsyncGenerator[AsyncConnection, None]:
+    """
+    Открывает коннект + начинает транзакцию.
+    После теста — ROLLBACK вместо COMMIT.
+    Вложенные savepoints позволяют тестировать код который сам делает commit.
+    """
+    async with _test_engine.connect() as conn:
+        await conn.begin()                  # внешняя транзакция
+        try:
+            yield conn
+        finally:
+            await conn.rollback()           # откат всего что сделал тест
+
+
+@pytest_asyncio.fixture
+async def db(db_conn: AsyncConnection) -> AsyncGenerator[AsyncSession, None]:
+    """
+    AsyncSession поверх фиксированного коннекта.
+    join_transaction_mode="create_savepoint" — каждый flush/commit
+    создаёт savepoint, но не коммитит внешнюю транзакцию.
+    """
+    session_factory = async_sessionmaker(
+        bind=db_conn,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+    async with session_factory() as session:
+        yield session
+
+
+# ── HTTP-клиент с подменой зависимостей ───────────────────────────────────────
+
+@pytest_asyncio.fixture
+async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """
+    AsyncClient подключен к тестовому приложению.
+    Зависимость get_db подменена — используется та же тестовая сессия.
+    """
+    def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"Content-Type": "application/json"},
+    ) as ac:
+        yield ac
+
+    app.dependency_overrides.clear()
+
+
+# ── Аутентифицированный клиент ────────────────────────────────────────────────
+
+@pytest_asyncio.fixture
+async def auth_client(client: AsyncClient, user_factory) -> AsyncClient:
+    """Клиент с валидным Authorization заголовком."""
+    user = await user_factory()
+    from app.auth.tokens import create_access_token
+    token = create_access_token(user.id)
+    client.headers["Authorization"] = f"Bearer {token}"
+    client.state = {"user": user}   # тест может получить пользователя
+    return client`,
+      },
+      {
+        filename: "tests/factories.py",
+        code: `"""
+factory_boy фабрики для тестовых данных.
+
+Принципы:
+- Каждая фабрика создаёт минимально валидный объект
+- Faker генерирует реалистичные данные (не "test_user_1")
+- AsyncSQLAlchemyModelFactory работает с async сессиями
+- Трейт (Trait) — именованный набор переопределений для особых случаев
+"""
+
+import factory
+from factory.faker import Faker
+
+from app.core.security import hash_password
+from app.models.article import Article
+from app.models.user import User
+
+
+class AsyncSQLAlchemyModelFactory(factory.Factory):
+    """Базовый класс для async SQLAlchemy фабрик."""
+
+    class Meta:
+        abstract = True
+
+    @classmethod
+    async def _create(cls, model_class, *args, **kwargs):
+        session = kwargs.pop("_session")
+        obj = model_class(*args, **kwargs)
+        session.add(obj)
+        await session.flush()   # получаем id без commit
+        return obj
+
+    @classmethod
+    async def create(cls, _session, **kwargs):
+        return await cls._create(cls._meta.model, _session=_session, **kwargs)
+
+    @classmethod
+    async def create_batch(cls, size: int, _session, **kwargs):
+        return [await cls.create(_session=_session, **kwargs) for _ in range(size)]
+
+
+class UserFactory(AsyncSQLAlchemyModelFactory):
+    class Meta:
+        model = User
+
+    email = Faker("email")
+    name = Faker("name")
+    hashed_password = factory.LazyFunction(lambda: hash_password("test_password_123"))
+    is_active = True
+    is_verified = True
+
+    class Params:
+        # Трейт: неактивный пользователь
+        inactive = factory.Trait(is_active=False)
+        # Трейт: неверифицированный
+        unverified = factory.Trait(is_verified=False)
+        # Трейт: пользователь с конкретным паролем
+        password = factory.Trait(
+            hashed_password=factory.LazyAttribute(
+                lambda o: hash_password(o.raw_password)
+            )
+        )
+
+
+class ArticleFactory(AsyncSQLAlchemyModelFactory):
+    class Meta:
+        model = Article
+
+    title = Faker("sentence", nb_words=6)
+    content = Faker("text", max_nb_chars=1000)
+    is_published = False
+
+    # SubFactory: автоматически создаёт связанный объект
+    author = factory.SubFactory(UserFactory)
+
+    class Params:
+        published = factory.Trait(is_published=True)
+
+
+# ── pytest-фикстуры из фабрик ─────────────────────────────────────────────────
+
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+@pytest_asyncio.fixture
+def user_factory(db: AsyncSession):
+    """Фикстура-фабрика: возвращает callable для создания пользователей."""
+    async def _create(**kwargs) -> User:
+        return await UserFactory.create(_session=db, **kwargs)
+    return _create
+
+
+@pytest_asyncio.fixture
+def article_factory(db: AsyncSession):
+    async def _create(**kwargs) -> Article:
+        return await ArticleFactory.create(_session=db, **kwargs)
+    return _create`,
+      },
+      {
+        filename: "tests/unit/test_tokens.py",
+        code: `"""
+Unit-тесты: изолированы, не требуют БД или сети.
+Тестируют логику токенов напрямую.
+"""
+
+import time
+from datetime import timedelta
+
+import pytest
+
+from app.auth.tokens import (
+    TokenError,
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+)
+
+pytestmark = pytest.mark.unit
+
+
+class TestCreateAccessToken:
+    def test_creates_valid_token(self):
+        token = create_access_token(user_id=42)
+        payload = decode_token(token, expected_type="access")
+        assert payload["sub"] == "42"
+        assert payload["type"] == "access"
+        assert "jti" in payload
+
+    def test_different_tokens_for_same_user(self):
+        """Каждый вызов генерирует уникальный jti."""
+        t1 = create_access_token(user_id=1)
+        t2 = create_access_token(user_id=1)
+        p1 = decode_token(t1, "access")
+        p2 = decode_token(t2, "access")
+        assert p1["jti"] != p2["jti"]
+
+    def test_token_expiry(self, freezegun_install):
+        """Токен истекает через ACCESS_TOKEN_EXPIRE_MINUTES."""
+        from freezegun import freeze_time
+        from datetime import datetime, UTC
+
+        token = create_access_token(user_id=1)
+        # Перематываем время на 20 минут вперёд
+        future = datetime.now(UTC) + timedelta(minutes=20)
+        with freeze_time(future):
+            with pytest.raises(TokenError) as exc_info:
+                decode_token(token, "access")
+            assert "expired" in str(exc_info.value).lower()
+            assert exc_info.value.status_code == 401
+
+
+class TestDecodeToken:
+    def test_wrong_type_raises_403(self):
+        """Предъявляем refresh там где ожидается access → 403."""
+        refresh, _ = create_refresh_token(user_id=1)
+        with pytest.raises(TokenError) as exc_info:
+            decode_token(refresh, expected_type="access")
+        assert exc_info.value.status_code == 403
+
+    def test_tampered_token_raises_401(self):
+        token = create_access_token(user_id=1)
+        tampered = token[:-5] + "XXXXX"
+        with pytest.raises(TokenError) as exc_info:
+            decode_token(tampered, "access")
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.parametrize("user_id", [1, 999, 2**31 - 1])
+    def test_roundtrip_various_user_ids(self, user_id: int):
+        token = create_access_token(user_id=user_id)
+        payload = decode_token(token, "access")
+        assert int(payload["sub"]) == user_id`,
+      },
+      {
+        filename: "tests/integration/test_auth.py",
+        code: `"""
+Integration-тесты: реальная БД (транзакция с откатом), без внешних сервисов.
+"""
+
+import pytest
+from httpx import AsyncClient
+
+pytestmark = pytest.mark.integration
+
+
+class TestLogin:
+    async def test_successful_login_returns_access_token(
+        self, client: AsyncClient, user_factory
+    ):
+        user = await user_factory()
+        resp = await client.post(
+            "/auth/login",
+            json={"email": user.email, "password": "test_password_123"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "access_token" in data
+        assert data["token_type"] == "bearer"
+
+    async def test_wrong_password_returns_401(
+        self, client: AsyncClient, user_factory
+    ):
+        user = await user_factory()
+        resp = await client.post(
+            "/auth/login",
+            json={"email": user.email, "password": "wrong_password"},
+        )
+        assert resp.status_code == 401
+        # Убеждаемся что ответ не раскрывает тип ошибки
+        assert resp.json()["detail"] == "Invalid credentials"
+
+    async def test_nonexistent_email_same_response_as_wrong_password(
+        self, client: AsyncClient
+    ):
+        """Username enumeration protection: одинаковый ответ."""
+        resp = await client.post(
+            "/auth/login",
+            json={"email": "nobody@example.com", "password": "any"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Invalid credentials"
+
+    @pytest.mark.parametrize("payload,expected_status", [
+        ({}, 422),
+        ({"email": "not-an-email", "password": "x"}, 422),
+        ({"email": "a@b.com"}, 422),       # нет password
+        ({"password": "abc"}, 422),        # нет email
+    ])
+    async def test_invalid_payloads_return_422(
+        self, client: AsyncClient, payload: dict, expected_status: int
+    ):
+        resp = await client.post("/auth/login", json=payload)
+        assert resp.status_code == expected_status
+
+
+class TestProtectedEndpoint:
+    async def test_no_token_returns_401(self, client: AsyncClient):
+        resp = await client.get("/articles/")
+        assert resp.status_code == 401
+
+    async def test_invalid_token_returns_401(self, client: AsyncClient):
+        client.headers["Authorization"] = "Bearer invalid.token.here"
+        resp = await client.get("/articles/")
+        assert resp.status_code == 401
+
+    async def test_valid_token_grants_access(self, auth_client: AsyncClient):
+        resp = await auth_client.get("/articles/")
+        assert resp.status_code == 200`,
+      },
+      {
+        filename: "tests/integration/test_external_http.py",
+        code: `"""
+Мокирование внешних HTTP-сервисов через respx.
+
+respx перехватывает вызовы httpx.AsyncClient на уровне транспорта.
+Реальные сетевые запросы не выполняются — тесты работают offline.
+"""
+
+import pytest
+import respx
+from httpx import AsyncClient, Response
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture
+def mock_github():
+    """respx.mock как контекст-менеджер или фикстура."""
+    with respx.mock(assert_all_called=False) as mock:
+        yield mock
+
+
+class TestOAuthGitHubCallback:
+    async def test_successful_github_login(
+        self,
+        client: AsyncClient,
+        mock_github,
+    ):
+        # 1. Мокируем обмен code → token
+        mock_github.post("https://github.com/login/oauth/access_token").mock(
+            return_value=Response(200, json={"access_token": "gh_test_token", "token_type": "bearer"})
+        )
+
+        # 2. Мокируем профиль пользователя
+        mock_github.get("https://api.github.com/user").mock(
+            return_value=Response(200, json={
+                "id": 12345,
+                "login": "testuser",
+                "name": "Test User",
+                "email": "testuser@example.com",
+                "avatar_url": "https://avatars.githubusercontent.com/test",
+            })
+        )
+
+        # 3. Предварительно создаём state в Redis (или мокируем state_store)
+        # В реальном тесте state был бы создан через /oauth/github/authorize
+        # Здесь подставляем напрямую через фикстуру
+        from app.oauth.state_store import oauth_state_store
+        await oauth_state_store.save(
+            state="test_state_123",
+            provider="github",
+            code_verifier="test_verifier",
+        )
+
+        resp = await client.get(
+            "/oauth/github/callback",
+            params={"code": "github_auth_code", "state": "test_state_123"},
+            follow_redirects=False,
+        )
+
+        # Редиректит на фронтенд с access_token в query
+        assert resp.status_code == 307
+        assert "access_token=" in resp.headers["location"]
+
+    async def test_github_token_exchange_failure(
+        self,
+        client: AsyncClient,
+        mock_github,
+    ):
+        mock_github.post("https://github.com/login/oauth/access_token").mock(
+            return_value=Response(400, json={"error": "bad_verification_code"})
+        )
+
+        from app.oauth.state_store import oauth_state_store
+        await oauth_state_store.save("bad_state", "github", "verifier")
+
+        resp = await client.get(
+            "/oauth/github/callback",
+            params={"code": "bad_code", "state": "bad_state"},
+        )
+        assert resp.status_code == 400
+
+    async def test_invalid_state_rejected(self, client: AsyncClient):
+        """State которого нет в Redis → 400."""
+        resp = await client.get(
+            "/oauth/github/callback",
+            params={"code": "any", "state": "nonexistent_state"},
+        )
+        assert resp.status_code == 400`,
+      },
+      {
+        filename: "tests/e2e/test_article_lifecycle.py",
+        code: `"""
+E2E-тест: полный жизненный цикл ресурса без моков.
+Все слои реальные: HTTP → FastAPI → БД.
+"""
+
+import pytest
+from httpx import AsyncClient
+
+pytestmark = [pytest.mark.e2e, pytest.mark.slow]
+
+
+async def test_full_article_lifecycle(
+    client: AsyncClient,
+    user_factory,
+    auth_client: AsyncClient,
+):
+    """
+    Создание → чтение → обновление → удаление статьи.
+    Проверяем права: автор может всё, другой пользователь — нет.
+    """
+    # 1. Создаём статью от имени авторизованного пользователя
+    create_resp = await auth_client.post(
+        "/articles/",
+        json={"title": "My Article", "content": "Content here"},
+    )
+    assert create_resp.status_code == 201
+    article_id = create_resp.json()["id"]
+
+    # 2. Чтение (любой авторизованный пользователь)
+    read_resp = await auth_client.get(f"/articles/{article_id}")
+    assert read_resp.status_code == 200
+    assert read_resp.json()["title"] == "My Article"
+
+    # 3. Другой пользователь не может редактировать
+    other_user = await user_factory()
+    from app.auth.tokens import create_access_token
+    other_token = create_access_token(other_user.id)
+    client.headers["Authorization"] = f"Bearer {other_token}"
+
+    forbidden_resp = await client.put(
+        f"/articles/{article_id}",
+        json={"title": "Hijacked title"},
+    )
+    assert forbidden_resp.status_code == 403
+
+    # 4. Автор может редактировать
+    update_resp = await auth_client.put(
+        f"/articles/{article_id}",
+        json={"title": "Updated Title", "content": "Updated content"},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["title"] == "Updated Title"
+
+    # 5. Удаление — только автор
+    delete_resp = await auth_client.delete(f"/articles/{article_id}")
+    assert delete_resp.status_code == 204
+
+    # 6. Ресурс недоступен после удаления
+    not_found = await auth_client.get(f"/articles/{article_id}")
+    assert not_found.status_code == 404`,
+      },
+    ],
+    explanation: `**Транзакционный откат вместо DELETE**: каждый тест оборачивается в транзакцию. После теста — \`ROLLBACK\`. Нет нужды в \`DELETE FROM users WHERE ...\`. Преимущества: 1) скорость — rollback не пишет в WAL, 2) детерминированность — не зависит от CASCADE и триггеров, 3) параллельность — каждый тест в своей транзакции.
+
+**\`join_transaction_mode="create_savepoint"\`**: когда тестируемый код делает \`session.commit()\` — создаётся savepoint вместо реального COMMIT. Внешняя транзакция остаётся открытой. После теста — rollback внешней транзакции откатывает savepoints. Без этого первый \`commit()\` в тесте сделал бы данные постоянными.
+
+**\`dependency_overrides\`**: FastAPI позволяет подменить любую зависимость для тестов. \`app.dependency_overrides[get_db] = override_get_db\` — все endpoint-ы будут использовать тестовую сессию. Подмена работает по идентичности объекта-функции. Вызов \`clear()\` в teardown обязателен — иначе переопределения "протекут" в следующие тесты.
+
+**respx**: мокирует httpx на уровне транспорта. Перехватывает запросы до сетевого стека — реального TCP-соединения нет. \`assert_all_called=True\` (по умолчанию) — тест упадёт если задекларированный mock не был вызван. Это страхует от ситуации "мок настроен, но код поменялся и больше не делает запрос".
+
+**factory_boy**: \`SubFactory\` автоматически создаёт связанные объекты. \`Faker\` даёт реалистичные данные — ловит больше edge cases чем \`"test_user_1"\`. \`Trait\` — именованный набор переопределений: \`await UserFactory.create(inactive=True)\` вместо \`await UserFactory.create(is_active=False)\`.
+
+**Пирамида тестов**: unit (быстро, много) → integration (реальная БД, без сети) → e2e (медленно, полный стек). Маркеры позволяют запускать только нужный слой: \`pytest -m unit\` — секунды, \`pytest -m "not slow"\` — пропускаем тяжёлые тесты в pre-commit hook.`,
+  },
+
+  {
+    id: "async-testing",
+    title: "Тестирование async кода",
+    task: "Реализуйте тесты для async-компонентов приложения: async repository методы с тестовой async сессией, WebSocket-хэндлеры через TestClient WebSocket поддержку, Background Tasks (проверка что задача была запланирована), Celery-задачи в eager mode, SSE endpoint (проверка стрима событий). Используйте pytest-asyncio с правильной конфигурацией event loop.",
+    files: [
+      {
+        filename: "tests/conftest_async.py",
+        code: `"""
+Конфигурация pytest-asyncio для async-тестов.
+
+asyncio_mode = "auto" в pyproject.toml означает:
+  - Все async def test_* запускаются как asyncio-корутины автоматически
+  - Нет нужды в @pytest.mark.asyncio на каждом тесте
+  - Фикстуры async def тоже работают автоматически
+
+Event loop: по умолчанию pytest-asyncio создаёт новый loop для каждого теста.
+Для session-scoped фикстур (движок БД) нужен session-scoped loop.
+"""
+
+import asyncio
+import pytest
+
+
+# Для pytest-asyncio >= 0.23: event_loop_policy устанавливается через фикстуру
+@pytest.fixture(scope="session")
+def event_loop_policy():
+    """Возвращаем стандартный policy — явно документируем намерение."""
+    return asyncio.DefaultEventLoopPolicy()
+
+
+# Альтернатива для совместимости со старыми версиями pytest-asyncio:
+# @pytest.fixture(scope="session")
+# def event_loop():
+#     loop = asyncio.new_event_loop()
+#     yield loop
+#     loop.close()`,
+      },
+      {
+        filename: "tests/integration/test_repository.py",
+        code: `"""
+Тестирование async repository-методов напрямую (без HTTP).
+Проверяем бизнес-логику на уровне БД — быстрее и точнее чем через HTTP.
+"""
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.repositories.user_repository import UserRepository
+from app.repositories.article_repository import ArticleRepository
+
+pytestmark = pytest.mark.integration
+
+
+class TestUserRepository:
+    async def test_create_user(self, db: AsyncSession):
+        repo = UserRepository(db)
+        user = await repo.create(
+            email="repo_test@example.com",
+            name="Repo Test",
+        )
+        assert user.id is not None
+        assert user.email == "repo_test@example.com"
+
+    async def test_get_by_email_existing(self, db: AsyncSession, user_factory):
+        created = await user_factory(email="findme@example.com")
+
+        repo = UserRepository(db)
+        found = await repo.get_by_email("findme@example.com")
+        assert found is not None
+        assert found.id == created.id
+
+    async def test_get_by_email_not_found(self, db: AsyncSession):
+        repo = UserRepository(db)
+        result = await repo.get_by_email("ghost@nowhere.com")
+        assert result is None
+
+    async def test_email_is_case_insensitive(self, db: AsyncSession, user_factory):
+        """Email нормализуется к нижнему регистру."""
+        await user_factory(email="case@example.com")
+        repo = UserRepository(db)
+
+        for variant in ["CASE@EXAMPLE.COM", "Case@Example.Com", "case@example.com"]:
+            user = await repo.get_by_email(variant)
+            assert user is not None, f"Should find user with email variant: {variant}"
+
+    async def test_duplicate_email_raises(self, db: AsyncSession, user_factory):
+        """Уникальность email на уровне БД."""
+        from sqlalchemy.exc import IntegrityError
+        await user_factory(email="unique@example.com")
+
+        repo = UserRepository(db)
+        with pytest.raises(IntegrityError):
+            await repo.create(email="unique@example.com", name="Duplicate")
+            await db.flush()
+
+
+class TestArticleRepository:
+    async def test_pagination(self, db: AsyncSession, user_factory, article_factory):
+        author = await user_factory()
+        # Создаём 15 статей
+        for _ in range(15):
+            await article_factory(author=author)
+
+        repo = ArticleRepository(db)
+
+        page1 = await repo.get_paginated(limit=10, offset=0)
+        page2 = await repo.get_paginated(limit=10, offset=10)
+
+        assert len(page1) == 10
+        assert len(page2) == 5
+        # Нет пересечений между страницами
+        ids1 = {a.id for a in page1}
+        ids2 = {a.id for a in page2}
+        assert ids1.isdisjoint(ids2)
+
+    async def test_only_published_visible_to_anonymous(
+        self, db: AsyncSession, article_factory
+    ):
+        await article_factory(is_published=True)
+        await article_factory(is_published=True)
+        await article_factory(is_published=False)   # черновик
+
+        repo = ArticleRepository(db)
+        public = await repo.get_published(limit=100)
+        assert all(a.is_published for a in public)
+        assert len(public) == 2`,
+      },
+      {
+        filename: "tests/integration/test_websocket.py",
+        code: `"""
+Тестирование WebSocket endpoint-ов.
+
+httpx AsyncClient НЕ поддерживает WebSocket.
+Для WebSocket используем Starlette TestClient (sync) или
+websockets-библиотеку через ASGITransport.
+
+Рекомендуется: starlette.testclient.TestClient для WS-тестов
+(работает синхронно поверх async ASGI через anyio).
+"""
+
+import json
+import pytest
+from starlette.testclient import TestClient
+
+from app.main import app
+from app.auth.tokens import create_access_token
+
+
+@pytest.fixture
+def ws_client():
+    """Sync TestClient для WebSocket тестов."""
+    return TestClient(app)
+
+
+class TestChatWebSocket:
+    def test_connect_without_token_rejected(self, ws_client: TestClient):
+        """WebSocket без токена → 1008 Policy Violation."""
+        with pytest.raises(Exception) as exc_info:
+            with ws_client.websocket_connect("/ws/chat"):
+                pass
+        # Starlette поднимает WebSocketDisconnect при отказе
+        assert "1008" in str(exc_info.value) or "403" in str(exc_info.value)
+
+    def test_connect_with_valid_token(self, ws_client: TestClient, db):
+        """WebSocket с токеном → успешное подключение."""
+        # Создаём пользователя синхронно через sync сессию (или используем фикстуру)
+        token = create_access_token(user_id=1)
+        with ws_client.websocket_connect(
+            f"/ws/chat?token={token}"
+        ) as websocket:
+            # Сервер присылает welcome-сообщение
+            data = websocket.receive_json()
+            assert data["type"] == "connected"
+
+    def test_send_and_receive_message(self, ws_client: TestClient):
+        token = create_access_token(user_id=1)
+        with ws_client.websocket_connect(f"/ws/chat?token={token}") as ws:
+            ws.receive_json()   # welcome
+
+            ws.send_json({"type": "message", "text": "Hello!"})
+            response = ws.receive_json()
+
+            assert response["type"] == "message"
+            assert response["text"] == "Hello!"
+
+    def test_multiple_clients_receive_broadcast(self, ws_client: TestClient):
+        """Сообщение от одного клиента приходит другому."""
+        token1 = create_access_token(user_id=1)
+        token2 = create_access_token(user_id=2)
+
+        with ws_client.websocket_connect(f"/ws/chat?token={token1}") as ws1:
+            with ws_client.websocket_connect(f"/ws/chat?token={token2}") as ws2:
+                ws1.receive_json()   # welcome
+                ws2.receive_json()   # welcome
+
+                ws1.send_json({"type": "message", "text": "Broadcast!"})
+
+                # ws2 должен получить сообщение от ws1
+                msg = ws2.receive_json()
+                assert msg["text"] == "Broadcast!"`,
+      },
+      {
+        filename: "tests/integration/test_background_tasks.py",
+        code: `"""
+Тестирование Background Tasks.
+
+FastAPI BackgroundTask выполняется ПОСЛЕ отправки ответа клиенту.
+В тестах нам нужно:
+  1. Убедиться что задача была запланирована
+  2. Проверить что задача выполнила нужную логику
+
+Подход А: мокирование через dependency_overrides
+Подход Б: использование реального BackgroundTasks с await
+"""
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+from httpx import AsyncClient
+
+pytestmark = pytest.mark.integration
+
+
+class TestEmailBackgroundTask:
+    async def test_registration_schedules_welcome_email(
+        self,
+        client: AsyncClient,
+    ):
+        """
+        Проверяем что регистрация планирует отправку email.
+        Мокируем функцию отправки — не проверяем реальный SMTP.
+        """
+        with patch("app.services.email.send_welcome_email") as mock_send:
+            mock_send = AsyncMock()
+
+            resp = await client.post(
+                "/auth/register",
+                json={
+                    "email": "newuser@example.com",
+                    "password": "StrongPass123!",
+                    "name": "New User",
+                },
+            )
+
+            assert resp.status_code == 201
+
+            # BackgroundTask выполняется асинхронно — ждём завершения
+            # В TestClient с ASGI transport задачи выполняются до возврата ответа
+            mock_send.assert_called_once_with(
+                to="newuser@example.com",
+                name="New User",
+            )
+
+    async def test_background_task_failure_doesnt_affect_response(
+        self,
+        client: AsyncClient,
+    ):
+        """
+        Упавшая background task не должна влиять на HTTP-ответ.
+        Клиент уже получил 201, задача упала в фоне.
+        """
+        with patch(
+            "app.services.email.send_welcome_email",
+            side_effect=Exception("SMTP server unavailable"),
+        ):
+            resp = await client.post(
+                "/auth/register",
+                json={
+                    "email": "another@example.com",
+                    "password": "StrongPass123!",
+                    "name": "Another User",
+                },
+            )
+            # Ответ должен быть успешным несмотря на ошибку в фоновой задаче
+            assert resp.status_code == 201
+
+
+class TestBackgroundTasksDirectly:
+    async def test_task_with_real_db(self, db):
+        """
+        Иногда полезно тестировать background task напрямую
+        (без HTTP-слоя) — быстрее и точнее.
+        """
+        from app.tasks.cleanup import cleanup_expired_sessions
+
+        # Запускаем задачу напрямую с тестовой сессией
+        deleted_count = await cleanup_expired_sessions(db)
+        assert isinstance(deleted_count, int)
+        assert deleted_count >= 0`,
+      },
+      {
+        filename: "tests/integration/test_sse.py",
+        code: `"""
+Тестирование SSE (Server-Sent Events) endpoint.
+
+SSE — стрим текстовых событий в формате:
+  data: {"type": "update", "value": 42}\\n\\n
+
+Тестируем через AsyncClient: читаем стрим по частям.
+"""
+
+import asyncio
+import json
+import pytest
+from httpx import AsyncClient
+
+pytestmark = pytest.mark.integration
+
+
+class TestSSEEndpoint:
+    async def test_sse_stream_sends_events(self, auth_client: AsyncClient):
+        """
+        Получаем первые N событий из SSE-стрима.
+        Используем timeout чтобы тест не завис на бесконечном стриме.
+        """
+        events = []
+
+        async with auth_client.stream("GET", "/events/live") as response:
+            assert response.status_code == 200
+            assert "text/event-stream" in response.headers["content-type"]
+
+            async for line in response.aiter_lines():
+                if line.startswith("data:"):
+                    payload = json.loads(line[5:].strip())
+                    events.append(payload)
+
+                    if len(events) >= 3:
+                        break   # получили достаточно, прерываем стрим
+
+        assert len(events) == 3
+        for event in events:
+            assert "type" in event
+
+    async def test_sse_disconnect_on_client_close(self, auth_client: AsyncClient):
+        """
+        При разрыве соединения клиентом — сервер должен завершить генератор.
+        Проверяем что нет утечки ресурсов (через asyncio.wait_for).
+        """
+        async def read_one_event():
+            async with auth_client.stream("GET", "/events/live") as response:
+                async for line in response.aiter_lines():
+                    if line.startswith("data:"):
+                        return json.loads(line[5:].strip())
+            return None
+
+        # Должен завершиться за 5 секунд
+        event = await asyncio.wait_for(read_one_event(), timeout=5.0)
+        assert event is not None
+
+    async def test_sse_requires_auth(self, client: AsyncClient):
+        """SSE без токена → 401."""
+        async with client.stream("GET", "/events/live") as response:
+            assert response.status_code == 401`,
+      },
+      {
+        filename: "tests/integration/test_celery_tasks.py",
+        code: `"""
+Тестирование Celery-задач в eager mode.
+
+CELERY_TASK_ALWAYS_EAGER=True: задачи выполняются синхронно в том же процессе.
+Нет нужды в запущенном воркере для тестов.
+
+Ограничение: eager mode не тестирует сериализацию/десериализацию аргументов.
+Для этого: CELERY_TASK_EAGER_PROPAGATES=True гарантирует что исключения
+в задаче поднимаются в вызывающем коде (а не теряются в AsyncResult).
+"""
+
+import pytest
+from unittest.mock import patch, AsyncMock
+
+
+@pytest.fixture(autouse=True)
+def celery_eager_mode(settings):
+    """Все тесты в этом файле запускают Celery задачи синхронно."""
+    from app.core.celery_app import celery
+    celery.conf.update(
+        task_always_eager=True,
+        task_eager_propagates=True,   # исключения не глотаются
+    )
+    yield
+    celery.conf.update(
+        task_always_eager=False,
+        task_eager_propagates=False,
+    )
+
+
+class TestSendEmailTask:
+    def test_send_email_task_executes(self):
+        from app.tasks.email import send_email_task
+
+        with patch("app.tasks.email.smtp_client.send") as mock_smtp:
+            result = send_email_task.delay(
+                to="test@example.com",
+                subject="Test",
+                body="Hello",
+            )
+
+            # В eager mode .get() возвращает результат синхронно
+            assert result.successful()
+            mock_smtp.assert_called_once()
+
+    def test_failed_task_raises_in_eager_mode(self):
+        from app.tasks.email import send_email_task
+
+        with patch(
+            "app.tasks.email.smtp_client.send",
+            side_effect=ConnectionError("SMTP unavailable"),
+        ):
+            with pytest.raises(ConnectionError):
+                send_email_task.delay(
+                    to="test@example.com",
+                    subject="Test",
+                    body="Hello",
+                ).get()
+
+    def test_task_retry_logic(self):
+        """Проверяем что задача использует retry при transient ошибках."""
+        from app.tasks.email import send_email_task
+        call_count = 0
+
+        def flaky_send(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise TimeoutError("Temporary failure")
+
+        with patch("app.tasks.email.smtp_client.send", side_effect=flaky_send):
+            result = send_email_task.apply(
+                args=["test@example.com", "Subject", "Body"],
+                retries=0,   # в eager mode retries задаём вручную
+            )
+            # Задача завершилась со 3-й попытки
+            assert call_count == 3`,
+      },
+    ],
+    explanation: `**asyncio_mode = "auto"**: без этой настройки каждый async-тест требует \`@pytest.mark.asyncio\`. С "auto" pytest-asyncio автоматически обнаруживает async def test_* и async-фикстуры. Добавляется в \`pyproject.toml\` — одна строка убирает декоратор с сотен тестов.
+
+**Event loop scope**: по умолчанию каждый тест получает свой event loop (function scope). Session-scoped фикстуры (движок БД) должны работать в session-scoped loop — иначе \`ScopeMismatch\`. В pytest-asyncio 0.23+ это настраивается через \`event_loop_policy\` фикстуру.
+
+**WebSocket через Starlette TestClient**: httpx AsyncClient не поддерживает WebSocket протокол. Starlette TestClient использует anyio для запуска ASGI-приложения в потоке — WebSocket работает синхронно через \`with ws_client.websocket_connect(...)\`.
+
+**Background Tasks в тестах**: ASGI TestClient с transport="asgi" выполняет background tasks до возврата ответа — все задачи завершены к моменту проверки. Patch функции задачи позволяет проверить что она была вызвана с правильными аргументами без реального SMTP/сети.
+
+**SSE через \`aiter_lines()\`**: \`async with client.stream(...)\` открывает соединение без буферизации. \`aiter_lines()\` асинхронно итерирует строки по мере поступления. \`break\` после N событий закрывает соединение со стороны клиента. \`asyncio.wait_for(..., timeout=5.0)\` — защита от зависания в случае если сервер не присылает события.
+
+**Celery eager mode**: \`task_always_eager=True\` — задача выполняется в том же процессе синхронно. \`task_eager_propagates=True\` — исключения поднимаются в вызывающем коде (иначе проглатываются и записываются в AsyncResult). Ограничение: eager mode не проверяет сериализацию через JSON/pickle — аргументы передаются напрямую.`,
+  },
+
+  {
+    id: "contract-testing-pact",
+    title: "Контрактное тестирование (Consumer-Driven Contract Testing)",
+    task: "Реализуйте contract testing между FastAPI-бэкендом и React-фронтендом с использованием Pact. Определите контракты для критических эндпоинтов, запустите provider verification в CI, настройте Pact Broker для хранения контрактов. Обеспечьте, что изменения в API не ломают фронтенд без явного согласования. Объясните разницу между contract testing и integration testing.",
+    files: [
+      {
+        filename: "frontend/tests/pact/auth.pact.test.ts",
+        code: `/**
+ * Consumer-side Pact тест (React/TypeScript).
+ *
+ * Consumer (фронтенд) ОПРЕДЕЛЯЕТ контракт:
+ *   "Я ожидаю что POST /auth/login вернёт такой-то ответ при таких-то входных данных"
+ *
+ * Pact записывает это ожидание в JSON-файл (pact file).
+ * Provider (FastAPI) верифицирует что реальный сервер соответствует контракту.
+ *
+ * Главное отличие от integration testing:
+ *   Integration: "фронтенд и бэкенд работают вместе" — нужны оба сервиса
+ *   Contract:    "фронтенд описывает что ожидает" — бэкенд не нужен при генерации
+ *
+ * Преимущество: если бэкенд изменит формат ответа — provider verification упадёт
+ * ЕЩЁ ДО того как изменение попадёт в production.
+ */
+
+import { PactV3, MatchersV3 } from "@pact-foundation/pact";
+import { loginUser } from "../../src/api/auth";  // реальный API-клиент фронтенда
+
+const { like, string, eachLike } = MatchersV3;
+
+// Pact создаёт mock-сервер на указанном порту
+const provider = new PactV3({
+  consumer: "ReactFrontend",
+  provider: "FastAPIBackend",
+  port: 4567,
+  dir: "./pacts",   // куда сохранять pact-файлы
+  logLevel: "warn",
+});
+
+describe("Auth API Contract", () => {
+  describe("POST /auth/login", () => {
+    it("returns access token on valid credentials", async () => {
+      // 1. Определяем взаимодействие (interaction)
+      provider
+        .given("a user with email user@example.com exists")  // provider state
+        .uponReceiving("a login request with valid credentials")
+        .withRequest({
+          method: "POST",
+          path: "/auth/login",
+          headers: { "Content-Type": "application/json" },
+          body: {
+            email: "user@example.com",
+            password: "correct_password",
+          },
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { "Content-Type": like("application/json") },
+          body: {
+            // like() — проверяем тип, не конкретное значение
+            // Токен будет разным каждый раз, нам важна структура
+            access_token: string("any.jwt.token"),
+            token_type: "bearer",
+          },
+        });
+
+      // 2. Выполняем реальный код фронтенда против Pact mock-сервера
+      await provider.executeTest(async (mockServer) => {
+        const result = await loginUser({
+          baseURL: mockServer.url,
+          email: "user@example.com",
+          password: "correct_password",
+        });
+
+        expect(result.access_token).toBeTruthy();
+        expect(result.token_type).toBe("bearer");
+      });
+      // 3. Pact сохраняет interaction в ./pacts/ReactFrontend-FastAPIBackend.json
+    });
+
+    it("returns 401 on invalid credentials", async () => {
+      provider
+        .given("a user with email user@example.com exists")
+        .uponReceiving("a login request with wrong password")
+        .withRequest({
+          method: "POST",
+          path: "/auth/login",
+          body: { email: "user@example.com", password: "wrong_password" },
+        })
+        .willRespondWith({
+          status: 401,
+          body: {
+            detail: string("Invalid credentials"),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        await expect(
+          loginUser({ baseURL: mockServer.url, email: "user@example.com", password: "wrong_password" })
+        ).rejects.toThrow(/401/);
+      });
+    });
+  });
+
+  describe("GET /articles", () => {
+    it("returns list of articles with expected shape", async () => {
+      provider
+        .given("there are published articles")
+        .uponReceiving("a request for articles list")
+        .withRequest({ method: "GET", path: "/articles" })
+        .willRespondWith({
+          status: 200,
+          body: eachLike({   // eachLike: массив с минимум одним элементом такой структуры
+            id: like(1),
+            title: string("Article title"),
+            author: {
+              id: like(1),
+              name: string("Author name"),
+            },
+            is_published: true,
+            created_at: string("2024-01-01T00:00:00Z"),
+          }),
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const response = await fetch(\`\${mockServer.url}/articles\`);
+        const articles = await response.json();
+        expect(Array.isArray(articles)).toBe(true);
+        expect(articles[0]).toHaveProperty("id");
+        expect(articles[0]).toHaveProperty("title");
+      });
+    });
+  });
+});`,
+      },
+      {
+        filename: "tests/pact/test_provider_verification.py",
+        code: `"""
+Provider-side верификация контракта (FastAPI/Python).
+
+Provider получает pact-файл (от Pact Broker или локально)
+и верифицирует что реальный FastAPI-сервер соответствует контракту.
+
+Запускается в CI после каждого изменения бэкенда.
+Если контракт нарушен — CI падает.
+
+Provider states: функции которые приводят БД в нужное состояние
+перед каждым interaction.
+"""
+
+import asyncio
+
+import pytest
+from pact import Verifier
+
+from app.main import app
+
+
+# ── Provider States ────────────────────────────────────────────────────────────
+# Каждый state из consumer-теста должен иметь handler здесь.
+# Handlers создают/удаляют данные в тестовой БД перед верификацией.
+
+PROVIDER_STATES = {}
+
+
+def provider_state(name: str):
+    """Декоратор для регистрации provider state handler."""
+    def decorator(func):
+        PROVIDER_STATES[name] = func
+        return func
+    return decorator
+
+
+@provider_state("a user with email user@example.com exists")
+async def state_user_exists(db):
+    from tests.factories import UserFactory
+    from app.core.security import hash_password
+    await UserFactory.create(
+        _session=db,
+        email="user@example.com",
+        hashed_password=hash_password("correct_password"),
+    )
+
+
+@provider_state("there are published articles")
+async def state_articles_exist(db):
+    from tests.factories import ArticleFactory, UserFactory
+    author = await UserFactory.create(_session=db)
+    await ArticleFactory.create_batch(3, _session=db, author=author, is_published=True)
+
+
+# ── Верификация ───────────────────────────────────────────────────────────────
+
+@pytest.fixture(scope="module")
+def provider_app(db):
+    """
+    Запускаем FastAPI на реальном порту для верификации.
+    Pact Verifier делает реальные HTTP-запросы к этому серверу.
+    """
+    import uvicorn
+    import threading
+
+    # Подменяем БД на тестовую
+    from app.core.database import get_db
+    app.dependency_overrides[get_db] = lambda: db
+
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=8001, log_level="error"))
+    thread = threading.Thread(target=server.run)
+    thread.daemon = True
+    thread.start()
+
+    import time
+    time.sleep(0.5)   # ждём запуска
+
+    yield "http://127.0.0.1:8001"
+
+    server.should_exit = True
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.e2e
+def test_provider_verification(provider_app: str):
+    """
+    Верификация провайдера против pact-файлов.
+    В CI: pact_broker_url вместо pact_urls.
+    """
+    verifier = Verifier(
+        provider="FastAPIBackend",
+        provider_base_url=provider_app,
+    )
+
+    # Локальная верификация (development):
+    output, _ = verifier.verify_pacts(
+        pacts="./frontend/pacts/ReactFrontend-FastAPIBackend.json",
+        provider_states_setup_url=f"{provider_app}/_pact/setup",
+        verbose=False,
+    )
+
+    # В CI используем Pact Broker:
+    # output, _ = verifier.verify_with_broker(
+    #     broker_url="https://your-pact-broker.example.com",
+    #     broker_token=os.environ["PACT_BROKER_TOKEN"],
+    #     publish_version=os.environ["GIT_COMMIT"],
+    #     publish_verification_results=True,   # результаты обратно в broker
+    # )
+
+    assert output == 0, "Provider verification failed — contract broken"`,
+      },
+      {
+        filename: "app/pact/states_endpoint.py",
+        code: `"""
+/_pact/setup endpoint для provider states.
+
+Pact Verifier вызывает этот endpoint перед каждым interaction
+чтобы подготовить нужное состояние БД.
+
+ВАЖНО: этот роутер монтируется ТОЛЬКО в тестовом окружении.
+В production его быть не должно.
+"""
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+
+router = APIRouter(prefix="/_pact", include_in_schema=False)
+
+
+class ProviderStateRequest(BaseModel):
+    state: str
+    params: dict = {}
+
+
+class ProviderStateTeardown(BaseModel):
+    state: str
+    action: str  # "setup" | "teardown"
+
+
+@router.post("/setup")
+async def setup_provider_state(
+    payload: ProviderStateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Pact Verifier вызывает этот endpoint с именем state.
+    Мы находим соответствующий handler и выполняем его.
+    """
+    from tests.pact.test_provider_verification import PROVIDER_STATES
+
+    handler = PROVIDER_STATES.get(payload.state)
+    if handler is None:
+        # Неизвестный state — не паникуем, просто пропускаем
+        return {"state": payload.state, "status": "no_handler"}
+
+    import asyncio
+    if asyncio.iscoroutinefunction(handler):
+        await handler(db)
+    else:
+        handler(db)
+
+    await db.commit()
+    return {"state": payload.state, "status": "setup_complete"}
+
+
+# В main.py (только не в production):
+# if settings.environment == "test":
+#     from app.pact.states_endpoint import router as pact_router
+#     app.include_router(pact_router)`,
+      },
+      {
+        filename: ".github/workflows/pact.yml",
+        code: `# CI pipeline для Contract Testing
+#
+# Порядок выполнения:
+#   1. Consumer (фронтенд) генерирует pact-файлы
+#   2. Pact файлы публикуются в Pact Broker
+#   3. Provider (бэкенд) верифицирует контракты
+#   4. Результаты публикуются обратно в Broker
+#   5. "Can I deploy?" проверка: можно ли деплоить данную версию
+#
+# Pact Broker хранит историю: какая версия фронтенда совместима
+# с какой версией бэкенда.
+
+name: Contract Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  consumer-tests:
+    name: Generate Pact Files (Consumer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install frontend dependencies
+        run: pnpm install
+        working-directory: frontend
+
+      - name: Run consumer Pact tests
+        run: pnpm test:pact
+        working-directory: frontend
+
+      - name: Publish pacts to Broker
+        run: |
+          npx pact-broker publish ./pacts \
+            --broker-base-url=\${{ secrets.PACT_BROKER_URL }} \
+            --broker-token=\${{ secrets.PACT_BROKER_TOKEN }} \
+            --consumer-app-version=\${{ github.sha }} \
+            --tag=\${{ github.ref_name }}
+        working-directory: frontend
+
+  provider-verification:
+    name: Verify Provider (Backend)
+    needs: consumer-tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: app_test
+          POSTGRES_PASSWORD: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Run provider verification
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:test@localhost/app_test
+          PACT_BROKER_URL: \${{ secrets.PACT_BROKER_URL }}
+          PACT_BROKER_TOKEN: \${{ secrets.PACT_BROKER_TOKEN }}
+          GIT_COMMIT: \${{ github.sha }}
+          ENVIRONMENT: test
+        run: pytest tests/pact/ -v
+
+  can-i-deploy:
+    name: Can I Deploy?
+    needs: [consumer-tests, provider-verification]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if frontend can be deployed with current backend
+        run: |
+          npx pact-broker can-i-deploy \
+            --pacticipant ReactFrontend \
+            --version \${{ github.sha }} \
+            --to-environment production \
+            --broker-base-url=\${{ secrets.PACT_BROKER_URL }} \
+            --broker-token=\${{ secrets.PACT_BROKER_TOKEN }}`,
+      },
+      {
+        filename: "docs/contract-testing-explained.md",
+        code: `# Contract Testing vs Integration Testing
+
+## Integration Testing
+Проверяет что два компонента РАБОТАЮТ ВМЕСТЕ:
+- Нужны оба сервиса запущены одновременно
+- Тест: "отправь запрос, получи реальный ответ"
+- Медленно (поднять оба сервиса)
+- Сложно изолировать причину падения
+- Не даёт ответа: "какой именно контракт нарушен?"
+
+Пример:
+  1. Запустить FastAPI (порт 8000)
+  2. Запустить React dev-server
+  3. Cypress: нажать кнопку Login, проверить что токен получен
+
+## Contract Testing (Consumer-Driven)
+Проверяет что ОЖИДАНИЯ потребителя удовлетворены поставщиком:
+
+Consumer (фронтенд):
+  - Описывает что он ожидает от API
+  - Генерирует pact-файл с описанием взаимодействий
+  - Тестирует свой код против Pact mock-сервера
+  - НЕ нужен реальный бэкенд
+
+Provider (бэкенд):
+  - Верифицирует что реальный сервер соответствует контракту
+  - Запускает provider states (готовит тестовые данные)
+  - НЕ нужен реальный фронтенд
+
+Преимущества:
+  ✓ Раннее обнаружение: нарушение контракта видно до деплоя
+  ✓ Независимость: фронтенд и бэкенд тестируются независимо
+  ✓ Документация: pact-файл = живая документация API
+  ✓ "Can I deploy?": Pact Broker знает совместимость версий
+
+Ограничения:
+  ✗ Не заменяет e2e тесты полностью
+  ✗ Требует дисциплины: consumer должен поддерживать контракты актуальными
+  ✗ Не тестирует бизнес-логику — только форму ответа
+
+## Когда использовать что
+
+| Ситуация | Инструмент |
+|----------|-----------|
+| "Сломает ли изменение API фронтенд?" | Contract (Pact) |
+| "Работает ли вся цепочка Login→Dashboard?" | E2E (Cypress/Playwright) |
+| "Правильно ли бэкенд сохраняет данные?" | Integration (pytest + реальная БД) |
+| "Корректна ли логика токена?" | Unit (pytest, без БД) |
+
+## Consumer-Driven: ключевой момент
+
+"Consumer-Driven" означает что ПОТРЕБИТЕЛЬ (фронтенд) диктует контракт.
+Не провайдер публикует "вот наш API" — а потребитель говорит "вот что мне нужно".
+
+Это важно при нескольких потребителях одного API:
+  mobile app   →  нужны поля A, B, C
+  web frontend →  нужны поля A, D, E
+  partner API  →  нужны поля B, F, G
+
+Провайдер верифицирует все три контракта.
+Изменение поля B ломает mobile и partner, но не web — это сразу видно.`,
+      },
+    ],
+    explanation: `**Contract Testing ≠ Integration Testing**: integration тест проверяет что два сервиса работают вместе (оба запущены, реальные запросы). Contract тест проверяет СОГЛАШЕНИЕ о формате данных. Фронтенд описывает ожидания → Pact записывает в JSON → бэкенд верифицирует независимо. Главная ценность: изменение API сразу видно в CI ещё до деплоя.
+
+**Consumer-Driven**: именно потребитель (фронтенд) диктует контракт — не провайдер. Это разворачивает API-разработку: бэкенд не может просто переименовать поле без согласования с фронтендом. Несколько потребителей одного API → несколько контрактов → провайдер должен удовлетворить все.
+
+**Provider States**: перед каждым interaction Pact вызывает \`/_pact/setup\` с именем state ("a user with email X exists"). Handler создаёт нужные данные в тестовой БД. Без provider states верификация упадёт — данных нет. Endpoint монтируется ТОЛЬКО в test environment.
+
+**Матчеры вместо точных значений**: \`like(1)\` проверяет что значение того же типа (int), но не конкретное значение. \`string("any")\` — строка любого содержания. \`eachLike({...})\` — массив с минимум одним элементом заданной структуры. Это важно: JWT-токен меняется каждый раз, нам важен факт его наличия и тип.
+
+**"Can I Deploy?"**: Pact Broker хранит историю верификаций. Команда \`can-i-deploy\` отвечает: "версия фронтенда X совместима с текущим production бэкендом?" Блокирует деплой если совместимость не подтверждена. Это делает возможным independent deployments — деплоить фронтенд и бэкенд независимо с гарантией совместимости.
+
+**Pact Broker vs локальные файлы**: в development — pact-файлы в репозитории. В CI — Pact Broker (self-hosted или pactflow.io). Broker хранит все версии, тегирует ветки, отображает матрицу совместимости. \`publish_verification_results=True\` записывает результат верификации обратно в Broker — это обновляет матрицу.`,
+  },
+
 ];
