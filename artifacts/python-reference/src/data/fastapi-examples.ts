@@ -5613,4 +5613,1031 @@ HTTP/1.1 + HTTP/2 (мультиплексирование из коробки).
 **SSE vs WebSocket**: SSE — HTTP, работает через любой прокси без настройки, браузер reconnects автоматически с \`Last-Event-ID\`. Выбирайте SSE если данные идут только от сервера к клиенту: прогресс, уведомления, live feed. WebSocket — когда клиент тоже отправляет данные: чат, игры, совместное редактирование.`,
   },
 
+  {
+    id: "async-sqlalchemy-repository",
+    title: "Async SQLAlchemy 2.0 — продвинутые паттерны",
+    task: "Реализуйте Repository-паттерн с использованием async SQLAlchemy 2.0. Базовый GenericRepository[T] с CRUD-методами. Специфичные репозитории с кастомными запросами. Управление сессиями через DI (AsyncSession как зависимость). Реализуйте Unit of Work для атомарных операций над несколькими репозиториями. Корректная работа lazy loading в async контексте.",
+    files: [
+      {
+        filename: "app/core/database.py",
+        code: `from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from app.core.config import settings
+
+# echo=True выводит SQL в stdout — удобно при разработке, отключить в prod
+engine = create_async_engine(
+    settings.database_url,
+    echo=settings.debug,
+    pool_size=10,
+    max_overflow=20,
+    pool_pre_ping=True,        # проверяет соединение перед выдачей из пула
+)
+
+# expire_on_commit=False — объекты не инвалидируются после commit.
+# Критично для async: нельзя обратиться к атрибуту вне сессии (lazy load упадёт).
+async_session_factory = async_sessionmaker(
+    engine,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)
+
+
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """FastAPI Depends — выдаёт сессию и гарантирует её закрытие."""
+    async with async_session_factory() as session:
+        yield session`,
+      },
+      {
+        filename: "app/repositories/base.py",
+        code: `from typing import Any, Generic, TypeVar
+
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.base import Base
+
+# T — любая SQLAlchemy-модель, наследующая Base
+T = TypeVar("T", bound=Base)
+
+
+class GenericRepository(Generic[T]):
+    """
+    Базовый репозиторий с типовыми CRUD-операциями.
+    Конкретные репозитории наследуют его и добавляют доменные запросы.
+    """
+
+    def __init__(self, model: type[T], session: AsyncSession) -> None:
+        self.model = model
+        self.session = session
+
+    # ── CREATE ──────────────────────────────────────────────────────────────
+
+    async def create(self, **kwargs: Any) -> T:
+        instance = self.model(**kwargs)
+        self.session.add(instance)
+        await self.session.flush()   # получаем id до commit, но в той же транзакции
+        await self.session.refresh(instance)
+        return instance
+
+    async def bulk_create(self, items: list[dict[str, Any]]) -> list[T]:
+        instances = [self.model(**item) for item in items]
+        self.session.add_all(instances)
+        await self.session.flush()
+        return instances
+
+    # ── READ ─────────────────────────────────────────────────────────────────
+
+    async def get_by_id(self, id: int) -> T | None:
+        return await self.session.get(self.model, id)
+
+    async def get_or_raise(self, id: int) -> T:
+        instance = await self.get_by_id(id)
+        if instance is None:
+            raise ValueError(f"{self.model.__name__} with id={id} not found")
+        return instance
+
+    async def get_all(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[T]:
+        result = await self.session.execute(
+            select(self.model).offset(offset).limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def count(self) -> int:
+        result = await self.session.execute(
+            select(func.count()).select_from(self.model)
+        )
+        return result.scalar_one()
+
+    # ── UPDATE ───────────────────────────────────────────────────────────────
+
+    async def update(self, id: int, **kwargs: Any) -> T:
+        instance = await self.get_or_raise(id)
+        for key, value in kwargs.items():
+            setattr(instance, key, value)
+        await self.session.flush()
+        await self.session.refresh(instance)
+        return instance
+
+    # ── DELETE ───────────────────────────────────────────────────────────────
+
+    async def delete(self, id: int) -> bool:
+        instance = await self.get_by_id(id)
+        if instance is None:
+            return False
+        await self.session.delete(instance)
+        await self.session.flush()
+        return True`,
+      },
+      {
+        filename: "app/models/base.py",
+        code: `from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import DateTime, func
+from datetime import datetime
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class TimestampMixin:
+    """Добавляет created_at / updated_at во все наследующие модели."""
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )`,
+      },
+      {
+        filename: "app/models/shop.py",
+        code: `from decimal import Decimal
+
+from sqlalchemy import ForeignKey, Numeric, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import Base, TimestampMixin
+
+
+class User(Base, TimestampMixin):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+
+    # lazy="raise" — SQLAlchemy бросит исключение если попытаться
+    # обратиться к orders без явного eager-load. Это защита от N+1:
+    # случайный доступ к relationship в async контексте вызвал бы ошибку
+    # "MissingGreenlet", а с raise — падаем явно на уровне разработки.
+    orders: Mapped[list["Order"]] = relationship(
+        back_populates="user",
+        lazy="raise",
+    )
+
+
+class Product(Base, TimestampMixin):
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    stock: Mapped[int] = mapped_column(default=0)
+
+    order_items: Mapped[list["OrderItem"]] = relationship(
+        back_populates="product",
+        lazy="raise",
+    )
+
+
+class Order(Base, TimestampMixin):
+    __tablename__ = "orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    status: Mapped[str] = mapped_column(String(50), default="pending")
+
+    user: Mapped["User"] = relationship(back_populates="orders", lazy="raise")
+    items: Mapped[list["OrderItem"]] = relationship(
+        back_populates="order",
+        lazy="raise",
+        cascade="all, delete-orphan",
+    )
+
+
+class OrderItem(Base):
+    __tablename__ = "order_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"))
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+    quantity: Mapped[int]
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+
+    order: Mapped["Order"] = relationship(back_populates="items", lazy="raise")
+    product: Mapped["Product"] = relationship(back_populates="order_items", lazy="raise")`,
+      },
+      {
+        filename: "app/repositories/user_repository.py",
+        code: `from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from app.models.shop import User
+from app.repositories.base import GenericRepository
+
+
+class UserRepository(GenericRepository[User]):
+    """Доменные запросы для пользователей."""
+
+    async def get_by_email(self, email: str) -> User | None:
+        result = await self.session.execute(
+            select(User).where(User.email == email)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_with_orders(self, user_id: int) -> User | None:
+        """
+        Явный eager load через selectinload.
+
+        selectinload делает отдельный SELECT ... WHERE user_id IN (...)
+        — эффективнее joinedload при отношениях один-ко-многим
+        (нет дублирования строк пользователя).
+        """
+        result = await self.session.execute(
+            select(User)
+            .where(User.id == user_id)
+            .options(
+                selectinload(User.orders).selectinload(Order.items)
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_active_users(self, *, limit: int = 100) -> list[User]:
+        result = await self.session.execute(
+            select(User)
+            .order_by(User.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())`,
+      },
+      {
+        filename: "app/repositories/order_repository.py",
+        code: `from decimal import Decimal
+
+from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload, joinedload
+
+from app.models.shop import Order, OrderItem, Product
+from app.repositories.base import GenericRepository
+
+
+class OrderRepository(GenericRepository[Order]):
+
+    async def get_with_items_and_products(self, order_id: int) -> Order | None:
+        """
+        joinedload для Order→User (многие-к-одному) +
+        selectinload для Order→items→product (один-ко-многим).
+
+        Смешивание стратегий — нормальная практика:
+        joinedload хорош для to-one, selectinload для to-many.
+        """
+        result = await self.session.execute(
+            select(Order)
+            .where(Order.id == order_id)
+            .options(
+                joinedload(Order.user),
+                selectinload(Order.items).joinedload(OrderItem.product),
+            )
+        )
+        # unique() нужен когда joinedload может дублировать строки
+        return result.unique().scalar_one_or_none()
+
+    async def get_user_orders(
+        self,
+        user_id: int,
+        *,
+        status: str | None = None,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> list[Order]:
+        stmt = (
+            select(Order)
+            .where(Order.user_id == user_id)
+            .options(selectinload(Order.items))
+            .order_by(Order.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        if status:
+            stmt = stmt.where(Order.status == status)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_revenue_by_status(self) -> dict[str, Decimal]:
+        """Агрегирующий запрос: выручка по статусам заказов."""
+        result = await self.session.execute(
+            select(
+                Order.status,
+                func.sum(OrderItem.unit_price * OrderItem.quantity).label("revenue"),
+            )
+            .join(Order.items)
+            .group_by(Order.status)
+        )
+        return {row.status: row.revenue for row in result}`,
+      },
+      {
+        filename: "app/uow.py",
+        code: `from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.repositories.order_repository import OrderRepository
+from app.repositories.user_repository import UserRepository
+
+
+class UnitOfWork:
+    """
+    Unit of Work инкапсулирует транзакцию и предоставляет
+    единую точку доступа ко всем репозиториям.
+
+    Все репозитории внутри одного UoW разделяют одну AsyncSession —
+    гарантия атомарности: либо всё вместе commit, либо rollback.
+
+    Использование:
+        async with UnitOfWork(session) as uow:
+            user = await uow.users.create(email="a@b.com", name="Alice")
+            order = await uow.orders.create(user_id=user.id, status="pending")
+            # commit вызывается автоматически при выходе из блока
+    """
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def __aenter__(self) -> "UnitOfWork":
+        # Репозитории создаются с одной и той же сессией
+        self.users = UserRepository(model=User, session=self._session)
+        self.orders = OrderRepository(model=Order, session=self._session)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        if exc_type is None:
+            await self._session.commit()
+        else:
+            await self._session.rollback()
+
+    async def commit(self) -> None:
+        await self._session.commit()
+
+    async def rollback(self) -> None:
+        await self._session.rollback()`,
+      },
+      {
+        filename: "app/services/order_service.py",
+        code: `from decimal import Decimal
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.shop import Order, OrderItem
+from app.repositories.order_repository import OrderRepository
+from app.repositories.user_repository import UserRepository
+from app.schemas.order import OrderCreateSchema
+from app.uow import UnitOfWork
+
+
+class OrderService:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def create_order(
+        self,
+        user_id: int,
+        payload: OrderCreateSchema,
+    ) -> Order:
+        """
+        Атомарная операция: создаём заказ + позиции + списываем остатки.
+        Если что-то падает — UoW откатывает всё.
+        """
+        async with UnitOfWork(self._session) as uow:
+            # 1. Проверяем пользователя
+            user = await uow.users.get_or_raise(user_id)
+
+            # 2. Создаём заказ
+            order = await uow.orders.create(user_id=user.id, status="pending")
+
+            # 3. Добавляем позиции и обновляем остатки
+            for item_data in payload.items:
+                product = await uow.products.get_or_raise(item_data.product_id)
+
+                if product.stock < item_data.quantity:
+                    raise ValueError(
+                        f"Not enough stock for product {product.id}: "
+                        f"available {product.stock}, requested {item_data.quantity}"
+                    )
+
+                await uow.orders.create_item(
+                    order_id=order.id,
+                    product_id=product.id,
+                    quantity=item_data.quantity,
+                    unit_price=product.price,
+                )
+
+                await uow.products.update(
+                    product.id,
+                    stock=product.stock - item_data.quantity,
+                )
+
+            # __aexit__ вызовет commit автоматически
+            return order
+
+    async def get_order_detail(self, order_id: int) -> Order:
+        repo = OrderRepository(model=Order, session=self._session)
+        order = await repo.get_with_items_and_products(order_id)
+        if order is None:
+            raise ValueError(f"Order {order_id} not found")
+        return order`,
+      },
+      {
+        filename: "app/routers/orders.py",
+        code: `from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+from app.schemas.order import OrderCreateSchema, OrderSchema
+from app.services.order_service import OrderService
+
+router = APIRouter()
+
+
+def get_order_service(db: AsyncSession = Depends(get_db)) -> OrderService:
+    """
+    Фабрика сервиса через Depends.
+    FastAPI создаёт новый OrderService на каждый запрос,
+    передавая ему сессию из get_db (которая живёт ровно один запрос).
+    """
+    return OrderService(session=db)
+
+
+@router.post("/", response_model=OrderSchema, status_code=status.HTTP_201_CREATED)
+async def create_order(
+    payload: OrderCreateSchema,
+    user_id: int,                        # в реальном проекте — из JWT
+    service: OrderService = Depends(get_order_service),
+):
+    try:
+        order = await service.create_order(user_id=user_id, payload=payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return order
+
+
+@router.get("/{order_id}", response_model=OrderSchema)
+async def get_order(
+    order_id: int,
+    service: OrderService = Depends(get_order_service),
+):
+    try:
+        return await service.get_order_detail(order_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))`,
+      },
+    ],
+    explanation: `**GenericRepository[T]**: параметризован TypeVar-ом, привязанным к \`Base\`. Это даёт автодополнение и проверку типов — IDE знает, что \`UserRepository.create()\` возвращает \`User\`, а не \`Any\`. Метод \`flush()\` фиксирует изменения в транзакции (генерирует id через RETURNING), но не делает COMMIT — позволяет использовать id созданного объекта в той же транзакции.
+
+**\`expire_on_commit=False\`**: в синхронном SQLAlchemy объекты после \`commit()\` автоматически инвалидируются, и при первом обращении к атрибуту ORM делает lazy SELECT. В async контексте это невозможно — нет "тихого" await. Решение: \`expire_on_commit=False\` — объекты остаются живыми после коммита со своими данными.
+
+**\`lazy="raise"\`**: объявление в модели делает случайный доступ к relationship исключением. Это обнаруживает N+1 на этапе разработки, а не в production. Явно загружайте нужные связи через \`selectinload\` / \`joinedload\` в методах репозитория.
+
+**selectinload vs joinedload**: \`joinedload\` добавляет JOIN в основной запрос — эффективен для to-one связей (не дублирует данные). \`selectinload\` делает отдельный \`WHERE id IN (...)\` — эффективнее для to-many (без декартового произведения строк). Смешивание стратегий — стандартная практика.
+
+**Unit of Work**: все репозитории получают одну \`AsyncSession\`, значит работают в одной транзакции. \`__aexit__\` вызывает \`commit()\` при успехе и \`rollback()\` при исключении. Сервисный слой работает с UoW, не зная о деталях транзакционности — это ответственность UoW.
+
+**DI через Depends**: \`get_db\` как \`AsyncGenerator\` гарантирует \`session.close()\` даже при исключении. Каждый запрос получает свою сессию — изоляция по умолчанию. Сервисы создаются фабриками через \`Depends\`, что упрощает подмену в тестах (\`app.dependency_overrides\`).`,
+  },
+
+  {
+    id: "alembic-migrations",
+    title: "Alembic и управление миграциями",
+    task: "Настройте Alembic для async-приложения с несколькими базами данных. Реализуйте: автогенерацию миграций из SQLAlchemy моделей, поддержку data migrations (изменение данных), возможность rollback, multi-database migrations (основная БД + аналитическая), тестирование миграций в CI. Обеспечьте zero-downtime миграции для production.",
+    files: [
+      {
+        filename: "directory_structure.txt",
+        code: `project/
+├── alembic/
+│   ├── env.py                   # точка входа Alembic, async-конфиг
+│   ├── script.py.mako           # шаблон новых миграций
+│   └── versions/
+│       ├── 0001_create_users.py
+│       ├── 0002_add_name_to_users.py  # schema migration
+│       └── 0003_backfill_slugs.py     # data migration
+├── alembic_analytics/           # отдельное дерево для аналитической БД
+│   ├── env.py
+│   └── versions/
+├── alembic.ini                  # основной конфиг
+├── alembic_analytics.ini        # конфиг аналитической БД
+├── app/
+│   ├── core/
+│   │   └── database.py
+│   └── models/
+│       └── ...
+└── tests/
+    └── test_migrations.py`,
+      },
+      {
+        filename: "alembic.ini",
+        code: `[alembic]
+# URL переопределяется в env.py из переменной окружения — здесь placeholder
+script_location = alembic
+prepend_sys_path = .
+
+# Формат имён файлов: дата + rev + slug
+file_template = %%(year)d%%(month).2d%%(day).2d_%%(rev)s_%%(slug)s
+
+# Не записывает пустые миграции (когда autogenerate не нашёл изменений)
+# Полезно добавить в скрипт генерации
+
+[loggers]
+keys = root,sqlalchemy,alembic
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = WARN
+handlers = console
+qualname =
+
+[logger_sqlalchemy]
+level = WARN
+handlers =
+qualname = sqlalchemy.engine
+
+[logger_alembic]
+level = INFO
+handlers =
+qualname = alembic
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(levelname)-5.5s [%(name)s] %(message)s
+datefmt = %H:%M:%S`,
+      },
+      {
+        filename: "alembic/env.py",
+        code: `import asyncio
+from logging.config import fileConfig
+
+from sqlalchemy import pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config
+
+from alembic import context
+
+# Импортируем все модели чтобы Base.metadata знала все таблицы.
+# Если забыть импорт — autogenerate не увидит таблицу.
+from app.models import Base  # noqa: F401  ← вся ORM-иерархия
+
+config = context.config
+
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+target_metadata = Base.metadata
+
+
+def get_url() -> str:
+    """
+    Читаем URL из переменной окружения — никаких строк подключения в репозитории.
+    DATABASE_URL должен использовать asyncpg-драйвер:
+    postgresql+asyncpg://user:pass@host/db
+    """
+    import os
+    url = os.environ["DATABASE_URL"]
+    # Alembic 1.x при синхронном run_migrations_offline ожидает sync-URL.
+    # При online async-запуске передаём как есть.
+    return url
+
+
+def run_migrations_offline() -> None:
+    """
+    Offline-режим: генерирует SQL-скрипт без подключения к БД.
+    Полезно для code review, аудита, apply вручную.
+    Используем sync URL (без +asyncpg) для совместимости.
+    """
+    url = get_url().replace("+asyncpg", "")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+        compare_type=True,          # отслеживает изменения типов колонок
+        compare_server_default=True, # отслеживает server_default
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations() -> None:
+    """Online-режим с async engine."""
+    configuration = config.get_section(config.config_ini_section, {})
+    configuration["sqlalchemy.url"] = get_url()
+
+    connectable = async_engine_from_config(
+        configuration,
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,   # NullPool для migrations: не держим соединения
+    )
+
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+
+    await connectable.dispose()
+
+
+def run_migrations_online() -> None:
+    asyncio.run(run_async_migrations())
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()`,
+      },
+      {
+        filename: "alembic/versions/0001_create_users.py",
+        code: `"""create users table
+
+Revision ID: a1b2c3d4e5f6
+Revises:
+Create Date: 2024-01-15 10:00:00.000000
+"""
+
+from typing import Sequence, Union
+
+import sqlalchemy as sa
+from alembic import op
+
+revision: str = "a1b2c3d4e5f6"
+down_revision: Union[str, None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    op.create_table(
+        "users",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("email", sa.String(length=255), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("email"),
+    )
+    op.create_index(op.f("ix_users_email"), "users", ["email"], unique=True)
+
+
+def downgrade() -> None:
+    op.drop_index(op.f("ix_users_email"), table_name="users")
+    op.drop_table("users")`,
+      },
+      {
+        filename: "alembic/versions/0002_add_slug_to_users.py",
+        code: `"""add slug column to users (zero-downtime pattern)
+
+Revision ID: b2c3d4e5f6a7
+Revises: a1b2c3d4e5f6
+Create Date: 2024-01-20 12:00:00.000000
+
+Zero-downtime стратегия для добавления NOT NULL колонки:
+  Шаг 1 (эта миграция): добавляем колонку как nullable
+  Шаг 2 (следующая миграция): backfill данных
+  Шаг 3 (после деплоя кода): делаем NOT NULL
+  
+Деплой кода между шагами 1 и 3 должен уметь работать
+как со старой схемой (без slug), так и с новой.
+"""
+
+from typing import Sequence, Union
+
+import sqlalchemy as sa
+from alembic import op
+
+revision: str = "b2c3d4e5f6a7"
+down_revision: Union[str, None] = "a1b2c3d4e5f6"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    # Шаг 1: добавляем nullable — мгновенная операция в PostgreSQL,
+    # не блокирует таблицу (в отличие от ADD COLUMN NOT NULL со значением)
+    op.add_column(
+        "users",
+        sa.Column("slug", sa.String(length=255), nullable=True),
+    )
+    # Индекс создаём CONCURRENTLY — не блокирует чтение/запись во время построения.
+    # op.create_index не поддерживает postgresql_concurrently напрямую — используем execute.
+    op.execute(
+        "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ix_users_slug ON users (slug)"
+    )
+
+
+def downgrade() -> None:
+    op.execute("DROP INDEX CONCURRENTLY IF EXISTS ix_users_slug")
+    op.drop_column("users", "slug")`,
+      },
+      {
+        filename: "alembic/versions/0003_backfill_slugs.py",
+        code: `"""backfill slugs for existing users (data migration)
+
+Revision ID: c3d4e5f6a7b8
+Revises: b2c3d4e5f6a7
+Create Date: 2024-01-21 09:00:00.000000
+
+Data migration: заполняем slug для существующих пользователей.
+
+Ключевые принципы:
+- Батчинг: не тащим всю таблицу в память (LIMIT + OFFSET или keyset pagination)
+- Идемпотентность: WHERE slug IS NULL — повторный запуск безопасен
+- Не используем ORM-модели в миграциях: они могут измениться и сломать старые ревизии
+"""
+
+from typing import Sequence, Union
+
+import sqlalchemy as sa
+from alembic import op
+from sqlalchemy import text
+
+revision: str = "c3d4e5f6a7b8"
+down_revision: Union[str, None] = "b2c3d4e5f6a7"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+BATCH_SIZE = 1000
+
+
+def slugify(value: str) -> str:
+    """Упрощённый slugify прямо в миграции — не зависим от внешних пакетов."""
+    import re
+    value = value.lower()
+    value = re.sub(r"[^a-z0-9]+", "-", value)
+    return value.strip("-")
+
+
+def upgrade() -> None:
+    conn = op.get_bind()
+
+    # Keyset pagination по id — эффективнее OFFSET на больших таблицах
+    last_id = 0
+    while True:
+        rows = conn.execute(
+            text(
+                "SELECT id, email FROM users "
+                "WHERE slug IS NULL AND id > :last_id "
+                "ORDER BY id LIMIT :batch"
+            ),
+            {"last_id": last_id, "batch": BATCH_SIZE},
+        ).fetchall()
+
+        if not rows:
+            break
+
+        for row in rows:
+            slug = slugify(row.email.split("@")[0])
+            # Разрешаем конфликты добавляя id
+            conn.execute(
+                text("UPDATE users SET slug = :slug WHERE id = :id AND slug IS NULL"),
+                {"slug": f"{slug}-{row.id}", "id": row.id},
+            )
+
+        last_id = rows[-1].id
+        # Явный commit батча — освобождает lock, уменьшает bloat WAL
+        conn.execute(text("COMMIT"))
+        conn.execute(text("BEGIN"))
+
+
+def downgrade() -> None:
+    # Откат data migration: обнуляем поле
+    op.execute("UPDATE users SET slug = NULL")`,
+      },
+      {
+        filename: "alembic_analytics/env.py",
+        code: `"""
+env.py для аналитической БД — отдельное дерево миграций.
+Запуск: alembic -c alembic_analytics.ini upgrade head
+"""
+
+import asyncio
+import os
+from logging.config import fileConfig
+
+from sqlalchemy import pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config
+
+from alembic import context
+
+# Аналитические модели в отдельном модуле — нет пересечения с основными
+from app.models.analytics import AnalyticsBase  # noqa: F401
+
+config = context.config
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+target_metadata = AnalyticsBase.metadata
+
+
+def get_url() -> str:
+    return os.environ["ANALYTICS_DATABASE_URL"]
+
+
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations() -> None:
+    configuration = config.get_section(config.config_ini_section, {})
+    configuration["sqlalchemy.url"] = get_url()
+    connectable = async_engine_from_config(
+        configuration, prefix="sqlalchemy.", poolclass=pool.NullPool
+    )
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
+
+
+def run_migrations_online() -> None:
+    asyncio.run(run_async_migrations())
+
+
+run_migrations_online()`,
+      },
+      {
+        filename: "tests/test_migrations.py",
+        code: `"""
+Тест миграций в CI:
+1. Проверяем что upgrade head отрабатывает без ошибок
+2. Проверяем что downgrade до base отрабатывает (rollback-abilty)
+3. Проверяем что схема после upgrade совпадает с текущими моделями (drift detection)
+"""
+
+import pytest
+from alembic import command
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from alembic.runtime.migration import MigrationContext
+from sqlalchemy import create_engine, inspect, text
+
+
+SYNC_TEST_URL = "postgresql://test:test@localhost:5432/test_migrations"
+
+
+@pytest.fixture(scope="session")
+def alembic_cfg() -> Config:
+    cfg = Config("alembic.ini")
+    cfg.set_main_option("sqlalchemy.url", SYNC_TEST_URL)
+    return cfg
+
+
+@pytest.fixture(autouse=True)
+def clean_db(alembic_cfg: Config):
+    """Перед каждым тестом: откатываем до base и накатываем заново."""
+    engine = create_engine(SYNC_TEST_URL)
+    with engine.connect() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
+        conn.commit()
+    engine.dispose()
+    yield
+    # Явная очистка после теста не нужна — следующий тест сделает DROP
+
+
+def test_upgrade_head(alembic_cfg: Config) -> None:
+    """Все миграции накатываются без ошибок."""
+    command.upgrade(alembic_cfg, "head")
+
+
+def test_downgrade_to_base(alembic_cfg: Config) -> None:
+    """Все миграции откатываются без ошибок — downgrade реализован корректно."""
+    command.upgrade(alembic_cfg, "head")
+    command.downgrade(alembic_cfg, "base")
+
+
+def test_no_schema_drift(alembic_cfg: Config) -> None:
+    """
+    Drift detection: сравниваем схему после upgrade head с метаданными моделей.
+    Если разработчик изменил модель без создания миграции — тест упадёт.
+    """
+    from app.models import Base
+
+    command.upgrade(alembic_cfg, "head")
+    engine = create_engine(SYNC_TEST_URL)
+
+    with engine.connect() as conn:
+        context = MigrationContext.configure(conn)
+        diff = compare_metadata(context, Base.metadata)
+
+    assert not diff, f"Schema drift detected:\\n{diff}"
+    engine.dispose()
+
+
+def test_migration_chain_has_no_gaps(alembic_cfg: Config) -> None:
+    """
+    Проверяет что нет 'висящих' ревизий без down_revision (кроме первой).
+    Частая ошибка при merge feature-веток.
+    """
+    script = ScriptDirectory.from_config(alembic_cfg)
+    heads = script.get_heads()
+    assert len(heads) == 1, (
+        f"Multiple migration heads detected: {heads}. "
+        "Run 'alembic merge heads' to fix."
+    )
+
+
+# Вспомогательная функция (упрощённая версия alembic.autogenerate.compare_metadata)
+def compare_metadata(context, metadata):
+    from alembic.autogenerate import compare_metadata as _compare
+    return _compare(context, metadata)`,
+      },
+      {
+        filename: "Makefile",
+        code: `# ── Основная БД ──────────────────────────────────────────────────────────────
+
+# Создать новую миграцию с автогенерацией из моделей
+migrate-generate:
+\t@read -p "Migration name: " name; \\
+\talembic revision --autogenerate -m "$$name"
+
+# Применить все миграции до HEAD
+migrate-up:
+\talembic upgrade head
+
+# Откатить последнюю миграцию
+migrate-down:
+\talembic downgrade -1
+
+# Откатить до конкретной ревизии
+migrate-to:
+\t@read -p "Revision: " rev; \\
+\talembic downgrade $$rev
+
+# Показать текущую ревизию
+migrate-current:
+\talembic current
+
+# Показать историю миграций
+migrate-history:
+\talembic history --verbose
+
+# Сгенерировать SQL без применения (для code review / аудита)
+migrate-sql:
+\talembic upgrade head --sql
+
+# ── Аналитическая БД ─────────────────────────────────────────────────────────
+
+analytics-up:
+\talembic -c alembic_analytics.ini upgrade head
+
+analytics-down:
+\talembic -c alembic_analytics.ini downgrade -1
+
+analytics-generate:
+\t@read -p "Migration name: " name; \\
+\talembic -c alembic_analytics.ini revision --autogenerate -m "$$name"
+
+# ── CI ───────────────────────────────────────────────────────────────────────
+
+test-migrations:
+\tpytest tests/test_migrations.py -v`,
+      },
+    ],
+    explanation: `**Async env.py**: Alembic изначально синхронный. Ключ — \`async_engine_from_config\` + \`connection.run_sync(do_run_migrations)\`. \`run_sync\` выполняет синхронную функцию в контексте async-соединения, передавая ей обычный \`Connection\`. \`NullPool\` — обязателен для скриптов миграций: не держит pool между вызовами, корректно завершается.
+
+**Autogenerate** работает только если все модели импортированы до вызова \`env.py\`. Частая ошибка: забыли импортировать новый модуль → таблица не попала в \`Base.metadata\` → autogenerate её не видит. Решение: централизованный \`app/models/__init__.py\` с импортами всех моделей.
+
+**Data migrations без ORM-моделей**: в миграции используйте \`op.get_bind()\` и \`text()\`, не импортируйте ORM-классы из приложения. Через 6 месяцев модель изменится, старая миграция сломается. SQL в миграции — вечный контракт.
+
+**Батчинг через keyset pagination**: \`OFFSET N\` на больших таблицах замедляется линейно (БД сканирует N строк чтобы их пропустить). Keyset pagination (\`WHERE id > :last_id\`) работает за O(log n) через индекс.
+
+**Zero-downtime паттерн для NOT NULL**: PostgreSQL блокирует таблицу при \`ADD COLUMN NOT NULL DEFAULT\` (до PG 11 перезаписывал каждую строку). Безопасная последовательность: 1) ADD COLUMN nullable, 2) задеплоить код (пишет в новое поле), 3) backfill данных батчами, 4) ALTER COLUMN SET NOT NULL. Между шагами работа не прерывается.
+
+**\`CREATE INDEX CONCURRENTLY\`**: обычный \`CREATE INDEX\` берёт ShareLock — блокирует все INSERT/UPDATE/DELETE пока строится индекс. CONCURRENTLY строит без блокировки записи (два прохода по таблице). Нельзя использовать внутри транзакции — запускайте отдельным шагом или через \`op.execute()\`.
+
+**Multiple heads**: при слиянии веток где каждая добавила миграцию — Alembic обнаружит два HEAD. \`alembic merge heads\` создаёт merge-ревизию с двумя \`down_revision\`. Тест \`test_migration_chain_has_no_gaps\` ловит это в CI до попадания в main.
+
+**Тестирование rollback**: CI должен проверять не только \`upgrade head\`, но и \`downgrade base\`. Иначе \`downgrade()\` в методе будет нерабочим в момент когда он действительно нужен — при откате в production.`,
+  },
+
 ];
