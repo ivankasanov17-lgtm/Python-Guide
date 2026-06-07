@@ -131,6 +131,16 @@
 
 ---
 
+
+
+
+
+
+
+
+
+
+
 **Задача 18. Оптимизация запросов в async SQLAlchemy**
 Проведите оптимизацию ORM-запросов в FastAPI-приложении. Устраните N+1 через `selectinload` и `joinedload`, правильно используйте `lazy="raise"` для обнаружения непреднамеренных lazy load, реализуйте batch loading для связанных объектов, используйте `with_loader_criteria` для row-level security, настройте connection pool (`pool_size`, `max_overflow`, `pool_timeout`).
 
@@ -190,6 +200,20 @@
 
 ---
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## Раздел 7: Интеграции и внешние сервисы
 
 **Задача 29. HTTP-клиент и устойчивость к отказам**
@@ -202,10 +226,34 @@
 
 ---
 
+
+
+
+
+
+
+
+
+
+
 **Задача 31. Файловый сервис и загрузка файлов**
 Реализуйте полноценный сервис загрузки файлов. Прямая загрузка через multipart/form-data с валидацией типа и размера, chunked upload для больших файлов с возобновлением, генерация presigned URLs для прямой загрузки в S3 (минуя бэкенд), обработка изображений (resize, crop, watermark) в фоне через Celery, хранение метаданных в PostgreSQL, CDN-интеграция.
 
 ---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 **Задача 32. GraphQL с Strawberry**
 Реализуйте GraphQL API с использованием Strawberry (Python-first GraphQL). Схема: типы, запросы, мутации, подписки (через WebSocket). DataLoader для устранения N+1 в GraphQL. Пагинация по спецификации Relay. Разграничение доступа на уровне resolver-ов. Depth limiting и complexity limiting для защиты от DoS. Сравните REST vs GraphQL для вашего use case.
@@ -218,6 +266,12 @@
 Настройте структурированное логирование для FastAPI через `structlog`. Каждый лог должен содержать: request_id, user_id (если аутентифицирован), endpoint, duration, http_status. Реализуйте correlation ID для трейсинга через несколько сервисов. Настройте разные форматы для dev (human-readable) и production (JSON для ELK/Loki). Обеспечьте маскировку чувствительных данных в логах.
 
 ---
+
+
+
+
+
+
 
 **Задача 34. Метрики и мониторинг с Prometheus**
 Интегрируйте Prometheus-метрики в FastAPI-приложение через `prometheus-fastapi-instrumentator`. Добавьте кастомные метрики: бизнес-метрики (orders_created_total, revenue_total), технические метрики (db_query_duration_seconds, cache_hit_ratio, external_api_errors_total). Настройте Grafana-дашборд. Реализуйте SLO-алерты (error budget, latency p99).
@@ -232,9 +286,19 @@
 **Задача 36. OpenAPI и документация API**
 Настройте и расширьте автоматически генерируемую OpenAPI-документацию. Кастомизируйте Swagger UI и ReDoc (брендинг, аутентификация прямо в UI). Добавьте rich descriptions, examples для всех схем и эндпоинтов, корректные response codes и их описания, deprecation markers для устаревших эндпоинтов, группировку через tags с описаниями. Настройте автоматическую публикацию документации при деплое.
 
+
+
+
+
+
+
+
+
 ---
 
 ## Раздел 9: Масштабируемость и продвинутые паттерны
+
+
 
 **Задача 37. Микросервисная архитектура с FastAPI**
 Спроектируйте разбиение монолита на микросервисы. Определите bounded contexts и границы сервисов, реализуйте service-to-service коммуникацию (sync через HTTP + async через очередь), API Gateway паттерн (через nginx или Traefik), distributed sessions и аутентификацию между сервисами, distributed transactions через Saga паттерн. Обоснуйте, когда микросервисы уместны, а когда модульный монолит лучше.
@@ -250,6 +314,15 @@
 Реализуйте систему feature flags для постепенного rollout новых функций. Хранение флагов в Redis с instant update без перезапуска приложения. Targeting rules: % rollout, whitelist пользователей, сегменты (plan, region, cohort). A/B тестирование с равномерным распределением. Аудит изменений флагов. Интеграция как FastAPI dependency. Сравните с внешними сервисами (LaunchDarkly, Flagsmith).
 
 ---
+
+
+
+
+
+
+
+
+
 
 **Задача 40. Zero-downtime деплой и graceful shutdown**
 Реализуйте production-ready деплой FastAPI-приложения с нулевым даунтаймом. Настройте `uvicorn` с `--workers` и правильными сигналами (`SIGTERM` → graceful shutdown), реализуйте health checks (`/health/live` и `/health/ready` с разной семантикой), rolling update в Kubernetes с readiness probe, pre-stop hook для drain соединений, дождаться завершения in-flight запросов перед остановкой. Настройте горизонтальное масштабирование (HPA по CPU/RPS).

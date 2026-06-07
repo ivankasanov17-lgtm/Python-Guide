@@ -41465,6 +41465,4938 @@ def detect_newlines(text: str) -> str | tuple | None:
     d.decode(text, final=True)
     return d.newlines`,
   },
+  // ─── logging.Formatter ────────────────────────────────────────────────────
+    {
+        name: "logging.Formatter.datefmt",
+        description:
+            "Атрибут экземпляра logging.Formatter. Задаёт строку формата даты и времени, передаваемую в time.strftime() при форматировании поля %(asctime)s. Если установлен в None (по умолчанию), используется значение default_time_format ('%Y-%m-%d %H:%M:%S'). Может быть задан через конструктор Formatter(datefmt=...) или переопределён напрямую.",
+        syntax: `formatter.datefmt`,
+        arguments: [],
+        example: `import logging
+
+# Задание datefmt через конструктор
+formatter = logging.Formatter(
+    fmt="%(asctime)s — %(levelname)s — %(message)s",
+    datefmt="%d.%m.%Y %H:%M:%S",  # Например: 07.06.2026 14:30:05
+)
+
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+
+logger = logging.getLogger("myapp")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.info("Сервер запущен")
+# Вывод: 07.06.2026 14:30:05 — INFO — Сервер запущен
+
+# Переопределение атрибута после создания
+formatter.datefmt = "%H:%M:%S"
+logger.info("Формат изменён")
+# Вывод: 14:30:05 — INFO — Формат изменён`,
+    },
+    {
+        name: "logging.Formatter.default_time_format",
+        description:
+            "Атрибут класса logging.Formatter. Задаёт формат даты и времени по умолчанию для %(asctime)s, если datefmt не установлен. По умолчанию равен '%Y-%m-%d %H:%M:%S'. Может быть переопределён на уровне класса (затронет все экземпляры без datefmt) или на уровне конкретного экземпляра.",
+        syntax: `logging.Formatter.default_time_format`,
+        arguments: [],
+        example: `import logging
+
+# Значение по умолчанию
+print(logging.Formatter.default_time_format)
+# '%Y-%m-%d %H:%M:%S'
+
+# Пример 1: Formatter без datefmt — используется default_time_format
+fmt1 = logging.Formatter("%(asctime)s %(message)s")
+# asctime будет: 2026-06-07 14:30:05
+
+# Пример 2: Переопределение на уровне класса (затронет все новые экземпляры)
+logging.Formatter.default_time_format = "%d/%m/%Y %H:%M:%S"
+fmt2 = logging.Formatter("%(asctime)s %(message)s")
+# asctime будет: 07/06/2026 14:30:05
+
+# Пример 3: Переопределение только для конкретного экземпляра
+fmt3 = logging.Formatter("%(asctime)s %(message)s")
+fmt3.default_time_format = "%H:%M"
+# asctime будет: 14:30
+
+# Восстановление значения по умолчанию
+logging.Formatter.default_time_format = "%Y-%m-%d %H:%M:%S"`,
+    },
+    {
+        name: "logging.Formatter.default_msec_format",
+        description:
+            "Атрибут класса logging.Formatter. Задаёт формат миллисекунд, добавляемых к %(asctime)s после применения strftime. По умолчанию '%s,%03d' — миллисекунды через запятую (например, '2026-06-07 14:30:05,123'). Если установить в None — миллисекунды не добавляются. Используется методом formatTime().",
+        syntax: `logging.Formatter.default_msec_format`,
+        arguments: [],
+        example: `import logging
+
+# Значение по умолчанию
+print(logging.Formatter.default_msec_format)
+# '%s,%03d'
+# Даёт: 2026-06-07 14:30:05,123
+
+# Пример 1: Заменить запятую на точку (ISO 8601)
+logging.Formatter.default_msec_format = "%s.%03d"
+fmt1 = logging.Formatter("%(asctime)s %(message)s")
+# asctime: 2026-06-07 14:30:05.123
+
+# Пример 2: Отключить миллисекунды полностью
+fmt2 = logging.Formatter("%(asctime)s %(message)s")
+fmt2.default_msec_format = None
+# asctime: 2026-06-07 14:30:05
+
+# Пример 3: Кастомный формат с точностью до миллисекунд
+logging.Formatter.default_msec_format = "%s.%03d"
+
+handler = logging.StreamHandler()
+handler.setFormatter(fmt1)
+logger = logging.getLogger("msec_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.debug("Точная метка времени")
+# Вывод: 2026-06-07 14:30:05.123 Точная метка времени
+
+# Восстановление
+logging.Formatter.default_msec_format = "%s,%03d"`,
+    },
+    // ─── logging.Filter ───────────────────────────────────────────────────────
+    {
+        name: "class logging.Filter(name='')",
+        description:
+            "Класс фильтра логов. Позволяет ограничить, какие записи будут обработаны Handler или Logger. Если name задан, пропускаются только записи от логгеров с именем, начинающимся на name (или равным ему). Пустая строка (по умолчанию) пропускает все записи. Можно наследоваться и переопределить метод filter() для произвольной логики — добавления полей, подавления по условию и т.д.",
+        syntax: `logging.Filter(name='')`,
+        arguments: [
+            {
+                name: "name",
+                description: "Имя логгера-источника, записи которого (и его потомков) будут пропускаться. Пустая строка — пропускать всё. Например, 'myapp' пропустит 'myapp', 'myapp.db', 'myapp.api', но не 'otherapp'.",
+            },
+        ],
+        example: `import logging
+
+# Пример 1: Фильтр по имени логгера
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+handler.addFilter(logging.Filter("myapp.db"))  # Только myapp.db и его потомки
+
+root = logging.getLogger()
+root.addHandler(handler)
+root.setLevel(logging.DEBUG)
+
+logging.getLogger("myapp.db").info("Запрос к БД")       # Пройдёт
+logging.getLogger("myapp.db.pool").info("Пул соединений") # Пройдёт (потомок)
+logging.getLogger("myapp.api").info("HTTP запрос")       # Отфильтровано
+logging.getLogger("other").info("Другое приложение")     # Отфильтровано
+
+# Пример 2: Кастомный фильтр — добавить поле request_id к каждой записи
+import uuid
+
+class RequestIdFilter(logging.Filter):
+    def __init__(self, request_id: str):
+        super().__init__()
+        self.request_id = request_id
+
+    def filter(self, record):
+        record.request_id = self.request_id
+        return True  # Всегда пропускаем запись
+
+fmt = logging.Formatter("%(asctime)s [%(request_id)s] %(levelname)s %(message)s")
+h = logging.StreamHandler()
+h.setFormatter(fmt)
+h.addFilter(RequestIdFilter(str(uuid.uuid4())))
+
+app_logger = logging.getLogger("myapp")
+app_logger.addHandler(h)
+app_logger.setLevel(logging.INFO)
+app_logger.info("Обработка запроса")
+# 2026-06-07 14:30:05,123 [a3f1...] INFO Обработка запроса`,
+    },
+    {
+        name: "Filter.filter(record)",
+        description:
+            "Метод класса logging.Filter. Вызывается для каждой лог-записи (LogRecord), чтобы решить, пропустить её или нет. Возвращает True (или ненулевое значение) — запись обрабатывается; False (или 0) — запись подавляется. В базовой реализации сверяет имя логгера с name, переданным в конструктор. При наследовании переопределяется для произвольной логики: условий, мутации записи, инжекции полей и т.д.",
+        syntax: `filter(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord — лог-запись, которую нужно проверить. Можно читать её атрибуты (levelno, name, msg и др.) и дополнять новыми полями прямо в методе filter().",
+            },
+        ],
+        example: `import logging
+
+# Пример 1: Фильтр по уровню (пропускать только WARNING и выше)
+class MinLevelFilter(logging.Filter):
+    def __init__(self, min_level: int):
+        super().__init__()
+        self.min_level = min_level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno >= self.min_level
+
+handler = logging.StreamHandler()
+handler.addFilter(MinLevelFilter(logging.WARNING))
+
+logger = logging.getLogger("level_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+logger.debug("Отладка")    # Подавлено
+logger.info("Информация")  # Подавлено
+logger.warning("Внимание") # Пройдёт
+
+# Пример 2: Фильтр с мутацией — маскировать пароли в сообщении
+import re
+
+class SensitiveDataFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = re.sub(
+                r'(password["\s:=]+)[^\s&"]+',
+                r'\\1***',
+                record.msg,
+                flags=re.IGNORECASE,
+            )
+        return True
+
+safe_handler = logging.StreamHandler()
+safe_handler.addFilter(SensitiveDataFilter())
+secure_logger = logging.getLogger("secure")
+secure_logger.addHandler(safe_handler)
+secure_logger.setLevel(logging.DEBUG)
+secure_logger.info('Запрос: user=admin password=secret123')
+# Вывод: Запрос: user=admin password=***`,
+    },
+    // ─── logging.LogRecord ────────────────────────────────────────────────────
+    {
+        name: "class logging.LogRecord(name, level, pathname, lineno, msg, args, exc_info, func=None, sinfo=None)",
+        description:
+            "Класс лог-записи. Создаётся автоматически методами Logger (debug, info, warning и т.д.) при каждом вызове логирования. Содержит всю информацию о событии: имя логгера, уровень, расположение в коде, сообщение, аргументы, информацию об исключении и стек. Как правило, создаётся автоматически, а не вручную. Атрибуты записи доступны в форматных строках через %(атрибут)s.",
+        syntax: `logging.LogRecord(
+    name,
+    level,
+    pathname,
+    lineno,
+    msg,
+    args,
+    exc_info,
+    func=None,
+    sinfo=None,
+)`,
+        arguments: [
+            {
+                name: "name",
+                description: "Имя логгера, создавшего запись. Например, 'myapp.db'. Доступно как %(name)s в форматной строке.",
+            },
+            {
+                name: "level",
+                description: "Числовой уровень логирования (например, logging.INFO = 20). Доступно как %(levelno)s; строковое имя — %(levelname)s.",
+            },
+            {
+                name: "pathname",
+                description: "Полный путь к файлу исходного кода, из которого вызвано логирование. Доступно как %(pathname)s.",
+            },
+            {
+                name: "lineno",
+                description: "Номер строки в исходном файле, где произошёл вызов логирования. Доступно как %(lineno)d.",
+            },
+            {
+                name: "msg",
+                description: "Шаблон сообщения — первый аргумент вызова logger.info(...). Может содержать %-форматирование, например 'Пользователь %s создан'. Доступно как %(message)s после форматирования с args.",
+            },
+            {
+                name: "args",
+                description: "Кортеж или словарь аргументов для подстановки в msg через % (старое форматирование). Если аргументов нет — пустой кортеж.",
+            },
+            {
+                name: "exc_info",
+                description: "Тройка (type, value, traceback) из sys.exc_info() — информация об активном исключении, или None. Форматируется в трассировку стека.",
+            },
+            {
+                name: "func",
+                description: "Имя функции, из которой вызвано логирование. Доступно как %(funcName)s. По умолчанию None.",
+            },
+            {
+                name: "sinfo",
+                description: "Строка с информацией о стеке вызовов (stack info), получаемая через traceback.print_stack(). Добавляется при stack_info=True. По умолчанию None.",
+            },
+        ],
+        example: `import logging
+
+# Пример 1: LogRecord создаётся автоматически
+logger = logging.getLogger("myapp")
+
+# Каждый вызов создаёт LogRecord с заполненными атрибутами
+logger.info("Пользователь %s вошёл", "alice")
+# record.name      = "myapp"
+# record.levelno   = 20 (INFO)
+# record.msg       = "Пользователь %s вошёл"
+# record.args      = ("alice",)
+# record.getMessage() → "Пользователь alice вошёл"
+
+# Пример 2: Создание LogRecord вручную (для тестирования фильтров/форматтеров)
+record = logging.LogRecord(
+    name="myapp.db",
+    level=logging.ERROR,
+    pathname="/app/db.py",
+    lineno=42,
+    msg="Ошибка подключения к БД: %s",
+    args=("timeout",),
+    exc_info=None,
+    func="connect",
+)
+print(record.getMessage())   # Ошибка подключения к БД: timeout
+print(record.levelname)      # ERROR
+print(record.funcName)       # connect
+
+# Пример 3: Кастомизация LogRecord фабрикой (logging.setLogRecordFactory)
+old_factory = logging.getLogRecordFactory()
+
+def custom_factory(*args, **kwargs):
+    record = old_factory(*args, **kwargs)
+    record.app_version = "3.0.0"  # Добавляем кастомное поле
+    return record
+
+logging.setLogRecordFactory(custom_factory)
+
+fmt = logging.Formatter("%(asctime)s [v%(app_version)s] %(message)s")
+h = logging.StreamHandler()
+h.setFormatter(fmt)
+logging.getLogger().addHandler(h)
+logging.getLogger().setLevel(logging.DEBUG)
+logging.info("Запуск")
+# Вывод: 2026-06-07 14:30:05,123 [v3.0.0] Запуск`,
+    },
+    // ─── LogRecord: методы и атрибуты ─────────────────────────────────────────
+    {
+        name: "LogRecord.getMessage()",
+        description:
+            "Метод объекта LogRecord. Возвращает итоговое строковое сообщение лог-записи: применяет % -форматирование, подставляя args в msg. Вызывается автоматически форматтером при формировании вывода. Удобен при ручной работе с записями — в фильтрах, кастомных обработчиках и тестах.",
+        syntax: `record.getMessage()`,
+        arguments: [],
+        example: `import logging
+
+# Пример 1: Автоматический вызов при форматировании
+logger = logging.getLogger("demo")
+logger.info("Привет, %s! Тебе %d лет.", "Алиса", 30)
+# Formatter вызывает record.getMessage() → "Привет, Алиса! Тебе 30 лет."
+
+# Пример 2: Ручной вызов getMessage() в кастомном фильтре
+class EchoFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Получаем итоговое сообщение для проверки содержимого
+        message = record.getMessage()
+        if "пароль" in message.lower():
+            return False  # Подавить записи с упоминанием пароля
+        return True
+
+# Пример 3: Ручное создание и getMessage()
+record = logging.LogRecord(
+    name="myapp",
+    level=logging.WARNING,
+    pathname="app.py",
+    lineno=10,
+    msg="Диск заполнен на %d%%",
+    args=(95,),
+    exc_info=None,
+)
+print(record.getMessage())
+# Вывод: Диск заполнен на 95%
+
+# Пример 4: msg без args — getMessage() возвращает str(msg)
+record2 = logging.LogRecord(
+    name="myapp", level=logging.INFO,
+    pathname="app.py", lineno=1,
+    msg="Запуск сервера", args=(), exc_info=None,
+)
+print(record2.getMessage())  # Запуск сервера`,
+    },
+    {
+        name: "LogRecord.args",
+        description:
+            "Атрибут LogRecord. Кортеж или словарь аргументов, переданных вместе с шаблоном сообщения msg. Подставляется в msg через % -форматирование при вызове getMessage(). Если сообщение передано без аргументов — пустой кортеж или None. Доступен в фильтрах и форматтерах.",
+        syntax: `record.args`,
+        arguments: [],
+        example: `import logging
+
+# Аргументы-кортеж (стандартное использование)
+logger = logging.getLogger("demo")
+
+class InspectFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        print("msg:  ", record.msg)
+        print("args: ", record.args)
+        print("full: ", record.getMessage())
+        return True
+
+logger.addFilter(InspectFilter())
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
+
+logger.warning("Пользователь %s: попытка %d из %d", "alice", 2, 5)
+# msg:   Пользователь %s: попытка %d из %d
+# args:  ('alice', 2, 5)
+# full:  Пользователь alice: попытка 2 из 5
+
+# Аргументы-словарь (именованное форматирование)
+logger.info("%(action)s выполнено за %(ms)d мс", {"action": "Импорт", "ms": 42})
+# msg:   %(action)s выполнено за %(ms)d мс
+# args:  {'action': 'Импорт', 'ms': 42}
+# full:  Импорт выполнено за 42 мс`,
+    },
+    {
+        name: "LogRecord.created",
+        description:
+            "Атрибут LogRecord. Время создания записи в виде числа с плавающей точкой — результат вызова time.time() в момент создания LogRecord. Соответствует секундам с начала эпохи Unix (1970-01-01 00:00:00 UTC). Используется в форматной строке как %(created)f. Лежит в основе %(asctime)s.",
+        syntax: `record.created`,
+        arguments: [],
+        example: `import logging
+import time
+import datetime
+
+class TimestampFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Преобразование Unix-времени в читаемый datetime
+        dt = datetime.datetime.fromtimestamp(record.created)
+        record.iso_time = dt.isoformat(timespec="milliseconds")
+        return True
+
+fmt = logging.Formatter("%(iso_time)s %(levelname)s %(message)s")
+h = logging.StreamHandler()
+h.setFormatter(fmt)
+h.addFilter(TimestampFilter())
+
+logger = logging.getLogger("ts_demo")
+logger.addHandler(h)
+logger.setLevel(logging.DEBUG)
+logger.info("Событие")
+# Вывод: 2026-06-07T14:30:05.123 INFO Событие
+
+# Прямой доступ к record.created
+record = logging.LogRecord(
+    name="x", level=logging.INFO,
+    pathname="", lineno=0,
+    msg="test", args=(), exc_info=None,
+)
+print(record.created)        # 1749303005.123456 (Unix timestamp)
+print(time.ctime(record.created))  # Sun Jun  7 14:30:05 2026`,
+    },
+    {
+        name: "LogRecord.exc_info",
+        description:
+            "Атрибут LogRecord. Тройка (type, value, traceback) из sys.exc_info() на момент вызова логирования, или None если исключения не было. Форматтер превращает её в текст трассировки стека. Устанавливается автоматически при exc_info=True в вызове логгера, либо вручную при передаче исключения.",
+        syntax: `record.exc_info`,
+        arguments: [],
+        example: `import logging
+import sys
+
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(levelname)s %(message)s\n%(exc_text)s"))
+logger = logging.getLogger("exc_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+# Автоматическое заполнение exc_info при exc_info=True
+try:
+    1 / 0
+except ZeroDivisionError:
+    logger.error("Деление на ноль", exc_info=True)
+    # record.exc_info = (<class 'ZeroDivisionError'>, ZeroDivisionError(...), <traceback>)
+
+# Проверка exc_info в кастомном фильтре
+class ExcFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info:
+            exc_type = record.exc_info[0]
+            # Подавить записи о KeyboardInterrupt
+            if exc_type is KeyboardInterrupt:
+                return False
+        return True
+
+# Проверка наличия исключения
+record = logging.LogRecord(
+    name="x", level=logging.ERROR,
+    pathname="", lineno=0,
+    msg="Ошибка", args=(), exc_info=sys.exc_info(),
+)
+print(record.exc_info is None)  # True, если вне блока except`,
+    },
+    {
+        name: "LogRecord.exc_text",
+        description:
+            "Атрибут LogRecord. Кешированное строковое представление трассировки стека из exc_info — результат форматирования traceback. Изначально None; заполняется форматтером при первом форматировании записи и переиспользуется при повторных вызовах format(). Позволяет избежать повторного форматирования одного трейсбека.",
+        syntax: `record.exc_text`,
+        arguments: [],
+        example: `import logging
+
+logger = logging.getLogger("exc_text_demo")
+handler = logging.StreamHandler()
+logger.addHandler(handler)
+logger.setLevel(logging.ERROR)
+
+try:
+    int("не_число")
+except ValueError:
+    logger.exception("Ошибка преобразования")
+    # После первого format() record.exc_text содержит строку:
+    # "Traceback (most recent call last):\n  File ...\nValueError: ..."
+
+# Использование exc_text в фильтре для поиска по трейсбеку
+class TracebackFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_text and "ConnectionError" in record.exc_text:
+            # Добавить метку для алертинга
+            record.needs_alert = True
+        return True
+
+# Ручная очистка кеша (форс-перегенерация трейсбека)
+record = logging.LogRecord(
+    name="x", level=logging.ERROR,
+    pathname="", lineno=0,
+    msg="err", args=(), exc_info=None,
+)
+print(record.exc_text)  # None — ещё не форматировалось`,
+    },
+    {
+        name: "LogRecord.filename",
+        description:
+            "Атрибут LogRecord. Имя файла (без пути) из pathname — только имя файла с расширением, например 'views.py'. Используется в форматной строке как %(filename)s. Удобнее pathname для краткого отображения источника в логах.",
+        syntax: `record.filename`,
+        arguments: [],
+        example: `import logging
+
+fmt = logging.Formatter("%(filename)s:%(lineno)d %(levelname)s %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+
+logger = logging.getLogger("file_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.info("Запрос обработан")
+# Вывод: views.py:42 INFO Запрос обработан
+
+# Прямой доступ
+record = logging.LogRecord(
+    name="x", level=logging.INFO,
+    pathname="/app/services/auth.py",
+    lineno=100, msg="ok", args=(), exc_info=None,
+)
+print(record.filename)   # auth.py
+print(record.pathname)   # /app/services/auth.py`,
+    },
+    {
+        name: "LogRecord.funcName",
+        description:
+            "Атрибут LogRecord. Имя функции (или метода), из которой был произведён вызов логирования. Используется в форматной строке как %(funcName)s. Если логирование вызвано на верхнем уровне модуля — значение будет '<module>'.",
+        syntax: `record.funcName`,
+        arguments: [],
+        example: `import logging
+
+fmt = logging.Formatter("%(funcName)s() %(levelname)s: %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+
+logger = logging.getLogger("func_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+def process_order(order_id: int):
+    logger.info("Начало обработки заказа %d", order_id)
+    # funcName → "process_order"
+
+class OrderService:
+    def create(self, data: dict):
+        logger.debug("Создание заказа: %s", data)
+        # funcName → "create"
+
+process_order(42)
+# Вывод: process_order() INFO: Начало обработки заказа 42
+
+OrderService().create({"item": "pen"})
+# Вывод: create() DEBUG: Создание заказа: {'item': 'pen'}
+
+# На уровне модуля
+logger.warning("Предупреждение")
+# Вывод: <module>() WARNING: Предупреждение`,
+    },
+    {
+        name: "LogRecord.levelname",
+        description:
+            "Атрибут LogRecord. Текстовое название уровня логирования соответствующее levelno: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Используется в форматной строке как %(levelname)s. Может быть переопределён в фильтре для кастомных меток.",
+        syntax: `record.levelname`,
+        arguments: [],
+        example: `import logging
+
+fmt = logging.Formatter("[%(levelname)-8s] %(message)s")
+# -8 — выравнивание по левому краю, ширина 8 символов
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+
+logger = logging.getLogger("level_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+logger.debug("Отладка")     # [DEBUG   ] Отладка
+logger.info("Информация")   # [INFO    ] Информация
+logger.warning("Внимание")  # [WARNING ] Внимание
+logger.error("Ошибка")      # [ERROR   ] Ошибка
+logger.critical("Критично") # [CRITICAL] Критично
+
+# Переопределение levelname в фильтре (например, цветной вывод)
+COLORS = {
+    "DEBUG": "\x1b[36mDEBUG\x1b[0m",
+    "INFO": "\x1b[32mINFO\x1b[0m",
+    "WARNING": "\x1b[33mWARNING\x1b[0m",
+    "ERROR": "\x1b[31mERROR\x1b[0m",
+    "CRITICAL": "\x1b[35mCRITICAL\x1b[0m",
+}
+
+class ColorFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.levelname = COLORS.get(record.levelname, record.levelname)
+        return True`,
+    },
+    {
+        name: "LogRecord.levelno",
+        description:
+            "Атрибут LogRecord. Числовой уровень логирования: DEBUG=10, INFO=20, WARNING=30, ERROR=40, CRITICAL=50. Используется в форматной строке как %(levelno)s. Удобен для числовых сравнений в фильтрах и маршрутизации записей по серьёзности.",
+        syntax: `record.levelno`,
+        arguments: [],
+        example: `import logging
+
+# Стандартные значения уровней
+print(logging.DEBUG)    # 10
+print(logging.INFO)     # 20
+print(logging.WARNING)  # 30
+print(logging.ERROR)    # 40
+print(logging.CRITICAL) # 50
+
+# Фильтр: только записи с levelno >= ERROR уходят в отдельный файл
+class ErrorOnlyFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno >= logging.ERROR
+
+error_handler = logging.FileHandler("errors.log")
+error_handler.addFilter(ErrorOnlyFilter())
+
+logger = logging.getLogger("levelno_demo")
+logger.addHandler(error_handler)
+logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.DEBUG)
+
+logger.info("В консоль, но не в errors.log")
+logger.error("В консоль И в errors.log")
+
+# Использование в форматной строке
+fmt = logging.Formatter("%(levelno)d %(levelname)s %(message)s")
+# Вывод: 30 WARNING Внимание`,
+    },
+    {
+        name: "LogRecord.lineno",
+        description:
+            "Атрибут LogRecord. Номер строки исходного файла, из которой был произведён вызов логирования. Используется в форматной строке как %(lineno)d. Вместе с filename и funcName даёт полное указание на место в коде.",
+        syntax: `record.lineno`,
+        arguments: [],
+        example: `import logging
+
+fmt = logging.Formatter("%(filename)s:%(lineno)d in %(funcName)s() — %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+
+logger = logging.getLogger("lineno_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+def validate(value):
+    if value < 0:
+        logger.warning("Отрицательное значение: %d", value)
+        # Вывод: validator.py:9 in validate() — Отрицательное значение: -5
+
+validate(-5)
+
+# Прямой доступ
+record = logging.LogRecord(
+    name="x", level=logging.ERROR,
+    pathname="/app/db.py", lineno=237,
+    msg="Ошибка", args=(), exc_info=None,
+)
+print(record.lineno)   # 237
+print(record.filename) # db.py`,
+    },
+    {
+        name: "LogRecord.module",
+        description:
+            "Атрибут LogRecord. Имя модуля — часть filename без расширения .py. Например, для 'views.py' будет 'views', для 'auth_service.py' — 'auth_service'. Используется в форматной строке как %(module)s.",
+        syntax: `record.module`,
+        arguments: [],
+        example: `import logging
+
+fmt = logging.Formatter("%(module)s %(levelname)s %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+
+logger = logging.getLogger("module_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.info("Загрузка конфигурации")
+# Вывод: app INFO Загрузка конфигурации
+# (если код находится в app.py)
+
+# Сравнение module, filename, pathname
+record = logging.LogRecord(
+    name="myapp",
+    level=logging.INFO,
+    pathname="/app/services/user_service.py",
+    lineno=55,
+    msg="ok", args=(), exc_info=None,
+)
+print(record.pathname)  # /app/services/user_service.py
+print(record.filename)  # user_service.py
+print(record.module)    # user_service`,
+    },
+    {
+        name: "LogRecord.msecs",
+        description:
+            "Атрибут LogRecord. Миллисекундная часть времени создания записи (0–999). Дополняет атрибут created — секунды Unix-времени. Используется в форматной строке как %(msecs)d. Форматтер автоматически комбинирует created и msecs при построении %(asctime)s.",
+        syntax: `record.msecs`,
+        arguments: [],
+        example: `import logging
+
+fmt = logging.Formatter("%(asctime)s.%(msecs)03d %(levelname)s %(message)s",
+                         datefmt="%H:%M:%S")
+# Вывод: 14:30:05.123 INFO Сообщение
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+
+logger = logging.getLogger("msecs_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.info("Точная метка")
+
+# Прямой доступ к msecs
+record = logging.LogRecord(
+    name="x", level=logging.DEBUG,
+    pathname="", lineno=0,
+    msg="test", args=(), exc_info=None,
+)
+print(record.created)  # 1749303005.123456
+print(record.msecs)    # 123.456  (миллисекунды с дробью)
+
+# Форматирование без дробной части
+import math
+ms = math.floor(record.msecs)
+print(f"{ms:03d}")  # 123`,
+    },
+    {
+        name: "LogRecord.message",
+        description:
+            "Атрибут LogRecord. Итоговое строковое сообщение после подстановки args в msg — результат getMessage(). Атрибут существует только после вызова Formatter.format(), т.е. после того, как форматтер обработал запись. До форматирования обращение к record.message вызовет AttributeError.",
+        syntax: `record.message`,
+        arguments: [],
+        example: `import logging
+
+# message устанавливается форматтером внутри format()
+# Пример: Кастомный форматтер, работающий с record.message
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        # Вызываем super().format() — он устанавливает record.message
+        super().format(record)
+        import json
+        return json.dumps({
+            "time": self.formatTime(record),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.message,  # Доступно только после super().format()
+        }, ensure_ascii=False)
+
+handler = logging.StreamHandler()
+handler.setFormatter(JsonFormatter())
+
+logger = logging.getLogger("json_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.info("Пользователь %s создан", "Алиса")
+# {"time": "...", "level": "INFO", "logger": "json_demo",
+#  "message": "Пользователь Алиса создан"}`,
+    },
+    {
+        name: "LogRecord.msg",
+        description:
+            "Атрибут LogRecord. Шаблон сообщения — первый позиционный аргумент, переданный в вызов логгера. Может содержать %-форматные спецификаторы (%s, %d и т.д.) или быть обычной строкой. Для получения итоговой строки используйте getMessage(). Может быть не строкой — тогда getMessage() вернёт str(msg).",
+        syntax: `record.msg`,
+        arguments: [],
+        example: `import logging
+
+class InspectFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        print(f"msg={record.msg!r}, args={record.args!r}")
+        print(f"full={record.getMessage()!r}")
+        return True
+
+logger = logging.getLogger("msg_demo")
+logger.addFilter(InspectFilter())
+logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.DEBUG)
+
+# Строка с аргументами
+logger.warning("Ошибка %s в строке %d", "ValueError", 42)
+# msg='Ошибка %s в строке %d', args=('ValueError', 42)
+# full='Ошибка ValueError в строке 42'
+
+# Строка без аргументов
+logger.info("Простое сообщение")
+# msg='Простое сообщение', args=()
+# full='Простое сообщение'
+
+# msg может быть объектом (любым — str(msg) будет вызван)
+logger.debug({"event": "login", "user": "alice"})
+# msg={'event': 'login', 'user': 'alice'}, args=()
+# full="{'event': 'login', 'user': 'alice'}"`,
+    },
+    {
+        name: "LogRecord.name",
+        description:
+            "Атрибут LogRecord. Имя логгера, создавшего запись — значение, переданное в logging.getLogger(name). Отражает иерархию: 'myapp.db.pool' значит логгер pool является потомком db, который является потомком myapp. Используется в форматной строке как %(name)s.",
+        syntax: `record.name`,
+        arguments: [],
+        example: `import logging
+
+fmt = logging.Formatter("%(name)-20s %(levelname)s %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+logging.getLogger().addHandler(handler)
+logging.getLogger().setLevel(logging.DEBUG)
+
+# Иерархия логгеров
+app_logger   = logging.getLogger("myapp")
+db_logger    = logging.getLogger("myapp.db")
+pool_logger  = logging.getLogger("myapp.db.pool")
+api_logger   = logging.getLogger("myapp.api")
+
+app_logger.info("Приложение запущено")
+# myapp                INFO Приложение запущено
+
+db_logger.debug("Подключение к БД")
+# myapp.db             DEBUG Подключение к БД
+
+pool_logger.warning("Пул исчерпан")
+# myapp.db.pool        WARNING Пул исчерпан
+
+# Фильтрация по имени логгера
+class SubsystemFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Пропускать только записи от myapp.api и его потомков
+        return record.name == "myapp.api" or record.name.startswith("myapp.api.")`,
+    },
+    {
+        name: "LogRecord.pathname",
+        description:
+            "Атрибут LogRecord. Полный абсолютный путь к файлу исходного кода, из которого был произведён вызов логирования. Используется в форматной строке как %(pathname)s. Для краткого вывода используйте filename (только имя файла) или module (без расширения).",
+        syntax: `record.pathname`,
+        arguments: [],
+        example: `import logging
+
+fmt = logging.Formatter("%(pathname)s:%(lineno)d %(levelname)s %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+
+logger = logging.getLogger("path_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.error("Критическая ошибка")
+# /home/user/project/app/services/order.py:88 ERROR Критическая ошибка
+
+# Укорачивание пути в фильтре (относительный путь)
+import os
+
+class RelativePathFilter(logging.Filter):
+    BASE = os.getcwd()
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            record.pathname = os.path.relpath(record.pathname, self.BASE)
+        except ValueError:
+            pass  # На Windows может не сработать для разных дисков
+        return True
+
+# После фильтра: app/services/order.py:88 вместо полного пути`,
+    },
+    {
+        name: "LogRecord.process",
+        description:
+            "Атрибут LogRecord. PID (идентификатор процесса) операционной системы, в котором была создана запись. Результат os.getpid() на момент создания LogRecord. Используется в форматной строке как %(process)d. Полезен в многопроцессных приложениях.",
+        syntax: `record.process`,
+        arguments: [],
+        example: `import logging
+import multiprocessing
+
+fmt = logging.Formatter("PID:%(process)d %(processName)s %(levelname)s %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+logging.getLogger().addHandler(handler)
+logging.getLogger().setLevel(logging.DEBUG)
+
+def worker(n: int):
+    logger = logging.getLogger("worker")
+    logger.info("Рабочий процесс %d запущен", n)
+    # PID:12345 worker-1 INFO Рабочий процесс 1 запущен
+
+if __name__ == "__main__":
+    logging.getLogger("main").info("Главный процесс")
+    # PID:12300 MainProcess INFO Главный процесс
+
+    processes = [multiprocessing.Process(target=worker, args=(i,)) for i in range(3)]
+    for p in processes:
+        p.start()
+    for p in processes:
+        p.join()
+    # Каждый процесс имеет свой уникальный PID в record.process`,
+    },
+    {
+        name: "LogRecord.processName",
+        description:
+            "Атрибут LogRecord. Имя текущего процесса на момент создания записи — результат multiprocessing.current_process().name. Для главного процесса обычно 'MainProcess', для дочерних — 'Process-1', 'Process-2' и т.д. Используется в форматной строке как %(processName)s.",
+        syntax: `record.processName`,
+        arguments: [],
+        example: `import logging
+import multiprocessing
+
+fmt = logging.Formatter("%(processName)-12s %(levelname)s %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+logging.getLogger().addHandler(handler)
+logging.getLogger().setLevel(logging.DEBUG)
+
+def worker():
+    # Имя можно задать через Process(name=...)
+    logger = logging.getLogger("worker")
+    logger.info("Задача выполнена")
+    # Process-1    INFO Задача выполнена
+
+if __name__ == "__main__":
+    logging.info("Старт")
+    # MainProcess  INFO Старт
+
+    p1 = multiprocessing.Process(target=worker, name="DataLoader")
+    p2 = multiprocessing.Process(target=worker, name="Exporter")
+    p1.start(); p2.start()
+    p1.join(); p2.join()
+    # DataLoader   INFO Задача выполнена
+    # Exporter     INFO Задача выполнена`,
+    },
+    {
+        name: "LogRecord.relativeCreated",
+        description:
+            "Атрибут LogRecord. Время в миллисекундах, прошедшее с момента загрузки модуля logging до создания этой записи. Позволяет отсчитывать относительное время от старта приложения. Используется в форматной строке как %(relativeCreated)d.",
+        syntax: `record.relativeCreated`,
+        arguments: [],
+        example: `import logging
+
+fmt = logging.Formatter("%(relativeCreated)8.1f ms %(levelname)s %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+
+logger = logging.getLogger("rel_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+import time
+
+logger.info("Старт приложения")
+#      0.3 ms INFO Старт приложения
+
+time.sleep(0.1)
+logger.info("После 100 мс паузы")
+#    100.5 ms INFO После 100 мс паузы
+
+time.sleep(0.5)
+logger.warning("После ещё 500 мс")
+#    601.2 ms WARNING После ещё 500 мс
+
+# Удобно для профилирования времени запуска:
+# видно, сколько миллисекунд прошло с запуска интерпретатора
+# до каждого события инициализации.`,
+    },
+    {
+        name: "LogRecord.stack_info",
+        description:
+            "Атрибут LogRecord. Строка с информацией о текущем стеке вызовов, или None. Заполняется только если в вызове логгера передан аргумент stack_info=True — тогда traceback.print_stack() включается в запись. В отличие от exc_info не требует активного исключения: фиксирует стек в любой точке кода.",
+        syntax: `record.stack_info`,
+        arguments: [],
+        example: `import logging
+
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("%(levelname)s %(message)s\n%(stack_info)s"))
+logger = logging.getLogger("stack_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+def third():
+    # stack_info=True — фиксирует стек без исключения
+    logger.warning("Кто меня вызвал?", stack_info=True)
+
+def second():
+    third()
+
+def first():
+    second()
+
+first()
+# WARNING Кто меня вызвал?
+# Stack (most recent call last):
+#   File "app.py", line 20, in <module>
+#     first()
+#   File "app.py", line 17, in first
+#     second()
+#   File "app.py", line 14, in second
+#     third()
+#   File "app.py", line 11, in third
+#     logger.warning("Кто меня вызвал?", stack_info=True)
+
+# Без stack_info=True
+logger.info("Обычное сообщение")
+# record.stack_info is None`,
+    },
+    {
+        name: "LogRecord.thread",
+        description:
+            "Атрибут LogRecord. Идентификатор потока (thread ID) операционной системы, в котором создана запись — результат threading.get_ident(). Используется в форматной строке как %(thread)d. Полезен при отладке многопоточных приложений для отслеживания, из какого потока пришла запись.",
+        syntax: `record.thread`,
+        arguments: [],
+        example: `import logging
+import threading
+
+fmt = logging.Formatter("TID:%(thread)d %(threadName)-12s %(levelname)s %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+logging.getLogger().addHandler(handler)
+logging.getLogger().setLevel(logging.DEBUG)
+
+def handle_request(request_id: int):
+    logger = logging.getLogger("server")
+    logger.info("Обработка запроса %d", request_id)
+    # TID:140234 Thread-1     INFO Обработка запроса 1
+
+threads = [
+    threading.Thread(target=handle_request, args=(i,), name=f"Worker-{i}")
+    for i in range(3)
+]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+
+# Каждый поток имеет уникальный TID — удобно для
+# группировки строк лога одного запроса при анализе`,
+    },
+    {
+        name: "LogRecord.threadName",
+        description:
+            "Атрибут LogRecord. Имя потока, в котором создана запись — результат threading.current_thread().name. Для главного потока обычно 'MainThread', для порождённых — имя, заданное в Thread(name=...), или 'Thread-N' по умолчанию. Используется в форматной строке как %(threadName)s.",
+        syntax: `record.threadName`,
+        arguments: [],
+        example: `import logging
+import threading
+
+fmt = logging.Formatter("%(threadName)-15s %(levelname)s %(message)s")
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+logging.getLogger().addHandler(handler)
+logging.getLogger().setLevel(logging.DEBUG)
+
+def db_task():
+    logging.getLogger("db").info("Выполнение запроса")
+    # DBWorker        INFO Выполнение запроса
+
+def api_task():
+    logging.getLogger("api").info("Обработка HTTP")
+    # APIHandler      INFO Обработка HTTP
+
+logging.info("Приложение запущено")
+# MainThread      INFO Приложение запущено
+
+t1 = threading.Thread(target=db_task,  name="DBWorker")
+t2 = threading.Thread(target=api_task, name="APIHandler")
+t1.start(); t2.start()
+t1.join(); t2.join()
+
+# Совет: всегда задавайте осмысленные имена потокам
+# через Thread(name=...) — это упрощает чтение логов
+# в многопоточных приложениях.`,
+    },
+    // ─── logging.LoggerAdapter ────────────────────────────────────────────────
+    {
+        name: "class logging.LoggerAdapter(logger, extra=None, merge_extra=False)",
+        description:
+            "Обёртка над объектом Logger, позволяющая автоматически добавлять контекстные данные (extra) к каждой лог-записи без их явной передачи в каждый вызов. Удобен для инжекции request_id, user_id, session и любых других полей в весь поток логирования. Поддерживает тот же интерфейс, что и Logger (debug, info, warning и т.д.).",
+        syntax: `logging.LoggerAdapter(logger, extra=None, merge_extra=False)`,
+        arguments: [
+            {
+                name: "logger",
+                description: "Базовый объект Logger (или другой LoggerAdapter), вокруг которого создаётся обёртка. Реальная запись делегируется ему.",
+            },
+            {
+                name: "extra",
+                description: "Словарь контекстных данных, автоматически добавляемых к каждой записи через метод process(). Значения доступны в форматной строке через %(ключ)s.",
+            },
+            {
+                name: "merge_extra",
+                description: "Если True (Python 3.13+) — extra из вызова логгера сливается с extra адаптера. Если False (по умолчанию) — extra из вызова полностью заменяет extra адаптера.",
+            },
+        ],
+        example: `import logging
+import uuid
+
+# Базовая настройка
+logging.basicConfig(
+    format="%(asctime)s [%(request_id)s] %(name)s %(levelname)s %(message)s",
+    level=logging.DEBUG,
+)
+base_logger = logging.getLogger("myapp")
+
+# Создание адаптера с контекстом запроса
+request_id = str(uuid.uuid4())[:8]
+logger = logging.LoggerAdapter(base_logger, extra={"request_id": request_id})
+
+logger.info("Запрос получен")
+# 2026-06-07 14:30:05,123 [a3f1b2c4] myapp INFO Запрос получен
+
+logger.warning("Медленный запрос: %d мс", 850)
+# 2026-06-07 14:30:05,234 [a3f1b2c4] myapp WARNING Медленный запрос: 850 мс
+
+# Вложенные адаптеры (Python 3.12+)
+user_logger = logging.LoggerAdapter(
+    logger,
+    extra={"user_id": "alice"},
+)
+# user_logger несёт оба поля: request_id и user_id (при merge_extra=True)`,
+    },
+    {
+        name: "LoggerAdapter.critical(msg, *args, **kwargs)",
+        description:
+            "Логирует сообщение с уровнем CRITICAL (50). Полностью аналогичен Logger.critical() — автоматически добавляет extra адаптера через process() перед делегированием базовому логгеру.",
+        syntax: `adapter.critical(msg, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "msg",
+                description: "Сообщение или шаблон с %-форматированием.",
+            },
+            {
+                name: "*args",
+                description: "Аргументы для подстановки в msg через %.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры: exc_info, stack_info, stacklevel, extra.",
+            },
+        ],
+        example: `import logging
+
+logging.basicConfig(
+    format="[%(request_id)s] %(levelname)s %(message)s",
+    level=logging.DEBUG,
+)
+logger = logging.LoggerAdapter(
+    logging.getLogger("app"),
+    extra={"request_id": "REQ-001"},
+)
+
+logger.critical("Сервис недоступен: %s", "database")
+# [REQ-001] CRITICAL Сервис недоступен: database
+
+# С информацией об исключении
+try:
+    raise RuntimeError("Out of memory")
+except RuntimeError:
+    logger.critical("Критический сбой", exc_info=True)
+# [REQ-001] CRITICAL Критический сбой
+# Traceback (most recent call last): ...`,
+    },
+    {
+        name: "LoggerAdapter.debug(msg, *args, **kwargs)",
+        description:
+            "Логирует сообщение с уровнем DEBUG (10). Автоматически дополняет запись контекстом extra адаптера через process() и делегирует базовому логгеру.",
+        syntax: `adapter.debug(msg, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "msg",
+                description: "Сообщение или шаблон с %-форматированием.",
+            },
+            {
+                name: "*args",
+                description: "Аргументы для подстановки в msg.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры: exc_info, stack_info, stacklevel, extra.",
+            },
+        ],
+        example: `import logging
+
+logging.basicConfig(
+    format="[%(session)s] %(levelname)s %(message)s",
+    level=logging.DEBUG,
+)
+logger = logging.LoggerAdapter(
+    logging.getLogger("db"),
+    extra={"session": "sess-42"},
+)
+
+logger.debug("SQL: SELECT * FROM users WHERE id = %d", 7)
+# [sess-42] DEBUG SQL: SELECT * FROM users WHERE id = 7
+
+logger.debug("Кеш промах: ключ=%s", "user:7")
+# [sess-42] DEBUG Кеш промах: ключ=user:7`,
+    },
+    {
+        name: "LoggerAdapter.error(msg, *args, **kwargs)",
+        description:
+            "Логирует сообщение с уровнем ERROR (40). Автоматически добавляет extra адаптера. Для логирования ошибок с трейсбеком используйте exception() — он автоматически устанавливает exc_info=True.",
+        syntax: `adapter.error(msg, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "msg",
+                description: "Сообщение или шаблон с %-форматированием.",
+            },
+            {
+                name: "*args",
+                description: "Аргументы для подстановки в msg.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры: exc_info, stack_info, stacklevel, extra.",
+            },
+        ],
+        example: `import logging
+
+logging.basicConfig(
+    format="[%(user_id)s] %(levelname)s %(message)s",
+    level=logging.DEBUG,
+)
+logger = logging.LoggerAdapter(
+    logging.getLogger("api"),
+    extra={"user_id": "usr-99"},
+)
+
+# Ошибка без трейсбека
+logger.error("Неверный токен авторизации")
+# [usr-99] ERROR Неверный токен авторизации
+
+# Ошибка с кодом HTTP
+logger.error("Внешний API вернул %d: %s", 503, "Service Unavailable")
+# [usr-99] ERROR Внешний API вернул 503: Service Unavailable
+
+# С трейсбеком через exc_info
+try:
+    {}["key"]
+except KeyError:
+    logger.error("Ключ не найден", exc_info=True)`,
+    },
+    {
+        name: "LoggerAdapter.exception(msg, *args, exc_info=True, **kwargs)",
+        description:
+            "Логирует сообщение с уровнем ERROR и автоматически прикрепляет трассировку текущего исключения (exc_info=True по умолчанию). Должен вызываться только внутри блока except. Добавляет extra адаптера.",
+        syntax: `adapter.exception(msg, *args, exc_info=True, **kwargs)`,
+        arguments: [
+            {
+                name: "msg",
+                description: "Сообщение или шаблон с %-форматированием.",
+            },
+            {
+                name: "*args",
+                description: "Аргументы для подстановки в msg.",
+            },
+            {
+                name: "exc_info",
+                description: "По умолчанию True — трейсбек текущего исключения прикрепляется автоматически.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры: stack_info, stacklevel, extra.",
+            },
+        ],
+        example: `import logging
+
+logging.basicConfig(
+    format="[%(request_id)s] %(levelname)s %(message)s",
+    level=logging.DEBUG,
+)
+logger = logging.LoggerAdapter(
+    logging.getLogger("app"),
+    extra={"request_id": "req-7f3a"},
+)
+
+# Стандартное использование внутри except
+def parse_config(path: str):
+    try:
+        with open(path) as f:
+            import json
+            return json.load(f)
+    except FileNotFoundError:
+        logger.exception("Файл конфигурации не найден: %s", path)
+        # [req-7f3a] ERROR Файл конфигурации не найден: config.json
+        # Traceback (most recent call last):
+        #   File "app.py", line 8, in parse_config
+        #     with open(path) as f:
+        # FileNotFoundError: [Errno 2] No such file or directory: 'config.json'
+        return {}
+
+parse_config("config.json")`,
+    },
+    {
+        name: "LoggerAdapter.getEffectiveLevel()",
+        description:
+            "Возвращает эффективный числовой уровень логирования базового логгера — с учётом иерархии (наследования от родительских логгеров). Делегирует вызов logger.getEffectiveLevel(). Удобен для условного выполнения дорогостоящих вычислений только при активном уровне.",
+        syntax: `adapter.getEffectiveLevel()`,
+        arguments: [],
+        example: `import logging
+
+logging.basicConfig(level=logging.WARNING)
+base = logging.getLogger("myapp")
+logger = logging.LoggerAdapter(base, extra={"service": "payment"})
+
+print(logger.getEffectiveLevel())  # 30 (WARNING)
+print(logging.getLevelName(logger.getEffectiveLevel()))  # WARNING
+
+# Условное выполнение дорогостоящих операций
+import logging as log
+
+if logger.getEffectiveLevel() <= log.DEBUG:
+    # Дорогостоящая сериализация выполняется только при DEBUG
+    import json
+    debug_data = json.dumps({"state": "heavy_object"}, ensure_ascii=False)
+    logger.debug("Состояние: %s", debug_data)
+
+# Изменение уровня влияет на результат
+base.setLevel(logging.DEBUG)
+print(logger.getEffectiveLevel())  # 10 (DEBUG)`,
+    },
+    {
+        name: "LoggerAdapter.hasHandlers()",
+        description:
+            "Возвращает True, если у базового логгера (или его родителей) настроен хотя бы один обработчик (Handler). Делегирует вызов logger.hasHandlers(). Полезно при инициализации для проверки, что логирование настроено до начала работы.",
+        syntax: `adapter.hasHandlers()`,
+        arguments: [],
+        example: `import logging
+
+# Логгер без обработчиков
+orphan = logging.getLogger("orphan")
+adapter = logging.LoggerAdapter(orphan, extra={"svc": "worker"})
+print(adapter.hasHandlers())  # False
+
+# Добавляем обработчик
+orphan.addHandler(logging.StreamHandler())
+print(adapter.hasHandlers())  # True
+
+# Наследование: дочерний логгер видит обработчики родителя
+logging.basicConfig(level=logging.DEBUG)  # Обработчик у root
+child_adapter = logging.LoggerAdapter(
+    logging.getLogger("myapp.child"),
+    extra={"svc": "child"},
+)
+print(child_adapter.hasHandlers())  # True (унаследован от root)
+
+# Проверка при инициализации сервиса
+def start_service(adapter: logging.LoggerAdapter):
+    if not adapter.hasHandlers():
+        raise RuntimeError("Логирование не настроено — добавьте Handler перед запуском")
+    adapter.info("Сервис запущен")`,
+    },
+    {
+        name: "LoggerAdapter.info(msg, *args, **kwargs)",
+        description:
+            "Логирует сообщение с уровнем INFO (20). Автоматически добавляет extra адаптера через process() и делегирует базовому логгеру. Используется для информационных сообщений о нормальном ходе работы программы.",
+        syntax: `adapter.info(msg, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "msg",
+                description: "Сообщение или шаблон с %-форматированием.",
+            },
+            {
+                name: "*args",
+                description: "Аргументы для подстановки в msg.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры: exc_info, stack_info, stacklevel, extra.",
+            },
+        ],
+        example: `import logging
+import time
+
+logging.basicConfig(
+    format="%(asctime)s [%(request_id)s] %(levelname)s %(message)s",
+    level=logging.INFO,
+)
+
+def handle_request(request_id: str, path: str):
+    logger = logging.LoggerAdapter(
+        logging.getLogger("api"),
+        extra={"request_id": request_id},
+    )
+    start = time.monotonic()
+    logger.info("GET %s — начало обработки", path)
+    # Имитация работы
+    time.sleep(0.05)
+    elapsed = (time.monotonic() - start) * 1000
+    logger.info("GET %s — завершено за %.1f мс", path, elapsed)
+    # 2026-06-07 14:30:05,123 [abc-001] INFO GET /users/ — начало обработки
+    # 2026-06-07 14:30:05,174 [abc-001] INFO GET /users/ — завершено за 51.2 мс
+
+handle_request("abc-001", "/users/")`,
+    },
+    {
+        name: "LoggerAdapter.isEnabledFor(level)",
+        description:
+            "Возвращает True, если базовый логгер будет обрабатывать записи заданного уровня. Делегирует вызов logger.isEnabledFor(level). Позволяет пропустить дорогостоящую подготовку данных, если соответствующий уровень отключён.",
+        syntax: `adapter.isEnabledFor(level)`,
+        arguments: [
+            {
+                name: "level",
+                description: "Числовой уровень логирования для проверки: logging.DEBUG (10), INFO (20), WARNING (30), ERROR (40), CRITICAL (50).",
+            },
+        ],
+        example: `import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.LoggerAdapter(
+    logging.getLogger("app"),
+    extra={"env": "prod"},
+)
+
+print(logger.isEnabledFor(logging.DEBUG))    # False
+print(logger.isEnabledFor(logging.INFO))     # True
+print(logger.isEnabledFor(logging.WARNING))  # True
+
+# Оптимизация: дорогостоящий дамп только при активном DEBUG
+def process_items(items: list):
+    if logger.isEnabledFor(logging.DEBUG):
+        import json
+        logger.debug("Входные данные: %s", json.dumps(items, ensure_ascii=False))
+
+    result = [x * 2 for x in items]
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("Результат: %s", result)
+
+    return result
+
+process_items([1, 2, 3])`,
+    },
+    {
+        name: "LoggerAdapter.log(level, msg, *args, **kwargs)",
+        description:
+            "Логирует сообщение с произвольным числовым уровнем. Полный аналог Logger.log() — позволяет задать уровень динамически в переменной. Автоматически добавляет extra адаптера через process().",
+        syntax: `adapter.log(level, msg, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "level",
+                description: "Числовой уровень логирования. Можно использовать константы: logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL.",
+            },
+            {
+                name: "msg",
+                description: "Сообщение или шаблон с %-форматированием.",
+            },
+            {
+                name: "*args",
+                description: "Аргументы для подстановки в msg.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры: exc_info, stack_info, stacklevel, extra.",
+            },
+        ],
+        example: `import logging
+
+logging.basicConfig(
+    format="[%(component)s] %(levelname)s %(message)s",
+    level=logging.DEBUG,
+)
+logger = logging.LoggerAdapter(
+    logging.getLogger("router"),
+    extra={"component": "http"},
+)
+
+# Динамический уровень на основе HTTP-статуса
+def log_response(status_code: int, path: str, elapsed_ms: float):
+    if status_code >= 500:
+        level = logging.ERROR
+    elif status_code >= 400:
+        level = logging.WARNING
+    else:
+        level = logging.INFO
+
+    logger.log(level, "%s %d (%.1f мс)", path, status_code, elapsed_ms)
+
+log_response(200, "GET /users/",    12.3)  # [http] INFO GET /users/ 200 (12.3 мс)
+log_response(404, "GET /unknown/",  5.1)   # [http] WARNING GET /unknown/ 404 (5.1 мс)
+log_response(500, "POST /orders/", 301.7)  # [http] ERROR POST /orders/ 500 (301.7 мс)`,
+    },
+    {
+        name: "LoggerAdapter.process(msg, kwargs)",
+        description:
+            "Метод преобразования сообщения перед передачей базовому логгеру. В базовой реализации добавляет словарь extra адаптера в kwargs['extra']. Переопределяется при наследовании от LoggerAdapter для произвольной трансформации msg или kwargs — например, добавления префиксов, обогащения данными из контекста и т.д.",
+        syntax: `adapter.process(msg, kwargs)`,
+        arguments: [
+            {
+                name: "msg",
+                description: "Сообщение (строка или объект), которое будет передано логгеру. Можно изменить перед возвратом.",
+            },
+            {
+                name: "kwargs",
+                description: "Словарь именованных аргументов вызова логгера (exc_info, stack_info, extra и др.). Метод должен вернуть кортеж (msg, kwargs).",
+            },
+        ],
+        example: `import logging
+
+# Пример 1: Стандартное поведение (добавляет self.extra в kwargs)
+class MyAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        # Базовая реализация:
+        kwargs.setdefault("extra", {}).update(self.extra)
+        return msg, kwargs
+
+# Пример 2: Добавление префикса к каждому сообщению
+class PrefixAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        prefix = self.extra.get("prefix", "")
+        return f"[{prefix}] {msg}", kwargs
+
+logging.basicConfig(format="%(levelname)s %(message)s", level=logging.DEBUG)
+logger = PrefixAdapter(logging.getLogger("svc"), extra={"prefix": "PAYMENT"})
+logger.info("Транзакция создана: %s", "tx-001")
+# INFO [PAYMENT] Транзакция создана: tx-001
+
+# Пример 3: Динамическое обогащение контекстом потока
+import threading
+_local = threading.local()
+
+class ContextAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        extra = kwargs.setdefault("extra", {})
+        extra.update(self.extra)
+        extra["thread_ctx"] = getattr(_local, "ctx", "—")
+        return msg, kwargs`,
+    },
+    {
+        name: "LoggerAdapter.setLevel(level)",
+        description:
+            "Устанавливает уровень логирования для базового логгера адаптера. Делегирует вызов logger.setLevel(level). Доступен начиная с Python 3.2. Записи с уровнем ниже заданного будут игнорироваться.",
+        syntax: `adapter.setLevel(level)`,
+        arguments: [
+            {
+                name: "level",
+                description: "Числовой уровень или строковое имя: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Можно использовать константы logging.DEBUG и т.д.",
+            },
+        ],
+        example: `import logging
+
+logging.basicConfig(format="[%(env)s] %(levelname)s %(message)s")
+base = logging.getLogger("myapp")
+logger = logging.LoggerAdapter(base, extra={"env": "prod"})
+
+# Начальный уровень — WARNING (по умолчанию)
+logger.setLevel(logging.WARNING)
+logger.debug("Отладка")    # Не выведется
+logger.info("Инфо")        # Не выведется
+logger.warning("Внимание") # [prod] WARNING Внимание
+
+# Временное снижение до DEBUG (например, для диагностики в prod)
+logger.setLevel(logging.DEBUG)
+logger.debug("Подробный режим включён")  # [prod] DEBUG Подробный режим включён
+
+# Восстановление
+logger.setLevel(logging.WARNING)
+
+# Можно передавать строковое имя уровня
+logger.setLevel("ERROR")
+print(logger.getEffectiveLevel())  # 40`,
+    },
+    {
+        name: "LoggerAdapter.warning(msg, *args, **kwargs)",
+        description:
+            "Логирует сообщение с уровнем WARNING (30). Автоматически добавляет extra адаптера и делегирует базовому логгеру. Используется для нештатных, но не критичных ситуаций — устаревших вызовов, приближения к лимитам, нестандартного поведения.",
+        syntax: `adapter.warning(msg, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "msg",
+                description: "Сообщение или шаблон с %-форматированием.",
+            },
+            {
+                name: "*args",
+                description: "Аргументы для подстановки в msg.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры: exc_info, stack_info, stacklevel, extra.",
+            },
+        ],
+        example: `import logging
+
+logging.basicConfig(
+    format="[%(request_id)s] %(levelname)s %(message)s",
+    level=logging.DEBUG,
+)
+logger = logging.LoggerAdapter(
+    logging.getLogger("api"),
+    extra={"request_id": "req-xyz"},
+)
+
+# Предупреждение о медленном запросе
+elapsed_ms = 1200
+if elapsed_ms > 1000:
+    logger.warning("Медленный запрос: %d мс (порог 1000 мс)", elapsed_ms)
+    # [req-xyz] WARNING Медленный запрос: 1200 мс (порог 1000 мс)
+
+# Предупреждение об устаревшем параметре
+def old_api(data, format=None):
+    if format is not None:
+        logger.warning(
+            "Параметр 'format' устарел и будет удалён в v3.0. "
+            "Используйте content_type вместо него."
+        )
+
+# Приближение к лимиту
+used, limit = 950, 1000
+if used / limit > 0.9:
+    logger.warning("Использовано %d из %d запросов (%.0f%%)", used, limit, used/limit*100)`,
+    },
+    {
+        name: "LoggerAdapter.warn(msg, *args, **kwargs)",
+        description:
+            "Устаревший псевдоним для LoggerAdapter.warning(). Сохранён для обратной совместимости, но не рекомендуется к использованию. Начиная с Python 3.12 вызывает DeprecationWarning. Используйте warning() во всём новом коде.",
+        syntax: `adapter.warn(msg, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "msg",
+                description: "Сообщение или шаблон с %-форматированием.",
+            },
+            {
+                name: "*args",
+                description: "Аргументы для подстановки в msg.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры: exc_info, stack_info, stacklevel, extra.",
+            },
+        ],
+        example: `import logging
+import warnings
+
+logging.basicConfig(
+    format="[%(ctx)s] %(levelname)s %(message)s",
+    level=logging.DEBUG,
+)
+logger = logging.LoggerAdapter(
+    logging.getLogger("legacy"),
+    extra={"ctx": "compat"},
+)
+
+# Устаревший вызов (не используйте в новом коде)
+logger.warn("Это устаревший метод")
+# [compat] WARNING Это устаревший метод
+# DeprecationWarning: The 'warn' method is deprecated, use 'warning' instead
+
+# Правильный современный вызов
+logger.warning("Используйте warning() вместо warn()")
+# [compat] WARNING Используйте warning() вместо warn()`,
+    },
+    {
+        name: "LoggerAdapter.logger",
+        description:
+            "Атрибут экземпляра LoggerAdapter. Ссылка на базовый объект Logger (или вложенный LoggerAdapter), переданный в конструктор. Через этот атрибут можно получить прямой доступ к базовому логгеру — для изменения его уровня, добавления обработчиков или передачи в другие функции, ожидающие Logger.",
+        syntax: `adapter.logger`,
+        arguments: [],
+        example: `import logging
+
+logging.basicConfig(level=logging.DEBUG)
+base_logger = logging.getLogger("myapp")
+adapter = logging.LoggerAdapter(base_logger, extra={"env": "prod"})
+
+# Прямой доступ к базовому логгеру
+print(adapter.logger is base_logger)  # True
+print(adapter.logger.name)            # myapp
+
+# Добавление обработчика через adapter.logger
+file_handler = logging.FileHandler("app.log")
+file_handler.setLevel(logging.ERROR)
+adapter.logger.addHandler(file_handler)
+
+# Передача базового логгера в стороннюю библиотеку,
+# которая принимает Logger, но не LoggerAdapter
+import http.client
+http.client.HTTPConnection.debuglevel = 1
+
+def configure_library_logging(lib_logger: logging.Logger):
+    lib_logger.setLevel(logging.DEBUG)
+
+configure_library_logging(adapter.logger)
+
+# Вложенные адаптеры: adapter.logger может быть другим адаптером
+inner = logging.LoggerAdapter(base_logger, extra={"layer": "db"})
+outer = logging.LoggerAdapter(inner, extra={"layer": "api"})
+print(type(outer.logger))  # <class 'logging.LoggerAdapter'>`,
+    },
+    {
+        name: "LoggerAdapter.extra",
+        description:
+            "Атрибут экземпляра LoggerAdapter. Словарь контекстных данных, автоматически добавляемых к каждой лог-записи методом process(). Можно читать, изменять и дополнять в любой момент — изменения вступают в силу немедленно для всех последующих вызовов логирования.",
+        syntax: `adapter.extra`,
+        arguments: [],
+        example: `import logging
+
+logging.basicConfig(
+    format="[%(request_id)s] [%(user)s] %(levelname)s %(message)s",
+    level=logging.DEBUG,
+)
+logger = logging.LoggerAdapter(
+    logging.getLogger("app"),
+    extra={"request_id": "req-001", "user": "anonymous"},
+)
+
+logger.info("Страница открыта")
+# [req-001] [anonymous] INFO Страница открыта
+
+# Обновление контекста после аутентификации
+logger.extra["user"] = "alice"
+logger.info("Пользователь аутентифицирован")
+# [req-001] [alice] INFO Пользователь аутентифицирован
+
+# Добавление нового поля в контекст
+logger.extra["role"] = "admin"
+
+# Чтение текущего контекста
+print(logger.extra)
+# {'request_id': 'req-001', 'user': 'alice', 'role': 'admin'}
+
+# Полная замена контекста (например, при смене запроса)
+logger.extra = {"request_id": "req-002", "user": "anonymous"}
+logger.info("Новый запрос")
+# [req-002] [anonymous] INFO Новый запрос`,
+    },
+    // ─── logging.RootLogger ───────────────────────────────────────────────────
+    {
+        name: "class logging.RootLogger(level)",
+        description:
+            "Корневой логгер модуля logging — единственный логгер без родителя в иерархии. Создаётся автоматически при импорте модуля logging и доступен через logging.root или logging.getLogger() (без аргументов). Все другие логгеры являются его потомками и наследуют его обработчики и уровень, если не настроены явно. Стандартный уровень по умолчанию — WARNING (30).",
+        syntax: `logging.RootLogger(level)`,
+        arguments: [
+            {
+                name: "level",
+                description: "Числовой уровень логирования при создании. Стандартно устанавливается в logging.WARNING (30). Изменяется через setLevel() или logging.basicConfig(level=...).",
+            },
+        ],
+        example: `import logging
+
+# Доступ к корневому логгеру
+root = logging.getLogger()
+print(type(root))   # <class 'logging.RootLogger'>
+print(root.name)    # root
+print(root.level)   # 30 (WARNING по умолчанию)
+print(root.parent)  # None — корневой логгер не имеет родителя
+
+# Все функции верхнего уровня logging.* работают через root
+logging.basicConfig(
+    format="%(levelname)s %(name)s %(message)s",
+    level=logging.DEBUG,
+)
+
+logging.info("Через корневой логгер")    # INFO root Через корневой логгер
+logging.warning("Предупреждение")        # WARNING root Предупреждение
+
+# Иерархия наследования: child → root
+child = logging.getLogger("myapp")
+child.debug("Без явного уровня — наследует DEBUG от root")
+
+# Прямое использование root (эквивалентно logging.warning(...))
+root.warning("Напрямую через root")
+
+# Проверка: root — общий предок всех логгеров
+print(logging.getLogger("myapp").root is root)  # True
+print(logging.getLogger("a.b.c").root is root)  # True`,
+    },
+    // ─── logging.handlers.RotatingFileHandler ────────────────────────────────
+    {
+        name: "class logging.handlers.RotatingFileHandler(filename, mode, maxBytes, backupCount, encoding, delay, errors)",
+        description:
+            "Обработчик логов с ротацией по размеру файла. Записывает логи в файл и автоматически создаёт резервные копии, когда файл достигает maxBytes. Резервные копии именуются filename.1, filename.2, … filename.backupCount — старейшая удаляется. При backupCount=0 ротация отключена (файл растёт неограниченно).",
+        syntax: `logging.handlers.RotatingFileHandler(
+    filename,
+    mode='a',
+    maxBytes=0,
+    backupCount=0,
+    encoding=None,
+    delay=False,
+    errors=None,
+)`,
+        arguments: [
+            {
+                name: "filename",
+                description: "Путь к лог-файлу. Если файл не существует — будет создан при первой записи.",
+            },
+            {
+                name: "mode",
+                description: "Режим открытия файла. По умолчанию 'a' (добавление в конец). При ротации файл всегда открывается заново.",
+            },
+            {
+                name: "maxBytes",
+                description: "Максимальный размер файла в байтах. При достижении лимита происходит ротация. 0 (по умолчанию) — ротация отключена.",
+            },
+            {
+                name: "backupCount",
+                description: "Количество хранимых резервных копий. При backupCount=5 хранятся app.log, app.log.1 … app.log.5. Старейший файл удаляется. 0 — резервные копии не создаются.",
+            },
+            {
+                name: "encoding",
+                description: "Кодировка файла. Например, 'utf-8'. По умолчанию используется системная кодировка.",
+            },
+            {
+                name: "delay",
+                description: "Если True — файл открывается только при первой записи, а не при создании обработчика.",
+            },
+            {
+                name: "errors",
+                description: "Стратегия обработки ошибок кодировки: 'strict', 'ignore', 'replace' и др. Передаётся в open().",
+            },
+        ],
+        example: `import logging
+from logging.handlers import RotatingFileHandler
+
+# Ротация каждые 1 МБ, хранить 5 резервных копий
+handler = RotatingFileHandler(
+    filename="app.log",
+    maxBytes=1 * 1024 * 1024,  # 1 МБ
+    backupCount=5,
+    encoding="utf-8",
+)
+handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(levelname)s %(name)s %(message)s"
+))
+
+logger = logging.getLogger("myapp")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+# При накоплении 1 МБ данных:
+# app.log.5 удаляется
+# app.log.4 → app.log.5
+# ...
+# app.log.1 → app.log.2
+# app.log   → app.log.1
+# создаётся новый пустой app.log
+
+for i in range(10000):
+    logger.info("Запись №%d: данные инициализации сервиса", i)
+
+# Список текущих файлов ротации
+import glob
+files = sorted(glob.glob("app.log*"))
+print(files)
+# ['app.log', 'app.log.1', 'app.log.2', 'app.log.3', 'app.log.4', 'app.log.5']`,
+    },
+    {
+        name: "RotatingFileHandler.doRollover()",
+        description:
+            "Принудительно выполняет ротацию лог-файла немедленно, независимо от текущего размера. Закрывает текущий файл, переименовывает его в .1, сдвигает остальные резервные копии (старейшая удаляется при backupCount > 0) и открывает новый пустой файл. Полезен для ротации по внешнему сигналу или при инициализации.",
+        syntax: `handler.doRollover()`,
+        arguments: [],
+        example: `import logging
+import signal
+from logging.handlers import RotatingFileHandler
+
+handler = RotatingFileHandler(
+    "app.log", maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8"
+)
+logger = logging.getLogger("myapp")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+# Принудительная ротация по сигналу SIGUSR1 (Unix)
+def handle_sigusr1(signum, frame):
+    handler.doRollover()
+    logger.info("Ротация лог-файла выполнена по сигналу SIGUSR1")
+
+signal.signal(signal.SIGUSR1, handle_sigusr1)
+
+logger.info("Сервис запущен. PID=%d", __import__("os").getpid())
+# Отправить ротацию: kill -USR1 <PID>
+
+# Ручной вызов для тестирования
+handler.doRollover()
+logger.info("После принудительной ротации — новый app.log")`,
+    },
+    {
+        name: "RotatingFileHandler.emit(record)",
+        description:
+            "Обрабатывает одну лог-запись: перед записью проверяет через shouldRollover(), нужна ли ротация, и при необходимости вызывает doRollover(). Затем делегирует запись базовому классу FileHandler. Вызывается автоматически для каждого LogRecord — как правило, не требует явного вызова.",
+        syntax: `handler.emit(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord для записи в файл.",
+            },
+        ],
+        example: `import logging
+from logging.handlers import RotatingFileHandler
+
+# emit() вызывается автоматически при каждом вызове логгера
+handler = RotatingFileHandler("app.log", maxBytes=512, backupCount=2)
+handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+
+logger = logging.getLogger("emit_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+# Каждый вызов logger.* → handler.emit(record) → shouldRollover() → write/rotate
+logger.info("Первая запись")
+logger.info("Вторая запись — возможна ротация при maxBytes=512")
+
+# Ручной вызов emit() (например, в тестах)
+record = logging.LogRecord(
+    name="test", level=logging.WARNING,
+    pathname="", lineno=0,
+    msg="Тестовая запись", args=(), exc_info=None,
+)
+handler.emit(record)
+
+# Переопределение emit() для добавления логики
+class CountingRotatingHandler(RotatingFileHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.record_count = 0
+
+    def emit(self, record: logging.LogRecord):
+        self.record_count += 1
+        super().emit(record)`,
+    },
+    {
+        name: "RotatingFileHandler.rotation_filename(default_name)",
+        description:
+            "Возвращает имя файла для резервной копии при ротации. По умолчанию возвращает default_name без изменений. Переопределяется при наследовании для кастомной схемы именования — добавления даты, хеша, UUID и т.д. в имя резервного файла.",
+        syntax: `handler.rotation_filename(default_name)`,
+        arguments: [
+            {
+                name: "default_name",
+                description: "Имя резервного файла, вычисленное по стандартной схеме (например, 'app.log.1'). Метод должен вернуть итоговое имя файла.",
+            },
+        ],
+        example: `import logging
+import datetime
+from logging.handlers import RotatingFileHandler
+
+# Кастомная схема именования: app.log → app.2026-06-07.log.1
+class DateRotatingHandler(RotatingFileHandler):
+    def rotation_filename(self, default_name: str) -> str:
+        # default_name: "app.log.1", "app.log.2", ...
+        parts = default_name.rsplit(".", 1)  # ["app.log", "1"]
+        date_str = datetime.date.today().strftime("%Y-%m-%d")
+        # Результат: "app.2026-06-07.log.1"
+        return f"{parts[0]}.{date_str}.log.{parts[1]}" if len(parts) == 2 else default_name
+
+handler = DateRotatingHandler(
+    "app.log",
+    maxBytes=1024 * 1024,
+    backupCount=5,
+    encoding="utf-8",
+)
+
+logger = logging.getLogger("date_rotate")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.info("Запись с кастомными именами резервных копий")
+# При ротации создаётся: app.2026-06-07.log.1`,
+    },
+    {
+        name: "RotatingFileHandler.rotate(source, dest)",
+        description:
+            "Выполняет переименование файла при ротации: перемещает source в dest. По умолчанию вызывает os.rename(source, dest). Переопределяется при наследовании для кастомной логики переименования — например, сжатия gzip, копирования на удалённый сервер или шифрования перед архивированием.",
+        syntax: `handler.rotate(source, dest)`,
+        arguments: [
+            {
+                name: "source",
+                description: "Путь к исходному файлу, который нужно переименовать (текущий лог или старая резервная копия).",
+            },
+            {
+                name: "dest",
+                description: "Путь назначения — новое имя файла после ротации.",
+            },
+        ],
+        example: `import logging
+import gzip
+import os
+import shutil
+from logging.handlers import RotatingFileHandler
+
+# Автоматическое gzip-сжатие при ротации
+class GzipRotatingHandler(RotatingFileHandler):
+    def rotate(self, source: str, dest: str):
+        # Сжимаем исходный файл в dest.gz вместо обычного переименования
+        with open(source, "rb") as f_in:
+            with gzip.open(dest + ".gz", "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+        os.remove(source)  # Удаляем несжатый исходник
+
+    def rotation_filename(self, default_name: str) -> str:
+        # Убираем .gz из имени — rotate() добавит его сам
+        return default_name
+
+handler = GzipRotatingHandler(
+    "app.log",
+    maxBytes=5 * 1024 * 1024,  # 5 МБ
+    backupCount=3,
+    encoding="utf-8",
+)
+
+logger = logging.getLogger("gzip_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.info("Логи будут сжиматься при ротации")
+# После ротации: app.log.1.gz, app.log.2.gz, app.log.3.gz`,
+    },
+    {
+        name: "RotatingFileHandler.shouldRollover(record)",
+        description:
+            "Определяет, нужна ли ротация перед записью текущей записи record. Возвращает 1 (True) если размер файла превысит maxBytes после добавления записи, иначе 0. При maxBytes=0 всегда возвращает 0. Вызывается автоматически из emit(). Переопределяется для кастомных условий ротации.",
+        syntax: `handler.shouldRollover(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord, который планируется записать. Используется для вычисления размера будущей записи.",
+            },
+        ],
+        example: `import logging
+from logging.handlers import RotatingFileHandler
+
+# Просмотр стандартного поведения shouldRollover
+handler = RotatingFileHandler("app.log", maxBytes=1024, backupCount=3)
+handler.setFormatter(logging.Formatter("%(message)s"))
+
+record = logging.LogRecord(
+    name="x", level=logging.INFO,
+    pathname="", lineno=0,
+    msg="Тестовая запись", args=(), exc_info=None,
+)
+# До заполнения файла:
+print(handler.shouldRollover(record))  # 0 (нет)
+# После заполнения до предела:
+# print(handler.shouldRollover(record))  # 1 (да)
+
+# Кастомный shouldRollover: ротация при превышении числа строк
+class LineCountRotatingHandler(RotatingFileHandler):
+    def __init__(self, *args, max_lines=1000, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.max_lines = max_lines
+        self._line_count = 0
+
+    def shouldRollover(self, record: logging.LogRecord) -> int:
+        if self._line_count >= self.max_lines:
+            return 1
+        return 0
+
+    def doRollover(self):
+        self._line_count = 0
+        super().doRollover()
+
+    def emit(self, record: logging.LogRecord):
+        super().emit(record)
+        self._line_count += 1`,
+    },
+    // ─── logging.handlers.TimedRotatingFileHandler ────────────────────────────
+    {
+        name: "class logging.handlers.TimedRotatingFileHandler(filename, when, interval, backupCount, encoding, delay, utc, atTime, errors)",
+        description:
+            "Обработчик логов с ротацией по времени. Автоматически создаёт новый лог-файл по расписанию: раз в секунду, минуту, час, день, неделю или в полночь. Старые файлы переименовываются с добавлением временного суффикса и удаляются при превышении backupCount. Подходит для долгоживущих сервисов с ежедневными логами.",
+        syntax: `logging.handlers.TimedRotatingFileHandler(
+    filename,
+    when='h',
+    interval=1,
+    backupCount=0,
+    encoding=None,
+    delay=False,
+    utc=False,
+    atTime=None,
+    errors=None,
+)`,
+        arguments: [
+            {
+                name: "filename",
+                description: "Путь к основному лог-файлу.",
+            },
+            {
+                name: "when",
+                description: "Единица времени ротации: 'S' — секунды, 'M' — минуты, 'H' — часы, 'D' — дни, 'W0'–'W6' — день недели (W0=понедельник), 'midnight' — полночь. Регистронезависимо.",
+            },
+            {
+                name: "interval",
+                description: "Количество единиц when между ротациями. Например, when='H', interval=6 — ротация каждые 6 часов.",
+            },
+            {
+                name: "backupCount",
+                description: "Количество хранимых резервных файлов. При 0 — старые файлы не удаляются.",
+            },
+            {
+                name: "encoding",
+                description: "Кодировка файла, например 'utf-8'.",
+            },
+            {
+                name: "delay",
+                description: "Если True — файл открывается только при первой записи.",
+            },
+            {
+                name: "utc",
+                description: "Если True — время ротации вычисляется в UTC, иначе в локальном времени.",
+            },
+            {
+                name: "atTime",
+                description: "Объект datetime.time — точное время суток для ротации при when='midnight' или when='W*'. Например, datetime.time(3, 0) — ротация в 03:00.",
+            },
+            {
+                name: "errors",
+                description: "Стратегия обработки ошибок кодировки: 'strict', 'ignore', 'replace'. Передаётся в open().",
+            },
+        ],
+        example: `import logging
+import datetime
+from logging.handlers import TimedRotatingFileHandler
+
+# Ротация каждую полночь, хранить 30 дней
+handler = TimedRotatingFileHandler(
+    filename="app.log",
+    when="midnight",
+    interval=1,
+    backupCount=30,
+    encoding="utf-8",
+    utc=False,
+    atTime=datetime.time(0, 0, 0),  # точно в полночь
+)
+handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(levelname)-8s %(name)s %(message)s"
+))
+
+logger = logging.getLogger("myapp")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+logger.info("Сервис запущен")
+# Файлы после нескольких дней работы:
+# app.log              — текущий
+# app.log.2026-06-06  — вчера
+# app.log.2026-06-05  — позавчера
+# ...до 30 файлов назад
+
+# Ротация раз в неделю по воскресеньям (W6)
+weekly_handler = TimedRotatingFileHandler(
+    filename="weekly.log",
+    when="W6",       # W0=пн, W6=вс
+    backupCount=4,   # Хранить 4 недели
+    encoding="utf-8",
+)
+
+# Ротация каждые 6 часов в UTC
+hourly_handler = TimedRotatingFileHandler(
+    filename="metrics.log",
+    when="H",
+    interval=6,
+    backupCount=28,  # 7 дней × 4 ротации
+    utc=True,
+)`,
+    },
+    // ─── TimedRotatingFileHandler: методы ─────────────────────────────────────
+    {
+        name: "TimedRotatingFileHandler.computeRollover(currentTime)",
+        description:
+            "Вычисляет Unix-время следующей ротации в секундах на основе currentTime и настроек when/interval/atTime. Вызывается автоматически при создании обработчика и после каждой ротации для установки следующего момента. При переопределении позволяет задать произвольное расписание ротации.",
+        syntax: `handler.computeRollover(currentTime)`,
+        arguments: [
+            {
+                name: "currentTime",
+                description: "Текущее время в секундах Unix (int). Обычно результат int(time.time()). Метод возвращает Unix-время следующей ротации.",
+            },
+        ],
+        example: `import logging
+import time
+import datetime
+from logging.handlers import TimedRotatingFileHandler
+
+handler = TimedRotatingFileHandler(
+    "app.log", when="midnight", backupCount=7, encoding="utf-8"
+)
+
+# Узнать время следующей ротации
+now = int(time.time())
+next_rollover = handler.computeRollover(now)
+dt = datetime.datetime.fromtimestamp(next_rollover)
+print(f"Следующая ротация: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
+# Следующая ротация: 2026-06-08 00:00:00
+
+# Кастомное расписание: ротация каждые 4 часа, начиная с ближайшего часа
+class QuarterDayHandler(TimedRotatingFileHandler):
+    def computeRollover(self, currentTime: int) -> int:
+        # Откат до начала текущего часа, затем ближайший кратный 4
+        t = datetime.datetime.fromtimestamp(currentTime)
+        hour = (t.hour // 4 + 1) * 4
+        next_dt = t.replace(hour=0, minute=0, second=0) + datetime.timedelta(hours=hour)
+        return int(next_dt.timestamp())`,
+    },
+    {
+        name: "TimedRotatingFileHandler.doRollover()",
+        description:
+            "Выполняет ротацию лог-файла: переименовывает текущий файл с временным суффиксом (например, app.log.2026-06-07), удаляет старые файлы сверх backupCount и вычисляет время следующей ротации через computeRollover(). Вызывается автоматически из emit() по расписанию; может быть вызван вручную для принудительной ротации.",
+        syntax: `handler.doRollover()`,
+        arguments: [],
+        example: `import logging
+import signal
+from logging.handlers import TimedRotatingFileHandler
+
+handler = TimedRotatingFileHandler(
+    "app.log", when="midnight", backupCount=30, encoding="utf-8"
+)
+handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+
+logger = logging.getLogger("timed")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+# Принудительная ротация по сигналу SIGUSR1
+def on_sigusr1(signum, frame):
+    handler.doRollover()
+    logger.info("Принудительная ротация выполнена")
+
+signal.signal(signal.SIGUSR1, on_sigusr1)
+
+logger.info("Сервис запущен")
+# kill -USR1 <PID> → создаётся app.log.2026-06-07, открывается новый app.log
+
+# Принудительная ротация при деплое для чистого старта
+handler.doRollover()
+logger.info("Новый деплой — новый лог-файл")`,
+    },
+    {
+        name: "TimedRotatingFileHandler.getFilesToDelete()",
+        description:
+            "Возвращает список путей к устаревшим резервным файлам, которые нужно удалить при ротации, с учётом backupCount. Находит все файлы, соответствующие шаблону filename.*, сортирует по суффиксу и возвращает те, что превышают лимит. Вызывается из doRollover(). Переопределяется для кастомной логики очистки.",
+        syntax: `handler.getFilesToDelete()`,
+        arguments: [],
+        example: `import logging
+from logging.handlers import TimedRotatingFileHandler
+import os
+
+handler = TimedRotatingFileHandler(
+    "app.log", when="midnight", backupCount=3, encoding="utf-8"
+)
+logger = logging.getLogger("cleanup_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+# Просмотр файлов, которые будут удалены при следующей ротации
+files_to_delete = handler.getFilesToDelete()
+print("Будут удалены:", files_to_delete)
+# Если хранится 5 файлов при backupCount=3:
+# ['app.log.2026-06-03', 'app.log.2026-06-04']
+
+# Кастомный getFilesToDelete: удалять файлы старше 90 дней
+import datetime
+
+class SmartTimedHandler(TimedRotatingFileHandler):
+    def getFilesToDelete(self) -> list[str]:
+        candidates = super().getFilesToDelete()
+        cutoff = datetime.date.today() - datetime.timedelta(days=90)
+        result = []
+        for path in candidates:
+            suffix = path.rsplit(".", 1)[-1]  # "2026-06-07"
+            try:
+                file_date = datetime.date.fromisoformat(suffix)
+                if file_date < cutoff:
+                    result.append(path)
+            except ValueError:
+                result.append(path)
+        return result`,
+    },
+    {
+        name: "TimedRotatingFileHandler.rotation_filename(default_name)",
+        description:
+            "Возвращает имя резервного файла при ротации. По умолчанию возвращает default_name без изменений (стандартный суффикс — дата/время). Переопределяется для кастомной схемы именования: добавления расширения .log, изменения формата даты, перемещения в отдельную директорию.",
+        syntax: `handler.rotation_filename(default_name)`,
+        arguments: [
+            {
+                name: "default_name",
+                description: "Имя резервного файла по умолчанию, включая временной суффикс. Например, 'app.log.2026-06-07'. Метод должен вернуть итоговый путь.",
+            },
+        ],
+        example: `import logging
+import os
+import datetime
+from logging.handlers import TimedRotatingFileHandler
+
+# Кастомное именование: переместить резервные копии в папку archive/
+class ArchiveHandler(TimedRotatingFileHandler):
+    def __init__(self, *args, archive_dir="archive", **kwargs):
+        super().__init__(*args, **kwargs)
+        os.makedirs(archive_dir, exist_ok=True)
+        self.archive_dir = archive_dir
+
+    def rotation_filename(self, default_name: str) -> str:
+        # default_name: "logs/app.log.2026-06-07"
+        basename = os.path.basename(default_name)
+        # Результат: "archive/app.log.2026-06-07.gz" (расширение для сжатия)
+        return os.path.join(self.archive_dir, basename)
+
+handler = ArchiveHandler(
+    "logs/app.log",
+    when="midnight",
+    backupCount=30,
+    archive_dir="logs/archive",
+    encoding="utf-8",
+)
+
+logger = logging.getLogger("archive_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.info("Логи будут архивироваться в logs/archive/")`,
+    },
+    {
+        name: "TimedRotatingFileHandler.rotate(source, dest)",
+        description:
+            "Выполняет переименование файла при ротации — перемещает source в dest. По умолчанию вызывает os.rename(source, dest). Переопределяется для дополнительной обработки при ротации: сжатия gzip, шифрования, отправки в S3 или другое хранилище.",
+        syntax: `handler.rotate(source, dest)`,
+        arguments: [
+            {
+                name: "source",
+                description: "Путь к текущему лог-файлу, который нужно переместить в резервную копию.",
+            },
+            {
+                name: "dest",
+                description: "Путь назначения резервной копии (результат rotation_filename()).",
+            },
+        ],
+        example: `import logging
+import gzip
+import os
+import shutil
+from logging.handlers import TimedRotatingFileHandler
+
+# Автоматическое gzip-сжатие при ротации
+class GzipTimedHandler(TimedRotatingFileHandler):
+    def rotate(self, source: str, dest: str):
+        # Сжимаем файл вместо простого переименования
+        with open(source, "rb") as f_in:
+            with gzip.open(dest + ".gz", "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+        os.remove(source)
+
+    def rotation_filename(self, default_name: str) -> str:
+        # rotate() добавит .gz сам — убираем его из имени
+        return default_name
+
+handler = GzipTimedHandler(
+    "app.log", when="midnight", backupCount=7, encoding="utf-8"
+)
+
+logger = logging.getLogger("gzip_timed")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.info("Ежедневные логи будут сжиматься в gzip")
+# После ротации: app.log.2026-06-07.gz (≈10× меньше оригинала)`,
+    },
+    {
+        name: "TimedRotatingFileHandler.shouldRollover(record)",
+        description:
+            "Определяет, наступило ли время ротации перед записью record. Сравнивает текущее время с вычисленным временем следующей ротации (self.rolloverAt). Возвращает 1 если пора ротировать, 0 — если нет. Вызывается автоматически из emit(). Переопределяется для добавления дополнительных условий.",
+        syntax: `handler.shouldRollover(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord — текущая запись. В базовой реализации не используется (решение принимается только по времени).",
+            },
+        ],
+        example: `import logging
+import time
+from logging.handlers import TimedRotatingFileHandler
+
+handler = TimedRotatingFileHandler(
+    "app.log", when="H", interval=1, backupCount=24, encoding="utf-8"
+)
+
+record = logging.LogRecord(
+    name="x", level=logging.INFO,
+    pathname="", lineno=0,
+    msg="test", args=(), exc_info=None,
+)
+
+# До наступления времени ротации
+print(handler.shouldRollover(record))  # 0
+
+# Принудительная эмуляция «просроченного» времени ротации
+handler.rolloverAt = int(time.time()) - 1
+print(handler.shouldRollover(record))  # 1
+
+# Кастомный shouldRollover: ротация по времени ИЛИ по размеру
+class HybridHandler(TimedRotatingFileHandler):
+    MAX_BYTES = 50 * 1024 * 1024  # 50 МБ
+
+    def shouldRollover(self, record: logging.LogRecord) -> int:
+        # Стандартная проверка по времени
+        if super().shouldRollover(record):
+            return 1
+        # Дополнительная проверка по размеру файла
+        if self.stream and self.stream.tell() >= self.MAX_BYTES:
+            return 1
+        return 0`,
+    },
+    // ─── logging.handlers.SocketHandler ──────────────────────────────────────
+    {
+        name: "class logging.handlers.SocketHandler(host, port)",
+        description:
+            "Обработчик логов, отправляющий записи по сети через TCP-сокет в виде сериализованных (pickle) объектов LogRecord. Используется для централизованного сбора логов: несколько сервисов отправляют логи на один лог-сервер. Поддерживает автоматическое переподключение при обрыве соединения.",
+        syntax: `logging.handlers.SocketHandler(host, port)`,
+        arguments: [
+            {
+                name: "host",
+                description: "Имя хоста или IP-адрес лог-сервера. Например, 'localhost' или '192.168.1.100'.",
+            },
+            {
+                name: "port",
+                description: "TCP-порт лог-сервера. Стандартный порт для logging — logging.handlers.DEFAULT_TCP_LOGGING_PORT (9020).",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import pickle
+import struct
+import socketserver
+
+# --- Клиент: отправка логов на сервер ---
+handler = logging.handlers.SocketHandler(
+    host="localhost",
+    port=logging.handlers.DEFAULT_TCP_LOGGING_PORT,  # 9020
+)
+handler.setFormatter(logging.Formatter("%(name)s %(levelname)s %(message)s"))
+
+logger = logging.getLogger("myapp")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+logger.info("Лог отправлен на сервер")
+logger.error("Ошибка: %s", "connection refused")
+
+# --- Сервер: приём логов (запустить отдельно) ---
+class LogRecordHandler(socketserver.StreamRequestHandler):
+    def handle(self):
+        while True:
+            chunk = self.connection.recv(4)
+            if not chunk:
+                break
+            slen = struct.unpack(">L", chunk)[0]
+            data = self.connection.recv(slen)
+            record = logging.makeLogRecord(pickle.loads(data))
+            logging.getLogger(record.name).handle(record)
+
+server = socketserver.TCPServer(
+    ("localhost", logging.handlers.DEFAULT_TCP_LOGGING_PORT),
+    LogRecordHandler,
+)
+# server.serve_forever()  # Запустить в отдельном потоке/процессе`,
+    },
+    {
+        name: "SocketHandler.close()",
+        description:
+            "Закрывает TCP-соединение с лог-сервером и освобождает ресурсы сокета. Вызывается автоматически при завершении работы приложения или при удалении обработчика. После close() обработчик автоматически переподключится при следующей записи.",
+        syntax: `handler.close()`,
+        arguments: [],
+        example: `import logging
+import logging.handlers
+
+handler = logging.handlers.SocketHandler("localhost", 9020)
+logger = logging.getLogger("socket_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+logger.info("Сообщение отправлено")
+
+# Явное закрытие соединения
+handler.close()
+# После close() сокет освобождён
+
+# Следующий вызов автоматически переподключится
+logger.info("Переподключение и отправка")
+
+# Корректное завершение: закрывать все обработчики
+import atexit
+
+def shutdown():
+    handler.close()
+    logging.shutdown()
+
+atexit.register(shutdown)
+
+# Также используется в менеджере контекста
+class ManagedSocketHandler(logging.handlers.SocketHandler):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+with ManagedSocketHandler("localhost", 9020) as h:
+    logging.getLogger("ctx").addHandler(h)
+    logging.getLogger("ctx").info("В блоке with")
+# close() вызывается автоматически`,
+    },
+    {
+        name: "SocketHandler.createSocket()",
+        description:
+            "Создаёт TCP-соединение с лог-сервером и сохраняет сокет в self.sock. Вызывается автоматически из emit() при первой записи или после обрыва соединения. Реализует логику отложенного переподключения: если сервер недоступен — повторные попытки происходят с увеличивающимся интервалом (до 30 секунд).",
+        syntax: `handler.createSocket()`,
+        arguments: [],
+        example: `import logging
+import logging.handlers
+import socket
+
+# Стандартное поведение — сокет создаётся при первой записи (delay по умолчанию)
+handler = logging.handlers.SocketHandler("localhost", 9020)
+logger = logging.getLogger("socket_demo")
+logger.addHandler(handler)
+
+print(handler.sock)  # None — соединение ещё не установлено
+
+logger.info("Первое сообщение")  # createSocket() вызывается внутри emit()
+# handler.sock теперь содержит объект socket
+
+# Явный вызов createSocket() для ранней проверки доступности сервера
+try:
+    handler.createSocket()
+    if handler.sock:
+        print("Сервер доступен, соединение установлено")
+except Exception as e:
+    print(f"Сервер недоступен: {e}")
+
+# Переопределение для кастомного соединения (TLS)
+import ssl
+
+class TLSSocketHandler(logging.handlers.SocketHandler):
+    def makeSocket(self, timeout=1):
+        raw = super().makeSocket(timeout)
+        ctx = ssl.create_default_context()
+        return ctx.wrap_socket(raw, server_hostname=self.host)`,
+    },
+    {
+        name: "SocketHandler.emit(record)",
+        description:
+            "Отправляет одну лог-запись на сервер: сериализует LogRecord через makePickle(), при необходимости создаёт сокет через createSocket() и отправляет данные через send(). При ошибке соединения вызывает handleError(). Вызывается автоматически для каждого LogRecord.",
+        syntax: `handler.emit(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord для отправки на лог-сервер.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+
+handler = logging.handlers.SocketHandler("localhost", 9020)
+logger = logging.getLogger("emit_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+# emit() вызывается автоматически при каждом вызове логгера
+logger.info("Автоматическая отправка через emit()")
+logger.error("Ошибка на сервере: %s", "timeout")
+
+# Ручной вызов emit() (например, в тестах или при пересылке)
+record = logging.LogRecord(
+    name="forwarded",
+    level=logging.WARNING,
+    pathname="/app/worker.py",
+    lineno=55,
+    msg="Перенаправленная запись от воркера",
+    args=(),
+    exc_info=None,
+)
+handler.emit(record)
+
+# Переопределение emit() для добавления метаданных перед отправкой
+class EnrichedSocketHandler(logging.handlers.SocketHandler):
+    def emit(self, record: logging.LogRecord):
+        record.hostname = __import__("socket").gethostname()
+        record.datacenter = "eu-west-1"
+        super().emit(record)`,
+    },
+    {
+        name: "SocketHandler.handleError(record)",
+        description:
+            "Вызывается внутри emit() при возникновении ошибки отправки (обрыв соединения, таймаут, недоступность сервера). Закрывает текущий сокет (self.sock = None) для последующего переподключения. Базовая реализация выводит трейсбек в stderr при raiseExceptions=True. Переопределяется для кастомной обработки ошибок сети.",
+        syntax: `handler.handleError(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord, при отправке которого возникла ошибка.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import sys
+
+# Кастомная обработка ошибок сети: fallback на stderr
+class ResilientSocketHandler(logging.handlers.SocketHandler):
+    def __init__(self, host, port, fallback_handler=None):
+        super().__init__(host, port)
+        self.fallback = fallback_handler or logging.StreamHandler(sys.stderr)
+        self.fallback.setFormatter(
+            logging.Formatter("[FALLBACK] %(levelname)s %(message)s")
+        )
+
+    def handleError(self, record: logging.LogRecord):
+        # Закрываем сокет для переподключения при следующей записи
+        if self.sock:
+            self.sock.close()
+            self.sock = None
+        # Отправляем запись в fallback-обработчик
+        try:
+            self.fallback.emit(record)
+        except Exception:
+            pass  # Если и fallback недоступен — молча проглатываем
+
+handler = ResilientSocketHandler("localhost", 9020)
+logger = logging.getLogger("resilient")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.info("При недоступности сервера — вывод в stderr")`,
+    },
+    {
+        name: "SocketHandler.makePickle(record)",
+        description:
+            "Сериализует объект LogRecord в байты для отправки по сети. Использует модуль pickle для сериализации атрибутов записи и добавляет 4-байтовый заголовок с длиной данных в формате big-endian (struct '>L'). Возвращает готовый пакет для отправки через send().",
+        syntax: `handler.makePickle(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord для сериализации. Перед pickle метод вызывает record.getMessage() и сохраняет exc_text как строку.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import pickle
+import struct
+
+handler = logging.handlers.SocketHandler("localhost", 9020)
+
+# Создание записи и сериализация
+record = logging.LogRecord(
+    name="myapp",
+    level=logging.INFO,
+    pathname="/app/main.py",
+    lineno=42,
+    msg="Тестовое сообщение: %s",
+    args=("данные",),
+    exc_info=None,
+)
+
+packet = handler.makePickle(record)
+print(type(packet))    # <class 'bytes'>
+print(len(packet))     # 4 байта заголовка + данные pickle
+
+# Разбор пакета (на стороне сервера)
+data_len = struct.unpack(">L", packet[:4])[0]
+data = packet[4:4 + data_len]
+received = pickle.loads(data)
+restored = logging.makeLogRecord(received)
+print(restored.getMessage())   # Тестовое сообщение: данные
+print(restored.levelname)      # INFO
+
+# Важно: pickle небезопасен при приёме данных из недоверенных источников!
+# Для публичных сервисов используйте альтернативы (JSON через HTTPHandler).`,
+    },
+    {
+        name: "SocketHandler.makeSocket(timeout=1)",
+        description:
+            "Создаёт и возвращает новый TCP-сокет, подключённый к host:port. Вызывается из createSocket(). Таймаут подключения задаётся параметром timeout (по умолчанию 1 секунда). Переопределяется для создания защищённых соединений (TLS/SSL) или настройки параметров сокета (TCP_NODELAY, SO_KEEPALIVE и др.).",
+        syntax: `handler.makeSocket(timeout=1)`,
+        arguments: [
+            {
+                name: "timeout",
+                description: "Таймаут подключения в секундах. По умолчанию 1. После успешного подключения сокет переводится в блокирующий режим (timeout=None).",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import socket
+import ssl
+
+# Переопределение для TLS-соединения
+class TLSSocketHandler(logging.handlers.SocketHandler):
+    def __init__(self, host, port, certfile=None, keyfile=None, cafile=None):
+        super().__init__(host, port)
+        self.certfile = certfile
+        self.keyfile = keyfile
+        self.cafile = cafile
+
+    def makeSocket(self, timeout=1) -> ssl.SSLSocket:
+        # Базовый TCP-сокет
+        raw = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        raw.settimeout(timeout)
+        raw.connect((self.host, self.port))
+
+        # Оборачиваем в TLS
+        ctx = ssl.create_default_context(cafile=self.cafile)
+        if self.certfile:
+            ctx.load_cert_chain(self.certfile, self.keyfile)
+        tls_sock = ctx.wrap_socket(raw, server_hostname=self.host)
+        tls_sock.settimeout(None)  # Блокирующий режим после подключения
+        return tls_sock
+
+# Настройка TCP_NODELAY для снижения задержки
+class LowLatencySocketHandler(logging.handlers.SocketHandler):
+    def makeSocket(self, timeout=1):
+        s = super().makeSocket(timeout)
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        return s`,
+    },
+    {
+        name: "SocketHandler.send(packet)",
+        description:
+            "Отправляет сериализованный пакет данных через TCP-сокет. При отсутствии соединения вызывает createSocket() для подключения. Использует sendall() для гарантированной отправки всех байт. При ошибке отправки сокет закрывается и будет переоткрыт при следующей попытке.",
+        syntax: `handler.send(packet)`,
+        arguments: [
+            {
+                name: "packet",
+                description: "Байтовая строка (bytes) — сериализованная запись, полученная из makePickle(). Содержит 4-байтовый заголовок длины и pickle-данные.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import struct
+import pickle
+
+handler = logging.handlers.SocketHandler("localhost", 9020)
+
+# send() вызывается автоматически внутри emit()
+logger = logging.getLogger("send_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.info("Автоматическая отправка через send()")
+
+# Ручной вызов: создаём пакет и отправляем напрямую
+record = logging.LogRecord(
+    name="manual", level=logging.DEBUG,
+    pathname="", lineno=0,
+    msg="Ручная отправка", args=(), exc_info=None,
+)
+packet = handler.makePickle(record)
+handler.send(packet)  # Подключается автоматически если нет соединения
+
+# Переопределение send() для метрик пропускной способности
+class MetricSocketHandler(logging.handlers.SocketHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bytes_sent = 0
+        self.packets_sent = 0
+
+    def send(self, packet: bytes):
+        super().send(packet)
+        self.bytes_sent += len(packet)
+        self.packets_sent += 1
+
+m_handler = MetricSocketHandler("localhost", 9020)
+# После нескольких отправок:
+# print(m_handler.bytes_sent)    # Всего байт
+# print(m_handler.packets_sent)  # Всего пакетов`,
+    },
+    // ─── logging.handlers.DatagramHandler ────────────────────────────────────
+    {
+        name: "class logging.handlers.DatagramHandler(host, port)",
+        description:
+            "Обработчик логов, отправляющий записи по сети через UDP-датаграммы. Является подклассом SocketHandler, но использует UDP вместо TCP: соединение не устанавливается, каждый пакет отправляется независимо. Подходит для высокочастотного логирования с допустимой потерей части записей — UDP не гарантирует доставку, зато не блокирует приложение при недоступности сервера.",
+        syntax: `logging.handlers.DatagramHandler(host, port)`,
+        arguments: [
+            {
+                name: "host",
+                description: "Имя хоста или IP-адрес UDP-сервера логов. Например, 'localhost' или '10.0.0.1'.",
+            },
+            {
+                name: "port",
+                description: "UDP-порт сервера. Стандартный порт для logging — logging.handlers.DEFAULT_UDP_LOGGING_PORT (9021).",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import pickle
+import struct
+import socketserver
+
+# --- Клиент: отправка логов по UDP ---
+handler = logging.handlers.DatagramHandler(
+    host="localhost",
+    port=logging.handlers.DEFAULT_UDP_LOGGING_PORT,  # 9021
+)
+handler.setFormatter(logging.Formatter("%(name)s %(levelname)s %(message)s"))
+
+logger = logging.getLogger("myapp")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+logger.info("UDP-пакет отправлен")
+logger.warning("Сервер может быть недоступен — UDP не гарантирует доставку")
+
+# --- Сервер: приём логов по UDP ---
+class UDPLogHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        data = self.request[0]
+        # Первые 4 байта — длина пакета (big-endian), остальное — pickle
+        slen = struct.unpack(">L", data[:4])[0]
+        record_data = pickle.loads(data[4:4 + slen])
+        record = logging.makeLogRecord(record_data)
+        logging.getLogger(record.name).handle(record)
+
+server = socketserver.UDPServer(
+    ("localhost", logging.handlers.DEFAULT_UDP_LOGGING_PORT),
+    UDPLogHandler,
+)
+# server.serve_forever()  # Запустить в отдельном потоке
+
+# Сравнение с SocketHandler:
+# SocketHandler (TCP): надёжная доставка, но блокирует при таймауте
+# DatagramHandler (UDP): быстрее, не блокирует, возможна потеря пакетов`,
+    },
+    // ─── logging.handlers.SysLogHandler ──────────────────────────────────────
+    {
+        name: "class logging.handlers.SysLogHandler(address, facility, socktype, timeout)",
+        description:
+            "Обработчик логов, отправляющий записи в системный демон syslog по протоколу RFC 5424/3164. Поддерживает локальный Unix-сокет (/dev/log, /var/run/syslog) и удалённый syslog через UDP/TCP. Используется для интеграции приложения в системную инфраструктуру логирования (rsyslog, syslog-ng, journald).",
+        syntax: `logging.handlers.SysLogHandler(
+    address=('localhost', 514),
+    facility=LOG_USER,
+    socktype=None,
+    timeout=None,
+)`,
+        arguments: [
+            {
+                name: "address",
+                description: "Адрес syslog-сервера. Строка — путь к Unix-сокету (например, '/dev/log'). Кортеж (host, port) — удалённый сервер, по умолчанию ('localhost', 514).",
+            },
+            {
+                name: "facility",
+                description: "Категория источника логов. Константы класса: LOG_USER (1), LOG_DAEMON (3), LOG_LOCAL0–LOG_LOCAL7 (16–23) и др. По умолчанию LOG_USER.",
+            },
+            {
+                name: "socktype",
+                description: "Тип сокета: socket.SOCK_DGRAM (UDP, по умолчанию) или socket.SOCK_STREAM (TCP). При использовании Unix-сокета тип определяется автоматически.",
+            },
+            {
+                name: "timeout",
+                description: "Таймаут соединения в секундах. None — без таймаута. Применяется только для TCP (SOCK_STREAM).",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import socket
+
+# Вариант 1: Локальный Unix-сокет (Linux)
+try:
+    handler = logging.handlers.SysLogHandler(address="/dev/log")
+except FileNotFoundError:
+    # macOS использует /var/run/syslog
+    handler = logging.handlers.SysLogHandler(address="/var/run/syslog")
+
+# Вариант 2: Удалённый syslog по UDP (по умолчанию)
+udp_handler = logging.handlers.SysLogHandler(
+    address=("syslog.example.com", 514),
+    facility=logging.handlers.SysLogHandler.LOG_DAEMON,
+)
+
+# Вариант 3: Удалённый syslog по TCP (надёжная доставка)
+tcp_handler = logging.handlers.SysLogHandler(
+    address=("syslog.example.com", 514),
+    facility=logging.handlers.SysLogHandler.LOG_LOCAL0,
+    socktype=socket.SOCK_STREAM,
+    timeout=5.0,
+)
+
+# Форматтер для syslog — без asctime (syslog добавляет его сам)
+formatter = logging.Formatter("%(name)s[%(process)d]: %(levelname)s %(message)s")
+handler.setFormatter(formatter)
+
+logger = logging.getLogger("myapp")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+logger.info("Сервис запущен")
+logger.error("Ошибка соединения с БД")
+# Записи появятся в /var/log/syslog или journalctl`,
+    },
+    {
+        name: "SysLogHandler.close()",
+        description:
+            "Закрывает соединение с syslog-сервером и освобождает сокет. При использовании Unix-сокета — закрывает файловый дескриптор. При UDP — закрывает UDP-сокет. Вызывается автоматически при завершении приложения через logging.shutdown().",
+        syntax: `handler.close()`,
+        arguments: [],
+        example: `import logging
+import logging.handlers
+import atexit
+
+handler = logging.handlers.SysLogHandler(address="/dev/log")
+handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+
+logger = logging.getLogger("myapp")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+logger.info("Сервис запущен")
+
+# Явное закрытие при завершении
+def shutdown_logging():
+    logger.info("Сервис останавливается")
+    handler.close()
+    logging.shutdown()
+
+atexit.register(shutdown_logging)
+
+# Или через менеджер контекста
+class SyslogContext:
+    def __init__(self, address):
+        self.handler = logging.handlers.SysLogHandler(address=address)
+
+    def __enter__(self):
+        return self.handler
+
+    def __exit__(self, *args):
+        self.handler.close()
+
+with SyslogContext("/dev/log") as h:
+    h.setFormatter(logging.Formatter("myapp: %(message)s"))
+    logging.getLogger("ctx").addHandler(h)
+    logging.getLogger("ctx").info("В блоке with")
+# close() вызывается автоматически`,
+    },
+    {
+        name: "SysLogHandler.emit(record)",
+        description:
+            "Форматирует LogRecord и отправляет его в syslog. Вычисляет приоритет (facility + severity) через encodePriority(), формирует syslog-пакет и отправляет через сокет. При ошибке вызывает handleError(). Вызывается автоматически для каждой лог-записи.",
+        syntax: `handler.emit(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord для отправки в syslog.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+
+handler = logging.handlers.SysLogHandler(address="/dev/log")
+handler.setFormatter(logging.Formatter("%(name)s %(message)s"))
+
+logger = logging.getLogger("emit_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+# emit() вызывается автоматически при каждом логировании
+logger.debug("Отладочное сообщение")   # priority = LOG_USER | DEBUG
+logger.info("Информация")              # priority = LOG_USER | INFO
+logger.warning("Предупреждение")       # priority = LOG_USER | WARNING
+logger.error("Ошибка")                 # priority = LOG_USER | ERROR
+logger.critical("Критично")            # priority = LOG_USER | ALERT
+
+# Переопределение emit() для добавления структурированных данных (RFC 5424)
+class StructuredSysLogHandler(logging.handlers.SysLogHandler):
+    def emit(self, record: logging.LogRecord):
+        # Добавляем структурированные данные SD-элемента
+        record.sd = f'[meta app="myapp" env="prod" ver="3.0"]'
+        super().emit(record)`,
+    },
+    {
+        name: "SysLogHandler.encodePriority(facility, priority)",
+        description:
+            "Вычисляет числовой приоритет syslog-сообщения по формуле facility * 8 + severity. Принимает числовые значения или строковые имена facility ('kern', 'user', 'daemon', 'local0' и др.) и priority ('debug', 'info', 'warning', 'error', 'critical'). Результат вставляется в заголовок syslog-пакета как <priority>.",
+        syntax: `handler.encodePriority(facility, priority)`,
+        arguments: [
+            {
+                name: "facility",
+                description: "Категория источника: числовое значение (например, SysLogHandler.LOG_USER = 1) или строка ('user', 'daemon', 'local0'–'local7' и др.).",
+            },
+            {
+                name: "priority",
+                description: "Уровень серьёзности: числовое значение syslog (0–7) или строка ('debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emerg').",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+
+handler = logging.handlers.SysLogHandler()
+
+# Числовые константы facility
+print(logging.handlers.SysLogHandler.LOG_KERN)    # 0  — ядро
+print(logging.handlers.SysLogHandler.LOG_USER)    # 1  — пользователь
+print(logging.handlers.SysLogHandler.LOG_DAEMON)  # 3  — демон
+print(logging.handlers.SysLogHandler.LOG_LOCAL0)  # 16 — локальный 0
+print(logging.handlers.SysLogHandler.LOG_LOCAL7)  # 23 — локальный 7
+
+# Вычисление приоритета: facility * 8 + severity
+p1 = handler.encodePriority(
+    logging.handlers.SysLogHandler.LOG_USER,  # 1
+    "info"                                    # 6
+)
+print(p1)   # 14  → <14> в заголовке syslog
+
+p2 = handler.encodePriority("local0", "error")
+print(p2)   # 16 * 8 + 3 = 131
+
+p3 = handler.encodePriority("daemon", "warning")
+print(p3)   # 3 * 8 + 4 = 28
+
+# Приоритет используется в заголовке пакета: "<14>myapp: сообщение"
+# Syslog-сервер использует его для маршрутизации и фильтрации сообщений`,
+    },
+    {
+        name: "SysLogHandler.mapPriority(levelname)",
+        description:
+            "Преобразует текстовое имя уровня Python logging в строковое имя уровня syslog. Используется внутри emit() для вычисления severity при формировании заголовка. Таблица соответствий: DEBUG→debug, INFO→info, WARNING→warning, ERROR→error, CRITICAL→critical. Уровни вне таблицы преобразуются в 'warning'.",
+        syntax: `handler.mapPriority(levelname)`,
+        arguments: [
+            {
+                name: "levelname",
+                description: "Строковое имя уровня Python logging: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL' или кастомное имя.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+
+handler = logging.handlers.SysLogHandler()
+
+# Стандартное отображение уровней
+print(handler.mapPriority("DEBUG"))    # debug
+print(handler.mapPriority("INFO"))     # info
+print(handler.mapPriority("WARNING"))  # warning
+print(handler.mapPriority("ERROR"))    # error
+print(handler.mapPriority("CRITICAL")) # critical
+
+# Кастомные уровни: возвращает 'warning' как fallback
+logging.addLevelName(25, "NOTICE")
+print(handler.mapPriority("NOTICE"))   # warning (нет в таблице)
+
+# Расширение таблицы для поддержки кастомных уровней
+class ExtendedSysLogHandler(logging.handlers.SysLogHandler):
+    priority_map = {
+        **logging.handlers.SysLogHandler.priority_map,
+        "NOTICE": "notice",
+        "TRACE": "debug",
+        "FATAL": "emerg",
+    }
+
+    def mapPriority(self, levelname: str) -> str:
+        return self.priority_map.get(levelname, "warning")
+
+ext_handler = ExtendedSysLogHandler()
+print(ext_handler.mapPriority("NOTICE"))  # notice
+print(ext_handler.mapPriority("TRACE"))   # debug
+print(ext_handler.mapPriority("FATAL"))   # emerg`,
+    },
+    // ─── logging.handlers.SMTPHandler ────────────────────────────────────────
+    {
+        name: "class logging.handlers.SMTPHandler(mailhost, fromaddr, toaddrs, subject, credentials, secure, timeout)",
+        description:
+            "Обработчик логов, отправляющий каждую лог-запись по электронной почте через SMTP. Предназначен для критических ошибок, требующих немедленного уведомления. Внимание: каждая запись порождает отдельное SMTP-соединение и письмо — при высокой частоте ошибок используйте MemoryHandler в качестве буфера или настройте минимальный уровень ERROR/CRITICAL.",
+        syntax: `logging.handlers.SMTPHandler(
+    mailhost,
+    fromaddr,
+    toaddrs,
+    subject,
+    credentials=None,
+    secure=None,
+    timeout=5.0,
+)`,
+        arguments: [
+            {
+                name: "mailhost",
+                description: "SMTP-сервер. Строка — имя хоста с портом 25. Кортеж (host, port) — хост и порт явно. Например, ('smtp.gmail.com', 587).",
+            },
+            {
+                name: "fromaddr",
+                description: "Адрес отправителя письма. Например, 'alerts@example.com'.",
+            },
+            {
+                name: "toaddrs",
+                description: "Список адресов получателей. Строка или список строк. Например, ['ops@example.com', 'cto@example.com'].",
+            },
+            {
+                name: "subject",
+                description: "Тема письма. Строка или callable, принимающий LogRecord и возвращающий строку — для динамической темы.",
+            },
+            {
+                name: "credentials",
+                description: "Кортеж (username, password) для SMTP-аутентификации. None — без аутентификации.",
+            },
+            {
+                name: "secure",
+                description: "Кортеж для STARTTLS: () — без сертификата, ('keyfile',) — только ключ, ('keyfile', 'certfile') — ключ и сертификат. None — без шифрования.",
+            },
+            {
+                name: "timeout",
+                description: "Таймаут SMTP-соединения в секундах. По умолчанию 5.0.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+
+# Уведомления по email только для CRITICAL-ошибок
+smtp_handler = logging.handlers.SMTPHandler(
+    mailhost=("smtp.gmail.com", 587),
+    fromaddr="alerts@example.com",
+    toaddrs=["ops@example.com", "cto@example.com"],
+    subject="[PROD] Критическая ошибка в myapp",
+    credentials=("alerts@example.com", "app-password"),
+    secure=(),        # Включить STARTTLS
+    timeout=10.0,
+)
+smtp_handler.setLevel(logging.CRITICAL)
+smtp_handler.setFormatter(logging.Formatter(
+    "Время:    %(asctime)s\n"
+    "Логгер:   %(name)s\n"
+    "Уровень:  %(levelname)s\n"
+    "Модуль:   %(module)s:%(lineno)d\n"
+    "Функция:  %(funcName)s()\n\n"
+    "Сообщение:\n%(message)s",
+))
+
+# Консольный обработчик для всех уровней
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+
+logger = logging.getLogger("myapp")
+logger.addHandler(smtp_handler)
+logger.addHandler(console_handler)
+logger.setLevel(logging.DEBUG)
+
+logger.info("Штатная работа")         # Только в консоль
+logger.error("Ошибка")                # Только в консоль
+logger.critical("Сервис упал!")       # В консоль + email на ops@ и cto@
+
+# Динамическая тема письма через callable (Python 3.2+)
+def dynamic_subject(record: logging.LogRecord) -> str:
+    return f"[{record.levelname}] {record.name}: {record.getMessage()[:50]}"
+
+smtp_handler.subject = dynamic_subject`,
+    },
+    {
+        name: "SMTPHandler.emit(record)",
+        description:
+            "Форматирует LogRecord и отправляет его по email через SMTP. Устанавливает SMTP-соединение, при необходимости выполняет STARTTLS и аутентификацию, отправляет письмо и закрывает соединение. Тема письма получается через getSubject(). Каждая запись порождает отдельное SMTP-соединение — для высокочастотных ошибок используйте буферизацию через MemoryHandler.",
+        syntax: `handler.emit(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord для отправки по email. Форматируется через self.format(record) в тело письма.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+
+smtp_handler = logging.handlers.SMTPHandler(
+    mailhost=("smtp.gmail.com", 587),
+    fromaddr="alerts@example.com",
+    toaddrs=["ops@example.com"],
+    subject="[PROD] Критическая ошибка",
+    credentials=("alerts@example.com", "app-password"),
+    secure=(),
+)
+smtp_handler.setLevel(logging.CRITICAL)
+smtp_handler.setFormatter(logging.Formatter(
+    "Время:   %(asctime)s\n"
+    "Модуль:  %(module)s:%(lineno)d\n\n"
+    "%(message)s"
+))
+
+# Буферизация: копить записи и отправлять одним письмом
+# вместо отдельного письма на каждую ошибку
+memory_handler = logging.handlers.MemoryHandler(
+    capacity=50,            # Буфер до 50 записей
+    flushLevel=logging.CRITICAL,  # Сброс при CRITICAL
+    target=smtp_handler,
+    flushOnClose=True,
+)
+
+logger = logging.getLogger("myapp")
+logger.addHandler(memory_handler)
+logger.setLevel(logging.DEBUG)
+
+# emit() вызывается автоматически при достижении flushLevel
+for i in range(10):
+    logger.error("Ошибка %d: внешний сервис недоступен", i)
+
+logger.critical("Сервис полностью недоступен — отправка письма")
+# MemoryHandler сбрасывает все накопленные записи в smtp_handler.emit()`,
+    },
+    {
+        name: "SMTPHandler.getSubject(record)",
+        description:
+            "Возвращает строку темы письма для данной лог-записи. В базовой реализации возвращает self.subject — строку, переданную в конструктор. Переопределяется для динамической темы: включения уровня, имени логгера, фрагмента сообщения или любых атрибутов record.",
+        syntax: `handler.getSubject(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord — текущая лог-запись, атрибуты которой можно использовать для формирования динамической темы.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import socket
+
+# Динамическая тема через переопределение getSubject()
+class SmartSMTPHandler(logging.handlers.SMTPHandler):
+    def getSubject(self, record: logging.LogRecord) -> str:
+        hostname = socket.gethostname()
+        # Тема: [ERROR] myapp.db — Ошибка подключения к БД (prod-server-01)
+        short_msg = record.getMessage()[:60]
+        return (
+            f"[{record.levelname}] {record.name} — "
+            f"{short_msg} ({hostname})"
+        )
+
+handler = SmartSMTPHandler(
+    mailhost=("smtp.example.com", 587),
+    fromaddr="no-reply@example.com",
+    toaddrs=["oncall@example.com"],
+    subject="Не используется — переопределено в getSubject()",
+    credentials=("no-reply@example.com", "secret"),
+    secure=(),
+    timeout=10.0,
+)
+handler.setLevel(logging.ERROR)
+handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(name)s %(levelname)s\n\n%(message)s\n\n"
+    "Файл: %(pathname)s:%(lineno)d\nФункция: %(funcName)s()"
+))
+
+logger = logging.getLogger("myapp.db")
+logger.addHandler(handler)
+logger.setLevel(logging.ERROR)
+
+logger.error("Ошибка подключения к БД")
+# Тема письма: [ERROR] myapp.db — Ошибка подключения к БД (prod-server-01)`,
+    },
+    // ─── logging.handlers.HTTPHandler ────────────────────────────────────────
+    {
+        name: "class logging.handlers.HTTPHandler(host, url, method, secure, credentials, context)",
+        description:
+            "Обработчик логов, отправляющий записи на HTTP/HTTPS-эндпоинт через GET или POST. Полезен для интеграции с централизованными сервисами сбора логов (Loggly, Papertrail, собственный API). Данные передаются как URL-кодированная форма (application/x-www-form-urlencoded). Для JSON-формата переопределяйте emit() или mapLogRecord().",
+        syntax: `logging.handlers.HTTPHandler(
+    host,
+    url,
+    method='GET',
+    secure=False,
+    credentials=None,
+    context=None,
+)`,
+        arguments: [
+            {
+                name: "host",
+                description: "Имя хоста HTTP-сервера. Может включать порт: 'logs.example.com' или 'localhost:8080'.",
+            },
+            {
+                name: "url",
+                description: "URL-путь эндпоинта логов. Например, '/api/logs' или '/ingest'. Не включает схему и хост.",
+            },
+            {
+                name: "method",
+                description: "HTTP-метод: 'GET' или 'POST'. При GET данные передаются в строке запроса. При POST — в теле запроса. По умолчанию 'GET'.",
+            },
+            {
+                name: "secure",
+                description: "Если True — использует HTTPS (http.client.HTTPSConnection). По умолчанию False (HTTP).",
+            },
+            {
+                name: "credentials",
+                description: "Кортеж (username, password) для HTTP Basic-аутентификации. None — без аутентификации.",
+            },
+            {
+                name: "context",
+                description: "Объект ssl.SSLContext для тонкой настройки TLS при secure=True. Например, для отключения верификации сертификата в тестах.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import ssl
+
+# Вариант 1: POST на HTTP-эндпоинт без шифрования
+http_handler = logging.handlers.HTTPHandler(
+    host="logs.internal:8080",
+    url="/api/ingest",
+    method="POST",
+)
+
+# Вариант 2: POST на HTTPS с Basic-аутентификацией
+https_handler = logging.handlers.HTTPHandler(
+    host="logs.example.com",
+    url="/api/logs",
+    method="POST",
+    secure=True,
+    credentials=("api-user", "api-token"),
+)
+
+# Вариант 3: HTTPS с кастомным SSL-контекстом (например, self-signed)
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE  # Только для разработки!
+
+dev_handler = logging.handlers.HTTPHandler(
+    host="localhost:8443",
+    url="/logs",
+    method="POST",
+    secure=True,
+    context=ctx,
+)
+dev_handler.setLevel(logging.WARNING)
+
+logger = logging.getLogger("myapp")
+logger.addHandler(https_handler)
+logger.setLevel(logging.WARNING)
+
+logger.warning("Предупреждение отправлено на лог-сервер")
+logger.error("Ошибка: %s", "connection timeout")
+# Данные передаются как form-encoded: name=myapp&levelname=ERROR&message=...`,
+    },
+    {
+        name: "HTTPHandler.emit(record)",
+        description:
+            "Форматирует LogRecord и отправляет его на HTTP/HTTPS-эндпоинт. Получает словарь данных через mapLogRecord(), URL-кодирует его и отправляет через GET (в строке запроса) или POST (в теле). Устанавливает заголовок Authorization при наличии credentials. Вызывается автоматически для каждой записи.",
+        syntax: `handler.emit(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord для отправки на сервер.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import json
+from urllib.parse import urlencode
+
+# Стандартный emit() отправляет form-encoded данные
+handler = logging.handlers.HTTPHandler(
+    host="localhost:8080",
+    url="/api/logs",
+    method="POST",
+)
+logger = logging.getLogger("http_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+logger.info("Тестовое сообщение")
+# POST /api/logs HTTP/1.1
+# Content-Type: application/x-www-form-urlencoded
+# name=http_demo&msg=Тестовое+сообщение&levelname=INFO&...
+
+# Переопределение emit() для отправки JSON
+class JsonHTTPHandler(logging.handlers.HTTPHandler):
+    def emit(self, record: logging.LogRecord):
+        import http.client
+        data = self.mapLogRecord(record)
+        payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        if self.secure:
+            conn = http.client.HTTPSConnection(self.host, context=self.context)
+        else:
+            conn = http.client.HTTPConnection(self.host)
+        try:
+            conn.request(
+                self.method, self.url, payload,
+                {"Content-Type": "application/json; charset=utf-8"},
+            )
+            conn.getresponse()
+        except Exception:
+            self.handleError(record)
+        finally:
+            conn.close()
+
+json_handler = JsonHTTPHandler("localhost:8080", "/api/logs", method="POST")
+logger2 = logging.getLogger("json_http")
+logger2.addHandler(json_handler)
+logger2.setLevel(logging.WARNING)
+logger2.error("JSON-запись на сервер")`,
+    },
+    {
+        name: "HTTPHandler.mapLogRecord(record)",
+        description:
+            "Преобразует LogRecord в словарь данных для отправки на HTTP-эндпоинт. В базовой реализации возвращает record.__dict__ — все атрибуты записи. Переопределяется для фильтрации полей, переименования ключей, изменения формата или добавления метаданных (hostname, app_version, environment и т.д.).",
+        syntax: `handler.mapLogRecord(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord для преобразования. Метод должен вернуть словарь, сериализуемый в URL-форму или JSON.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import socket
+
+# Кастомное отображение: только нужные поля + метаданные среды
+class FilteredHTTPHandler(logging.handlers.HTTPHandler):
+    APP_VERSION = "3.1.0"
+    HOSTNAME = socket.gethostname()
+
+    def mapLogRecord(self, record: logging.LogRecord) -> dict:
+        # Вызываем format() для получения итогового сообщения
+        self.format(record)
+        return {
+            # Стандартные поля
+            "timestamp":  record.created,
+            "level":      record.levelname,
+            "logger":     record.name,
+            "message":    record.getMessage(),
+            "module":     record.module,
+            "function":   record.funcName,
+            "line":       record.lineno,
+            # Информация об исключении (если есть)
+            "exception":  record.exc_text or None,
+            # Метаданные среды
+            "hostname":   self.HOSTNAME,
+            "app":        "myapp",
+            "version":    self.APP_VERSION,
+            "env":        "production",
+        }
+
+handler = FilteredHTTPHandler(
+    host="logs.example.com",
+    url="/api/events",
+    method="POST",
+    secure=True,
+    credentials=("myapp", "secret-token"),
+)
+handler.setFormatter(logging.Formatter())  # Нужен для record.exc_text
+
+logger = logging.getLogger("myapp")
+logger.addHandler(handler)
+logger.setLevel(logging.WARNING)
+
+try:
+    1 / 0
+except ZeroDivisionError:
+    logger.exception("Деление на ноль")
+# Отправляется только выбранный набор полей с hostname и version`,
+    },
+    // ─── logging ──────────────────────────────────────────────────────────────
+    {
+        name: "logging.getLevelNamesMapping()",
+        description:
+            "Возвращает копию словаря, отображающего строковые имена уровней логирования в их числовые значения. Включает стандартные уровни: CRITICAL→50, FATAL→50, ERROR→40, WARN→30, WARNING→30, INFO→20, DEBUG→10, NOTSET→0. Полезен для валидации пользовательского ввода, динамического выбора уровня из конфига или переменных среды. Добавлен в Python 3.11.",
+        syntax: `logging.getLevelNamesMapping()`,
+        arguments: [],
+        example: `import logging
+
+# Получаем словарь имя → число
+mapping = logging.getLevelNamesMapping()
+print(mapping)
+# {'CRITICAL': 50, 'FATAL': 50, 'ERROR': 40, 'WARN': 30,
+#  'WARNING': 30, 'INFO': 20, 'DEBUG': 10, 'NOTSET': 0}
+
+# Валидация уровня из конфига / переменной окружения
+import os
+
+raw_level = os.getenv("LOG_LEVEL", "INFO").upper()
+if raw_level not in logging.getLevelNamesMapping():
+    raise ValueError(
+        f"Неверный LOG_LEVEL={raw_level!r}. "
+        f"Допустимые значения: {list(logging.getLevelNamesMapping())}"
+    )
+
+logging.basicConfig(level=raw_level)
+logging.info("Уровень '%s' принят", raw_level)
+
+# Динамическое создание обработчиков по конфигу
+HANDLERS_CONFIG = [
+    {"name": "console", "level": "DEBUG"},
+    {"name": "file",    "level": "WARNING"},
+]
+
+level_map = logging.getLevelNamesMapping()
+for cfg in HANDLERS_CONFIG:
+    lvl_name = cfg["level"].upper()
+    lvl_num  = level_map.get(lvl_name, logging.NOTSET)
+    print(f"Handler '{cfg['name']}': уровень {lvl_name} = {lvl_num}")`,
+    },
+    // ─── asyncio ──────────────────────────────────────────────────────────────
+    {
+        name: "asyncio.Server.serve_forever()",
+        description:
+            "Асинхронный контекстный менеджер: запускает сервер и удерживает его в работающем состоянии до отмены задачи (CancelledError) или явного вызова server.close(). Должен вызываться внутри async with: сервер стартует при входе в блок и корректно закрывается при выходе. Альтернатива ручному управлению через start_serving() / wait_closed().",
+        syntax: `async with server.serve_forever():
+    ...`,
+        arguments: [],
+        example: `import asyncio
+
+async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    addr = writer.get_extra_info("peername")
+    data = await reader.read(1024)
+    print(f"Получено от {addr}: {data.decode()!r}")
+    writer.write(b"ACK\n")
+    await writer.drain()
+    writer.close()
+    await writer.wait_closed()
+
+async def main():
+    server = await asyncio.start_server(
+        handle_client,
+        host="127.0.0.1",
+        port=8888,
+    )
+    addrs = [str(s.getsockname()) for s in server.sockets]
+    print(f"Сервер слушает: {addrs}")
+
+    # serve_forever() держит сервер активным
+    # Завершается при Ctrl+C (CancelledError) или server.close()
+    async with server.serve_forever():
+        print("Ожидание подключений... (Ctrl+C для остановки)")
+        # Сюда можно добавить фоновые задачи (мониторинг, метрики)
+        await asyncio.sleep(3600)  # Держим цикл активным
+
+asyncio.run(main())`,
+    },
+    {
+        name: "asyncio.get_running_loop()",
+        description:
+            "Возвращает текущий работающий событийный цикл asyncio в контексте исполнения. В отличие от get_event_loop(), не создаёт новый цикл — если вызван вне корутины (там, где цикл не запущен), немедленно выбрасывает RuntimeError. Рекомендуемый способ получить цикл внутри асинхронного кода: явный и безопасный.",
+        syntax: `asyncio.get_running_loop()`,
+        arguments: [],
+        example: `import asyncio
+
+async def schedule_work():
+    loop = asyncio.get_running_loop()
+
+    # Запуск синхронной блокирующей функции в пуле потоков
+    import time, concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        result = await loop.run_in_executor(pool, time.sleep, 0.1)
+
+    # Получение текущего времени цикла (монотонные часы)
+    now = loop.time()
+    print(f"Время цикла: {now:.3f}")
+
+    # Планирование колбэка в цикле
+    loop.call_later(0.5, lambda: print("Отложенный колбэк"))
+
+    return now
+
+async def main():
+    loop = asyncio.get_running_loop()
+    print(f"Цикл запущен: {loop.is_running()}")   # True
+
+    result = await schedule_work()
+    print(f"Результат: {result:.3f}")
+
+# Вне корутины — вызовет RuntimeError:
+# loop = asyncio.get_running_loop()
+# RuntimeError: no running event loop
+
+asyncio.run(main())`,
+    },
+    {
+        name: "asyncio.new_event_loop()",
+        description:
+            "Создаёт и возвращает новый объект событийного цикла asyncio, не устанавливая его как текущий. Используется для создания изолированных циклов в тестах, фоновых потоках или случаях, когда нужен явный контроль над жизненным циклом цикла. После использования необходимо явно закрыть через loop.close().",
+        syntax: `asyncio.new_event_loop()`,
+        arguments: [],
+        example: `import asyncio
+import threading
+
+# Вариант 1: Изолированный цикл для тестов
+async def my_coroutine():
+    await asyncio.sleep(0.01)
+    return 42
+
+loop = asyncio.new_event_loop()
+try:
+    result = loop.run_until_complete(my_coroutine())
+    print(f"Результат: {result}")  # 42
+finally:
+    loop.close()
+
+# Вариант 2: Запуск asyncio в отдельном потоке
+def run_async_in_thread(coro):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)  # Устанавливаем цикл для этого потока
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+async def background_task():
+    await asyncio.sleep(0.1)
+    print("Фоновая задача в отдельном потоке выполнена")
+
+t = threading.Thread(
+    target=run_async_in_thread,
+    args=(background_task(),),
+    daemon=True,
+)
+t.start()
+t.join()
+
+# Вариант 3: Политика цикла
+policy = asyncio.DefaultEventLoopPolicy()
+loop2 = policy.new_event_loop()
+try:
+    loop2.run_until_complete(asyncio.sleep(0))
+finally:
+    loop2.close()`,
+    },
+    {
+        name: "asyncio.Semaphore(value=1)",
+        description:
+            "Примитив синхронизации asyncio: ограничивает количество одновременно выполняемых корутин. Хранит внутренний счётчик; при async with или acquire() счётчик уменьшается, при release() увеличивается. Если счётчик равен 0 — acquire() блокирует корутину до освобождения. Используется для ограничения параллелизма: число одновременных HTTP-запросов, соединений с БД, обращений к API с rate-limiting.",
+        syntax: `asyncio.Semaphore(value=1)`,
+        arguments: [
+            {
+                name: "value",
+                description: "Начальное значение счётчика — максимальное число одновременно работающих корутин. По умолчанию 1 (поведение как Mutex).",
+            },
+        ],
+        example: `import asyncio
+import aiohttp
+
+# Ограничение: не более 5 одновременных HTTP-запросов
+MAX_CONCURRENT = 5
+semaphore = asyncio.Semaphore(MAX_CONCURRENT)
+
+async def fetch(session: aiohttp.ClientSession, url: str) -> dict:
+    async with semaphore:  # Ждёт, если уже 5 запросов в работе
+        print(f"→ Запрос: {url}")
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            data = await resp.json()
+            print(f"← Ответ: {url} [{resp.status}]")
+            return data
+
+async def main():
+    urls = [f"https://httpbin.org/delay/1?n={i}" for i in range(20)]
+
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch(session, url) for url in urls]
+        # 20 задач запущено, но не более 5 работает одновременно
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    ok = sum(1 for r in results if not isinstance(r, Exception))
+    print(f"Успешно: {ok}/{len(urls)}")
+
+asyncio.run(main())`,
+    },
+    // ─── aiohttp ──────────────────────────────────────────────────────────────
+    {
+        name: "aiohttp.web.WebSocketResponse",
+        description:
+            "Класс ответа для WebSocket-соединений в aiohttp сервере. Обеспечивает двустороннюю асинхронную связь между сервером и клиентом: отправку и приём текстовых и бинарных сообщений, ping/pong, корректное закрытие. Используется внутри обработчика запроса: сначала вызывается prepare() для выполнения WebSocket handshake, затем async for для итерации по входящим сообщениям.",
+        syntax: `aiohttp.web.WebSocketResponse(
+    *,
+    timeout=10.0,
+    receive_timeout=None,
+    autoclose=True,
+    autoping=True,
+    heartbeat=None,
+    protocols=(),
+    compress=True,
+    max_msg_size=4194304,
+)`,
+        arguments: [
+            {
+                name: "timeout",
+                description: "Таймаут (секунды) ожидания завершения WebSocket handshake при prepare(). По умолчанию 10.0.",
+            },
+            {
+                name: "receive_timeout",
+                description: "Таймаут (секунды) ожидания следующего сообщения от клиента. None — без ограничения.",
+            },
+            {
+                name: "autoclose",
+                description: "Если True (по умолчанию) — автоматически закрывает соединение при получении сообщения типа CLOSE.",
+            },
+            {
+                name: "autoping",
+                description: "Если True (по умолчанию) — автоматически отвечает PONG на входящие PING.",
+            },
+            {
+                name: "heartbeat",
+                description: "Интервал (секунды) между автоматическими PING-сообщениями для поддержания соединения. None — heartbeat отключён.",
+            },
+            {
+                name: "max_msg_size",
+                description: "Максимальный размер одного сообщения в байтах. По умолчанию 4 МБ (4194304).",
+            },
+        ],
+        example: `import aiohttp
+from aiohttp import web
+import json
+
+async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
+    ws = web.WebSocketResponse(
+        heartbeat=30,        # PING каждые 30 секунд
+        receive_timeout=60,  # Закрыть, если нет сообщений 60 секунд
+    )
+    await ws.prepare(request)  # WebSocket handshake
+
+    print(f"Клиент подключён: {request.remote}")
+
+    async for msg in ws:  # Итерация по входящим сообщениям
+        if msg.type == aiohttp.WSMsgType.TEXT:
+            try:
+                data = json.loads(msg.data)
+                action = data.get("action")
+                if action == "ping":
+                    await ws.send_json({"status": "pong"})
+                elif action == "echo":
+                    await ws.send_json({"echo": data.get("text", "")})
+                else:
+                    await ws.send_json({"error": f"Неизвестное действие: {action}"})
+            except json.JSONDecodeError:
+                await ws.send_str("Ошибка: ожидается JSON")
+        elif msg.type == aiohttp.WSMsgType.BINARY:
+            await ws.send_bytes(msg.data)  # Зеркальный ответ
+        elif msg.type == aiohttp.WSMsgType.ERROR:
+            print(f"Ошибка WS: {ws.exception()}")
+
+    print(f"Клиент отключён: {request.remote}")
+    return ws
+
+app = web.Application()
+app.router.add_get("/ws", websocket_handler)
+
+if __name__ == "__main__":
+    web.run_app(app, host="0.0.0.0", port=8080)`,
+    },
+    {
+        name: "aiohttp.web.RouteTableDef()",
+        description:
+            "Декоратор-коллекция маршрутов для aiohttp. Позволяет определять маршруты прямо над функциями-обработчиками (по аналогии с Flask/FastAPI) вместо регистрации через app.router.add_route(). После объявления всех маршрутов коллекция добавляется в приложение через app.add_routes(routes). Поддерживает методы: get, post, put, patch, delete, head, options, route, static, view.",
+        syntax: `routes = aiohttp.web.RouteTableDef()
+
+@routes.get('/path')
+async def handler(request): ...
+
+app.add_routes(routes)`,
+        arguments: [],
+        example: `from aiohttp import web
+import json
+
+routes = web.RouteTableDef()
+
+# ─── GET /api/users ───────────────────────────────────────────────────────────
+@routes.get("/api/users")
+async def list_users(request: web.Request) -> web.Response:
+    # Параметры запроса: /api/users?page=2&size=20
+    page = int(request.rel_url.query.get("page", 1))
+    size = int(request.rel_url.query.get("size", 10))
+    users = [{"id": i, "name": f"User {i}"} for i in range(1, size + 1)]
+    return web.json_response({"page": page, "users": users})
+
+# ─── GET /api/users/{user_id} ─────────────────────────────────────────────────
+@routes.get("/api/users/{user_id:\\d+}")  # Только числовые ID
+async def get_user(request: web.Request) -> web.Response:
+    user_id = int(request.match_info["user_id"])
+    return web.json_response({"id": user_id, "name": f"User {user_id}"})
+
+# ─── POST /api/users ──────────────────────────────────────────────────────────
+@routes.post("/api/users")
+async def create_user(request: web.Request) -> web.Response:
+    data = await request.json()
+    name = data.get("name", "").strip()
+    if not name:
+        raise web.HTTPBadRequest(reason="Поле 'name' обязательно")
+    new_user = {"id": 42, "name": name}
+    return web.json_response(new_user, status=201)
+
+# ─── DELETE /api/users/{user_id} ─────────────────────────────────────────────
+@routes.delete("/api/users/{user_id:\\d+}")
+async def delete_user(request: web.Request) -> web.Response:
+    user_id = request.match_info["user_id"]
+    return web.Response(status=204)
+
+# ─── Статические файлы ────────────────────────────────────────────────────────
+@routes.static("/static", "/var/www/static")
+
+app = web.Application()
+app.add_routes(routes)   # Регистрация всех маршрутов
+
+if __name__ == "__main__":
+    web.run_app(app, host="0.0.0.0", port=8080)`,
+    },
+    // ─── raise ────────────────────────────────────────────────────────────────
+    {
+        name: "raise",
+        description:
+            "Оператор выброса исключения. Формы: raise ExcClass(args) — создать и выбросить новое исключение; raise — повторно выбросить текущее активное исключение (только в блоке except); raise ExcClass(args) from cause — выбросить исключение с явным указанием причины (exception chaining); raise ExcClass(args) from None — подавить цепочку исключений и не показывать контекст.",
+        syntax: `raise ExceptionType(args)
+raise ExceptionType(args) from cause
+raise ExceptionType(args) from None
+raise`,
+        arguments: [],
+        example: `# ─── Форма 1: выброс нового исключения ──────────────────────────────────────
+def divide(a: float, b: float) -> float:
+    if b == 0:
+        raise ValueError(f"Делитель не может быть нулём: a={a}, b={b}")
+    return a / b
+
+try:
+    divide(10, 0)
+except ValueError as e:
+    print(e)  # Делитель не может быть нулём: a=10, b=0
+
+# ─── Форма 2: raise без аргументов — повтор текущего исключения ──────────────
+def process(data):
+    try:
+        return int(data)
+    except ValueError:
+        print("Логирование ошибки перед повторным выбросом")
+        raise  # Выбрасывает тот же ValueError дальше
+
+# ─── Форма 3: raise ... from cause — явная цепочка ───────────────────────────
+class DatabaseError(Exception):
+    pass
+
+def connect_db(url: str):
+    try:
+        raise ConnectionRefusedError(f"Сервер {url} недоступен")
+    except ConnectionRefusedError as e:
+        # Пользователь видит DatabaseError, но также видит "caused by ConnectionRefusedError"
+        raise DatabaseError("Не удалось подключиться к БД") from e
+
+try:
+    connect_db("postgresql://localhost/mydb")
+except DatabaseError as e:
+    print(f"Ошибка: {e}")
+    print(f"Причина: {e.__cause__}")
+
+# ─── Форма 4: raise ... from None — подавление контекста ─────────────────────
+def parse_config(raw: str) -> dict:
+    try:
+        import json
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # Скрываем деталь реализации — пользователь видит только чистую ошибку
+        raise ValueError("Конфиг должен быть валидным JSON") from None
+
+try:
+    parse_config("not-json")
+except ValueError as e:
+    print(e)  # Конфиг должен быть валидным JSON
+    print(e.__cause__)  # None — цепочка подавлена`,
+    },
+    // ─── logging.handlers.MemoryHandler ──────────────────────────────────────
+    {
+        name: "class logging.handlers.MemoryHandler(capacity, flushLevel=logging.ERROR, target=None, flushOnClose=True)",
+        description:
+            "Буферизующий обработчик: накапливает LogRecord в памяти (список buffer) и сбрасывает их в целевой обработчик target при выполнении условий. Сброс происходит при: заполнении буфера (len(buffer) >= capacity), поступлении записи с уровнем >= flushLevel, явном вызове flush(), а при flushOnClose=True — также при close(). Полезен для отправки пакетных логов, уменьшения нагрузки на I/O и буферизации перед медленными обработчиками (SMTP, HTTP).",
+        syntax: `logging.handlers.MemoryHandler(
+    capacity,
+    flushLevel=logging.ERROR,
+    target=None,
+    flushOnClose=True,
+)`,
+        arguments: [
+            {
+                name: "capacity",
+                description: "Максимальный размер буфера (количество LogRecord). При достижении capacity буфер автоматически сбрасывается в target.",
+            },
+            {
+                name: "flushLevel",
+                description: "Уровень логирования, при поступлении которого буфер немедленно сбрасывается, не дожидаясь заполнения. По умолчанию logging.ERROR.",
+            },
+            {
+                name: "target",
+                description: "Целевой обработчик (FileHandler, SMTPHandler и др.), в который передаются накопленные записи при сбросе. Устанавливается также через setTarget().",
+            },
+            {
+                name: "flushOnClose",
+                description: "Если True (по умолчанию) — при вызове close() буфер сначала сбрасывается в target. Если False — буфер очищается без отправки.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+
+# Целевой обработчик: куда сбрасываются накопленные записи
+file_handler = logging.FileHandler("batch.log", encoding="utf-8")
+file_handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(levelname)-8s %(name)s %(message)s"
+))
+
+# MemoryHandler: буфер на 100 записей, сброс при ERROR
+memory_handler = logging.handlers.MemoryHandler(
+    capacity=100,                # Сброс при накоплении 100 записей
+    flushLevel=logging.ERROR,   # Немедленный сброс при ERROR и выше
+    target=file_handler,
+    flushOnClose=True,           # Сброс при shutdown
+)
+
+logger = logging.getLogger("myapp")
+logger.addHandler(memory_handler)
+logger.setLevel(logging.DEBUG)
+
+# DEBUG и INFO накапливаются в буфере (не пишутся сразу в файл)
+for i in range(50):
+    logger.debug("Шаг %d выполнен", i)
+    logger.info("Прогресс: %d%%", i * 2)
+
+# Один ERROR немедленно сбрасывает ВСЕ 100 записей из буфера в файл
+logger.error("Ошибка — весь буфер (DEBUG/INFO + ERROR) ушёл в файл")
+
+# Сброс вручную (например, в конце задачи)
+memory_handler.flush()
+
+# Корректное завершение
+memory_handler.close()  # flushOnClose=True → все записи в файл`,
+    },
+    {
+        name: "MemoryHandler.close()",
+        description:
+            "Закрывает MemoryHandler. Если flushOnClose=True — сначала вызывает flush() для сброса всех буферизованных записей в target, затем вызывает close() у целевого обработчика и удаляет его ссылку. Если flushOnClose=False — буфер очищается без отправки в target. Вызывайте при завершении работы с обработчиком.",
+        syntax: `handler.close()`,
+        arguments: [],
+        example: `import logging
+import logging.handlers
+
+file_handler = logging.FileHandler("app.log", encoding="utf-8")
+memory_handler = logging.handlers.MemoryHandler(
+    capacity=200,
+    flushLevel=logging.CRITICAL,  # Только CRITICAL вызывает авто-сброс
+    target=file_handler,
+    flushOnClose=True,
+)
+
+logger = logging.getLogger("close_demo")
+logger.addHandler(memory_handler)
+logger.setLevel(logging.DEBUG)
+
+for i in range(50):
+    logger.info("Событие %d", i)  # Накапливается в буфере
+
+# Завершение работы приложения
+# close() → flush() → все 50 записей → file_handler → файл
+memory_handler.close()
+
+# Сравнение поведения flushOnClose
+lost_handler = logging.handlers.MemoryHandler(
+    capacity=200,
+    flushLevel=logging.CRITICAL,
+    target=file_handler,
+    flushOnClose=False,  # При close() буфер очищается без отправки!
+)
+logger2 = logging.getLogger("lost_demo")
+logger2.addHandler(lost_handler)
+logger2.info("Эта запись будет потеряна при close()")
+lost_handler.close()  # Буфер очищен, в файл НИЧЕГО не ушло`,
+    },
+    {
+        name: "MemoryHandler.flush()",
+        description:
+            "Немедленно сбрасывает все накопленные в буфере записи в целевой обработчик target. После сброса буфер очищается. Если target не установлен — буфер просто очищается. Вызывается автоматически при заполнении буфера (capacity), при поступлении записи с уровнем >= flushLevel, а также из close() если flushOnClose=True.",
+        syntax: `handler.flush()`,
+        arguments: [],
+        example: `import logging
+import logging.handlers
+
+file_handler = logging.FileHandler("flush_demo.log", encoding="utf-8")
+memory_handler = logging.handlers.MemoryHandler(
+    capacity=1000,                # Большой буфер — авто-сброс редко
+    flushLevel=logging.CRITICAL,  # Авто-сброс только на CRITICAL
+    target=file_handler,
+)
+
+logger = logging.getLogger("flush_demo")
+logger.addHandler(memory_handler)
+logger.setLevel(logging.DEBUG)
+
+# Накапливаем записи
+for i in range(100):
+    logger.debug("Шаг %d", i)
+
+# Явный сброс в контрольных точках
+logger.info("Контрольная точка — принудительный сброс")
+memory_handler.flush()  # Все 101 записей ушли в файл, буфер пуст
+
+logger.info("После flush() буфер пуст — новые записи накапливаются заново")
+
+# Сброс без target: буфер просто очищается
+no_target = logging.handlers.MemoryHandler(capacity=10)
+logging.getLogger("notarget").addHandler(no_target)
+logging.getLogger("notarget").info("Пропадёт при flush() без target")
+no_target.flush()  # Записи потеряны`,
+    },
+    {
+        name: "MemoryHandler.setTarget(target)",
+        description:
+            "Устанавливает или заменяет целевой обработчик, в который сбрасываются буферизованные записи. Позволяет менять target после создания MemoryHandler — например, при отложенной инициализации целевого обработчика или переключении направления логов в runtime.",
+        syntax: `handler.setTarget(target)`,
+        arguments: [
+            {
+                name: "target",
+                description: "Новый целевой обработчик (logging.Handler) для приёма буферизованных записей. Передайте None для отвязки от текущего target.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+
+# Создание без target (отложенная инициализация)
+memory_handler = logging.handlers.MemoryHandler(
+    capacity=50,
+    flushLevel=logging.ERROR,
+)
+# target=None: записи накапливаются, но некуда сбрасывать
+
+logger = logging.getLogger("settarget_demo")
+logger.addHandler(memory_handler)
+logger.setLevel(logging.DEBUG)
+
+logger.debug("Запись 1 — в буфере, target ещё не назначен")
+logger.info("Запись 2 — в буфере")
+
+# Позже: инициализируем целевой обработчик и привязываем
+file_handler = logging.FileHandler("late_init.log", encoding="utf-8")
+memory_handler.setTarget(file_handler)
+
+logger.info("Запись 3 — в буфере (target назначен)")
+# Первые три записи уйдут при следующем flush() или ERROR
+logger.error("ERROR — сброс всего буфера (записи 1, 2, 3 и ERROR)")
+
+# Переключение target в runtime
+new_handler = logging.handlers.RotatingFileHandler(
+    "rotated.log", maxBytes=1024*1024, backupCount=3
+)
+memory_handler.flush()               # Сброс текущего буфера в file_handler
+memory_handler.setTarget(new_handler)  # Теперь сбрасывать в RotatingFileHandler`,
+    },
+    {
+        name: "MemoryHandler.shouldFlush(record)",
+        description:
+            "Определяет, нужно ли сбросить буфер после добавления данной записи. В базовой реализации возвращает True если: буфер достиг capacity (len(self.buffer) >= self.capacity) ИЛИ уровень записи >= flushLevel. Переопределяется для кастомной логики: сброс по времени, по содержимому сообщения, по имени логгера или по любому условию.",
+        syntax: `handler.shouldFlush(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Только что добавленная в буфер запись logging.LogRecord. Используется для проверки условий сброса.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import time
+
+# Переопределение shouldFlush() для сброса по времени и уровню
+class TimedMemoryHandler(logging.handlers.MemoryHandler):
+    def __init__(self, capacity, flush_interval_sec=30, **kwargs):
+        super().__init__(capacity, **kwargs)
+        self.flush_interval = flush_interval_sec
+        self._last_flush = time.monotonic()
+
+    def shouldFlush(self, record: logging.LogRecord) -> bool:
+        # Стандартные условия: размер буфера или уровень
+        if super().shouldFlush(record):
+            return True
+        # Дополнительное условие: прошло flush_interval секунд
+        if time.monotonic() - self._last_flush >= self.flush_interval:
+            self._last_flush = time.monotonic()
+            return True
+        return False
+
+file_handler = logging.FileHandler("timed.log", encoding="utf-8")
+handler = TimedMemoryHandler(
+    capacity=500,
+    flush_interval_sec=60,   # Сброс каждые 60 секунд
+    flushLevel=logging.ERROR,
+    target=file_handler,
+)
+
+logger = logging.getLogger("timed_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.info("Накапливается до 500 записей, ERROR или 60 секунд")`,
+    },
+    // ─── logging.handlers.WatchedFileHandler ─────────────────────────────────
+    {
+        name: "class logging.handlers.WatchedFileHandler(filename, mode='a', encoding=None, delay=False, errors=None)",
+        description:
+            "Обработчик файла логов с отслеживанием ротации. В отличие от FileHandler, после каждой записи проверяет, не был ли файл переименован или удалён (через inode/device на Unix). Если файл изменился — закрывает старый дескриптор и открывает новый. Предназначен для работы с внешними утилитами ротации (logrotate, newsyslog) на Unix-системах. На Windows не работает корректно из-за блокировки файлов.",
+        syntax: `logging.handlers.WatchedFileHandler(
+    filename,
+    mode='a',
+    encoding=None,
+    delay=False,
+    errors=None,
+)`,
+        arguments: [
+            {
+                name: "filename",
+                description: "Путь к файлу логов. Файл будет мониторится на предмет ротации после каждой записи.",
+            },
+            {
+                name: "mode",
+                description: "Режим открытия файла. По умолчанию 'a' (дозапись). Используйте 'w' для перезаписи при каждом запуске.",
+            },
+            {
+                name: "encoding",
+                description: "Кодировка файла. Рекомендуется явно указывать 'utf-8'.",
+            },
+            {
+                name: "delay",
+                description: "Если True — файл открывается только при первой записи. По умолчанию False.",
+            },
+            {
+                name: "errors",
+                description: "Обработка ошибок кодирования ('strict', 'ignore', 'replace'). Python 3.9+.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+
+# WatchedFileHandler — для Unix + logrotate
+handler = logging.handlers.WatchedFileHandler(
+    filename="/var/log/myapp/app.log",
+    encoding="utf-8",
+    delay=False,
+)
+handler.setLevel(logging.INFO)
+handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(levelname)-8s %(name)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+))
+
+logger = logging.getLogger("myapp")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+# При работе с logrotate (конфиг /etc/logrotate.d/myapp):
+# /var/log/myapp/app.log {
+#     daily
+#     rotate 14
+#     compress
+#     missingok
+#     notifempty
+#     nocreate      # logrotate переименовывает файл — приложение само создаст новый
+# }
+#
+# После ротации logrotate переименовывает app.log → app.log.1
+# WatchedFileHandler обнаруживает изменение inode и открывает новый app.log
+
+logger.info("Запись в файл — обработчик следит за ротацией")
+logger.warning("При ротации файл будет переоткрыт автоматически")`,
+    },
+    {
+        name: "WatchedFileHandler.emit(record)",
+        description:
+            "Перед записью вызывает reopenIfNeeded() для проверки, не был ли файл ротирован. Если файл был переименован или удалён — переоткрывает его. После этого вызывает стандартный FileHandler.emit() для форматирования и записи. Вызывается автоматически — переопределять не нужно.",
+        syntax: `handler.emit(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord для записи в файл.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import os
+import time
+
+handler = logging.handlers.WatchedFileHandler(
+    "watched.log", encoding="utf-8"
+)
+handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+
+logger = logging.getLogger("emit_watch")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+# Запись 1: открывает файл, сохраняет inode
+logger.info("Запись до ротации — inode запомнен")
+
+# Имитация ротации внешней утилитой
+os.rename("watched.log", "watched.log.1")
+
+# Запись 2: emit() → reopenIfNeeded() → обнаружен новый inode → переоткрыт файл
+logger.info("Запись после ротации — файл автоматически переоткрыт")
+
+# Теперь watched.log создан заново, watched.log.1 содержит первую запись
+print(os.path.exists("watched.log"))   # True — новый файл
+print(os.path.exists("watched.log.1")) # True — архив после ротации
+handler.close()`,
+    },
+    {
+        name: "WatchedFileHandler.reopenIfNeeded()",
+        description:
+            "Проверяет, изменился ли файл (inode или device на Unix) с момента последнего открытия. Если файл был переименован или удалён — закрывает текущий дескриптор и открывает файл заново (создаётся новый файл с исходным именем). Вызывается из emit() перед каждой записью. На Windows всегда возвращает без действий (файлы заблокированы при открытии).",
+        syntax: `handler.reopenIfNeeded()`,
+        arguments: [],
+        example: `import logging
+import logging.handlers
+import os
+import stat
+
+handler = logging.handlers.WatchedFileHandler(
+    "reopen_demo.log", encoding="utf-8"
+)
+handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+
+logger = logging.getLogger("reopen_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+# Первая запись: файл открыт, inode сохранён
+logger.info("Начало работы")
+
+# Получаем текущий inode
+inode_before = os.stat("reopen_demo.log").st_ino
+print(f"Inode до ротации: {inode_before}")
+
+# Симуляция logrotate: переименование файла
+os.rename("reopen_demo.log", "reopen_demo.log.bak")
+
+# reopenIfNeeded() обнаружит, что inode изменился (файл пропал)
+# и создаст новый reopen_demo.log
+logger.info("После ротации — новый файл создан автоматически")
+
+inode_after = os.stat("reopen_demo.log").st_ino
+print(f"Inode после ротации: {inode_after}")
+print(f"Inode изменился: {inode_before != inode_after}")  # True
+
+# Ручной вызов (обычно не нужен — emit() вызывает сам)
+handler.reopenIfNeeded()
+handler.close()`,
+    },
+    // ─── logging.handlers.QueueHandler ───────────────────────────────────────
+    {
+        name: "class logging.handlers.QueueHandler(queue)",
+        description:
+            "Обработчик логов, помещающий записи в очередь (queue.Queue или любой объект с методом put_nowait()). Используется совместно с QueueListener для асинхронного логирования: основной поток не блокируется на медленных обработчиках (файловый I/O, сеть, SMTP) — записи немедленно уходят в очередь, а отдельный поток-слушатель обрабатывает их в фоне.",
+        syntax: `logging.handlers.QueueHandler(queue)`,
+        arguments: [
+            {
+                name: "queue",
+                description: "Объект очереди с методами put_nowait() и get(). Стандартно: queue.Queue, queue.SimpleQueue или multiprocessing.Queue. Можно использовать asyncio.Queue в асинхронных приложениях.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import queue
+import threading
+
+# Создание очереди и обработчиков
+log_queue = queue.Queue(maxsize=-1)  # Неограниченная очередь
+
+# QueueHandler добавляется к логгерам основного потока
+queue_handler = logging.handlers.QueueHandler(log_queue)
+
+# Реальные обработчики (медленные) — работают в фоне
+file_handler = logging.FileHandler("app.log", encoding="utf-8")
+smtp_handler = logging.handlers.SMTPHandler(
+    mailhost=("smtp.example.com", 587),
+    fromaddr="alert@example.com",
+    toaddrs=["ops@example.com"],
+    subject="Ошибка",
+    credentials=("alert@example.com", "pwd"),
+    secure=(),
+)
+smtp_handler.setLevel(logging.CRITICAL)
+
+# QueueListener читает из очереди в отдельном потоке
+listener = logging.handlers.QueueListener(
+    log_queue,
+    file_handler,
+    smtp_handler,
+    respect_handler_level=True,
+)
+listener.start()
+
+# Настройка логгера
+logger = logging.getLogger("myapp")
+logger.addHandler(queue_handler)
+logger.setLevel(logging.DEBUG)
+
+logger.info("Асинхронное логирование — основной поток не блокируется")
+logger.critical("Критическая ошибка — письмо уйдёт из фонового потока")
+
+listener.stop()  # Дождаться обработки всей очереди и завершить поток`,
+    },
+    {
+        name: "QueueHandler.emit(record)",
+        description:
+            "Подготавливает запись через prepare() и помещает её в очередь через enqueue(). При ошибке помещения в очередь (переполнение при ограниченном maxsize) вызывает handleError(). Вызывается автоматически — переопределять редко нужно; для кастомной логики обычно достаточно переопределить prepare() или enqueue().",
+        syntax: `handler.emit(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord для помещения в очередь.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import queue
+
+log_queue = queue.Queue()
+handler = logging.handlers.QueueHandler(log_queue)
+
+logger = logging.getLogger("emit_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+
+# emit() вызывается автоматически
+logger.info("Запись помещена в очередь")
+logger.error("Ошибка помещена в очередь")
+
+# Проверяем, что записи в очереди
+print(log_queue.qsize())  # 2
+
+# Переопределение emit() для метрик
+class MetricQueueHandler(logging.handlers.QueueHandler):
+    def __init__(self, q):
+        super().__init__(q)
+        self.enqueued = 0
+        self.dropped = 0
+
+    def emit(self, record: logging.LogRecord):
+        try:
+            super().emit(record)
+            self.enqueued += 1
+        except queue.Full:
+            self.dropped += 1
+
+bounded_q = queue.Queue(maxsize=100)
+m_handler = MetricQueueHandler(bounded_q)
+logging.getLogger("metrics").addHandler(m_handler)`,
+    },
+    {
+        name: "QueueHandler.enqueue(record)",
+        description:
+            "Помещает подготовленную запись в очередь через put_nowait(). Вызывается из emit() после prepare(). Переопределяется для изменения способа добавления: использования put() с блокировкой вместо put_nowait(), установки таймаута или работы с нестандартными очередями.",
+        syntax: `handler.enqueue(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord (уже подготовленный через prepare()) для помещения в очередь.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import queue
+
+# Переопределение enqueue() для блокирующей вставки с таймаутом
+class BlockingQueueHandler(logging.handlers.QueueHandler):
+    def __init__(self, q, timeout=0.1):
+        super().__init__(q)
+        self.timeout = timeout
+
+    def enqueue(self, record: logging.LogRecord):
+        try:
+            # Блокируем не дольше timeout секунд
+            self.queue.put(record, block=True, timeout=self.timeout)
+        except queue.Full:
+            # Очередь переполнена — выводим в stderr
+            import sys
+            print(
+                f"[QUEUE FULL] Запись потеряна: {record.getMessage()}",
+                file=sys.stderr,
+            )
+
+bounded_q = queue.Queue(maxsize=50)
+handler = BlockingQueueHandler(bounded_q, timeout=0.05)
+
+logger = logging.getLogger("blocking_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.info("Запись с ожиданием вставки до 50 мс")`,
+    },
+    {
+        name: "QueueHandler.prepare(record)",
+        description:
+            "Подготавливает запись перед помещением в очередь. В базовой реализации: вызывает self.format(record) для форматирования exc_text (чтобы трейсбек был доступен после передачи между потоками), затем обнуляет record.exc_info и record.exc_text для предотвращения проблем с сериализацией. Переопределяется для кастомной подготовки или сериализации в JSON/msgpack.",
+        syntax: `handler.prepare(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord для подготовки к помещению в очередь. Метод должен вернуть подготовленную запись (тот же объект или новый).",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import copy
+import queue
+
+# Переопределение prepare() для глубокого копирования записи
+# (чтобы мутации в основном потоке не влияли на запись в очереди)
+class SafeQueueHandler(logging.handlers.QueueHandler):
+    def prepare(self, record: logging.LogRecord) -> logging.LogRecord:
+        # Стандартная подготовка (форматирует exc_text, очищает exc_info)
+        record = super().prepare(record)
+        # Глубокое копирование для потокобезопасности
+        return copy.deepcopy(record)
+
+# Переопределение prepare() для добавления контекста перед очередью
+class ContextQueueHandler(logging.handlers.QueueHandler):
+    def prepare(self, record: logging.LogRecord) -> logging.LogRecord:
+        record = super().prepare(record)
+        import threading
+        record.thread_name = threading.current_thread().name
+        record.hostname = __import__("socket").gethostname()
+        return record
+
+log_queue = queue.Queue()
+handler = ContextQueueHandler(log_queue)
+logger = logging.getLogger("prepare_demo")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+logger.info("Запись с контекстом потока и хоста")
+
+record = log_queue.get_nowait()
+print(record.thread_name)  # MainThread
+print(record.hostname)     # my-server`,
+    },
+    // ─── logging.handlers.QueueListener ──────────────────────────────────────
+    {
+        name: "class logging.handlers.QueueListener(queue, *handlers, respect_handler_level=False)",
+        description:
+            "Слушатель очереди: извлекает LogRecord из queue в отдельном фоновом потоке-демоне и передаёт их обработчикам handlers. Используется совместно с QueueHandler для неблокирующего логирования. Поток запускается методом start() и останавливается stop() — который ждёт обработки всех оставшихся записей.",
+        syntax: `logging.handlers.QueueListener(
+    queue,
+    *handlers,
+    respect_handler_level=False,
+)`,
+        arguments: [
+            {
+                name: "queue",
+                description: "Та же очередь, что передана в QueueHandler. Слушатель читает из неё через get().",
+            },
+            {
+                name: "*handlers",
+                description: "Один или несколько реальных обработчиков (FileHandler, SMTPHandler, StreamHandler и др.), которые будут получать записи из очереди.",
+            },
+            {
+                name: "respect_handler_level",
+                description: "Если True — каждый обработчик проверяет свой уровень перед обработкой записи. Если False (по умолчанию) — все обработчики получают все записи из очереди.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import queue
+
+log_queue = queue.Queue()
+
+# Обработчики с разными уровнями
+debug_handler = logging.StreamHandler()
+debug_handler.setLevel(logging.DEBUG)
+debug_handler.setFormatter(logging.Formatter("DEBUG: %(message)s"))
+
+error_handler = logging.FileHandler("errors.log", encoding="utf-8")
+error_handler.setLevel(logging.ERROR)
+error_handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(levelname)s %(name)s %(message)s"
+))
+
+# respect_handler_level=True: каждый обработчик фильтрует по своему уровню
+listener = logging.handlers.QueueListener(
+    log_queue,
+    debug_handler,
+    error_handler,
+    respect_handler_level=True,
+)
+listener.start()
+
+queue_handler = logging.handlers.QueueHandler(log_queue)
+logger = logging.getLogger("app")
+logger.addHandler(queue_handler)
+logger.setLevel(logging.DEBUG)
+
+logger.debug("Отладка → только debug_handler")
+logger.error("Ошибка → оба обработчика")
+
+listener.stop()  # Дожидается обработки всех записей`,
+    },
+    {
+        name: "QueueListener.dequeue(block)",
+        description:
+            "Извлекает одну запись из очереди. Вызывается в цикле фонового потока. При block=True (по умолчанию) — блокируется до появления записи или sentinel-значения. Переопределяется для использования нестандартных очередей или добавления таймаута при извлечении.",
+        syntax: `listener.dequeue(block)`,
+        arguments: [
+            {
+                name: "block",
+                description: "Если True — блокируется до получения записи (стандартное поведение). Если False — немедленно возвращает запись или вызывает queue.Empty.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import queue
+
+# Переопределение dequeue() для извлечения с таймаутом
+class TimeoutQueueListener(logging.handlers.QueueListener):
+    def dequeue(self, block: bool) -> logging.LogRecord:
+        try:
+            # Таймаут 1 секунда — позволяет периодически проверять флаг остановки
+            return self.queue.get(block=True, timeout=1.0)
+        except queue.Empty:
+            # Возвращаем None, который фоновый поток обработает как пустой цикл
+            # (стандартная реализация ожидает sentinel или запись)
+            raise
+
+# Переопределение для приоритетной очереди
+import heapq
+
+class PriorityQueueListener(logging.handlers.QueueListener):
+    def dequeue(self, block: bool) -> logging.LogRecord:
+        # PriorityQueue возвращает (priority, record)
+        priority, record = self.queue.get(block=block)
+        return record
+
+log_queue = queue.Queue()
+handler = logging.StreamHandler()
+listener = logging.handlers.QueueListener(log_queue, handler)
+listener.start()
+logging.getLogger("dequeue_demo").addHandler(
+    logging.handlers.QueueHandler(log_queue)
+)
+listener.stop()`,
+    },
+    {
+        name: "QueueListener.enqueue_sentinel()",
+        description:
+            "Помещает в очередь специальное sentinel-значение (None), сигнализирующее фоновому потоку об остановке. Вызывается автоматически из stop(). При переопределении dequeue() или использовании нестандартных очередей может потребоваться адаптация.",
+        syntax: `listener.enqueue_sentinel()`,
+        arguments: [],
+        example: `import logging
+import logging.handlers
+import queue
+
+log_queue = queue.Queue()
+handler = logging.StreamHandler()
+listener = logging.handlers.QueueListener(log_queue, handler)
+listener.start()
+
+q_handler = logging.handlers.QueueHandler(log_queue)
+logger = logging.getLogger("sentinel_demo")
+logger.addHandler(q_handler)
+logger.setLevel(logging.INFO)
+
+logger.info("Запись 1")
+logger.info("Запись 2")
+
+# stop() вызывает enqueue_sentinel() → помещает None в очередь
+# Фоновый поток извлечёт None и завершит цикл
+listener.stop()
+# После stop() все записи из очереди гарантированно обработаны
+
+# Ручной вызов enqueue_sentinel() (нестандартный сценарий)
+listener2 = logging.handlers.QueueListener(queue.Queue(), handler)
+listener2.start()
+# ... какая-то работа ...
+listener2.enqueue_sentinel()  # Сигнал остановки без ожидания join()`,
+    },
+    {
+        name: "QueueListener.handle(record)",
+        description:
+            "Передаёт извлечённую запись всем зарегистрированным обработчикам. Вызывается из фонового потока для каждой записи после dequeue(). Если respect_handler_level=True — проверяет уровень каждого обработчика. Переопределяется для добавления глобальной логики перед/после обработки.",
+        syntax: `listener.handle(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord, извлечённый из очереди и переданный в prepare() перед обработкой.",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import queue
+import time
+
+# Переопределение handle() для трассировки времени обработки
+class TimedQueueListener(logging.handlers.QueueListener):
+    def handle(self, record: logging.LogRecord):
+        start = time.monotonic()
+        super().handle(record)
+        elapsed = (time.monotonic() - start) * 1000
+        if elapsed > 100:
+            print(f"[SLOW HANDLER] {elapsed:.1f} мс для {record.getMessage()[:40]}")
+
+log_queue = queue.Queue()
+file_handler = logging.FileHandler("app.log", encoding="utf-8")
+file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+
+listener = TimedQueueListener(log_queue, file_handler)
+listener.start()
+
+q_handler = logging.handlers.QueueHandler(log_queue)
+logger = logging.getLogger("handle_demo")
+logger.addHandler(q_handler)
+logger.setLevel(logging.INFO)
+
+logger.info("Запись будет передана через handle()")
+listener.stop()`,
+    },
+    {
+        name: "QueueListener.prepare(record)",
+        description:
+            "Подготавливает запись перед передачей обработчикам. В базовой реализации возвращает record без изменений. Переопределяется для десериализации, обогащения данными или преобразования формата записи на стороне слушателя.",
+        syntax: `listener.prepare(record)`,
+        arguments: [
+            {
+                name: "record",
+                description: "Объект logging.LogRecord, извлечённый из очереди. Метод должен вернуть запись для передачи в handle().",
+            },
+        ],
+        example: `import logging
+import logging.handlers
+import queue
+
+# Переопределение prepare() на стороне слушателя:
+# добавление поля до передачи в обработчики
+class EnrichingQueueListener(logging.handlers.QueueListener):
+    def prepare(self, record: logging.LogRecord) -> logging.LogRecord:
+        # Добавляем метку времени задержки (сколько ждала в очереди)
+        import time
+        record.queue_latency_ms = (time.time() - record.created) * 1000
+        return record
+
+log_queue = queue.Queue()
+
+fmt = logging.Formatter(
+    "%(asctime)s [latency=%(queue_latency_ms).1fms] %(levelname)s %(message)s"
+)
+handler = logging.StreamHandler()
+handler.setFormatter(fmt)
+
+listener = EnrichingQueueListener(log_queue, handler)
+listener.start()
+
+q_handler = logging.handlers.QueueHandler(log_queue)
+logger = logging.getLogger("prepare_listener_demo")
+logger.addHandler(q_handler)
+logger.setLevel(logging.INFO)
+
+logger.info("Запись с измерением задержки очереди")
+listener.stop()
+# Вывод: 2026-06-07 14:30:05,123 [latency=0.3ms] INFO Запись с измерением задержки очереди`,
+    },
+    {
+        name: "QueueListener.start()",
+        description:
+            "Запускает фоновый поток-демон, который непрерывно извлекает записи из очереди и передаёт их обработчикам. Поток является daemon-потоком — завершится автоматически при выходе из основного процесса. Всегда вызывайте stop() явно для гарантированной обработки всех записей в очереди.",
+        syntax: `listener.start()`,
+        arguments: [],
+        example: `import logging
+import logging.handlers
+import queue
+import atexit
+
+log_queue = queue.Queue()
+
+file_handler = logging.FileHandler("app.log", encoding="utf-8")
+file_handler.setFormatter(logging.Formatter(
+    "%(asctime)s %(levelname)-8s %(name)s %(message)s"
+))
+
+listener = logging.handlers.QueueListener(
+    log_queue, file_handler, respect_handler_level=True
+)
+
+# Запуск фонового потока
+listener.start()
+
+# Регистрация остановки при завершении приложения
+atexit.register(listener.stop)
+
+q_handler = logging.handlers.QueueHandler(log_queue)
+logging.getLogger().addHandler(q_handler)
+logging.getLogger().setLevel(logging.DEBUG)
+
+logging.info("Приложение запущено — фоновый поток активен")
+logging.warning("Предупреждение в файл через очередь")
+
+# Использование в контекстном менеджере
+class ManagedListener:
+    def __init__(self, listener):
+        self.listener = listener
+
+    def __enter__(self):
+        self.listener.start()
+        return self.listener
+
+    def __exit__(self, *args):
+        self.listener.stop()
+
+listener2 = logging.handlers.QueueListener(queue.Queue(), file_handler)
+with ManagedListener(listener2):
+    logging.info("В блоке with — гарантированный stop()")`,
+    },
+    {
+        name: "QueueListener.stop()",
+        description:
+            "Останавливает фоновый поток слушателя: помещает sentinel через enqueue_sentinel() и ждёт завершения потока через join(). Гарантирует обработку всех записей, оставшихся в очереди до момента вызова stop(). Вызывайте явно — через atexit, try/finally или менеджер контекста.",
+        syntax: `listener.stop()`,
+        arguments: [],
+        example: `import logging
+import logging.handlers
+import queue
+import atexit
+
+log_queue = queue.Queue()
+handler = logging.FileHandler("app.log", encoding="utf-8")
+listener = logging.handlers.QueueListener(log_queue, handler)
+listener.start()
+
+q_handler = logging.handlers.QueueHandler(log_queue)
+logger = logging.getLogger("stop_demo")
+logger.addHandler(q_handler)
+logger.setLevel(logging.INFO)
+
+# Паттерн 1: atexit — вызывается при нормальном завершении
+atexit.register(listener.stop)
+
+# Паттерн 2: try/finally — гарантированное завершение
+try:
+    logger.info("Начало работы")
+    # ... основная логика приложения ...
+    logger.info("Завершение")
+finally:
+    listener.stop()
+    # Все записи из очереди обработаны до выхода
+
+# Паттерн 3: явная последовательность для нескольких слушателей
+listeners = [listener]
+for lst in listeners:
+    lst.stop()  # Каждый ждёт завершения своего потока`,
+    },
+    // ─── logging.config ───────────────────────────────────────────────────────
+    {
+        name: "logging.config.dictConfig(config)",
+        description:
+            "Настраивает систему логирования из словаря Python. Наиболее гибкий и рекомендуемый способ конфигурации: поддерживает все объекты logging (логгеры, обработчики, форматтеры, фильтры), инкрементальные обновления и ссылки между объектами. Широко используется в Django, FastAPI и других фреймворках через LOGGING-словарь в настройках.",
+        syntax: `logging.config.dictConfig(config)`,
+        arguments: [
+            {
+                name: "config",
+                description: "Словарь конфигурации. Обязательные ключи: 'version' (всегда 1). Опциональные: 'formatters', 'filters', 'handlers', 'loggers', 'root', 'incremental', 'disable_existing_loggers'.",
+            },
+        ],
+        example: `import logging
+import logging.config
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,  # Не отключать существующие логгеры
+
+    "formatters": {
+        "verbose": {
+            "format": "%(asctime)s %(levelname)-8s %(name)s %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+        "simple": {
+            "format": "%(levelname)s %(message)s",
+        },
+    },
+
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+            "level": "DEBUG",
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": "app.log",
+            "maxBytes": 10 * 1024 * 1024,  # 10 МБ
+            "backupCount": 5,
+            "formatter": "verbose",
+            "encoding": "utf-8",
+        },
+    },
+
+    "loggers": {
+        "myapp": {
+            "handlers": ["console", "file"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "myapp.db": {
+            "level": "WARNING",  # Только WARNING и выше для БД
+            "propagate": True,   # Передаёт в myapp
+        },
+    },
+
+    "root": {
+        "handlers": ["console"],
+        "level": "WARNING",
+    },
+}
+
+logging.config.dictConfig(LOGGING)
+
+logger = logging.getLogger("myapp")
+logger.info("dictConfig применён — настройка из словаря")`,
+    },
+    {
+        name: "logging.config.fileConfig(fname, defaults, disable_existing_loggers, encoding)",
+        description:
+            "Настраивает систему логирования из INI-файла (формат configparser). Исторически первый способ конфигурации; сейчас рекомендуется dictConfig. Поддерживает секции [loggers], [handlers], [formatters]. По умолчанию отключает все ранее созданные логгеры (disable_existing_loggers=True) — будьте внимательны при интеграции с библиотеками.",
+        syntax: `logging.config.fileConfig(
+    fname,
+    defaults=None,
+    disable_existing_loggers=True,
+    encoding=None,
+)`,
+        arguments: [
+            {
+                name: "fname",
+                description: "Путь к INI-файлу конфигурации, объект файла или RawConfigParser. Файл должен содержать секции [loggers], [handlers], [formatters].",
+            },
+            {
+                name: "defaults",
+                description: "Словарь значений по умолчанию для подстановки в INI-файл (аналог defaults в configparser).",
+            },
+            {
+                name: "disable_existing_loggers",
+                description: "Если True (по умолчанию) — отключает все логгеры, не упомянутые в файле конфигурации. Передайте False, чтобы сохранить существующие логгеры.",
+            },
+            {
+                name: "encoding",
+                description: "Кодировка INI-файла. По умолчанию системная. Например, 'utf-8'.",
+            },
+        ],
+        example: `# logging.ini — файл конфигурации
+# [loggers]
+# keys=root,myapp
+#
+# [handlers]
+# keys=console,file
+#
+# [formatters]
+# keys=verbose,simple
+#
+# [logger_root]
+# level=WARNING
+# handlers=console
+#
+# [logger_myapp]
+# level=DEBUG
+# handlers=console,file
+# qualname=myapp
+# propagate=0
+#
+# [handler_console]
+# class=StreamHandler
+# level=DEBUG
+# formatter=simple
+# args=(sys.stdout,)
+#
+# [handler_file]
+# class=handlers.RotatingFileHandler
+# level=INFO
+# formatter=verbose
+# args=('app.log', 'a', 10485760, 5)
+#
+# [formatter_verbose]
+# format=%(asctime)s %(levelname)s %(name)s %(message)s
+#
+# [formatter_simple]
+# format=%(levelname)s %(message)s
+
+import logging
+import logging.config
+
+# Применение конфигурации из файла
+logging.config.fileConfig(
+    "logging.ini",
+    disable_existing_loggers=False,  # Не трогать логгеры сторонних библиотек
+    encoding="utf-8",
+)
+
+logger = logging.getLogger("myapp")
+logger.info("Конфигурация из INI-файла применена")`,
+    },
+    {
+        name: "logging.config.listen(port=DEFAULT_LOGGING_CONFIG_PORT, verify=None)",
+        description:
+            "Запускает TCP-сервер в отдельном потоке, принимающий конфигурации логирования на лету без перезапуска приложения. Клиент отправляет длину (4 байта big-endian) + данные конфигурации (pickle или JSON). Сервер применяет их через dictConfig(). Возвращает объект потока — вызовите thread.start() для запуска.",
+        syntax: `logging.config.listen(
+    port=DEFAULT_LOGGING_CONFIG_PORT,
+    verify=None,
+)`,
+        arguments: [
+            {
+                name: "port",
+                description: "TCP-порт для прослушивания. По умолчанию logging.config.DEFAULT_LOGGING_CONFIG_PORT (9030).",
+            },
+            {
+                name: "verify",
+                description: "Callable(bytes) → bytes | None. Принимает данные от клиента, должен вернуть их (возможно преобразованными) для применения, или None для отклонения. Используется для проверки подписи или дешифрования конфигурации.",
+            },
+        ],
+        example: `import logging
+import logging.config
+import struct
+import pickle
+import socket
+
+# --- Сервер: приложение с динамической конфигурацией ---
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger("myapp")
+
+# Запуск сервера конфигурации
+config_thread = logging.config.listen(
+    port=logging.config.DEFAULT_LOGGING_CONFIG_PORT  # 9030
+)
+config_thread.start()
+
+logger.info("Сервер конфигурации логирования запущен на порту 9030")
+
+# --- Клиент: отправка новой конфигурации на работающий сервис ---
+new_config = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "level": "ERROR",  # Повышаем уровень до ERROR
+        },
+    },
+    "root": {"handlers": ["console"], "level": "ERROR"},
+}
+
+data = pickle.dumps(new_config)
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    s.connect(("localhost", 9030))
+    s.send(struct.pack(">L", len(data)))  # 4-байтовый заголовок длины
+    s.send(data)
+
+# После отправки: уровень логирования изменился без перезапуска
+logging.config.stopListening()
+config_thread.join()`,
+    },
+    {
+        name: "logging.config.stopListening()",
+        description:
+            "Останавливает TCP-сервер конфигурации, запущенный через listen(). Отправляет сигнал завершения фоновому потоку-серверу. После вызова следует дождаться завершения потока через thread.join(). Вызывайте в секции finally или через atexit для корректного завершения.",
+        syntax: `logging.config.stopListening()`,
+        arguments: [],
+        example: `import logging
+import logging.config
+import atexit
+import signal
+
+# Запуск сервера конфигурации
+config_thread = logging.config.listen(port=9030)
+config_thread.start()
+logging.info("Сервер конфигурации запущен")
+
+# Паттерн 1: atexit — остановка при нормальном завершении
+def shutdown():
+    logging.config.stopListening()
+    config_thread.join(timeout=5)
+    logging.info("Сервер конфигурации остановлен")
+
+atexit.register(shutdown)
+
+# Паттерн 2: остановка по сигналу SIGTERM
+def handle_sigterm(signum, frame):
+    logging.info("Получен SIGTERM — остановка")
+    logging.config.stopListening()
+    config_thread.join(timeout=5)
+    raise SystemExit(0)
+
+signal.signal(signal.SIGTERM, handle_sigterm)
+
+# Паттерн 3: явный try/finally
+try:
+    # ... основная логика приложения ...
+    logging.info("Приложение работает")
+finally:
+    logging.config.stopListening()
+    config_thread.join()
+    logging.info("Завершение")`,
+    },
 
 
 ];
