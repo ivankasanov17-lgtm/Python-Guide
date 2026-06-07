@@ -47512,5 +47512,2397 @@ try:
 except RuntimeError as e:
     print(f"Ошибка: {e}")`,
     },
+      // ─── threading ────────────────────────────────────────────────────────────
+    {
+        name: "threading.active_count()",
+        description:
+            "Возвращает количество объектов Thread, находящихся в живом состоянии (alive) в данный момент. Поток считается живым с момента запуска (start()) до завершения run(). Включает главный поток (MainThread) и демон-потоки. Эквивалентен len(threading.enumerate()). Полезен для мониторинга нагрузки на пул потоков и предотвращения утечки потоков в долгоживущих приложениях.",
+        syntax: `threading.active_count()`,
+        arguments: [],
+        example: `import threading
+import time
+
+def worker(n):
+    time.sleep(n)
+
+# До запуска — только главный поток
+print(threading.active_count())  # 1
+
+threads = [threading.Thread(target=worker, args=(0.5,)) for _ in range(4)]
+for t in threads:
+    t.start()
+
+# Во время работы
+print(threading.active_count())  # 5 (4 рабочих + главный)
+
+for t in threads:
+    t.join()
+
+print(threading.active_count())  # 1
+
+# Мониторинг: предупреждение при росте числа потоков
+def check_thread_leak(limit: int = 50):
+    count = threading.active_count()
+    if count > limit:
+        print(f"[WARNING] Потоков активно: {count} — возможна утечка")
+    return count`,
+    },
+    {
+        name: "threading.current_thread()",
+        description:
+            "Возвращает объект Thread, соответствующий текущему потоку выполнения (тому, из которого вызвана функция). Если поток не был создан через threading.Thread (например, главный поток или поток из C-расширения), возвращает специальный «фиктивный» Thread-объект с ограниченной функциональностью. Используется для получения имени, идентификатора потока или в качестве ключа в словарях thread-local логики.",
+        syntax: `threading.current_thread()`,
+        arguments: [],
+        example: `import threading
+
+def show_info():
+    t = threading.current_thread()
+    print(f"Имя: {t.name}, daemon: {t.daemon}, ident: {t.ident}")
+
+# Главный поток
+show_info()  # Имя: MainThread, daemon: False, ident: <id>
+
+# Именованный поток
+t = threading.Thread(target=show_info, name="WorkerThread-1")
+t.start()
+t.join()
+# Имя: WorkerThread-1, daemon: False, ident: <id>
+
+# Использование для идентификации в логах
+import logging
+
+class ThreadNameFilter(logging.Filter):
+    def filter(self, record):
+        record.thread_name = threading.current_thread().name
+        return True
+
+logger = logging.getLogger("app")
+logger.addFilter(ThreadNameFilter())
+# Теперь в форматной строке доступен %(thread_name)s`,
+    },
+    {
+        name: "threading.excepthook(args, /)",
+        description:
+            "Обработчик необработанных исключений, возникших в методе Thread.run(). Вызывается автоматически, когда поток завершается с исключением, которое не перехвачено внутри run(). Получает объект args типа threading.ExceptHookArgs со полями: exc_type, exc_value, exc_traceback, thread. Может быть переопределён для централизованного логирования или мониторинга ошибок в потоках. По умолчанию выводит traceback в stderr, но подавляет SystemExit. Аналог sys.excepthook, но для потоков.",
+        syntax: `threading.excepthook(args, /)`,
+        arguments: [
+            {
+                name: "args",
+                description: "Объект threading.ExceptHookArgs с атрибутами: exc_type (тип исключения), exc_value (объект исключения), exc_traceback (объект traceback), thread (объект Thread, вызвавший исключение; None, если поток уже удалён сборщиком мусора).",
+            },
+        ],
+        example: `import threading
+import logging
+import traceback
+
+logging.basicConfig(level=logging.ERROR)
+logger = logging.getLogger("threads")
+
+# Переопределяем глобальный обработчик ошибок потоков
+def thread_excepthook(args):
+    logger.error(
+        "Необработанное исключение в потоке '%s'",
+        args.thread.name if args.thread else "<unknown>",
+        exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+    )
+
+threading.excepthook = thread_excepthook
+
+def buggy_worker():
+    raise ValueError("Что-то пошло не так")
+
+t = threading.Thread(target=buggy_worker, name="BuggyWorker")
+t.start()
+t.join()
+# ERROR:threads:Необработанное исключение в потоке 'BuggyWorker'
+# Traceback (most recent call last): ...
+# ValueError: Что-то пошло не так`,
+    },
+    {
+        name: "threading.get_ident()",
+        description:
+            "Возвращает целочисленный идентификатор текущего потока — ненулевое магическое число, уникальное в пределах жизни потока. Идентификаторы могут переиспользоваться после завершения потока. Не имеет прямого отношения к идентификаторам ОС (для этого используйте get_native_id()). Часто используется как ключ в словарях для хранения thread-local состояния вручную (до появления threading.local()) или для отладочного трейсинга.",
+        syntax: `threading.get_ident()`,
+        arguments: [],
+        example: `import threading
+
+print(threading.get_ident())  # например, 140234567890176
+
+# Использование как ключ для thread-local хранилища вручную
+_thread_data: dict = {}
+
+def set_context(key: str, value):
+    tid = threading.get_ident()
+    if tid not in _thread_data:
+        _thread_data[tid] = {}
+    _thread_data[tid][key] = value
+
+def get_context(key: str):
+    return _thread_data.get(threading.get_ident(), {}).get(key)
+
+def worker():
+    set_context("user_id", threading.get_ident() % 1000)
+    print(f"user_id = {get_context('user_id')}")
+
+threads = [threading.Thread(target=worker) for _ in range(3)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()`,
+    },
+    {
+        name: "threading.get_native_id()",
+        description:
+            "Возвращает нативный целочисленный идентификатор потока, назначенный операционной системой. Уникален в масштабах всей системы на протяжении всего времени жизни потока. На Linux соответствует TID (thread ID, возвращаемому gettid()), на Windows — Thread ID из Task Manager, на macOS — thread_t. Доступен только пока поток жив. Используется для корреляции Python-потоков с системными инструментами: perf, strace, WinDbg, top и т.д.",
+        syntax: `threading.get_native_id()`,
+        arguments: [],
+        example: `import threading
+
+print(threading.get_native_id())  # например, 12345 (TID в ОС)
+
+def worker():
+    native = threading.get_native_id()
+    python = threading.get_ident()
+    name = threading.current_thread().name
+    print(f"{name}: native_id={native}, python_ident={python}")
+    # На Linux можно сопоставить с /proc/<pid>/task/<native_id>/
+
+threads = [threading.Thread(target=worker, name=f"T-{i}") for i in range(3)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+
+# Пример: логирование native_id для корреляции с perf/strace
+import logging
+
+class NativeThreadIdFilter(logging.Filter):
+    def filter(self, record):
+        record.native_tid = threading.get_native_id()
+        return True`,
+    },
+    {
+        name: "threading.enumerate()",
+        description:
+            "Возвращает список всех живых объектов Thread на момент вызова. Включает главный поток, демон-потоки и потоки, ожидающие завершения через join(). Не включает потоки, ещё не запущенные (до start()) и уже завершившиеся. Полезен для диагностики, graceful shutdown (ожидание всех не-демонов), а также для инспекции состояния пула потоков без использования Executor.",
+        syntax: `threading.enumerate()`,
+        arguments: [],
+        example: `import threading
+import time
+
+def slow_worker(name: str, delay: float):
+    time.sleep(delay)
+
+threads = [
+    threading.Thread(target=slow_worker, args=(f"T{i}", i * 0.3), name=f"Worker-{i}")
+    for i in range(1, 5)
+]
+for t in threads:
+    t.start()
+
+# Снимок активных потоков
+active = threading.enumerate()
+for t in active:
+    print(f"  {t.name}: daemon={t.daemon}, alive={t.is_alive()}")
+
+# Graceful shutdown: ждём все не-демоны кроме текущего
+def shutdown():
+    current = threading.current_thread()
+    for t in threading.enumerate():
+        if t is not current and not t.daemon:
+            t.join(timeout=5.0)
+            if t.is_alive():
+                print(f"[WARN] {t.name} не завершился за 5 с")
+
+shutdown()`,
+    },
+    {
+        name: "threading.main_thread()",
+        description:
+            "Возвращает объект Thread, соответствующий главному потоку (MainThread) — тому, в котором был запущен интерпретатор Python. В стандартном приложении это поток, выполняющий __main__. Полезен для проверки, выполняется ли код в главном потоке (например, для вызовов API, требующих main thread: Tkinter, некоторые macOS Cocoa API, signal.signal()).",
+        syntax: `threading.main_thread()`,
+        arguments: [],
+        example: `import threading
+
+main = threading.main_thread()
+print(main.name)   # MainThread
+print(main.ident)  # идентификатор главного потока
+
+# Проверка: код выполняется в главном потоке?
+def require_main_thread(func):
+    def wrapper(*args, **kwargs):
+        if threading.current_thread() is not threading.main_thread():
+            raise RuntimeError(
+                f"{func.__name__} должна вызываться только из главного потока"
+            )
+        return func(*args, **kwargs)
+    return wrapper
+
+@require_main_thread
+def setup_signal_handlers():
+    import signal
+    signal.signal(signal.SIGINT, lambda s, f: print("Прерывание"))
+
+# Из другого потока это вызовет RuntimeError:
+def from_worker():
+    setup_signal_handlers()  # RuntimeError
+
+t = threading.Thread(target=from_worker)
+t.start()
+t.join()`,
+    },
+    {
+        name: "threading.settrace(func)",
+        description:
+            "Устанавливает трассировочную функцию для всех потоков, создаваемых модулем threading. func вызывается перед запуском run() каждого нового потока через sys.settrace(). Сигнатура func идентична функции из sys.settrace: (frame, event, arg). Применяется для профилирования, отладчиков, трейсинга вызовов и инструментации в многопоточном контексте. Для уже запущенных потоков не действует — только для тех, что будут созданы после вызова settrace().",
+        syntax: `threading.settrace(func)`,
+        arguments: [
+            {
+                name: "func",
+                description: "Трассировочная функция с сигнатурой (frame, event, arg). event — строка: 'call', 'line', 'return', 'exception'. Должна возвращать себя (или другую функцию) для продолжения трассировки внутри функции, или None для отключения. None в качестве аргумента settrace() отключает трассировку.",
+            },
+        ],
+        example: `import threading
+import sys
+
+call_log: list[str] = []
+
+def tracer(frame, event, arg):
+    if event == "call":
+        name = frame.f_code.co_name
+        thread = threading.current_thread().name
+        call_log.append(f"[{thread}] call: {name}")
+    return tracer  # возвращаем себя для трассировки внутри функций
+
+# Устанавливаем для всех новых потоков
+threading.settrace(tracer)
+
+def worker():
+    result = sum(range(10))
+    return result
+
+t = threading.Thread(target=worker, name="TracedWorker")
+t.start()
+t.join()
+
+for entry in call_log[:5]:
+    print(entry)
+# [TracedWorker] call: worker
+# [TracedWorker] call: sum  и т.д.
+
+# Отключить трассировку для новых потоков:
+threading.settrace(None)`,
+    },
+    {
+        name: "threading.setprofile(func)",
+        description:
+            "Устанавливает профилировочную функцию для всех потоков, создаваемых модулем threading. func вызывается через sys.setprofile() перед запуском run() каждого нового потока. Сигнатура func: (frame, event, arg) — аналогична sys.setprofile(). Используется для замера времени выполнения функций в конкретных потоках, интеграции с профилировщиками (cProfile, yappi). В отличие от settrace(), вызывается только на событиях 'call' и 'return', что значительно дешевле по накладным расходам.",
+        syntax: `threading.setprofile(func)`,
+        arguments: [
+            {
+                name: "func",
+                description: "Профилировочная функция с сигнатурой (frame, event, arg). event — строка: 'call', 'return', 'c_call', 'c_return', 'c_exception'. Возвращаемое значение игнорируется (в отличие от settrace). None отключает профилирование для новых потоков.",
+            },
+        ],
+        example: `import threading
+import time
+from collections import defaultdict
+
+# Простой профилировщик вызовов по потокам
+stats: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+
+def profiler(frame, event, arg):
+    if event in ("call", "return"):
+        thread_name = threading.current_thread().name
+        func_name = frame.f_code.co_name
+        stats[thread_name][func_name] += 1
+
+threading.setprofile(profiler)
+
+def compute():
+    return sum(i * i for i in range(1000))
+
+def io_bound():
+    time.sleep(0.01)
+    return compute()
+
+threads = [
+    threading.Thread(target=io_bound, name=f"Worker-{i}")
+    for i in range(3)
+]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+
+threading.setprofile(None)  # Отключить
+
+for thread_name, calls in stats.items():
+    print(f"{thread_name}: {dict(calls)}")`,
+    },
+    {
+        name: "threading.stack_size([size])",
+        description:
+            "Возвращает текущий размер стека потока (в байтах), используемый при создании новых потоков. Если передан аргумент size, устанавливает новый размер стека для всех последующих потоков. Значение 0 означает платформенный размер по умолчанию (обычно 8 МБ на Linux, 1 МБ на Windows). Минимально допустимое значение — 32768 байт (32 КБ). Изменение затрагивает только потоки, созданные после вызова. Важно для оптимизации памяти при запуске тысяч потоков или при глубокой рекурсии.",
+        syntax: `threading.stack_size([size])`,
+        arguments: [
+            {
+                name: "size",
+                description: "Размер стека в байтах. Должен быть кратен 4096 (размеру страницы памяти) и не менее 32768 байт. 0 — вернуть платформенный размер по умолчанию. Если size не передан, функция только возвращает текущее значение без изменений.",
+            },
+        ],
+        example: `import threading
+
+# Узнать текущий размер стека (0 = платформенный по умолчанию)
+print(threading.stack_size())  # 0
+
+# Установить 256 КБ — экономия памяти при создании множества потоков
+threading.stack_size(262144)   # 256 * 1024
+print(threading.stack_size())  # 262144
+
+def lightweight_worker():
+    # Неглубокий стек вызовов — 256 КБ достаточно
+    return sum(range(100))
+
+# Запускаем 1000 легковесных потоков с меньшим расходом памяти
+threads = [threading.Thread(target=lightweight_worker) for _ in range(100)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+
+# Вернуть платформенный размер по умолчанию
+threading.stack_size(0)
+
+# Для рекурсивных алгоритмов — увеличить стек
+threading.stack_size(8 * 1024 * 1024)  # 8 МБ
+
+def deep_recursion(n):
+    if n == 0:
+        return 0
+    return 1 + deep_recursion(n - 1)
+
+t = threading.Thread(target=lambda: deep_recursion(5000))
+t.start()
+t.join()
+
+threading.stack_size(0)  # Сбросить`,
+    },
+    // ─── threading.Thread ─────────────────────────────────────────────────────
+    {
+        name: "threading.Thread(group=None, target=None, name=None, args=(), kwargs={}, *, daemon=None)",
+        description:
+            "Конструктор класса Thread. Создаёт объект потока, но не запускает его — запуск выполняется вызовом start(). group зарезервирован для будущего расширения (ThreadGroup) и должен быть None. target — вызываемый объект, который будет выполнен в потоке через run(); если не передан, run() ничего не делает. name — строковое имя потока (по умолчанию автоматически формируется как 'Thread-N'). args и kwargs — позиционные и именованные аргументы для target. daemon — если True, поток является демоном: не препятствует завершению процесса; наследуется от создающего потока, если не задан явно.",
+        syntax: `threading.Thread(
+    group=None,
+    target=None,
+    name=None,
+    args=(),
+    kwargs={},
+    *,
+    daemon=None,
+)`,
+        arguments: [
+            {
+                name: "group",
+                description: "Зарезервировано. Должно быть None. Предназначено для будущей реализации ThreadGroup.",
+            },
+            {
+                name: "target",
+                description: "Вызываемый объект (функция, лямбда, метод), выполняемый в теле run(). None — поток запускается без задачи.",
+            },
+            {
+                name: "name",
+                description: "Строковое имя потока. Используется только для идентификации при отладке. По умолчанию: 'Thread-N' (N — порядковый номер).",
+            },
+            {
+                name: "args",
+                description: "Кортеж позиционных аргументов, передаваемых в target при вызове. По умолчанию ().",
+            },
+            {
+                name: "kwargs",
+                description: "Словарь именованных аргументов, передаваемых в target при вызове. По умолчанию {}.",
+            },
+            {
+                name: "daemon",
+                description: "Флаг демон-потока. True — процесс завершится, не дожидаясь окончания этого потока. False — процесс ждёт завершения потока. None (по умолчанию) — наследуется от создающего потока.",
+            },
+        ],
+        example: `import threading
+import time
+
+# Базовый запуск через target
+def worker(task_id: int, delay: float):
+    time.sleep(delay)
+    print(f"Задача {task_id} выполнена")
+
+t = threading.Thread(target=worker, args=(1, 0.5), name="WorkerThread")
+t.start()
+t.join()
+
+# Наследование через переопределение run()
+class PeriodicTask(threading.Thread):
+    def __init__(self, interval: float, task, name: str):
+        super().__init__(name=name, daemon=True)
+        self.interval = interval
+        self.task = task
+        self._stop_event = threading.Event()
+
+    def run(self):
+        while not self._stop_event.is_set():
+            self.task()
+            self._stop_event.wait(self.interval)
+
+    def stop(self):
+        self._stop_event.set()
+
+counter = 0
+def tick():
+    global counter
+    counter += 1
+    print(f"tick #{counter}")
+
+task = PeriodicTask(interval=0.3, task=tick, name="PeriodicTask")
+task.start()
+time.sleep(1.0)
+task.stop()
+task.join()`,
+    },
+    {
+        name: "threading.Thread.start()",
+        description:
+            "Запускает поток: передаёт выполнение методу run() в отдельном потоке ОС. Должен вызываться не более одного раза — повторный вызов бросает RuntimeError. После вызова start() поток переходит в состояние «живой» (is_alive() → True). Метод возвращает управление немедленно, не дожидаясь завершения потока. start() — единственный корректный способ запустить поток; прямой вызов run() выполнит код в текущем потоке без создания нового.",
+        syntax: `thread.start()`,
+        arguments: [],
+        example: `import threading
+import time
+
+results = []
+
+def fetch(url: str):
+    # имитация HTTP-запроса
+    time.sleep(0.2)
+    results.append(f"OK: {url}")
+
+urls = ["https://api.example.com/users",
+        "https://api.example.com/orders",
+        "https://api.example.com/products"]
+
+threads = [threading.Thread(target=fetch, args=(url,)) for url in urls]
+
+for t in threads:
+    t.start()   # Запуск каждого потока
+
+for t in threads:
+    t.join()    # Ожидание завершения всех
+
+print(results)  # ['OK: ...', 'OK: ...', 'OK: ...']
+
+# Ошибка: повторный вызов start()
+t = threading.Thread(target=lambda: None)
+t.start()
+t.join()
+# t.start()  # RuntimeError: threads can only be started once`,
+    },
+    {
+        name: "threading.Thread.run()",
+        description:
+            "Метод, содержащий код, выполняемый в потоке. При стандартном использовании вызывается автоматически из start() — вручную вызывать не следует. В базовой реализации вызывает target(*args, **kwargs), переданные в конструктор. Переопределяется при наследовании от Thread для определения логики потока непосредственно в классе. Если run() завершается исключением, оно перехватывается и передаётся в threading.excepthook(), а не распространяется в вызывающий поток.",
+        syntax: `thread.run()`,
+        arguments: [],
+        example: `import threading
+import time
+
+# Способ 1: run() вызывается автоматически через start()
+def job():
+    print("Выполняется в потоке")
+
+t = threading.Thread(target=job)
+t.start()   # Внутри вызывает t.run()
+t.join()
+
+# Способ 2: переопределение run() в подклассе
+class RetryThread(threading.Thread):
+    def __init__(self, task, retries: int = 3):
+        super().__init__()
+        self.task = task
+        self.retries = retries
+        self.result = None
+        self.error = None
+
+    def run(self):
+        for attempt in range(1, self.retries + 1):
+            try:
+                self.result = self.task()
+                return
+            except Exception as e:
+                print(f"Попытка {attempt} неудачна: {e}")
+                self.error = e
+                time.sleep(0.1 * attempt)
+
+attempt_count = 0
+def flaky():
+    global attempt_count
+    attempt_count += 1
+    if attempt_count < 3:
+        raise ConnectionError("Нет соединения")
+    return "Успех"
+
+worker = RetryThread(task=flaky, retries=5)
+worker.start()
+worker.join()
+print(worker.result)  # Успех`,
+    },
+    {
+        name: "threading.Thread.join(timeout=None)",
+        description:
+            "Блокирует вызывающий поток до завершения потока, для которого вызван join(). Если передан timeout (число секунд с плавающей точкой), ожидание прерывается по истечении таймаута — поток при этом не завершается принудительно. После join() следует проверять is_alive(), чтобы различить нормальное завершение от таймаута. Поток не может вызвать join() сам на себе (дедлок). join() можно вызывать несколько раз. Поток должен быть запущен через start() до вызова join().",
+        syntax: `thread.join(timeout=None)`,
+        arguments: [
+            {
+                name: "timeout",
+                description: "Максимальное время ожидания в секундах (float). None (по умолчанию) — ждать бесконечно. По истечении таймаута метод возвращает управление, не убивая поток — необходимо проверить is_alive().",
+            },
+        ],
+        example: `import threading
+import time
+
+def slow_task(duration: float):
+    time.sleep(duration)
+
+# Ожидание без таймаута
+t = threading.Thread(target=slow_task, args=(0.5,))
+t.start()
+t.join()           # Ждём завершения
+print(t.is_alive())  # False
+
+# Ожидание с таймаутом
+t = threading.Thread(target=slow_task, args=(5.0,))
+t.start()
+t.join(timeout=1.0)
+
+if t.is_alive():
+    print("Поток всё ещё работает — таймаут истёк")
+else:
+    print("Поток завершился в срок")
+
+# Graceful shutdown с отменой через Event
+def cancellable(stop_event: threading.Event):
+    while not stop_event.is_set():
+        time.sleep(0.1)
+
+stop = threading.Event()
+t = threading.Thread(target=cancellable, args=(stop,))
+t.start()
+
+time.sleep(0.5)
+stop.set()        # Просим поток остановиться
+t.join(timeout=1.0)
+
+if t.is_alive():
+    print("[WARN] Поток не успел завершиться")`,
+    },
+    {
+        name: "threading.Thread.name",
+        description:
+            "Строковый атрибут — имя потока. Используется исключительно для идентификации при отладке и логировании; на поведение потока не влияет. По умолчанию автоматически генерируется как 'Thread-N', где N — порядковый номер. Может быть задан в конструкторе (name=...) или переназначен через присваивание в любой момент. Главный поток всегда имеет имя 'MainThread'.",
+        syntax: `thread.name`,
+        arguments: [],
+        example: `import threading
+
+# Установка имени в конструкторе
+t = threading.Thread(target=lambda: None, name="DataLoader")
+print(t.name)  # DataLoader
+
+# Изменение имени после создания
+t.name = "DataLoader-v2"
+print(t.name)  # DataLoader-v2
+
+# Автоматическое имя
+t2 = threading.Thread(target=lambda: None)
+print(t2.name)  # Thread-1 (или другой номер)
+
+# Использование имени в логах
+import logging
+
+logging.basicConfig(
+    format="%(asctime)s [%(threadName)s] %(levelname)s %(message)s",
+    level=logging.DEBUG,
+)
+
+def worker():
+    logging.info("Начало работы")
+    logging.info("Завершение")
+
+threads = [
+    threading.Thread(target=worker, name=f"Worker-{i}")
+    for i in range(3)
+]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+# 2024-01-01 [Worker-0] INFO Начало работы
+# 2024-01-01 [Worker-1] INFO Начало работы  ...`,
+    },
+    {
+        name: "threading.Thread.ident",
+        description:
+            "Целочисленный идентификатор потока, назначаемый Python-интерпретатором в момент вызова start(). До запуска потока равен None. После завершения потока значение сохраняется (поток мёртв, но ident доступен). Идентификаторы могут переиспользоваться после завершения потоков. Совпадает со значением, возвращаемым threading.get_ident() внутри данного потока. Не является идентификатором ОС — для этого используйте native_id.",
+        syntax: `thread.ident`,
+        arguments: [],
+        example: `import threading
+import time
+
+def worker():
+    print(f"Внутри потока: {threading.get_ident()}")
+    time.sleep(0.1)
+
+t = threading.Thread(target=worker)
+
+print(t.ident)   # None — поток ещё не запущен
+
+t.start()
+print(t.ident)   # Число — идентификатор назначен
+
+t.join()
+print(t.ident)   # То же число — сохраняется после завершения
+print(t.is_alive())  # False
+
+# Проверка совпадения: ident потока == get_ident() внутри него
+captured_ident = None
+
+def capture():
+    global captured_ident
+    captured_ident = threading.get_ident()
+
+t2 = threading.Thread(target=capture)
+t2.start()
+t2.join()
+
+print(t2.ident == captured_ident)  # True`,
+    },
+    {
+        name: "threading.Thread.native_id",
+        description:
+            "Нативный целочисленный идентификатор потока, назначаемый операционной системой после запуска через start(). До запуска равен None. После завершения потока становится None (в отличие от ident, который сохраняется). На Linux соответствует TID (gettid()), на Windows — Thread ID. Уникален в рамках всей системы на время жизни потока. Позволяет коррелировать Python-потоки с системными инструментами: top, htop, perf, strace, WinDbg.",
+        syntax: `thread.native_id`,
+        arguments: [],
+        example: `import threading
+import time
+
+def worker():
+    native = threading.current_thread().native_id
+    print(f"Поток запущен, native_id={native}")
+    # На Linux: cat /proc/<pid>/task/<native_id>/status
+    time.sleep(0.2)
+
+t = threading.Thread(target=worker, name="Monitored")
+
+print(t.native_id)   # None — не запущен
+
+t.start()
+time.sleep(0.05)
+print(t.native_id)   # Число — ID потока в ОС, пока жив
+
+t.join()
+print(t.native_id)   # None — сброшен после завершения
+
+# Сравнение с ident:
+# ident  — сохраняется после завершения, может переиспользоваться
+# native_id — сбрасывается после завершения, уникален в системе
+
+def log_thread_info():
+    t = threading.current_thread()
+    print(f"name={t.name}, ident={t.ident}, native_id={t.native_id}")
+
+threading.Thread(target=log_thread_info, name="Probe").start()`,
+    },
+    {
+        name: "threading.Thread.is_alive()",
+        description:
+            "Возвращает True, если поток в данный момент жив: запущен через start() и ещё не завершил выполнение run(). Возвращает False до start() и после завершения run() (включая завершение с исключением). Используется после join(timeout=...) для проверки, завершился ли поток в отведённое время, или поток всё ещё работает. Вызов до start() не бросает исключение — просто возвращает False.",
+        syntax: `thread.is_alive()`,
+        arguments: [],
+        example: `import threading
+import time
+
+def slow_job(duration: float):
+    time.sleep(duration)
+
+t = threading.Thread(target=slow_job, args=(0.5,))
+
+print(t.is_alive())  # False — ещё не запущен
+
+t.start()
+print(t.is_alive())  # True — выполняется
+
+t.join()
+print(t.is_alive())  # False — завершён
+
+# Паттерн: join с таймаутом + проверка
+t2 = threading.Thread(target=slow_job, args=(10.0,))
+t2.start()
+
+deadline = 2.0
+t2.join(timeout=deadline)
+
+if t2.is_alive():
+    print(f"Поток не завершился за {deadline}с — принимаем меры")
+else:
+    print("Поток завершился в срок")
+
+# Мониторинг пула потоков
+workers = [threading.Thread(target=slow_job, args=(i * 0.1,)) for i in range(5)]
+for w in workers:
+    w.start()
+
+time.sleep(0.25)
+alive = [w.name for w in workers if w.is_alive()]
+print(f"Живых потоков: {len(alive)}")`,
+    },
+    {
+        name: "threading.Thread.daemon",
+        description:
+            "Булев атрибут — флаг демон-потока. Если True, поток является демоном: Python-процесс завершится, не дожидаясь окончания работы этого потока. Если False — процесс будет ждать завершения потока перед выходом. По умолчанию наследуется от создающего потока (главный поток — не демон, поэтому по умолчанию False). Должен быть установлен до вызова start() — попытка изменить значение у запущенного потока бросает RuntimeError. Полезен для фоновых задач: мониторинга, heartbeat, периодической очистки кэша.",
+        syntax: `thread.daemon`,
+        arguments: [],
+        example: `import threading
+import time
+
+# Обычный поток — процесс ждёт его завершения
+def normal_worker():
+    time.sleep(2.0)
+    print("Обычный поток завершён")
+
+# Демон-поток — процесс не ждёт
+def daemon_worker():
+    while True:
+        time.sleep(0.5)
+        print("Heartbeat от демона")
+
+t_normal = threading.Thread(target=normal_worker)
+t_daemon = threading.Thread(target=daemon_worker)
+
+t_daemon.daemon = True   # Установить ДО start()
+print(t_daemon.daemon)   # True
+
+t_normal.start()
+t_daemon.start()
+
+# Установка через конструктор (эквивалент)
+bg = threading.Thread(target=daemon_worker, daemon=True)
+
+# Попытка изменить daemon у запущенного потока:
+t_normal.start()
+# t_normal.daemon = False  # RuntimeError: cannot set daemon status of active thread
+
+t_normal.join()
+# После завершения t_normal процесс завершится,
+# не дожидаясь t_daemon (он демон)
+print("Процесс завершается, демон будет убит")`,
+    },
+    // ─── threading.Lock ───────────────────────────────────────────────────────
+    {
+        name: "threading.Lock()",
+        description:
+            "Создаёт примитивный замок (mutex) — простейший механизм синхронизации. Замок находится в одном из двух состояний: свободен (unlocked) или занят (locked). После создания — свободен. Только один поток может удерживать замок в любой момент; остальные потоки, вызвавшие acquire(), блокируются до освобождения. Lock — невозвратный (non-reentrant): если поток попытается повторно захватить уже удерживаемый им замок, возникнет дедлок. Для рекурсивного захвата используйте RLock. Реализован на уровне ОС и GIL-независим: работает корректно при CPU-bound и IO-bound нагрузках.",
+        syntax: `threading.Lock()`,
+        arguments: [],
+        example: `import threading
+
+lock = threading.Lock()
+counter = 0
+
+def increment(n: int):
+    global counter
+    for _ in range(n):
+        with lock:          # acquire() + release() автоматически
+            counter += 1    # атомарная критическая секция
+
+threads = [threading.Thread(target=increment, args=(10_000,)) for _ in range(5)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+
+print(counter)  # 50000 — гарантированно без гонок
+
+# Явный acquire/release (менее предпочтителен — нет защиты при исключении)
+lock2 = threading.Lock()
+lock2.acquire()
+try:
+    # критическая секция
+    pass
+finally:
+    lock2.release()
+
+# Проверка: Lock не реентерабелен
+lock3 = threading.Lock()
+lock3.acquire()
+# lock3.acquire()  # Дедлок! Поток заблокируется навсегда
+lock3.release()`,
+    },
+    {
+        name: "threading.Lock.acquire(blocking=True, timeout=-1)",
+        description:
+            "Захватывает замок. Если blocking=True (по умолчанию) и замок свободен — захватывает немедленно и возвращает True. Если замок занят — блокирует вызывающий поток до его освобождения. При blocking=False — неблокирующая попытка: возвращает True при успехе или False без ожидания. timeout задаёт максимальное время ожидания в секундах (float); -1 означает бесконечное ожидание. Комбинация blocking=False с timeout недопустима. Возвращает True при успешном захвате, False при таймауте или неблокирующей неудаче.",
+        syntax: `lock.acquire(blocking=True, timeout=-1)`,
+        arguments: [
+            {
+                name: "blocking",
+                description: "True (по умолчанию) — блокировать поток до захвата замка. False — попытаться захватить без блокировки; вернуть False, если замок занят.",
+            },
+            {
+                name: "timeout",
+                description: "Максимальное время ожидания в секундах (float). -1 (по умолчанию) — ждать бесконечно. Применяется только при blocking=True. При таймауте возвращает False.",
+            },
+        ],
+        example: `import threading
+import time
+
+lock = threading.Lock()
+
+# Обычный захват с блокировкой
+lock.acquire()         # True — захвачен
+lock.release()
+
+# Неблокирующая попытка
+if lock.acquire(blocking=False):
+    try:
+        print("Захвачен без ожидания")
+    finally:
+        lock.release()
+else:
+    print("Замок занят, пропускаем")
+
+# Захват с таймаутом
+def try_acquire(lock: threading.Lock, timeout: float) -> bool:
+    acquired = lock.acquire(timeout=timeout)
+    if acquired:
+        print(f"Захвачен за {timeout}с")
+        lock.release()
+    else:
+        print(f"Таймаут {timeout}с — замок не захвачен")
+    return acquired
+
+lock.acquire()   # Занимаем замок из главного потока
+
+t = threading.Thread(target=try_acquire, args=(lock, 1.0))
+t.start()        # Поток подождёт 1 секунду и вернёт False
+t.join()
+
+lock.release()
+
+t2 = threading.Thread(target=try_acquire, args=(lock, 1.0))
+t2.start()       # Теперь захватит сразу — вернёт True
+t2.join()`,
+    },
+    {
+        name: "threading.Lock.release()",
+        description:
+            "Освобождает замок. После освобождения один из потоков, ожидающих acquire(), получит замок. Порядок пробуждения не определён — зависит от ОС. Вызов release() на свободном замке бросает RuntimeError. Важно: release() может вызвать любой поток, не обязательно тот, который захватил замок — это отличает Lock от RLock. На практике освобождение должно происходить в том же потоке, что и захват; нарушение этого соглашения приводит к трудноотлаживаемым ошибкам. Предпочтительный способ использования — через контекстный менеджер with lock:.",
+        syntax: `lock.release()`,
+        arguments: [],
+        example: `import threading
+
+lock = threading.Lock()
+
+# Корректный паттерн через with (рекомендуется)
+with lock:
+    pass  # release() вызовется автоматически, даже при исключении
+
+# Ручной release() — нужен try/finally
+lock.acquire()
+try:
+    result = 42 // 1
+finally:
+    lock.release()  # Гарантированно освобождаем
+
+# Ошибка: release() на свободном замке
+try:
+    lock.release()   # RuntimeError: release unlocked lock
+except RuntimeError as e:
+    print(e)
+
+# Особенность: release() может вызвать любой поток
+lock.acquire()
+released = threading.Event()
+
+def release_from_another():
+    lock.release()   # Допустимо для Lock, но не для RLock
+    released.set()
+
+t = threading.Thread(target=release_from_another)
+t.start()
+released.wait()
+print("Замок освобождён из другого потока")  # Работает`,
+    },
+    {
+        name: "threading.Lock.locked()",
+        description:
+            "Возвращает True, если замок в данный момент захвачен каким-либо потоком, False — если свободен. Метод не блокирует вызывающий поток. Важно: результат отражает состояние на момент вызова и может устареть к следующей инструкции (TOCTOU — race condition). Не следует использовать locked() для принятия решения о вызове acquire() — это не атомарная операция. Полезен только для диагностики, логирования и написания тестов.",
+        syntax: `lock.locked()`,
+        arguments: [],
+        example: `import threading
+import time
+
+lock = threading.Lock()
+
+print(lock.locked())  # False — свободен
+
+lock.acquire()
+print(lock.locked())  # True — захвачен
+lock.release()
+print(lock.locked())  # False — освобождён
+
+# Использование для диагностики состояния
+def report_lock_state(name: str, lk: threading.Lock):
+    state = "захвачен" if lk.locked() else "свободен"
+    print(f"[{threading.current_thread().name}] {name}: {state}")
+
+def long_task():
+    with lock:
+        time.sleep(0.3)
+
+t = threading.Thread(target=long_task, name="Worker")
+t.start()
+time.sleep(0.1)
+
+report_lock_state("lock", lock)  # [MainThread] lock: захвачен
+
+t.join()
+report_lock_state("lock", lock)  # [MainThread] lock: свободен
+
+# Антипаттерн (race condition):
+# if not lock.locked():  ← между проверкой и acquire() другой поток может захватить замок
+#     lock.acquire()     ← НИКОГДА так не делайте
+# Правильно: просто lock.acquire() или with lock:`,
+    },
+    // ─── threading.RLock ──────────────────────────────────────────────────────
+    {
+        name: "threading.RLock()",
+        description:
+            "Создаёт реентерабельный замок (Reentrant Lock). В отличие от Lock, RLock может быть захвачен одним и тем же потоком несколько раз подряд без дедлока — внутри хранится счётчик захватов. Замок полностью освобождается только когда количество вызовов release() сравняется с количеством acquire(). Только поток-владелец (тот, кто первым захватил RLock) может его отпустить — release() из другого потока бросает RuntimeError. Применяется при рекурсивных вызовах методов одного класса, когда несколько методов захватывают один и тот же замок.",
+        syntax: `threading.RLock()`,
+        arguments: [],
+        example: `import threading
+
+rlock = threading.RLock()
+
+# Реентерабельный захват — не дедлок
+rlock.acquire()   # счётчик = 1
+rlock.acquire()   # счётчик = 2
+rlock.acquire()   # счётчик = 3
+rlock.release()   # счётчик = 2
+rlock.release()   # счётчик = 1
+rlock.release()   # счётчик = 0 — полностью свободен
+
+# Типичный паттерн: методы класса с общим RLock
+class BankAccount:
+    def __init__(self, balance: float):
+        self._balance = balance
+        self._lock = threading.RLock()
+
+    def deposit(self, amount: float):
+        with self._lock:            # захват 1
+            self._balance += amount
+
+    def withdraw(self, amount: float):
+        with self._lock:            # захват 1
+            if amount > self._balance:
+                raise ValueError("Недостаточно средств")
+            self._balance -= amount
+
+    def transfer(self, other: "BankAccount", amount: float):
+        with self._lock:            # захват 1
+            self.withdraw(amount)   # захват 2 (внутри withdraw — with self._lock)
+            other.deposit(amount)   # без проблем — RLock реентерабелен
+
+acc1 = BankAccount(1000)
+acc2 = BankAccount(500)
+acc1.transfer(acc2, 300)
+print(acc1._balance)  # 700
+print(acc2._balance)  # 800`,
+    },
+    {
+        name: "threading.RLock.acquire(blocking=True, timeout=-1)",
+        description:
+            "Захватывает реентерабельный замок. Если замок свободен или уже принадлежит вызывающему потоку — захватывает немедленно, увеличивает внутренний счётчик рекурсии на 1 и возвращает True. Если замок удерживается другим потоком: при blocking=True — блокируется до освобождения; при blocking=False — немедленно возвращает False. timeout задаёт максимальное время ожидания в секундах. Поведение аналогично Lock.acquire(), но с учётом счётчика рекурсии и привязки к потоку-владельцу.",
+        syntax: `rlock.acquire(blocking=True, timeout=-1)`,
+        arguments: [
+            {
+                name: "blocking",
+                description: "True (по умолчанию) — блокировать поток до захвата. False — неблокирующая попытка; возвращает False, если замок занят другим потоком.",
+            },
+            {
+                name: "timeout",
+                description: "Максимальное время ожидания в секундах (float). -1 — бесконечное ожидание. Применяется только при blocking=True.",
+            },
+        ],
+        example: `import threading
+
+rlock = threading.RLock()
+
+# Реентерабельные вызовы из одного потока
+print(rlock.acquire())   # True, счётчик = 1
+print(rlock.acquire())   # True, счётчик = 2 — нет блокировки!
+rlock.release()          # счётчик = 1
+rlock.release()          # счётчик = 0
+
+# blocking=False: попытка захвата без блокировки
+rlock.acquire()                         # счётчик = 1, владелец — главный поток
+
+result = threading.Event()
+
+def try_from_other():
+    # Другой поток не может захватить — замок удерживается главным
+    acquired = rlock.acquire(blocking=False)
+    result.acquired = acquired
+    result.set()
+
+t = threading.Thread(target=try_from_other)
+t.start()
+result.wait()
+
+print(result.acquired)   # False — другой поток не получил замок
+rlock.release()
+
+# Захват с таймаутом из другого потока
+rlock.acquire()
+
+def wait_with_timeout():
+    ok = rlock.acquire(timeout=0.5)
+    print("Захвачен" if ok else "Таймаут")
+
+t2 = threading.Thread(target=wait_with_timeout)
+t2.start()
+t2.join()   # Таймаут — главный поток держит замок
+
+rlock.release()`,
+    },
+    {
+        name: "threading.RLock.release()",
+        description:
+            "Освобождает реентерабельный замок: уменьшает внутренний счётчик рекурсии на 1. Замок становится полностью свободным только при достижении счётчиком нуля — тогда другой поток может его захватить. Вызов release() допустим только из потока-владельца (того, кто захватил RLock первым). Попытка вызвать release() из другого потока или на незахваченном замке бросает RuntimeError. Количество вызовов release() должно точно совпадать с количеством acquire() — иначе замок останется заблокированным (утечка) или будет брошено исключение.",
+        syntax: `rlock.release()`,
+        arguments: [],
+        example: `import threading
+
+rlock = threading.RLock()
+
+# Корректный баланс acquire/release
+rlock.acquire()   # счётчик = 1
+rlock.acquire()   # счётчик = 2
+rlock.acquire()   # счётчик = 3
+
+rlock.release()   # счётчик = 2
+rlock.release()   # счётчик = 1
+rlock.release()   # счётчик = 0 — свободен
+
+# with автоматически балансирует вызовы
+with rlock:       # acquire, счётчик = 1
+    with rlock:   # acquire, счётчик = 2
+        pass      # release, счётчик = 1
+    pass          # release, счётчик = 0
+
+# Ошибка: release из другого потока
+rlock.acquire()
+
+def wrong_release():
+    try:
+        rlock.release()    # RuntimeError: не владелец
+    except RuntimeError as e:
+        print(f"Ошибка: {e}")
+
+t = threading.Thread(target=wrong_release)
+t.start()
+t.join()
+
+rlock.release()   # Корректно — из потока-владельца
+
+# Ошибка: release на свободном замке
+try:
+    rlock.release()   # RuntimeError
+except RuntimeError as e:
+    print(f"Ошибка: {e}")`,
+    },
+    // ─── threading.Condition ──────────────────────────────────────────────────
+    {
+        name: "threading.Condition(lock=None)",
+        description:
+            "Создаёт условную переменную — механизм синхронизации, позволяющий потокам ждать наступления некоторого условия и получать уведомления от других потоков. Внутри использует замок (Lock или RLock): если lock не передан, создаётся новый RLock. Condition обязательно используется как контекстный менеджер (with cond:) — это захватывает внутренний замок. Классический паттерн: производитель изменяет состояние и вызывает notify(), потребитель в цикле вызывает wait() пока условие не выполнено.",
+        syntax: `threading.Condition(lock=None)`,
+        arguments: [
+            {
+                name: "lock",
+                description: "Объект Lock или RLock, используемый как базовый замок. None (по умолчанию) — создаётся новый RLock. Передача явного замка полезна когда несколько Condition разделяют один Lock.",
+            },
+        ],
+        example: `import threading
+from collections import deque
+
+# Классический паттерн «производитель — потребитель»
+buffer: deque[int] = deque(maxlen=5)
+cond = threading.Condition()
+
+def producer():
+    for i in range(10):
+        with cond:
+            while len(buffer) == buffer.maxlen:
+                cond.wait()          # Ждём место в буфере
+            buffer.append(i)
+            print(f"Положил: {i}, буфер: {list(buffer)}")
+            cond.notify_all()        # Уведомляем потребителей
+
+def consumer(name: str):
+    consumed = 0
+    while consumed < 5:
+        with cond:
+            while not buffer:
+                cond.wait()          # Ждём данные
+            item = buffer.popleft()
+            consumed += 1
+            print(f"{name} взял: {item}")
+            cond.notify_all()        # Уведомляем производителя
+
+p = threading.Thread(target=producer)
+c1 = threading.Thread(target=consumer, args=("C1",))
+c2 = threading.Thread(target=consumer, args=("C2",))
+
+for t in [p, c1, c2]:
+    t.start()
+for t in [p, c1, c2]:
+    t.join()`,
+    },
+    {
+        name: "threading.Condition.acquire(*args, **kwargs)",
+        description:
+            "Захватывает внутренний замок Condition. Принимает те же аргументы, что и Lock.acquire() или RLock.acquire() в зависимости от базового замка. На практике используется редко напрямую — Condition как контекстный менеджер (with cond:) автоматически вызывает acquire() при входе и release() при выходе. Явный вызов необходим только в нестандартных сценариях: например, при ручном управлении блокировкой вне блока with.",
+        syntax: `cond.acquire(*args, **kwargs)`,
+        arguments: [
+            {
+                name: "*args, **kwargs",
+                description: "Передаются в acquire() базового замка без изменений. Для Lock: blocking=True, timeout=-1. Для RLock — те же параметры с учётом реентерабельности.",
+            },
+        ],
+        example: `import threading
+
+cond = threading.Condition()
+
+# Предпочтительный способ — через with (эквивалент acquire/release)
+with cond:
+    pass  # cond.acquire() + cond.release() вызваны автоматически
+
+# Явный вызов — только если нужен нестандартный контроль
+acquired = cond.acquire(blocking=False)
+if acquired:
+    try:
+        # критическая секция
+        data_ready = True
+        cond.notify_all()
+    finally:
+        cond.release()
+else:
+    print("Замок занят, пропускаем")
+
+# Передача явного Lock нескольким Condition
+shared_lock = threading.Lock()
+cond_full  = threading.Condition(lock=shared_lock)
+cond_empty = threading.Condition(lock=shared_lock)
+
+# Обе Condition разделяют один замок — acquire/release синхронизированы
+with cond_full:      # захватывает shared_lock
+    pass             # cond_empty.acquire() здесь заблокировал бы — тот же замок`,
+    },
+    {
+        name: "threading.Condition.release()",
+        description:
+            "Освобождает внутренний замок Condition. Вызывается автоматически при выходе из блока with cond:. Прямой вызов нужен только при ручном управлении, когда acquire() тоже вызывался явно. Семантика полностью совпадает с release() базового замка (Lock или RLock). Вызов на незахваченном замке бросает RuntimeError.",
+        syntax: `cond.release()`,
+        arguments: [],
+        example: `import threading
+
+cond = threading.Condition()
+shared_state = {"ready": False}
+
+# Стандартный паттерн с автоматическим release через with
+def set_ready():
+    with cond:                    # acquire
+        shared_state["ready"] = True
+        cond.notify_all()
+    # release вызван автоматически
+
+def wait_ready():
+    with cond:                    # acquire
+        while not shared_state["ready"]:
+            cond.wait()
+        print("Состояние готово!")
+    # release вызван автоматически
+
+# Ручное управление (эквивалент с try/finally)
+def set_ready_manual():
+    cond.acquire()
+    try:
+        shared_state["ready"] = True
+        cond.notify_all()
+    finally:
+        cond.release()            # Гарантированное освобождение
+
+t1 = threading.Thread(target=wait_ready)
+t2 = threading.Thread(target=set_ready)
+t1.start()
+t2.start()
+t1.join(); t2.join()`,
+    },
+    {
+        name: "threading.Condition.wait(timeout=None)",
+        description:
+            "Атомарно освобождает внутренний замок и блокирует поток до получения notify()/notify_all() или истечения таймаута. После пробуждения повторно захватывает замок перед возвратом. Возвращает True, если уведомление получено до таймаута, False — если истёк таймаут. Должен вызываться только при удерживаемом замке (внутри with cond: или после acquire()). Пробуждение от notify() не гарантирует выполнения условия — всегда проверяйте предикат в цикле while: ложные пробуждения (spurious wakeup) возможны на уровне ОС.",
+        syntax: `cond.wait(timeout=None)`,
+        arguments: [
+            {
+                name: "timeout",
+                description: "Максимальное время ожидания в секундах (float). None (по умолчанию) — ждать бесконечно. При таймауте возвращает False, но не бросает исключение.",
+            },
+        ],
+        example: `import threading
+import time
+
+cond = threading.Condition()
+data: list[int] = []
+
+def consumer():
+    with cond:
+        # Цикл обязателен — защита от spurious wakeup
+        while not data:
+            timed_out = not cond.wait(timeout=2.0)
+            if timed_out:
+                print("Таймаут — данных нет")
+                return
+        print(f"Получено: {data.pop(0)}")
+
+def producer():
+    time.sleep(0.5)
+    with cond:
+        data.append(42)
+        cond.notify()
+
+t_consumer = threading.Thread(target=consumer)
+t_producer = threading.Thread(target=producer)
+
+t_consumer.start()
+t_producer.start()
+t_consumer.join()
+t_producer.join()
+# Получено: 42
+
+# Демонстрация таймаута без производителя
+t_timeout = threading.Thread(target=consumer)
+t_timeout.start()
+t_timeout.join()
+# Таймаут — данных нет`,
+    },
+    {
+        name: "threading.Condition.wait_for(predicate, timeout=None)",
+        description:
+            "Ожидает, пока вызов predicate() не вернёт истинное значение. Внутри реализован как цикл с wait(): проверяет предикат, и если он False — вызывает wait() снова. Возвращает последнее значение, возвращённое predicate() (истинное при успехе, ложное при таймауте). Удобная альтернатива ручному циклу while not condition: cond.wait() — устраняет шаблонный код и корректно обрабывает spurious wakeup. Должен вызываться при удерживаемом замке.",
+        syntax: `cond.wait_for(predicate, timeout=None)`,
+        arguments: [
+            {
+                name: "predicate",
+                description: "Вызываемый объект без аргументов, возвращающий булево значение. Вызывается при каждом пробуждении. Ожидание продолжается, пока возвращает False.",
+            },
+            {
+                name: "timeout",
+                description: "Максимальное суммарное время ожидания в секундах (float). None — ждать бесконечно. При таймауте возвращает последнее значение predicate() (обычно False).",
+            },
+        ],
+        example: `import threading
+import time
+
+cond = threading.Condition()
+queue: list[str] = []
+done = False
+
+def worker():
+    with cond:
+        # Ждём пока очередь непуста или работа завершена
+        result = cond.wait_for(lambda: bool(queue) or done, timeout=5.0)
+        if not result:
+            print("Таймаут")
+            return
+        if queue:
+            print(f"Обработано: {queue.pop(0)}")
+        else:
+            print("Завершение работы")
+
+def dispatcher():
+    time.sleep(0.3)
+    with cond:
+        queue.append("task-1")
+        cond.notify_all()
+
+t_worker = threading.Thread(target=worker)
+t_dispatch = threading.Thread(target=dispatcher)
+
+t_worker.start()
+t_dispatch.start()
+t_worker.join()
+t_dispatch.join()
+# Обработано: task-1
+
+# Сравнение: wait_for vs ручной цикл
+# Ручной (многословный):
+# while not (bool(queue) or done):
+#     cond.wait()
+#
+# wait_for (лаконичный — полный эквивалент):
+# cond.wait_for(lambda: bool(queue) or done)`,
+    },
+    {
+        name: "threading.Condition.notify(n=1)",
+        description:
+            "Будит не более n потоков, ожидающих на данной Condition (вызвавших wait()). Порядок пробуждения не определён. Если ожидающих потоков меньше n — будятся все доступные. Вызов без ожидающих потоков не является ошибкой — уведомление теряется (в отличие от Event). Должен вызываться при удерживаемом замке — иначе RuntimeError. После notify() разбуженные потоки не получают управление сразу: они ждут, пока вызывающий поток не отпустит замок.",
+        syntax: `cond.notify(n=1)`,
+        arguments: [
+            {
+                name: "n",
+                description: "Количество потоков, которые нужно разбудить. По умолчанию 1. Если ожидающих меньше n — будятся все.",
+            },
+        ],
+        example: `import threading
+import time
+
+cond = threading.Condition()
+results: list[str] = []
+
+def waiter(name: str):
+    with cond:
+        cond.wait()
+        results.append(name)
+        print(f"{name} проснулся")
+
+threads = [threading.Thread(target=waiter, args=(f"T{i}",)) for i in range(4)]
+for t in threads:
+    t.start()
+
+time.sleep(0.1)  # Даём потокам встать на ожидание
+
+# Будим только 2 из 4
+with cond:
+    cond.notify(n=2)
+
+time.sleep(0.1)
+print(f"Проснулось: {len(results)}")  # 2
+
+# Будим оставшихся
+with cond:
+    cond.notify_all()
+
+for t in threads:
+    t.join()
+print(f"Всего проснулось: {len(results)}")  # 4
+
+# Уведомление без ожидающих — безопасно, но теряется
+with cond:
+    cond.notify()   # Нет ожидающих — ничего не происходит`,
+    },
+    {
+        name: "threading.Condition.notify_all()",
+        description:
+            "Будит все потоки, ожидающие на данной Condition. Эквивалент notify(n=<число всех ожидающих>). Используется когда изменение состояния релевантно для нескольких потоков — например, при завершении работы, широковещательном событии или изменении общего ресурса, который могут использовать несколько потребителей. Вызов без ожидающих потоков безопасен. Должен вызываться при удерживаемом замке. После пробуждения каждый поток проверяет свой предикат и может снова уйти в wait(), если условие ещё не выполнено.",
+        syntax: `cond.notify_all()`,
+        arguments: [],
+        example: `import threading
+import time
+
+cond = threading.Condition()
+config: dict = {}
+config_loaded = False
+
+def config_waiter(key: str):
+    with cond:
+        cond.wait_for(lambda: config_loaded)
+        print(f"Воркер видит {key}={config.get(key)}")
+
+def load_config():
+    global config_loaded
+    time.sleep(0.3)
+    with cond:
+        config.update({"db_host": "localhost", "timeout": 30})
+        config_loaded = True
+        cond.notify_all()   # Будим всех ожидающих воркеров сразу
+
+workers = [
+    threading.Thread(target=config_waiter, args=(key,))
+    for key in ["db_host", "timeout"]
+]
+loader = threading.Thread(target=load_config)
+
+for t in workers:
+    t.start()
+loader.start()
+
+for t in workers + [loader]:
+    t.join()
+# Воркер видит db_host=localhost
+# Воркер видит timeout=30
+
+# notify() vs notify_all():
+# notify()     — если только один потребитель должен отреагировать
+# notify_all() — если все ожидающие должны проверить условие`,
+    },
+    // ─── threading.Semaphore ──────────────────────────────────────────────────
+    {
+        name: "threading.Semaphore(value=1)",
+        description:
+            "Создаёт семафор — механизм синхронизации на основе внутреннего счётчика. При создании счётчик равен value. Каждый вызов acquire() уменьшает счётчик; если счётчик равен 0 — поток блокируется. Каждый вызов release() увеличивает счётчик и будит один из ожидающих потоков. Используется для ограничения числа одновременных доступов к ресурсу (пул соединений, rate limiting, ограничение параллелизма). В отличие от Lock, семафор может быть освобождён из любого потока и допускает значение > 1. Для строгого ограничения (без превышения исходного value) используйте BoundedSemaphore.",
+        syntax: `threading.Semaphore(value=1)`,
+        arguments: [
+            {
+                name: "value",
+                description: "Начальное значение счётчика (целое, ≥ 0). Определяет максимальное число потоков, которые могут одновременно находиться в критической секции. По умолчанию 1 — поведение аналогично Lock, но без привязки к потоку-владельцу.",
+            },
+        ],
+        example: `import threading
+import time
+
+# Ограничение: не более 3 одновременных «соединений»
+MAX_CONNECTIONS = 3
+sem = threading.Semaphore(value=MAX_CONNECTIONS)
+active = 0
+lock = threading.Lock()
+
+def connect(worker_id: int):
+    global active
+    with sem:                          # acquire при входе, release при выходе
+        with lock:
+            active += 1
+            print(f"[{worker_id}] подключён, активных: {active}")
+        time.sleep(0.3)               # имитация работы
+        with lock:
+            active -= 1
+            print(f"[{worker_id}] отключён, активных: {active}")
+
+threads = [threading.Thread(target=connect, args=(i,)) for i in range(8)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+# В любой момент времени активных ≤ 3
+
+# Rate limiting: не более N запросов в полёте
+api_sem = threading.Semaphore(5)
+
+def api_call(endpoint: str):
+    with api_sem:
+        # не более 5 запросов одновременно
+        time.sleep(0.1)`,
+    },
+    {
+        name: "threading.Semaphore.acquire(blocking=True, timeout=-1)",
+        description:
+            "Захватывает семафор: уменьшает внутренний счётчик на 1 и возвращает True. Если счётчик уже равен 0 и blocking=True — блокирует поток до тех пор, пока другой поток не вызовет release(). При blocking=False — немедленно возвращает False, не блокируя. timeout задаёт максимальное время ожидания в секундах. Возвращает True при успехе, False при таймауте или при blocking=False когда счётчик равен 0. Семафор поддерживает контекстный менеджер with sem:, который вызывает acquire() и release() автоматически.",
+        syntax: `sem.acquire(blocking=True, timeout=-1)`,
+        arguments: [
+            {
+                name: "blocking",
+                description: "True (по умолчанию) — блокировать поток до захвата. False — вернуть False немедленно, если счётчик равен 0.",
+            },
+            {
+                name: "timeout",
+                description: "Максимальное время ожидания в секундах (float). -1 — бесконечное ожидание. Применяется только при blocking=True.",
+            },
+        ],
+        example: `import threading
+import time
+
+sem = threading.Semaphore(2)
+
+# Базовый захват через with (рекомендуется)
+with sem:
+    print("Внутри критической секции")
+
+# Неблокирующий захват
+if sem.acquire(blocking=False):
+    try:
+        print("Захвачен без ожидания")
+    finally:
+        sem.release()
+else:
+    print("Семафор исчерпан")
+
+# Захват с таймаутом
+sem2 = threading.Semaphore(1)
+sem2.acquire()   # Исчерпываем семафор
+
+def try_acquire():
+    ok = sem2.acquire(timeout=0.5)
+    if ok:
+        print("Захвачен")
+        sem2.release()
+    else:
+        print("Таймаут 0.5с — семафор недоступен")
+
+t = threading.Thread(target=try_acquire)
+t.start()
+t.join()
+# Таймаут 0.5с — семафор недоступен
+
+sem2.release()
+
+# Rate limiter с таймаутом
+rate_sem = threading.Semaphore(10)
+
+def rate_limited_task(task_id: int):
+    if not rate_sem.acquire(timeout=1.0):
+        print(f"Задача {task_id} отклонена (перегрузка)")
+        return
+    try:
+        time.sleep(0.05)
+    finally:
+        rate_sem.release()`,
+    },
+    {
+        name: "threading.Semaphore.release(n=1)",
+        description:
+            "Освобождает семафор: увеличивает внутренний счётчик на n и будит до n ожидающих потоков. По умолчанию n=1. В отличие от Lock, семафор может быть освобождён любым потоком — не только тем, кто его захватил. Для обычного Semaphore счётчик может превысить начальное значение value (если release() вызывается больше раз, чем acquire()) — это не ошибка, но сигнализирует о логической ошибке. Для предотвращения превышения используйте BoundedSemaphore, который бросает ValueError при попытке release() сверх лимита.",
+        syntax: `sem.release(n=1)`,
+        arguments: [
+            {
+                name: "n",
+                description: "Количество единиц, на которое увеличивается счётчик. По умолчанию 1. Будит до n ожидающих потоков. Добавлено в Python 3.9.",
+            },
+        ],
+        example: `import threading
+import time
+
+sem = threading.Semaphore(0)   # Начальный счётчик = 0
+
+results: list[str] = []
+
+def worker(name: str):
+    sem.acquire()              # Ждём разрешения
+    results.append(name)
+    print(f"{name} выполнен")
+
+workers = [threading.Thread(target=worker, args=(f"W{i}",)) for i in range(4)]
+for w in workers:
+    w.start()
+
+time.sleep(0.1)
+
+# Разблокируем сразу 3 потока одним вызовом (Python 3.9+)
+sem.release(n=3)
+time.sleep(0.1)
+print(f"Выполнено: {len(results)}")   # 3
+
+# Разблокируем последний
+sem.release()
+for w in workers:
+    w.join()
+print(f"Итого: {len(results)}")       # 4
+
+# BoundedSemaphore — защита от лишних release()
+bounded = threading.BoundedSemaphore(2)
+bounded.acquire()
+bounded.release()
+try:
+    bounded.release()   # Счётчик стал бы 3 > 2 — ValueError
+    bounded.release()
+except ValueError as e:
+    print(f"Превышение лимита: {e}")`,
+    },
+    // ─── threading.BoundedSemaphore ───────────────────────────────────────────
+    {
+        name: "threading.BoundedSemaphore(value=1)",
+        description:
+            "Создаёт ограниченный семафор — вариант Semaphore, который не позволяет счётчику превысить начальное значение value. При попытке вызвать release() сверх лимита бросает ValueError. Это делает BoundedSemaphore предпочтительным выбором для большинства задач: лишний release() свидетельствует об ошибке логики (потеря пары acquire/release), а не о допустимом состоянии. Интерфейс полностью идентичен Semaphore — отличие только в поведении release() при превышении лимита.",
+        syntax: `threading.BoundedSemaphore(value=1)`,
+        arguments: [
+            {
+                name: "value",
+                description: "Начальное значение счётчика (целое, ≥ 0) и одновременно верхний предел. Счётчик никогда не превысит это значение. По умолчанию 1.",
+            },
+        ],
+        example: `import threading
+import time
+
+# Пул из 3 «воркеров» — не более 3 одновременно
+MAX_WORKERS = 3
+sem = threading.BoundedSemaphore(value=MAX_WORKERS)
+
+def db_query(query_id: int):
+    with sem:   # acquire: занять слот; release: освободить
+        print(f"[{query_id}] выполняется запрос")
+        time.sleep(0.2)
+        print(f"[{query_id}] запрос завершён")
+
+threads = [threading.Thread(target=db_query, args=(i,)) for i in range(8)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+
+# Защита от логической ошибки двойного release()
+sem2 = threading.BoundedSemaphore(2)
+sem2.acquire()
+sem2.release()   # OK — счётчик = 2
+try:
+    sem2.release()   # ValueError: счётчик превысил бы 2
+except ValueError as e:
+    print(f"Ошибка: {e}")
+
+# Сравнение:
+# Semaphore(2).release() после двух release() — счётчик тихо стал 3 (ошибка не видна)
+# BoundedSemaphore(2).release() — немедленно ValueError (ошибка обнаружена)`,
+    },
+    {
+        name: "threading.BoundedSemaphore.acquire(blocking=True, timeout=-1)",
+        description:
+            "Поведение полностью идентично Semaphore.acquire(): уменьшает счётчик на 1, при счётчике равном 0 блокирует поток (или возвращает False при blocking=False). Возвращает True при успехе, False при таймауте или неблокирующей неудаче. BoundedSemaphore не добавляет ограничений на acquire() — отличие от Semaphore только в release().",
+        syntax: `sem.acquire(blocking=True, timeout=-1)`,
+        arguments: [
+            {
+                name: "blocking",
+                description: "True (по умолчанию) — блокировать поток до захвата. False — немедленно вернуть False, если счётчик равен 0.",
+            },
+            {
+                name: "timeout",
+                description: "Максимальное время ожидания в секундах (float). -1 — бесконечное ожидание. Применяется только при blocking=True.",
+            },
+        ],
+        example: `import threading
+import time
+
+sem = threading.BoundedSemaphore(3)
+
+# Стандартный захват через with
+with sem:
+    print("Слот занят")   # release вызовется автоматически
+
+# Неблокирующая попытка — проверить доступность без ожидания
+sem.acquire(); sem.acquire(); sem.acquire()  # Исчерпываем все 3 слота
+
+if not sem.acquire(blocking=False):
+    print("Все слоты заняты — пропускаем задачу")
+
+# Освобождаем слоты
+sem.release(); sem.release(); sem.release()
+
+# Захват с таймаутом — circuit breaker
+def call_with_limit(task_id: int):
+    if not sem.acquire(timeout=0.5):
+        print(f"[{task_id}] Перегрузка, задача отклонена")
+        return
+    try:
+        time.sleep(0.3)
+        print(f"[{task_id}] Выполнено")
+    finally:
+        sem.release()
+
+# Запускаем 6 задач при лимите 3
+threads = [threading.Thread(target=call_with_limit, args=(i,)) for i in range(6)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()`,
+    },
+    {
+        name: "threading.BoundedSemaphore.release(n=1)",
+        description:
+            "Освобождает семафор: увеличивает счётчик на n. В отличие от Semaphore.release(), бросает ValueError если счётчик превысит начальное значение value, заданное при создании. Это ключевое отличие BoundedSemaphore: превышение лимита немедленно сигнализирует о нарушении баланса acquire/release. Аргумент n=1 по умолчанию; передача n > 1 доступна начиная с Python 3.9.",
+        syntax: `sem.release(n=1)`,
+        arguments: [
+            {
+                name: "n",
+                description: "Количество единиц, на которое увеличивается счётчик. По умолчанию 1. Если итоговое значение превысит начальный value — бросается ValueError.",
+            },
+        ],
+        example: `import threading
+
+sem = threading.BoundedSemaphore(3)
+
+# Нормальный цикл acquire/release
+sem.acquire()   # счётчик = 2
+sem.acquire()   # счётчик = 1
+sem.release()   # счётчик = 2
+sem.release()   # счётчик = 3 (максимум)
+
+# Превышение лимита — ValueError
+try:
+    sem.release()   # счётчик стал бы 4 > 3
+except ValueError as e:
+    print(f"Ошибка: {e}")  # semaphore released too many times
+
+# release(n=2) — разблокировать сразу несколько (Python 3.9+)
+sem2 = threading.BoundedSemaphore(5)
+sem2.acquire()   # счётчик = 4
+sem2.acquire()   # счётчик = 3
+sem2.release(n=2)  # счётчик = 5 — OK
+
+try:
+    sem2.release(n=2)  # счётчик стал бы 7 > 5 — ValueError
+except ValueError as e:
+    print(f"Ошибка: {e}")
+
+# Практический паттерн: release в finally гарантирует баланс
+sem3 = threading.BoundedSemaphore(2)
+sem3.acquire()
+try:
+    # критическая секция
+    result = 42
+finally:
+    sem3.release()   # Всегда освобождаем, даже при исключении`,
+    },
+    // ─── threading.Event ──────────────────────────────────────────────────────
+    {
+        name: "threading.Event()",
+        description:
+            "Создаёт объект события — простейший механизм сигнализации между потоками. Внутри хранит булев флаг, изначально False. Потоки могут ждать установки флага через wait(), устанавливать его через set() и сбрасывать через clear(). В отличие от Condition, Event не требует захвата замка для использования и не теряет сигнал: если set() вызван до wait(), то wait() немедленно вернёт управление. Подходит для одноразовых событий (старт, завершение, отмена) и широковещательной сигнализации «один → многим».",
+        syntax: `threading.Event()`,
+        arguments: [],
+        example: `import threading
+import time
+
+start_event = threading.Event()
+stop_event  = threading.Event()
+
+def worker(name: str):
+    print(f"{name}: жду сигнала старта...")
+    start_event.wait()           # Блокируется до set()
+    print(f"{name}: начинаю работу")
+
+    while not stop_event.is_set():
+        time.sleep(0.1)          # имитация работы
+
+    print(f"{name}: остановлен")
+
+threads = [threading.Thread(target=worker, args=(f"W{i}",)) for i in range(3)]
+for t in threads:
+    t.start()
+
+time.sleep(0.3)
+start_event.set()    # Будим всех воркеров одновременно
+
+time.sleep(0.5)
+stop_event.set()     # Сигнал остановки
+
+for t in threads:
+    t.join()
+
+# Особенность: set() до wait() — wait() не блокируется
+e = threading.Event()
+e.set()
+e.wait()   # Немедленно возвращает True — флаг уже установлен`,
+    },
+    {
+        name: "threading.Event.is_set()",
+        description:
+            "Возвращает True если внутренний флаг установлен (set() был вызван и после этого clear() не вызывался), False — иначе. Не блокирует вызывающий поток. Используется для неблокирующей проверки состояния события — например, в рабочем цикле потока перед выполнением очередной итерации. Результат отражает состояние на момент вызова и может измениться в следующей инструкции — не используйте is_set() для принятия решений, требующих атомарности (для этого есть wait()).",
+        syntax: `event.is_set()`,
+        arguments: [],
+        example: `import threading
+import time
+
+event = threading.Event()
+
+print(event.is_set())   # False — флаг не установлен
+
+event.set()
+print(event.is_set())   # True
+
+event.clear()
+print(event.is_set())   # False
+
+# Типичный паттерн: рабочий цикл с флагом остановки
+stop = threading.Event()
+
+def background_task():
+    while not stop.is_set():   # Проверяем флаг в каждой итерации
+        # ... полезная работа ...
+        time.sleep(0.1)
+    print("Фоновая задача завершена")
+
+t = threading.Thread(target=background_task, daemon=True)
+t.start()
+
+time.sleep(0.5)
+stop.set()    # Сигнализируем потоку остановиться
+t.join()
+
+# Отличие is_set() от wait():
+# is_set() — мгновенная проверка, не блокирует
+# wait()   — блокирует до установки флага (или таймаута)`,
+    },
+    {
+        name: "threading.Event.set()",
+        description:
+            "Устанавливает внутренний флаг в True и будит все потоки, ожидающие на wait(). После вызова set() все последующие вызовы wait() немедленно возвращают True — флаг остаётся установленным до явного вызова clear(). Это ключевое отличие от Condition.notify(): сигнал Event не теряется, даже если ни один поток не ждёт в момент вызова set(). Безопасно вызывать из любого потока в любой момент.",
+        syntax: `event.set()`,
+        arguments: [],
+        example: `import threading
+import time
+
+ready = threading.Event()
+
+def slow_init():
+    print("Инициализация...")
+    time.sleep(1.0)
+    ready.set()              # Сигнал: инициализация завершена
+    print("Готово, сигнал отправлен")
+
+def dependent_task(name: str):
+    print(f"{name}: жду готовности")
+    ready.wait()             # Ждём set()
+    print(f"{name}: начинаю работу")
+
+# Несколько потоков ждут одного события
+tasks = [threading.Thread(target=dependent_task, args=(f"Task-{i}",))
+         for i in range(4)]
+init = threading.Thread(target=slow_init)
+
+for t in tasks:
+    t.start()
+init.start()
+
+for t in tasks + [init]:
+    t.join()
+
+# Сигнал не теряется: set() до wait()
+e = threading.Event()
+e.set()                      # Устанавливаем заранее
+
+def late_waiter():
+    e.wait()                 # Немедленно вернёт True
+    print("Не пропустил сигнал!")
+
+t = threading.Thread(target=late_waiter)
+t.start()
+t.join()`,
+    },
+    {
+        name: "threading.Event.clear()",
+        description:
+            "Сбрасывает внутренний флаг в False. После вызова clear() потоки, вызывающие wait(), снова будут блокироваться до следующего set(). Потоки, уже пробуждённые предыдущим set() и находящиеся между wait() и следующей проверкой, не затрагиваются. clear() используется для повторного использования одного Event в цикле: установить → обработать → сбросить → ждать снова. При этом важно следить за гонкой set()/clear(): если clear() вызывается слишком рано, новый ожидающий поток может пропустить сигнал.",
+        syntax: `event.clear()`,
+        arguments: [],
+        example: `import threading
+import time
+import random
+
+event = threading.Event()
+data: dict = {}
+
+def processor():
+    while True:
+        event.wait()              # Ждём новые данные
+        print(f"Обработка: {data}")
+        event.clear()             # Сбрасываем: готовы к следующей порции
+
+def data_source():
+    for i in range(5):
+        time.sleep(random.uniform(0.2, 0.5))
+        data["value"] = i
+        data["ts"] = time.monotonic()
+        event.set()               # Сигнализируем о новых данных
+        # Ждём пока процессор обработает
+        while event.is_set():
+            time.sleep(0.01)
+
+proc = threading.Thread(target=processor, daemon=True)
+src  = threading.Thread(target=data_source)
+
+proc.start()
+src.start()
+src.join()
+
+# clear() + set() как «переключатель фаз»
+phase = threading.Event()   # False = фаза A, True = фаза B
+
+phase.set()           # Переключаем в фазу B
+phase.clear()         # Возвращаем в фазу A
+print(phase.is_set()) # False`,
+    },
+    {
+        name: "threading.Event.wait(timeout=None)",
+        description:
+            "Блокирует вызывающий поток до установки внутреннего флага (set()) или истечения таймаута. Если флаг уже установлен — возвращает True немедленно без блокировки. Возвращает True если флаг установлен, False если истёк таймаут. Не изменяет флаг — в отличие от Semaphore.acquire(), wait() не «потребляет» событие, поэтому все ожидающие потоки пробуждаются и все последующие вызовы wait() также возвращают True (до вызова clear()).",
+        syntax: `event.wait(timeout=None)`,
+        arguments: [
+            {
+                name: "timeout",
+                description: "Максимальное время ожидания в секундах (float). None (по умолчанию) — ждать бесконечно. При таймауте возвращает False, не бросая исключение.",
+            },
+        ],
+        example: `import threading
+import time
+
+event = threading.Event()
+
+# Базовое ожидание
+def waiter(name: str, timeout: float | None = None):
+    result = event.wait(timeout=timeout)
+    status = "получил сигнал" if result else "таймаут"
+    print(f"{name}: {status}")
+
+# Бесконечное ожидание
+t1 = threading.Thread(target=waiter, args=("W1", None))
+# Ожидание с таймаутом
+t2 = threading.Thread(target=waiter, args=("W2", 0.3))
+# Ожидание с таймаутом (дольше)
+t3 = threading.Thread(target=waiter, args=("W3", 2.0))
+
+t1.start(); t2.start(); t3.start()
+
+time.sleep(0.5)
+event.set()   # W1 и W3 получат True, W2 уже завершился с False
+
+t1.join(); t2.join(); t3.join()
+# W2: таймаут
+# W1: получил сигнал
+# W3: получил сигнал
+
+# wait() не потребляет событие — повторный вызов немедленно True
+event.set()
+print(event.wait())   # True — мгновенно
+print(event.wait())   # True — снова мгновенно
+print(event.wait(timeout=0))  # True — таймаут 0, но флаг уже установлен`,
+    },
+    // ─── threading.Timer ──────────────────────────────────────────────────────
+    {
+        name: "threading.Timer(interval, function, args=None, kwargs=None)",
+        description:
+            "Создаёт таймер — поток, который выполняет function через interval секунд после запуска (start()). Является подклассом Thread: поддерживает все атрибуты и методы Thread (name, daemon, join() и т.д.). Выполнение можно отменить вызовом cancel() до истечения интервала. После вызова function поток завершается. Каждый таймер — одноразовый: для периодического выполнения необходимо создавать новый Timer в теле function. Если cancel() вызван после истечения интервала, но до запуска function — поведение зависит от планировщика ОС (отмена может не успеть).",
+        syntax: `threading.Timer(
+    interval,
+    function,
+    args=None,
+    kwargs=None,
+)`,
+        arguments: [
+            {
+                name: "interval",
+                description: "Задержка в секундах (float) перед выполнением function. Отсчёт начинается с момента вызова start().",
+            },
+            {
+                name: "function",
+                description: "Вызываемый объект, который будет выполнен по истечении interval секунд.",
+            },
+            {
+                name: "args",
+                description: "Список (или None) позиционных аргументов для function. По умолчанию None (эквивалентно []).",
+            },
+            {
+                name: "kwargs",
+                description: "Словарь (или None) именованных аргументов для function. По умолчанию None (эквивалентно {}).",
+            },
+        ],
+        example: `import threading
+import time
+
+# Одноразовый таймер
+def remind(msg: str):
+    print(f"Напоминание: {msg}")
+
+t = threading.Timer(interval=2.0, function=remind, args=("Сделать ревью",))
+t.start()
+# Через 2 секунды: Напоминание: Сделать ревью
+t.join()
+
+# Периодический таймер через рекурсию
+class RepeatTimer(threading.Timer):
+    def run(self):
+        while not self.finished.wait(self.interval):
+            self.function(*self.args, **self.kwargs)
+
+tick_count = 0
+def tick():
+    global tick_count
+    tick_count += 1
+    print(f"tick #{tick_count}")
+
+rt = RepeatTimer(interval=0.5, function=tick)
+rt.daemon = True
+rt.start()
+
+time.sleep(2.2)
+rt.cancel()
+print(f"Всего тиков: {tick_count}")  # ~4`,
+    },
+    {
+        name: "threading.Timer.cancel()",
+        description:
+            "Отменяет выполнение отложенной функции, если таймер ещё не сработал. Внутри устанавливает Event-флаг, на котором блокируется поток таймера во время ожидания. Безопасно вызывать из любого потока. Если interval уже истёк и function начала выполняться — cancel() не прерывает её выполнение. Если таймер ещё не запущен (start() не вызывался) или уже завершился — cancel() безвреден. После cancel() поток таймера завершается без вызова function.",
+        syntax: `timer.cancel()`,
+        arguments: [],
+        example: `import threading
+import time
+
+fired = False
+
+def on_timeout():
+    global fired
+    fired = True
+    print("Таймаут сработал!")
+
+# Отмена до срабатывания
+t = threading.Timer(2.0, on_timeout)
+t.start()
+time.sleep(0.5)
+t.cancel()   # Отменяем через 0.5с (до истечения 2с)
+t.join()
+print(f"Сработал: {fired}")   # False
+
+# Отмена после срабатывания — безвредна, но бесполезна
+t2 = threading.Timer(0.1, on_timeout)
+t2.start()
+time.sleep(0.3)   # Ждём срабатывания
+t2.cancel()       # Уже поздно — функция выполнена
+print(f"Сработал: {fired}")   # True
+
+# Паттерн: watchdog — сброс таймера при активности
+class Watchdog:
+    def __init__(self, timeout: float, on_expire):
+        self.timeout = timeout
+        self.on_expire = on_expire
+        self._timer: threading.Timer | None = None
+
+    def reset(self):
+        if self._timer:
+            self._timer.cancel()
+        self._timer = threading.Timer(self.timeout, self.on_expire)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def stop(self):
+        if self._timer:
+            self._timer.cancel()
+
+dog = Watchdog(timeout=1.0, on_expire=lambda: print("Нет активности 1с!"))
+dog.reset()
+time.sleep(0.4)
+dog.reset()   # Сброс — таймер начинается заново
+time.sleep(1.2)   # Теперь сработает
+dog.stop()`,
+    },
+    // ─── threading.Barrier ────────────────────────────────────────────────────
+    {
+        name: "threading.Barrier(parties, action=None, timeout=None)",
+        description:
+            "Создаёт барьер — точку синхронизации, в которой заданное количество потоков (parties) должны встретиться, прежде чем все они продолжат выполнение. Каждый поток вызывает wait() и блокируется до тех пор, пока все parties потоков не вызовут wait(). После этого все потоки разблокируются одновременно. action — опциональный вызываемый объект без аргументов, вызываемый в одном из потоков перед разблокировкой всех (полезен для агрегации результатов). Барьер многоразовый: после прохождения автоматически сбрасывается для следующей фазы.",
+        syntax: `threading.Barrier(
+    parties,
+    action=None,
+    timeout=None,
+)`,
+        arguments: [
+            {
+                name: "parties",
+                description: "Количество потоков, которые должны вызвать wait(), прежде чем барьер откроется.",
+            },
+            {
+                name: "action",
+                description: "Вызываемый объект без аргументов, который будет выполнен ровно одним потоком после того, как все parties потоков вызвали wait(), но до их разблокировки. Удобен для агрегации или логирования фазы. None — ничего не выполняется.",
+            },
+            {
+                name: "timeout",
+                description: "Таймаут по умолчанию (секунды) для всех вызовов wait(). None — ждать бесконечно. Может быть переопределён в каждом вызове wait().",
+            },
+        ],
+        example: `import threading
+import time
+import random
+
+N = 4   # 4 потока работают синхронно по фазам
+
+phase_results: list[float] = []
+lock = threading.Lock()
+
+def aggregate():
+    print(f"Фаза завершена. Результаты: {phase_results}")
+
+barrier = threading.Barrier(parties=N, action=aggregate)
+
+def worker(worker_id: int):
+    for phase in range(3):
+        # Имитация работы разной длительности
+        duration = random.uniform(0.1, 0.5)
+        time.sleep(duration)
+
+        with lock:
+            phase_results.append(duration)
+
+        print(f"  W{worker_id} готов к фазе {phase}")
+        barrier.wait()          # Ждём остальных
+
+        # Чистим результаты для следующей фазы (только один поток)
+        with lock:
+            phase_results.clear()
+
+threads = [threading.Thread(target=worker, args=(i,)) for i in range(N)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()`,
+    },
+    {
+        name: "threading.Barrier.wait(timeout=None)",
+        description:
+            "Сигнализирует барьеру о готовности потока и блокирует его до прихода всех parties потоков. Возвращает целочисленный номер места в диапазоне [0, parties-1] — уникальный для каждого потока в рамках данной фазы. Поток с номером 0 выполняет action (если задан). Если передан timeout (или timeout задан в конструкторе) и не все потоки пришли вовремя — бросается BrokenBarrierError и барьер переходит в сломанное (broken) состояние. В broken-состоянии все последующие wait() немедленно бросают BrokenBarrierError.",
+        syntax: `barrier.wait(timeout=None)`,
+        arguments: [
+            {
+                name: "timeout",
+                description: "Максимальное время ожидания в секундах (float). None — использовать таймаут из конструктора (или ждать бесконечно). При превышении бросает BrokenBarrierError.",
+            },
+        ],
+        example: `import threading
+import time
+
+barrier = threading.Barrier(parties=3)
+
+def worker(name: str, delay: float):
+    time.sleep(delay)
+    print(f"{name}: готов, жду у барьера")
+    try:
+        slot = barrier.wait(timeout=2.0)
+        print(f"{name}: прошёл барьер, слот={slot}")
+    except threading.BrokenBarrierError:
+        print(f"{name}: барьер сломан!")
+
+threads = [
+    threading.Thread(target=worker, args=("Fast",  0.1)),
+    threading.Thread(target=worker, args=("Medium", 0.4)),
+    threading.Thread(target=worker, args=("Slow",   0.8)),
+]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+# Все трое проходят одновременно после Slow (0.8с)
+
+# Использование слота для назначения роли «лидера»
+b2 = threading.Barrier(3)
+
+def phased(name: str):
+    slot = b2.wait()
+    if slot == 0:
+        print(f"{name} — лидер фазы, выполняет агрегацию")
+    else:
+        print(f"{name} — участник, слот {slot}")
+
+for name in ["A", "B", "C"]:
+    threading.Thread(target=phased, args=(name,)).start()`,
+    },
+    {
+        name: "threading.Barrier.reset()",
+        description:
+            "Сбрасывает барьер в исходное состояние: все потоки, ожидающие в wait(), получают BrokenBarrierError, после чего барьер становится готовым к новому использованию (broken = False, n_waiting = 0). Должен вызываться только когда нет потоков, ожидающих у барьера — иначе поведение непредсказуемо. Используется для восстановления барьера после ошибки или для принудительного прерывания текущей фазы. Отличие от abort(): reset() восстанавливает барьер, abort() переводит его в постоянно-сломанное состояние.",
+        syntax: `barrier.reset()`,
+        arguments: [],
+        example: `import threading
+import time
+
+barrier = threading.Barrier(3)
+errors: list[str] = []
+
+def worker(name: str, delay: float, fail: bool = False):
+    time.sleep(delay)
+    if fail:
+        print(f"{name}: аварийный выход — сбрасываю барьер")
+        barrier.reset()   # Пробуждаем остальных с BrokenBarrierError
+        return
+    try:
+        barrier.wait()
+        print(f"{name}: прошёл барьер")
+    except threading.BrokenBarrierError:
+        errors.append(name)
+        print(f"{name}: барьер сброшен, обработка ошибки")
+
+threads = [
+    threading.Thread(target=worker, args=("W1", 0.1, False)),
+    threading.Thread(target=worker, args=("W2", 0.1, False)),
+    threading.Thread(target=worker, args=("Fail", 0.2, True)),  # сломает барьер
+]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+
+print(f"Не прошли барьер: {errors}")
+
+# После reset() барьер снова работоспособен
+print(f"Сломан: {barrier.broken}")  # False — сброшен, не сломан`,
+    },
+    {
+        name: "threading.Barrier.abort()",
+        description:
+            "Переводит барьер в постоянно сломанное состояние (broken = True). Все потоки, ожидающие в wait(), немедленно получают BrokenBarrierError. Все последующие вызовы wait() также бросают BrokenBarrierError — до явного вызова reset(). Используется для аварийного завершения работы группы потоков: например, при получении сигнала отмены или критической ошибке в одном из потоков. В отличие от reset(), abort() не восстанавливает барьер автоматически.",
+        syntax: `barrier.abort()`,
+        arguments: [],
+        example: `import threading
+import time
+
+WORKERS = 4
+barrier = threading.Barrier(WORKERS)
+cancel = threading.Event()
+
+def worker(worker_id: int):
+    # Имитация подготовительной работы
+    time.sleep(0.1 * worker_id)
+
+    if cancel.is_set():
+        print(f"W{worker_id}: отменено до барьера")
+        return
+
+    print(f"W{worker_id}: у барьера")
+    try:
+        barrier.wait(timeout=1.0)
+        print(f"W{worker_id}: работаю дальше")
+    except threading.BrokenBarrierError:
+        print(f"W{worker_id}: задача отменена, завершаю")
+
+def controller():
+    time.sleep(0.25)   # Принимаем решение об отмене
+    print("Контроллер: отмена всей группы!")
+    cancel.set()
+    barrier.abort()    # Немедленно прерываем всех ожидающих
+
+threads = [threading.Thread(target=worker, args=(i,)) for i in range(WORKERS)]
+ctrl   = threading.Thread(target=controller)
+
+for t in threads:
+    t.start()
+ctrl.start()
+
+for t in threads + [ctrl]:
+    t.join()
+
+print(f"Барьер сломан: {barrier.broken}")  # True
+# Для повторного использования: barrier.reset()`,
+    },
+    {
+        name: "threading.Barrier.parties",
+        description:
+            "Атрибут только для чтения. Возвращает количество потоков, которые должны вызвать wait() для прохождения барьера — значение, переданное в конструктор. Не изменяется в течение жизни барьера. Используется для динамического построения алгоритмов, не привязанных к конкретному числу потоков.",
+        syntax: `barrier.parties`,
+        arguments: [],
+        example: `import threading
+
+barrier = threading.Barrier(parties=5)
+print(barrier.parties)   # 5
+
+# Использование parties для масштабируемых алгоритмов
+def parallel_map(func, items: list, n_workers: int):
+    results = [None] * len(items)
+    chunk_size = (len(items) + n_workers - 1) // n_workers
+    b = threading.Barrier(n_workers)
+
+    def worker(worker_id: int):
+        start = worker_id * chunk_size
+        end   = min(start + chunk_size, len(items))
+        for i in range(start, end):
+            results[i] = func(items[i])
+
+        print(f"W{worker_id}/{b.parties}: завершил, жду остальных")
+        b.wait()
+
+    threads = [
+        threading.Thread(target=worker, args=(i,))
+        for i in range(n_workers)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return results
+
+output = parallel_map(lambda x: x ** 2, list(range(12)), n_workers=4)
+print(output)   # [0, 1, 4, 9, 16, 25, 36, 49, 64, 81, 100, 121]`,
+    },
+    {
+        name: "threading.Barrier.n_waiting",
+        description:
+            "Атрибут только для чтения. Возвращает количество потоков, в данный момент ожидающих у барьера (вызвавших wait(), но ещё не разблокированных). Значение изменяется динамически и не синхронизировано с наблюдателем — используйте только для мониторинга и отладки, не для управления логикой. Когда n_waiting достигает parties, барьер открывается, все потоки разблокируются и n_waiting сбрасывается в 0.",
+        syntax: `barrier.n_waiting`,
+        arguments: [],
+        example: `import threading
+import time
+
+N = 4
+barrier = threading.Barrier(N)
+
+def slow_worker(delay: float):
+    time.sleep(delay)
+    barrier.wait()
+
+threads = [
+    threading.Thread(target=slow_worker, args=(i * 0.3,))
+    for i in range(N)
+]
+for t in threads:
+    t.start()
+
+# Мониторинг заполнения барьера
+while any(t.is_alive() for t in threads):
+    waiting = barrier.n_waiting
+    total   = barrier.parties
+    filled  = "█" * waiting + "░" * (total - waiting)
+    print(f"\r[{filled}] {waiting}/{total} ждут", end="", flush=True)
+    time.sleep(0.05)
+
+print()
+for t in threads:
+    t.join()
+
+print(f"После прохода n_waiting = {barrier.n_waiting}")  # 0`,
+    },
+    {
+        name: "threading.Barrier.broken",
+        description:
+            "Атрибут только для чтения. Возвращает True, если барьер находится в сломанном (broken) состоянии — после вызова abort() или истечения таймаута в wait(). В broken-состоянии все вызовы wait() немедленно бросают BrokenBarrierError. Для восстановления барьера необходимо явно вызвать reset(). Позволяет проверить состояние барьера перед использованием или после перехвата BrokenBarrierError, чтобы принять решение о восстановлении.",
+        syntax: `barrier.broken`,
+        arguments: [],
+        example: `import threading
+import time
+
+barrier = threading.Barrier(parties=3, timeout=0.5)
+
+print(barrier.broken)   # False — исходное состояние
+
+# Ломаем барьер таймаутом: только 2 потока из 3 пришли
+def arrive():
+    try:
+        barrier.wait()
+    except threading.BrokenBarrierError:
+        print(f"{threading.current_thread().name}: BrokenBarrierError")
+
+t1 = threading.Thread(target=arrive, name="T1")
+t2 = threading.Thread(target=arrive, name="T2")
+# T3 не запускаем — барьер истечёт по таймауту
+
+t1.start(); t2.start()
+t1.join();  t2.join()
+
+print(barrier.broken)   # True — сломан таймаутом
+
+# Проверка перед использованием
+if barrier.broken:
+    print("Барьер сломан, восстанавливаем")
+    barrier.reset()
+
+print(barrier.broken)   # False — восстановлен
+
+# Ломаем явно через abort()
+barrier.abort()
+print(barrier.broken)   # True
+
+try:
+    barrier.wait()       # BrokenBarrierError — барьер сломан
+except threading.BrokenBarrierError:
+    print("Барьер недоступен")`,
+    },
 
 ];
