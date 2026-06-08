@@ -49904,5 +49904,2448 @@ try:
 except threading.BrokenBarrierError:
     print("Барьер недоступен")`,
     },
+     // ─── threading.local ──────────────────────────────────────────────────────
+    {
+        name: "threading.local()",
+        description:
+            "Создаёт объект thread-local хранилища: каждый поток видит свои собственные значения атрибутов этого объекта, независимо от других потоков. Атрибуты устанавливаются и читаются как обычные атрибуты объекта, но физически хранятся отдельно для каждого потока. Поток не видит атрибуты, установленные другим потоком. Главный поток и дочерние потоки изолированы. Поддерживает наследование через подкласс — удобно для инициализации значений по умолчанию через __init__. Стандартная альтернатива ручным словарям с ключом threading.get_ident().",
+        syntax: `threading.local()`,
+        arguments: [],
+        example: `import threading
 
+# Базовое использование: каждый поток имеет свой request_id
+ctx = threading.local()
+
+def handle_request(request_id: int):
+    ctx.request_id = request_id          # Видно только этому потоку
+    ctx.user = f"user_{request_id}"
+
+    # Симуляция вложенного вызова
+    process()
+
+def process():
+    # Читаем из того же потока — данные изолированы
+    rid = getattr(ctx, "request_id", None)
+    print(f"[{threading.current_thread().name}] request_id={rid}")
+
+threads = [
+    threading.Thread(target=handle_request, args=(i,), name=f"Worker-{i}")
+    for i in range(4)
+]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+# Каждый поток видит только свой request_id
+
+# Подкласс с инициализацией по умолчанию
+class RequestContext(threading.local):
+    def __init__(self):
+        super().__init__()
+        self.request_id: str = ""
+        self.user: str | None = None
+        self.db_connection = None
+
+req_ctx = RequestContext()
+
+def worker():
+    # У каждого потока свой экземпляр атрибутов
+    req_ctx.request_id = str(threading.get_ident())
+    req_ctx.user = "admin"
+    print(f"user={req_ctx.user}, id={req_ctx.request_id}")
+
+threading.Thread(target=worker).start()
+threading.Thread(target=worker).start()`,
+    },
+    // ─── threading.TIMEOUT_MAX ────────────────────────────────────────────────
+    {
+        name: "threading.TIMEOUT_MAX",
+        description:
+            "Константа — максимально допустимое значение аргумента timeout для блокирующих операций модуля threading: Lock.acquire(), RLock.acquire(), Condition.wait(), Semaphore.acquire(), Event.wait(), Thread.join() и т.д. Значение платформозависимо: на большинстве систем около 292271023.6 секунд (~9.2 млрд лет, ограничение 32-битного представления POSIX). Передача timeout > TIMEOUT_MAX бросает OverflowError. Полезна при написании обобщённых утилит для валидации пользовательских таймаутов.",
+        syntax: `threading.TIMEOUT_MAX`,
+        arguments: [],
+        example: `import threading
+
+print(threading.TIMEOUT_MAX)
+# 292271023.6  (типичное значение на Linux x86-64)
+
+# Валидация пользовательского таймаута
+def safe_acquire(lock: threading.Lock, timeout: float) -> bool:
+    if timeout < 0:
+        raise ValueError("timeout не может быть отрицательным")
+    if timeout > threading.TIMEOUT_MAX:
+        raise OverflowError(
+            f"timeout={timeout} превышает TIMEOUT_MAX={threading.TIMEOUT_MAX}"
+        )
+    return lock.acquire(timeout=timeout)
+
+lock = threading.Lock()
+print(safe_acquire(lock, 1.0))   # True
+lock.release()
+
+# OverflowError при превышении напрямую
+try:
+    lock.acquire(timeout=threading.TIMEOUT_MAX + 1)
+except OverflowError as e:
+    print(f"Ошибка: {e}")
+
+# Использование в тестах для проверки граничных условий
+def test_timeout_boundary():
+    sem = threading.Semaphore(0)
+    # Максимально допустимый таймаут — не должен бросать исключение
+    result = sem.acquire(timeout=threading.TIMEOUT_MAX)
+    assert result is False   # семафор не захвачен, но OverflowError не возник`,
+    },
+    // ─── asyncio ──────────────────────────────────────────────────────────────
+    {
+        name: "asyncio.run_in_executor(executor, func, *args)",
+        description:
+            "Запускает блокирующую функцию func в пуле потоков (или процессов) не блокируя event loop. Возвращает корутину (awaitable), результатом которой будет возвращаемое значение func. executor — объект concurrent.futures.Executor (ThreadPoolExecutor или ProcessPoolExecutor); если None — используется пул по умолчанию (ThreadPoolExecutor). func вызывается с позиционными аргументами args. Это стандартный мост между синхронным и асинхронным кодом: позволяет использовать блокирующие библиотеки (requests, psycopg2, тяжёлые вычисления) внутри async-приложений без фриза event loop.",
+        syntax: `await loop.run_in_executor(executor, func, *args)
+
+# Через asyncio напрямую (Python 3.9+):
+await asyncio.get_event_loop().run_in_executor(executor, func, *args)`,
+        arguments: [
+            {
+                name: "executor",
+                description: "Объект concurrent.futures.Executor (ThreadPoolExecutor или ProcessPoolExecutor). None — использовать пул по умолчанию (ThreadPoolExecutor). Для CPU-bound задач передавайте ProcessPoolExecutor.",
+            },
+            {
+                name: "func",
+                description: "Синхронная вызываемая функция без async/await, которая будет выполнена в потоке/процессе исполнителя.",
+            },
+            {
+                name: "*args",
+                description: "Позиционные аргументы для func. Именованные аргументы не поддерживаются напрямую — используйте functools.partial(func, kwarg=value).",
+            },
+        ],
+        example: `import asyncio
+import time
+import functools
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+# Пример 1: IO-bound задача (HTTP через requests)
+def blocking_fetch(url: str) -> str:
+    import urllib.request
+    with urllib.request.urlopen(url, timeout=5) as r:
+        return r.read(200).decode()
+
+async def main():
+    loop = asyncio.get_running_loop()
+
+    # Запуск в пуле по умолчанию (ThreadPoolExecutor)
+    result = await loop.run_in_executor(None, blocking_fetch, "https://httpbin.org/get")
+    print(result[:80])
+
+    # Именованные аргументы через functools.partial
+    def write_file(path: str, data: str, encoding: str = "utf-8"):
+        with open(path, "w", encoding=encoding) as f:
+            f.write(data)
+
+    await loop.run_in_executor(
+        None,
+        functools.partial(write_file, "/tmp/out.txt", "hello", encoding="utf-8"),
+    )
+
+    # Пример 2: CPU-bound задача — отдельный ProcessPoolExecutor
+    def heavy_compute(n: int) -> int:
+        return sum(i * i for i in range(n))
+
+    with ProcessPoolExecutor(max_workers=4) as proc_pool:
+        results = await asyncio.gather(
+            loop.run_in_executor(proc_pool, heavy_compute, 10_000_000),
+            loop.run_in_executor(proc_pool, heavy_compute, 10_000_000),
+        )
+    print(results)
+
+    # Пример 3: кастомный пул с ограничением потоков
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        tasks = [
+            loop.run_in_executor(pool, time.sleep, 0.1)
+            for _ in range(10)
+        ]
+        await asyncio.gather(*tasks)
+
+asyncio.run(main())`,
+    },
+    // ─── asyncio loop ─────────────────────────────────────────────────────────
+    {
+        name: "loop.add_signal_handler(signum, callback, *args)",
+        description:
+            "Регистрирует обработчик сигнала ОС (SIGINT, SIGTERM, SIGHUP и др.) для текущего event loop. В отличие от signal.signal(), обработчик вызывается безопасно внутри event loop — как обычный callback, а не прерывая произвольную точку выполнения. callback будет вызван с аргументами args. Доступен только в Unix-системах (Linux, macOS) и только из главного потока. Для отмены — loop.remove_signal_handler(signum). Корректный способ реализации graceful shutdown в asyncio-приложениях.",
+        syntax: `loop.add_signal_handler(signum, callback, *args)`,
+        arguments: [
+            {
+                name: "signum",
+                description: "Номер сигнала ОС (signal.SIGTERM, signal.SIGINT, signal.SIGHUP и т.д.). Используйте константы из модуля signal, а не числа напрямую.",
+            },
+            {
+                name: "callback",
+                description: "Синхронная вызываемая функция (не корутина). Вызывается event loop-ом при получении сигнала. Для запуска корутины используйте loop.create_task() или asyncio.ensure_future() внутри callback.",
+            },
+            {
+                name: "*args",
+                description: "Позиционные аргументы, передаваемые в callback при вызове.",
+            },
+        ],
+        example: `import asyncio
+import signal
+
+async def main():
+    loop = asyncio.get_running_loop()
+    stop = asyncio.Event()
+
+    # Graceful shutdown по SIGTERM и SIGINT
+    def shutdown(signame: str):
+        print(f"\\nПолучен {signame}, начинаю завершение...")
+        stop.set()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(
+            sig,
+            shutdown,
+            signal.Signals(sig).name,   # передаём имя сигнала в callback
+        )
+
+    # Запуск корутины из обработчика сигнала
+    async def cleanup():
+        print("Закрываю соединения...")
+        await asyncio.sleep(0.5)
+        print("Готово")
+
+    def handle_hup():
+        print("SIGHUP: перезагрузка конфигурации")
+        loop.create_task(cleanup())   # создаём задачу внутри синхронного callback
+
+    loop.add_signal_handler(signal.SIGHUP, handle_hup)
+
+    print("Сервер запущен. Ctrl+C для остановки.")
+    await stop.wait()   # Ждём сигнала остановки
+
+    # Отмена обработчиков перед выходом
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        loop.remove_signal_handler(sig)
+
+    print("Сервер остановлен")
+
+asyncio.run(main())`,
+    },
+    // ─── time ─────────────────────────────────────────────────────────────────
+    {
+        name: "time.monotonic()",
+        description:
+            "Возвращает значение монотонных часов в секундах (float) — часов, которые никогда не идут назад и не изменяются при ручной корректировке системного времени или переходе на летнее время. Начало отсчёта не определено (обычно время старта системы), поэтому абсолютное значение бессмысленно — используются только разности. Является стандартом для измерения интервалов времени, таймаутов и профилирования в production-коде. В отличие от time.time(), гарантирует монотонность: последующие вызовы всегда возвращают значение ≥ предыдущего.",
+        syntax: `time.monotonic()`,
+        arguments: [],
+        example: `import time
+
+# Базовое измерение интервала
+start = time.monotonic()
+time.sleep(0.5)
+elapsed = time.monotonic() - start
+print(f"Прошло: {elapsed:.3f}с")   # ~0.500с
+
+# Профилирование функции
+def profile(func, *args, **kwargs):
+    t0 = time.monotonic()
+    result = func(*args, **kwargs)
+    dt = time.monotonic() - t0
+    print(f"{func.__name__}: {dt * 1000:.2f} мс")
+    return result
+
+profile(sorted, list(range(100_000, 0, -1)))
+
+# Реализация таймаута без дрейфа
+def wait_for_condition(predicate, timeout: float, interval: float = 0.05) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        remaining = deadline - time.monotonic()
+        time.sleep(min(interval, max(0, remaining)))
+    return False
+
+ready = False
+def check():
+    return ready
+
+# Будет ждать до 2 секунд
+result = wait_for_condition(check, timeout=2.0)
+print(f"Условие выполнено: {result}")   # False — ready не стал True
+
+# Почему не time.time():
+# time.time() может прыгнуть назад при синхронизации NTP или DST-переходе
+# time.monotonic() — гарантированно не убывает, безопасен для таймаутов
+
+# Сравнение точности
+t1 = time.monotonic()
+t2 = time.monotonic()
+print(f"Минимальный шаг: {(t2 - t1) * 1e9:.1f} нс")`,
+    },
+    // ─── signal ───────────────────────────────────────────────────────────────
+    {
+        name: "signal.alarm(time)",
+        description:
+            "Планирует доставку сигнала SIGALRM текущему процессу через time секунд (целое число). При получении SIGALRM, если обработчик не установлен, процесс завершается. Повторный вызов alarm() отменяет предыдущий таймер. alarm(0) отменяет запланированный сигнал. Возвращает оставшееся время до предыдущего срабатывания (0, если таймер не был активен). Доступен только на Unix-системах. Работает только в главном потоке. Используется для реализации системных таймаутов на уровне процесса — но в современном коде предпочтительнее signal.setitimer() или asyncio.",
+        syntax: `signal.alarm(time)`,
+        arguments: [
+            {
+                name: "time",
+                description: "Задержка в секундах (целое, ≥ 0). 0 — отменить текущий запланированный SIGALRM. Дробные секунды не поддерживаются; для высокой точности используйте signal.setitimer().",
+            },
+        ],
+        example: `import signal
+import time
+
+# Установка обработчика SIGALRM
+def handler(signum, frame):
+    raise TimeoutError("Операция превысила лимит времени")
+
+signal.signal(signal.SIGALRM, handler)
+
+# Паттерн: таймаут для блокирующего вызова
+def with_timeout(seconds: int, func, *args):
+    prev = signal.alarm(seconds)   # Запускаем таймер, сохраняем остаток
+    try:
+        return func(*args)
+    finally:
+        signal.alarm(0)            # Отменяем таймер
+        if prev:
+            signal.alarm(prev)     # Восстанавливаем предыдущий, если был
+
+def slow_operation():
+    time.sleep(5)
+    return "готово"
+
+try:
+    result = with_timeout(2, slow_operation)
+except TimeoutError as e:
+    print(f"Прервано: {e}")   # Прервано: Операция превысила лимит времени
+
+# Отмена таймера
+signal.alarm(10)
+remaining = signal.alarm(0)   # Отменить, вернёт ~10
+print(f"Оставалось: {remaining}с")`,
+    },
+    {
+        name: "signal.default_int_handler(signum, frame)",
+        description:
+            "Стандартный обработчик для сигнала SIGINT (Ctrl+C), установленный Python по умолчанию. При вызове бросает KeyboardInterrupt в главном потоке. Хранится как signal.SIG_DFL не напрямую, а как отдельная Python-функция — это позволяет восстановить стандартное поведение после замены обработчика, сохранив Python-семантику (KeyboardInterrupt вместо завершения процесса). Полезен при написании обработчика SIGINT, который должен временно подавлять Ctrl+C, а затем восстанавливать стандартное поведение.",
+        syntax: `signal.default_int_handler(signum, frame)`,
+        arguments: [
+            {
+                name: "signum",
+                description: "Номер полученного сигнала (signal.SIGINT = 2). Передаётся автоматически интерпретатором.",
+            },
+            {
+                name: "frame",
+                description: "Объект текущего стекового фрейма (types.FrameType) в момент получения сигнала. Передаётся автоматически.",
+            },
+        ],
+        example: `import signal
+import time
+
+# Сохраняем стандартный обработчик
+original = signal.getsignal(signal.SIGINT)
+print(original is signal.default_int_handler)   # True
+
+# Временно блокируем Ctrl+C
+def critical_section_handler(signum, frame):
+    print("\\nCtrl+C в критической секции — игнорируем")
+
+signal.signal(signal.SIGINT, critical_section_handler)
+
+print("Критическая секция: Ctrl+C не сработает...")
+time.sleep(2)
+
+# Восстанавливаем стандартный обработчик
+signal.signal(signal.SIGINT, signal.default_int_handler)
+print("Критическая секция завершена, Ctrl+C снова активен")
+
+# Явный вызов для проброса KeyboardInterrupt
+def handler(signum, frame):
+    print("Получен SIGINT, проброс...")
+    signal.default_int_handler(signum, frame)   # Бросит KeyboardInterrupt
+
+signal.signal(signal.SIGINT, handler)
+
+try:
+    time.sleep(5)
+except KeyboardInterrupt:
+    print("KeyboardInterrupt поймано в main")`,
+    },
+    {
+        name: "signal.getsignal(signalnum)",
+        description:
+            "Возвращает текущий обработчик для сигнала signalnum. Возможные возвращаемые значения: signal.SIG_DFL — системный обработчик по умолчанию; signal.SIG_IGN — сигнал игнорируется; None — обработчик установлен не из Python (например, из C-расширения); callable — Python-функция, установленная через signal.signal(). Используется для сохранения и последующего восстановления обработчика, а также для диагностики текущего состояния обработки сигналов.",
+        syntax: `signal.getsignal(signalnum)`,
+        arguments: [
+            {
+                name: "signalnum",
+                description: "Номер сигнала (константа из модуля signal: signal.SIGTERM, signal.SIGINT, signal.SIGHUP и т.д.).",
+            },
+        ],
+        example: `import signal
+
+# Проверка текущих обработчиков
+print(signal.getsignal(signal.SIGINT))
+# <built-in function default_int_handler>
+
+print(signal.getsignal(signal.SIGTERM))
+# signal.SIG_DFL  (системное завершение по умолчанию)
+
+# Паттерн: временная замена с восстановлением
+def install_handler(signum, handler):
+    """Устанавливает обработчик и возвращает контекстный менеджер для восстановления."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def ctx():
+        old = signal.getsignal(signum)
+        signal.signal(signum, handler)
+        try:
+            yield
+        finally:
+            signal.signal(signum, old)   # Восстанавливаем прежний обработчик
+
+    return ctx()
+
+def my_handler(s, f):
+    print(f"Получен сигнал {s}")
+
+import time
+with install_handler(signal.SIGTERM, my_handler):
+    print("Кастомный обработчик SIGTERM активен")
+    time.sleep(0.1)
+
+# За пределами with — обработчик снова SIG_DFL
+print(signal.getsignal(signal.SIGTERM))  # signal.SIG_DFL`,
+    },
+    {
+        name: "signal.pause()",
+        description:
+            "Приостанавливает выполнение процесса до получения любого сигнала. После обработки сигнала его обработчиком функция возвращает управление. Доступна только на Unix-системах. Эквивалент системного вызова pause(2). Используется в простых демонах и сторожевых процессах, которые ждут сигнала управления (SIGHUP для перезагрузки конфигурации, SIGTERM для завершения). В asyncio-приложениях предпочтительнее loop.add_signal_handler() + asyncio.Event.",
+        syntax: `signal.pause()`,
+        arguments: [],
+        example: `import signal
+import sys
+
+config = {"debug": False}
+
+def handle_hup(signum, frame):
+    """Перезагрузка конфигурации по SIGHUP."""
+    config["debug"] = not config["debug"]
+    print(f"SIGHUP: debug={config['debug']}")
+
+def handle_term(signum, frame):
+    """Graceful shutdown по SIGTERM."""
+    print("SIGTERM: завершение")
+    sys.exit(0)
+
+signal.signal(signal.SIGHUP,  handle_hup)
+signal.signal(signal.SIGTERM, handle_term)
+
+print(f"PID={os.getpid()}, жду сигналов...")
+
+# Простой цикл демона
+import os
+while True:
+    signal.pause()   # Спим до следующего сигнала
+    print(f"Обработан сигнал, config={config}")
+
+# Отправка сигналов для теста (из другого процесса):
+# kill -HUP <pid>   → перезагрузка конфигурации
+# kill -TERM <pid>  → завершение`,
+    },
+    {
+        name: "signal.pthread_kill(thread_id, signalnum)",
+        description:
+            "Отправляет сигнал signalnum конкретному потоку thread_id внутри текущего процесса. thread_id — нативный идентификатор потока (threading.Thread.ident или threading.get_ident()). Позволяет адресно прерывать отдельные потоки, не затрагивая весь процесс. Доступен только на Unix-системах (POSIX threads). Сигнал обрабатывается в целевом потоке; если сигнал не заблокирован и нет обработчика — процесс завершается. Используется для прерывания блокирующих системных вызовов в конкретном потоке.",
+        syntax: `signal.pthread_kill(thread_id, signalnum)`,
+        arguments: [
+            {
+                name: "thread_id",
+                description: "Идентификатор целевого потока (int) — значение threading.Thread.ident или threading.get_ident(). Не native_id.",
+            },
+            {
+                name: "signalnum",
+                description: "Номер сигнала для отправки (signal.SIGTERM, signal.SIGUSR1, signal.SIGINT и т.д.). 0 — проверить существование потока без отправки сигнала.",
+            },
+        ],
+        example: `import signal
+import threading
+import time
+
+interrupted = threading.Event()
+
+def worker():
+    print(f"Поток {threading.get_ident()} ждёт...")
+    try:
+        time.sleep(10)   # Блокирующая операция
+    except InterruptedError:
+        pass
+    interrupted.set()
+    print("Поток прерван и завершается")
+
+def handle_usr1(signum, frame):
+    print(f"SIGUSR1 получен в потоке {threading.get_ident()}")
+    raise InterruptedError("Принудительное прерывание")
+
+signal.signal(signal.SIGUSR1, handle_usr1)
+
+t = threading.Thread(target=worker)
+t.start()
+
+time.sleep(0.5)
+
+# Отправляем SIGUSR1 конкретному потоку
+print(f"Прерываем поток {t.ident}")
+signal.pthread_kill(t.ident, signal.SIGUSR1)
+
+interrupted.wait()
+t.join()
+
+# Проверка существования потока (signalnum=0)
+try:
+    signal.pthread_kill(t.ident, 0)
+    print("Поток ещё существует")
+except ProcessLookupError:
+    print("Поток уже завершён")`,
+    },
+    {
+        name: "signal.pthread_sigmask(how, mask)",
+        description:
+            "Изменяет маску заблокированных сигналов текущего потока и возвращает предыдущую маску в виде множества номеров сигналов. how задаёт операцию: signal.SIG_BLOCK — добавить сигналы из mask к заблокированным; signal.SIG_UNBLOCK — разблокировать сигналы из mask; signal.SIG_SETMASK — заменить маску целиком. Заблокированные сигналы не теряются — они ставятся в очередь и доставляются при разблокировке. Доступен только на Unix. Мощный инструмент для атомарного управления сигналами в многопоточном коде.",
+        syntax: `signal.pthread_sigmask(how, mask)`,
+        arguments: [
+            {
+                name: "how",
+                description: "Операция над маской: signal.SIG_BLOCK (добавить), signal.SIG_UNBLOCK (убрать), signal.SIG_SETMASK (заменить полностью).",
+            },
+            {
+                name: "mask",
+                description: "Итерируемый объект номеров сигналов (или пустой для SIG_SETMASK). Например: {signal.SIGTERM, signal.SIGINT}.",
+            },
+        ],
+        example: `import signal
+import threading
+import time
+
+# Блокируем SIGTERM в рабочем потоке — только главный поток должен его обрабатывать
+def worker():
+    # Блокируем SIGTERM в этом потоке
+    old_mask = signal.pthread_sigmask(
+        signal.SIG_BLOCK,
+        {signal.SIGTERM, signal.SIGHUP},
+    )
+    print(f"Рабочий поток: заблокированы SIGTERM и SIGHUP")
+    print(f"Предыдущая маска: {old_mask}")
+
+    time.sleep(2)
+
+    # Восстанавливаем предыдущую маску
+    signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
+    print("Маска восстановлена")
+
+# Устанавливаем обработчик в главном потоке
+signal.signal(signal.SIGTERM, lambda s, f: print("SIGTERM в главном потоке"))
+
+t = threading.Thread(target=worker)
+t.start()
+t.join()
+
+# Получить текущую маску (не меняя её)
+current_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+print(f"Текущая маска главного потока: {current_mask}")
+
+# Временная блокировка сигналов — критическая секция
+old = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM})
+try:
+    print("Критическая секция — сигналы заблокированы")
+    time.sleep(0.5)
+finally:
+    signal.pthread_sigmask(signal.SIG_SETMASK, old)
+    print("Сигналы разблокированы")`,
+    },
+    {
+        name: "signal.raise_signal(signum)",
+        description:
+            "Отправляет сигнал signum текущему процессу. Эквивалент os.kill(os.getpid(), signum), но реализован через стандартный C-вызов raise() и гарантирует доставку сигнала именно вызывающему потоку (а не любому потоку процесса, как os.kill()). Добавлен в Python 3.8. Доступен на Unix и Windows. Используется для тестирования обработчиков сигналов, самодиагностики и программной генерации сигналов.",
+        syntax: `signal.raise_signal(signum)`,
+        arguments: [
+            {
+                name: "signum",
+                description: "Номер сигнала для отправки текущему процессу (signal.SIGTERM, signal.SIGUSR1, signal.SIGINT и т.д.).",
+            },
+        ],
+        example: `import signal
+
+# Тестирование обработчика сигнала
+received: list[int] = []
+
+def handler(signum, frame):
+    received.append(signum)
+    print(f"Получен сигнал: {signal.Signals(signum).name}")
+
+signal.signal(signal.SIGUSR1, handler)
+signal.signal(signal.SIGUSR2, handler)
+
+# Программная отправка сигналов самому себе
+signal.raise_signal(signal.SIGUSR1)
+signal.raise_signal(signal.SIGUSR2)
+signal.raise_signal(signal.SIGUSR1)
+
+print(f"Принято сигналов: {[signal.Signals(s).name for s in received]}")
+# ['SIGUSR1', 'SIGUSR2', 'SIGUSR1']
+
+# Сравнение с os.kill:
+# os.kill(os.getpid(), signum)  — доставляет любому потоку процесса
+# signal.raise_signal(signum)   — гарантированно текущему потоку (C raise())
+
+# На Windows: поддерживается ограниченный набор сигналов
+# (SIGTERM, SIGINT, SIGABRT, SIGFPE, SIGSEGV, SIGBREAK)
+import sys
+if sys.platform == "win32":
+    signal.signal(signal.SIGTERM, handler)
+    signal.raise_signal(signal.SIGTERM)`,
+    },
+    {
+        name: "signal.set_wakeup_fd(fd, *, warn_on_full_buffer=True)",
+        description:
+            "Устанавливает файловый дескриптор fd, в который будет записываться номер сигнала (один байт) при каждом получении сигнала. Позволяет интегрировать обработку сигналов с select()/poll()/epoll() и event loop-ами: вместо прерывания произвольной точки кода, сигнал пробуждает I/O-ожидание через fd. Возвращает предыдущий fd (-1, если не был установлен). fd должен быть неблокирующим и доступным для записи. -1 отключает механизм. warn_on_full_buffer=True (по умолчанию) выводит предупреждение если буфер fd заполнен. Основа реализации asyncio signal handler.",
+        syntax: `signal.set_wakeup_fd(fd, *, warn_on_full_buffer=True)`,
+        arguments: [
+            {
+                name: "fd",
+                description: "Файловый дескриптор (int) для записи номера сигнала. Должен быть неблокирующим. -1 — отключить механизм. На Unix: любой fd (pipe, socket); на Windows: только socket.",
+            },
+            {
+                name: "warn_on_full_buffer",
+                description: "True (по умолчанию) — выводить предупреждение RuntimeWarning, если буфер fd заполнен и байт сигнала не записан. False — подавить предупреждение.",
+            },
+        ],
+        example: `import signal
+import os
+import select
+
+# Паттерн: self-pipe trick — безопасная интеграция сигналов с select()
+read_fd, write_fd = os.pipe()
+
+# Устанавливаем write-конец в неблокирующий режим
+os.set_inheritable(write_fd, False)
+import fcntl, fcntl as fl
+flags = fcntl.fcntl(write_fd, fcntl.F_GETFL)
+fcntl.fcntl(write_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+# Регистрируем pipe как wakeup fd
+old_fd = signal.set_wakeup_fd(write_fd)
+
+def handler(signum, frame):
+    # set_wakeup_fd уже записал байт в pipe — здесь только логика
+    print(f"Сигнал {signal.Signals(signum).name} обработан")
+
+signal.signal(signal.SIGUSR1, handler)
+signal.signal(signal.SIGTERM, handler)
+
+print("Ждём сигнала (select)...")
+readable, _, _ = select.select([read_fd], [], [], 5.0)
+
+if readable:
+    data = os.read(read_fd, 32)
+    print(f"Получены сигналы (байты): {list(data)}")
+
+# Восстанавливаем
+signal.set_wakeup_fd(old_fd)
+os.close(read_fd)
+os.close(write_fd)`,
+    },
+    {
+        name: "signal.setitimer(which, seconds, interval=0.0)",
+        description:
+            "Устанавливает интервальный таймер, который доставляет сигнал через seconds секунд и затем повторно каждые interval секунд (если interval > 0). which задаёт тип таймера: signal.ITIMER_REAL — реальное время, доставляет SIGALRM; signal.ITIMER_VIRTUAL — время ЦП в режиме пользователя, доставляет SIGVTALRM; signal.ITIMER_PROF — время ЦП в режиме пользователя и ядра, доставляет SIGPROF. Поддерживает дробные секунды (в отличие от signal.alarm()). setitimer(which, 0) отменяет таймер. Доступен только на Unix.",
+        syntax: `signal.setitimer(which, seconds, interval=0.0)`,
+        arguments: [
+            {
+                name: "which",
+                description: "Тип таймера: signal.ITIMER_REAL (реальное время → SIGALRM), signal.ITIMER_VIRTUAL (CPU user-time → SIGVTALRM), signal.ITIMER_PROF (CPU user+kernel → SIGPROF).",
+            },
+            {
+                name: "seconds",
+                description: "Время до первого срабатывания в секундах (float). 0 — отменить таймер.",
+            },
+            {
+                name: "interval",
+                description: "Период повторных срабатываний в секундах (float). 0.0 (по умолчанию) — одноразовый таймер.",
+            },
+        ],
+        example: `import signal
+import time
+
+# Периодический таймер с точностью до миллисекунд
+tick_count = 0
+
+def on_alarm(signum, frame):
+    global tick_count
+    tick_count += 1
+    print(f"tick #{tick_count} @ {time.monotonic():.3f}")
+
+signal.signal(signal.SIGALRM, on_alarm)
+
+# Срабатывает через 0.5с, затем каждые 0.2с
+signal.setitimer(signal.ITIMER_REAL, 0.5, 0.2)
+
+time.sleep(2.0)
+
+# Отменяем таймер
+signal.setitimer(signal.ITIMER_REAL, 0)
+print(f"Всего тиков: {tick_count}")   # ~7
+
+# Профилировочный таймер — время CPU
+prof_hits = 0
+
+def on_prof(signum, frame):
+    global prof_hits
+    prof_hits += 1
+
+signal.signal(signal.SIGPROF, on_prof)
+signal.setitimer(signal.ITIMER_PROF, 0.01, 0.01)   # каждые 10мс CPU-времени
+
+# CPU-bound нагрузка
+total = sum(i * i for i in range(1_000_000))
+
+signal.setitimer(signal.ITIMER_PROF, 0)
+print(f"Профайлер сработал {prof_hits} раз")`,
+    },
+    {
+        name: "signal.getitimer(which)",
+        description:
+            "Возвращает текущее состояние интервального таймера, установленного через signal.setitimer(). Возвращает кортеж (delay, interval): delay — оставшееся время до следующего срабатывания (секунды, float); interval — период повторений (секунды, float; 0.0 если одноразовый). Используется для диагностики состояния таймеров, а также для паузы/возобновления (сохранить состояние → setitimer(which, 0) → восстановить).",
+        syntax: `signal.getitimer(which)`,
+        arguments: [
+            {
+                name: "which",
+                description: "Тип таймера: signal.ITIMER_REAL, signal.ITIMER_VIRTUAL или signal.ITIMER_PROF — тот же, что передавался в setitimer().",
+            },
+        ],
+        example: `import signal
+import time
+
+def on_alarm(signum, frame):
+    print("SIGALRM!")
+
+signal.signal(signal.SIGALRM, on_alarm)
+
+# Запускаем таймер: через 5с, повторять каждые 1с
+signal.setitimer(signal.ITIMER_REAL, 5.0, 1.0)
+
+time.sleep(0.3)
+
+delay, interval = signal.getitimer(signal.ITIMER_REAL)
+print(f"Осталось: {delay:.2f}с, период: {interval:.2f}с")
+# Осталось: 4.70с, период: 1.00с
+
+# Пауза и возобновление таймера
+def pause_timer(which: int):
+    delay, interval = signal.getitimer(which)
+    signal.setitimer(which, 0)   # Остановить
+    return delay, interval
+
+def resume_timer(which: int, state: tuple):
+    delay, interval = state
+    if delay > 0:
+        signal.setitimer(which, delay, interval)
+
+# Пауза
+state = pause_timer(signal.ITIMER_REAL)
+print(f"Таймер на паузе: {signal.getitimer(signal.ITIMER_REAL)}")
+# (0.0, 0.0)
+
+time.sleep(0.5)
+
+# Возобновление
+resume_timer(signal.ITIMER_REAL, state)
+print(f"Таймер возобновлён: {signal.getitimer(signal.ITIMER_REAL)}")
+
+signal.setitimer(signal.ITIMER_REAL, 0)`,
+    },
+    {
+        name: "signal.siginterrupt(signalnum, flag)",
+        description:
+            "Управляет поведением медленных системных вызовов (read(), write(), select() и др.) при получении сигнала signalnum. Если flag=True — системный вызов прерывается и возвращает EINTR (в Python — InterruptedError или OSError с errno.EINTR). Если flag=False — системный вызов автоматически перезапускается после обработки сигнала (SA_RESTART). По умолчанию Python устанавливает SA_RESTART для большинства сигналов, поэтому явный вызов siginterrupt нужен редко. Доступен только на Unix.",
+        syntax: `signal.siginterrupt(signalnum, flag)`,
+        arguments: [
+            {
+                name: "signalnum",
+                description: "Номер сигнала, для которого изменяется поведение прерывания системных вызовов.",
+            },
+            {
+                name: "flag",
+                description: "True — прерывать системные вызовы при получении сигнала (возвращать EINTR). False — автоматически перезапускать системные вызовы (SA_RESTART).",
+            },
+        ],
+        example: `import signal
+import socket
+import errno
+
+# Сигнал прерывает блокирующий recv()
+def handler(signum, frame):
+    print("Получен SIGUSR1")
+
+signal.signal(signal.SIGUSR1, handler)
+
+# True: recv() будет прерван при получении SIGUSR1 → OSError(EINTR)
+signal.siginterrupt(signal.SIGUSR1, True)
+
+sock = socket.socket()
+sock.bind(("localhost", 0))
+sock.listen(1)
+sock.settimeout(5.0)
+
+import threading, os, time
+
+def send_signal():
+    time.sleep(0.3)
+    os.kill(os.getpid(), signal.SIGUSR1)
+
+threading.Thread(target=send_signal, daemon=True).start()
+
+try:
+    conn, _ = sock.accept()   # Будет прервано SIGUSR1
+except OSError as e:
+    if e.errno == errno.EINTR:
+        print("Системный вызов прерван сигналом (EINTR)")
+    else:
+        print(f"Другая ошибка: {e}")
+finally:
+    sock.close()
+
+# False (поведение по умолчанию): системный вызов перезапускается автоматически
+signal.siginterrupt(signal.SIGUSR1, False)
+# accept() продолжит ожидание после SIGUSR1, не возвращая EINTR`,
+    },
+    {
+        name: "signal.signal(signalnum, handler)",
+        description:
+            "Устанавливает обработчик handler для сигнала signalnum. Возвращает предыдущий обработчик. handler может быть: вызываемой функцией с сигнатурой (signum, frame) — Python-обработчик; signal.SIG_DFL — восстановить системное поведение по умолчанию; signal.SIG_IGN — игнорировать сигнал. Обработчики можно устанавливать только в главном потоке — из других потоков бросается ValueError. Обработчик всегда выполняется в главном потоке, независимо от того, какой поток получил сигнал. SIGKILL и SIGSTOP перехватить невозможно.",
+        syntax: `signal.signal(signalnum, handler)`,
+        arguments: [
+            {
+                name: "signalnum",
+                description: "Номер сигнала (константа модуля signal: SIGTERM, SIGINT, SIGHUP, SIGUSR1, SIGUSR2 и т.д.). SIGKILL и SIGSTOP не могут быть перехвачены.",
+            },
+            {
+                name: "handler",
+                description: "Вызываемый объект с сигнатурой (signum: int, frame: FrameType) → None; или signal.SIG_DFL (системный обработчик); или signal.SIG_IGN (игнорировать). Возвращаемое значение обработчика игнорируется.",
+            },
+        ],
+        example: `import signal
+import sys
+import time
+
+# Graceful shutdown сервера
+shutdown_requested = False
+
+def handle_term(signum: int, frame) -> None:
+    global shutdown_requested
+    name = signal.Signals(signum).name
+    print(f"\\nПолучен {name}, начинаю завершение...")
+    shutdown_requested = True
+
+def handle_hup(signum: int, frame) -> None:
+    print("SIGHUP: перезагрузка конфигурации")
+
+# Регистрация обработчиков
+prev_term = signal.signal(signal.SIGTERM, handle_term)
+prev_int  = signal.signal(signal.SIGINT,  handle_term)   # Ctrl+C
+signal.signal(signal.SIGHUP,  handle_hup)
+
+# Игнорирование сигнала
+signal.signal(signal.SIGUSR2, signal.SIG_IGN)
+print("SIGUSR2 игнорируется")
+
+# Основной цикл
+print(f"PID={os.getpid()}, запущен")
+while not shutdown_requested:
+    time.sleep(0.1)
+
+# Восстанавливаем обработчики
+signal.signal(signal.SIGTERM, prev_term)
+signal.signal(signal.SIGINT,  prev_int)
+
+print("Сервер остановлен корректно")
+
+# Нельзя установить обработчик из другого потока
+import threading, os
+
+def from_thread():
+    try:
+        signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+    except ValueError as e:
+        print(f"Ошибка: {e}")   # signal only works in main thread`,
+    },
+ {
+    name: "threading.local",
+    description:
+      "Класс, создающий объект локального хранилища потока (thread-local storage). Каждый поток видит свою независимую копию атрибутов объекта — изменения в одном потоке не видны другим. Типичное применение: хранение соединения с БД, текущего пользователя или контекста запроса, уникального для каждого потока.",
+    syntax: "threading.local()",
+    arguments: [],
+    example: `import threading
+
+# Создаём объект thread-local хранилища
+local_data = threading.local()
+
+def worker(value):
+    # Каждый поток записывает своё значение
+    local_data.value = value
+    # Читает только своё — не чужое
+    print(f"Thread {threading.current_thread().name}: {local_data.value}")
+
+t1 = threading.Thread(target=worker, args=(42,), name="T1")
+t2 = threading.Thread(target=worker, args=(99,), name="T2")
+t1.start(); t2.start()
+t1.join();  t2.join()
+# T1: 42
+# T2: 99`,
+  },
+  {
+    name: "threading.TIMEOUT_MAX",
+    description:
+      "Константа — максимально допустимое значение таймаута (в секундах) для блокирующих операций модуля threading: Lock.acquire(), Event.wait(), Condition.wait() и других. Передача значения, превышающего TIMEOUT_MAX, вызывает OverflowError. На большинстве платформ равно примерно 292 годам (sys.maxsize / 1e9).",
+    syntax: "threading.TIMEOUT_MAX",
+    arguments: [],
+    example: `import threading
+
+print(threading.TIMEOUT_MAX)
+# 9223372036.0  (на большинстве систем)
+
+lock = threading.Lock()
+
+# Безопасное использование — не превышаем максимум
+timeout = min(30.0, threading.TIMEOUT_MAX)
+acquired = lock.acquire(timeout=timeout)
+
+# OverflowError: передано значение больше TIMEOUT_MAX
+try:
+    lock.acquire(timeout=threading.TIMEOUT_MAX + 1)
+except OverflowError as e:
+    print(e)`,
+  },
+  {
+    name: "asyncio.run_in_executor",
+    description:
+      "Запускает синхронную (блокирующую) функцию в пуле потоков или процессов, не блокируя event loop. Возвращает корутину (awaitable). Первый аргумент — executor: None означает ThreadPoolExecutor по умолчанию. Используйте для вызова sync-библиотек (requests, psycopg2, файловые операции) из async-кода. Для CPU-bound задач передавайте ProcessPoolExecutor.",
+    syntax: "loop.run_in_executor(executor, func, *args)",
+    arguments: [
+      {
+        name: "executor",
+        description:
+          "Экземпляр Executor (ThreadPoolExecutor или ProcessPoolExecutor) или None — тогда используется executor по умолчанию (ThreadPoolExecutor).",
+      },
+      {
+        name: "func",
+        description:
+          "Синхронная вызываемая функция (callable). Не должна быть корутиной.",
+      },
+      {
+        name: "*args",
+        description:
+          "Позиционные аргументы, передаваемые в func. Именованные аргументы передавайте через functools.partial.",
+      },
+    ],
+    example: `import asyncio
+import time
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+def blocking_io(n: int) -> str:
+    """Блокирующая IO операция — не подходит для прямого вызова в async."""
+    time.sleep(n)
+    return f"done after {n}s"
+
+def cpu_heavy(n: int) -> int:
+    """CPU-bound вычисление."""
+    return sum(i * i for i in range(n))
+
+async def main():
+    loop = asyncio.get_event_loop()
+
+    # ThreadPoolExecutor (по умолчанию) — для IO-bound
+    result = await loop.run_in_executor(None, blocking_io, 1)
+    print(result)  # done after 1s
+
+    # ProcessPoolExecutor — для CPU-bound (обходит GIL)
+    with ProcessPoolExecutor(max_workers=2) as pool:
+        result = await loop.run_in_executor(pool, cpu_heavy, 10_000_000)
+        print(result)
+
+    # С именованными аргументами — используем functools.partial
+    import functools
+    fn = functools.partial(blocking_io, n=2)
+    result = await loop.run_in_executor(None, fn)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "loop.add_signal_handler",
+    description:
+      "Регистрирует обработчик UNIX-сигнала для asyncio event loop. В отличие от signal.signal(), обработчик вызывается безопасно внутри event loop — можно создавать задачи, планировать корутины. Доступен только на UNIX. Повторный вызов с тем же сигналом заменяет предыдущий обработчик. Для удаления — loop.remove_signal_handler(signum).",
+    syntax: "loop.add_signal_handler(signum, callback, *args)",
+    arguments: [
+      {
+        name: "signum",
+        description:
+          "Номер сигнала из модуля signal (например, signal.SIGTERM, signal.SIGINT, signal.SIGHUP).",
+      },
+      {
+        name: "callback",
+        description:
+          "Обычная функция (не корутина), вызываемая при получении сигнала. Для запуска корутины используйте asyncio.create_task() внутри callback.",
+      },
+      {
+        name: "*args",
+        description: "Позиционные аргументы, передаваемые в callback.",
+      },
+    ],
+    example: `import asyncio
+import signal
+
+async def shutdown(loop: asyncio.AbstractEventLoop, sig: signal.Signals):
+    print(f"Received {sig.name}, shutting down...")
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    loop.stop()
+
+async def main():
+    loop = asyncio.get_running_loop()
+
+    # Регистрируем обработчики SIGTERM и SIGINT (Ctrl+C)
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(
+            sig,
+            lambda s=sig: asyncio.create_task(shutdown(loop, s)),
+        )
+
+    print("Running... Press Ctrl+C to stop")
+    await asyncio.sleep(3600)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "time.monotonic",
+    description:
+      "Возвращает значение монотонных часов (в секундах, float) — времени, которое никогда не идёт назад и не зависит от системных часов. Используется для измерения интервалов и таймаутов. Начальная точка отсчёта не определена (обычно — время загрузки системы), поэтому имеет смысл только разница двух вызовов. В отличие от time.time(), не подвержен прыжкам при смене системного времени (NTP, ручная коррекция).",
+    syntax: "time.monotonic()",
+    arguments: [],
+    example: `import time
+
+# Измерение времени выполнения
+start = time.monotonic()
+total = sum(i ** 2 for i in range(1_000_000))
+elapsed = time.monotonic() - start
+print(f"Computed in {elapsed:.4f}s")
+
+# Таймаут без риска «прыжка» системных часов
+def wait_for_condition(check_fn, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if check_fn():
+            return True
+        time.sleep(0.05)
+    return False
+
+# time.monotonic() vs time.time():
+# time.time()     — реальное время UTC, может прыгнуть назад при NTP
+# time.monotonic() — только вперёд, строго монотонный, нет абсолютного значения`,
+  },
+  {
+    name: "signal.alarm",
+    description:
+      "Планирует отправку сигнала SIGALRM текущему процессу через указанное количество секунд. Если обработчик SIGALRM не установлен — процесс завершится. Повторный вызов отменяет предыдущий таймер. Вызов с аргументом 0 отменяет таймер без отправки сигнала. Доступен только на UNIX. Возвращает оставшееся время предыдущего таймера (или 0).",
+    syntax: "signal.alarm(time)",
+    arguments: [
+      {
+        name: "time",
+        description:
+          "Целое число секунд. 0 — отменяет текущий таймер. Не поддерживает дробные секунды (для точных таймеров используйте signal.setitimer).",
+      },
+    ],
+    example: `import signal
+
+def timeout_handler(signum, frame):
+    raise TimeoutError("Operation timed out")
+
+signal.signal(signal.SIGALRM, timeout_handler)
+
+# Установить таймаут 5 секунд
+signal.alarm(5)
+try:
+    # Долгая операция
+    import time; time.sleep(10)
+except TimeoutError:
+    print("Timed out!")
+finally:
+    signal.alarm(0)  # Отменить таймер
+
+# Узнать оставшееся время предыдущего таймера
+remaining = signal.alarm(10)  # → 0 (таймера не было)
+remaining = signal.alarm(20)  # → 10 (отменяет предыдущий, возвращает остаток)`,
+  },
+  {
+    name: "signal.default_int_handler",
+    description:
+      "Стандартный обработчик сигнала SIGINT (Ctrl+C), установленный Python по умолчанию. При вызове бросает исключение KeyboardInterrupt. Можно явно восстановить его после временной замены обработчика SIGINT.",
+    syntax: "signal.default_int_handler(signum, frame)",
+    arguments: [
+      {
+        name: "signum",
+        description: "Номер полученного сигнала (обычно signal.SIGINT = 2).",
+      },
+      {
+        name: "frame",
+        description:
+          "Текущий стековый фрейм (frame object) в момент получения сигнала.",
+      },
+    ],
+    example: `import signal
+
+def my_handler(signum, frame):
+    print("Custom SIGINT handler")
+    # Логируем, делаем cleanup...
+    # Восстанавливаем стандартное поведение (KeyboardInterrupt)
+    signal.default_int_handler(signum, frame)
+
+# Устанавливаем свой обработчик
+signal.signal(signal.SIGINT, my_handler)
+
+# Восстановить обработчик по умолчанию явно
+signal.signal(signal.SIGINT, signal.default_int_handler)`,
+  },
+  {
+    name: "signal.getsignal",
+    description:
+      "Возвращает текущий обработчик указанного сигнала. Возможные возвращаемые значения: callable (пользовательский обработчик), signal.SIG_DFL (действие по умолчанию ОС), signal.SIG_IGN (сигнал игнорируется), None (обработчик установлен не из Python, например из C-расширения).",
+    syntax: "signal.getsignal(signum)",
+    arguments: [
+      {
+        name: "signum",
+        description:
+          "Номер сигнала (например, signal.SIGTERM, signal.SIGINT).",
+      },
+    ],
+    example: `import signal
+
+# Проверить текущий обработчик SIGTERM
+handler = signal.getsignal(signal.SIGTERM)
+
+if handler is signal.SIG_DFL:
+    print("Default OS action (usually terminate)")
+elif handler is signal.SIG_IGN:
+    print("Signal is ignored")
+elif handler is None:
+    print("Set by non-Python code (C extension)")
+else:
+    print(f"Custom handler: {handler}")
+
+# Сохранить и восстановить обработчик
+old_handler = signal.getsignal(signal.SIGINT)
+signal.signal(signal.SIGINT, signal.SIG_IGN)  # временно игнорируем
+# ... критическая секция ...
+signal.signal(signal.SIGINT, old_handler)      # восстанавливаем`,
+  },
+  {
+    name: "signal.pause",
+    description:
+      "Приостанавливает выполнение процесса до получения любого сигнала, для которого установлен обработчик. После выполнения обработчика возвращает управление. Доступен только на UNIX. В многопоточном коде используйте threading.Event вместо pause() — pause() блокирует весь процесс, а не только текущий поток.",
+    syntax: "signal.pause()",
+    arguments: [],
+    example: `import signal
+
+def handler(signum, frame):
+    print(f"Got signal {signum}")
+
+signal.signal(signal.SIGUSR1, handler)
+
+print("Waiting for SIGUSR1...")
+signal.pause()  # блокируется до сигнала
+print("Resumed after signal")
+
+# Послать сигнал из другого терминала:
+# kill -USR1 <pid>`,
+  },
+  {
+    name: "signal.pthread_kill",
+    description:
+      "Отправляет сигнал конкретному потоку внутри текущего процесса. На UNIX каждый поток имеет собственный thread ID (TID). Позволяет точечно прерывать отдельный поток, не затрагивая остальные. Доступен только на платформах с поддержкой POSIX threads.",
+    syntax: "signal.pthread_kill(thread_id, signum)",
+    arguments: [
+      {
+        name: "thread_id",
+        description:
+          "Thread ID потока, получаемый через threading.get_ident() или threading.Thread.ident.",
+      },
+      {
+        name: "signum",
+        description:
+          "Номер сигнала. 0 — проверить существование потока без отправки сигнала.",
+      },
+    ],
+    example: `import signal
+import threading
+import time
+
+def worker():
+    try:
+        print(f"Worker TID: {threading.get_ident()}")
+        time.sleep(10)
+    except SystemExit:
+        print("Worker received SIGUSR1")
+
+def handler(signum, frame):
+    raise SystemExit("interrupted by signal")
+
+signal.signal(signal.SIGUSR1, handler)
+
+t = threading.Thread(target=worker)
+t.start()
+time.sleep(0.5)
+
+# Отправляем сигнал конкретному потоку
+signal.pthread_kill(t.ident, signal.SIGUSR1)
+t.join()`,
+  },
+  {
+    name: "signal.pthread_sigmask",
+    description:
+      "Изменяет или получает маску сигналов текущего потока (набор заблокированных сигналов). Заблокированный сигнал не доставляется потоку — он ожидает в очереди до разблокировки. Позволяет защищать критические секции кода от прерывания сигналами. Доступен только на UNIX с поддержкой pthreads.",
+    syntax: "signal.pthread_sigmask(how, mask)",
+    arguments: [
+      {
+        name: "how",
+        description:
+          "Операция: signal.SIG_BLOCK (добавить в маску), signal.SIG_UNBLOCK (удалить из маски), signal.SIG_SETMASK (заменить маску целиком).",
+      },
+      {
+        name: "mask",
+        description:
+          "Итерируемый объект с номерами сигналов (например, {signal.SIGTERM, signal.SIGINT}) или пустое множество.",
+      },
+    ],
+    example: `import signal
+
+# Заблокировать SIGTERM и SIGINT на время критической секции
+old_mask = signal.pthread_sigmask(
+    signal.SIG_BLOCK,
+    {signal.SIGTERM, signal.SIGINT},
+)
+
+try:
+    # Критическая секция — сигналы не доставляются, стоят в очереди
+    print("In critical section")
+finally:
+    # Восстановить предыдущую маску — отложенные сигналы доставятся здесь
+    signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
+
+# Получить текущую маску (передать пустое множество без изменений)
+current_mask = signal.pthread_sigmask(signal.SIG_BLOCK, set())
+print("Blocked signals:", current_mask)`,
+  },
+  {
+    name: "signal.raise_signal",
+    description:
+      "Отправляет сигнал текущему процессу (или потоку, в зависимости от сигнала). Аналог функции raise() в C. Появился в Python 3.8. До этого для аналогичного эффекта использовали os.kill(os.getpid(), signum).",
+    syntax: "signal.raise_signal(signum)",
+    arguments: [
+      {
+        name: "signum",
+        description:
+          "Номер сигнала для отправки текущему процессу (например, signal.SIGUSR1, signal.SIGTERM).",
+      },
+    ],
+    example: `import signal
+
+def handler(signum, frame):
+    print(f"Handled signal: {signal.Signals(signum).name}")
+
+signal.signal(signal.SIGUSR1, handler)
+
+# Отправить сигнал самому себе
+signal.raise_signal(signal.SIGUSR1)
+# Handled signal: SIGUSR1
+
+# До Python 3.8 — эквивалент:
+import os
+os.kill(os.getpid(), signal.SIGUSR1)`,
+  },
+  {
+    name: "signal.set_wakeup_fd",
+    description:
+      "Устанавливает файловый дескриптор, в который Python записывает байт номера сигнала при каждом его получении. Используется для интеграции сигналов с event loop-ами (asyncio, select, poll): loop добавляет fd в список отслеживаемых дескрипторов и просыпается при записи. Позволяет обрабатывать сигналы внутри event loop безопасно. Возвращает предыдущий fd.",
+    syntax: "signal.set_wakeup_fd(fd, *, warn_on_full_buffer=True)",
+    arguments: [
+      {
+        name: "fd",
+        description:
+          "Файловый дескриптор (write end pipe или socket) или -1 для отключения. Должен быть неблокирующим.",
+      },
+      {
+        name: "warn_on_full_buffer",
+        description:
+          "Если True (по умолчанию) — выводит предупреждение когда буфер fd заполнен и байт сигнала не записан.",
+      },
+    ],
+    example: `import signal
+import os
+import asyncio
+
+# Классический паттерн: self-pipe trick
+read_fd, write_fd = os.pipe()
+os.set_inheritable(write_fd, False)
+
+# Делаем write end неблокирующим
+import fcntl, fcntl as F
+flags = fcntl.fcntl(write_fd, F.F_GETFL)
+fcntl.fcntl(write_fd, F.F_SETFL, flags | os.O_NONBLOCK)
+
+old_fd = signal.set_wakeup_fd(write_fd)
+
+# Теперь select/poll на read_fd разблокируется при любом сигнале
+# asyncio использует этот механизм автоматически через add_signal_handler()`,
+  },
+  {
+    name: "signal.setitimer",
+    description:
+      "Устанавливает таймер интервального сигнала. В отличие от signal.alarm(), поддерживает дробные секунды и периодическую отправку сигналов. Три типа таймеров: ITIMER_REAL (реальное время, SIGALRM), ITIMER_VIRTUAL (процессорное время в user space, SIGVTALRM), ITIMER_PROF (user + kernel time, SIGPROF). Вызов с seconds=0 отменяет таймер. Доступен только на UNIX.",
+    syntax: "signal.setitimer(which, seconds, interval=0.0)",
+    arguments: [
+      {
+        name: "which",
+        description:
+          "Тип таймера: signal.ITIMER_REAL (реальное время), signal.ITIMER_VIRTUAL (CPU user), signal.ITIMER_PROF (CPU user+kernel).",
+      },
+      {
+        name: "seconds",
+        description:
+          "Задержка до первого сигнала в секундах (float). 0.0 отменяет таймер.",
+      },
+      {
+        name: "interval",
+        description:
+          "Интервал повтора в секундах (float). 0.0 — однократный сигнал.",
+      },
+    ],
+    example: `import signal
+import time
+
+tick_count = 0
+
+def on_tick(signum, frame):
+    global tick_count
+    tick_count += 1
+    print(f"Tick #{tick_count}")
+
+signal.signal(signal.SIGALRM, on_tick)
+
+# Сигнал через 0.5s, затем каждые 0.2s
+signal.setitimer(signal.ITIMER_REAL, 0.5, 0.2)
+
+time.sleep(2)
+
+# Отменить таймер
+signal.setitimer(signal.ITIMER_REAL, 0)
+print(f"Total ticks: {tick_count}")`,
+  },
+  {
+    name: "signal.getitimer",
+    description:
+      "Возвращает текущее состояние интервального таймера: кортеж (delay, interval), где delay — оставшееся время до следующего сигнала, interval — период повтора. Оба значения в секундах (float). Если таймер не установлен или истёк — оба значения равны 0.0. Доступен только на UNIX.",
+    syntax: "signal.getitimer(which)",
+    arguments: [
+      {
+        name: "which",
+        description:
+          "Тип таймера: signal.ITIMER_REAL, signal.ITIMER_VIRTUAL или signal.ITIMER_PROF.",
+      },
+    ],
+    example: `import signal
+
+# Установить таймер
+signal.setitimer(signal.ITIMER_REAL, 5.0, 1.0)
+
+# Проверить оставшееся время
+delay, interval = signal.getitimer(signal.ITIMER_REAL)
+print(f"Next signal in {delay:.3f}s, repeats every {interval:.3f}s")
+# Next signal in 4.998s, repeats every 1.000s
+
+# Отменить таймер
+signal.setitimer(signal.ITIMER_REAL, 0)
+delay, interval = signal.getitimer(signal.ITIMER_REAL)
+print(delay, interval)  # 0.0 0.0`,
+  },
+  {
+    name: "signal.siginterrupt",
+    description:
+      "Управляет поведением системных вызовов (read, write, select и др.) при получении сигнала. Если flag=True — системный вызов прерывается и возвращает EINTR (OSError). Если flag=False — системный вызов автоматически перезапускается после обработчика (SA_RESTART). По умолчанию Python перезапускает прерванные вызовы. Доступен только на UNIX.",
+    syntax: "signal.siginterrupt(signum, flag)",
+    arguments: [
+      {
+        name: "signum",
+        description: "Номер сигнала, для которого меняется поведение.",
+      },
+      {
+        name: "flag",
+        description:
+          "True — системные вызовы прерываются сигналом (EINTR). False — перезапускаются автоматически (SA_RESTART).",
+      },
+    ],
+    example: `import signal
+import socket
+
+def handler(signum, frame):
+    print("Got SIGALRM")
+
+signal.signal(signal.SIGALRM, handler)
+
+# Прерывать системные вызовы при SIGALRM
+signal.siginterrupt(signal.SIGALRM, True)
+
+sock = socket.socket()
+sock.listen(1)
+signal.alarm(2)
+
+try:
+    conn, addr = sock.accept()   # прервётся через 2s с OSError(EINTR)
+except OSError as e:
+    print(f"Interrupted: {e}")   # [Errno 4] Interrupted system call
+
+# Восстановить поведение по умолчанию (перезапуск)
+signal.siginterrupt(signal.SIGALRM, False)`,
+  },
+  {
+    name: "signal.signal",
+    description:
+      "Устанавливает обработчик для указанного сигнала. Обработчик — callable с сигнатурой (signum, frame), или одна из констант: signal.SIG_DFL (действие по умолчанию ОС), signal.SIG_IGN (игнорировать). Обработчики выполняются в главном потоке Python. Возвращает предыдущий обработчик. Для async-кода используйте loop.add_signal_handler() вместо signal.signal().",
+    syntax: "signal.signal(signum, handler)",
+    arguments: [
+      {
+        name: "signum",
+        description:
+          "Номер сигнала (например, signal.SIGTERM, signal.SIGINT, signal.SIGUSR1). SIGKILL и SIGSTOP перехватить нельзя.",
+      },
+      {
+        name: "handler",
+        description:
+          "Callable(signum, frame), signal.SIG_DFL (действие по умолчанию) или signal.SIG_IGN (игнорировать).",
+      },
+    ],
+    example: `import signal
+import sys
+
+def graceful_shutdown(signum, frame):
+    print(f"\\nReceived {signal.Signals(signum).name}, shutting down...")
+    # cleanup: закрыть файлы, БД, сохранить состояние
+    sys.exit(0)
+
+# Перехватить SIGTERM (kill <pid>) и SIGINT (Ctrl+C)
+signal.signal(signal.SIGTERM, graceful_shutdown)
+signal.signal(signal.SIGINT,  graceful_shutdown)
+
+# Игнорировать SIGHUP (терминал закрыт)
+signal.signal(signal.SIGHUP, signal.SIG_IGN)
+
+# Восстановить стандартное поведение SIGUSR1
+signal.signal(signal.SIGUSR1, signal.SIG_DFL)
+
+print(f"PID: {os.getpid()}, waiting for signals...")
+signal.pause()`,
+  },
+  {
+    name: "signal.sigpending",
+    description:
+      "Возвращает множество сигналов, которые были получены процессом, но ещё не доставлены — находятся в очереди ожидания (pending). Сигнал оказывается pending, если он был заблокирован через pthread_sigmask() в момент получения. Позволяет проверить очередь перед разблокировкой сигналов. Доступен только на UNIX.",
+    syntax: "signal.sigpending()",
+    arguments: [],
+    example: `import signal
+
+# Блокируем SIGUSR1
+signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGUSR1})
+
+# Отправляем сигнал самому себе — он встанет в очередь
+signal.raise_signal(signal.SIGUSR1)
+
+# Проверяем очередь — SIGUSR1 там есть
+pending = signal.sigpending()
+print(signal.SIGUSR1 in pending)  # True
+
+# Разблокируем — сигнал доставится сразу
+signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGUSR1})`,
+  },
+  {
+    name: "signal.sigwait",
+    description:
+      "Синхронно ждёт поступления одного из указанных сигналов и возвращает его номер. Сигналы из набора должны быть предварительно заблокированы через pthread_sigmask() — иначе они могут быть доставлены до вызова sigwait(). Блокирует поток (не весь процесс) до получения сигнала. Обработчик сигнала не вызывается. Доступен только на UNIX.",
+    syntax: "signal.sigwait(sigset)",
+    arguments: [
+      {
+        name: "sigset",
+        description:
+          "Итерируемый объект с номерами ожидаемых сигналов (например, {signal.SIGUSR1, signal.SIGUSR2}).",
+      },
+    ],
+    example: `import signal
+import threading
+
+def signal_thread():
+    # Ожидаем SIGUSR1 или SIGUSR2
+    wait_set = {signal.SIGUSR1, signal.SIGUSR2}
+    # Блокируем их до вызова sigwait
+    signal.pthread_sigmask(signal.SIG_BLOCK, wait_set)
+
+    print("Waiting for signal...")
+    received = signal.sigwait(wait_set)
+    print(f"Got signal: {signal.Signals(received).name}")
+
+t = threading.Thread(target=signal_thread)
+t.start()
+
+import time, os
+time.sleep(0.5)
+os.kill(os.getpid(), signal.SIGUSR1)
+t.join()`,
+  },
+  {
+    name: "signal.sigwaitinfo",
+    description:
+      "Синхронно ждёт одного из указанных сигналов и возвращает объект siginfo с подробной информацией о нём: si_signo (номер), si_code (причина), si_pid (PID отправителя), si_uid (UID), si_value (пользовательские данные из sigqueue). Расширенная версия sigwait(). Сигналы должны быть заблокированы перед вызовом. Доступен только на UNIX.",
+    syntax: "signal.sigwaitinfo(sigset)",
+    arguments: [
+      {
+        name: "sigset",
+        description:
+          "Итерируемый объект с номерами ожидаемых сигналов.",
+      },
+    ],
+    example: `import signal, os
+
+wait_set = {signal.SIGUSR1}
+signal.pthread_sigmask(signal.SIG_BLOCK, wait_set)
+
+# В другом потоке/процессе: os.kill(os.getpid(), signal.SIGUSR1)
+signal.raise_signal(signal.SIGUSR1)
+
+info = signal.sigwaitinfo(wait_set)
+print(f"Signal:  {info.si_signo}")   # 10 (SIGUSR1)
+print(f"Sender PID: {info.si_pid}")  # PID отправителя
+print(f"Sender UID: {info.si_uid}")
+print(f"Code:    {info.si_code}")    # причина отправки`,
+  },
+  {
+    name: "signal.sigtimedwait",
+    description:
+      "Аналог sigwaitinfo() с ограничением по времени ожидания. Ждёт одного из указанных сигналов не дольше timeout секунд. Возвращает объект siginfo при успехе или None при истечении таймаута. Поддерживает дробные секунды (float). Доступен только на UNIX.",
+    syntax: "signal.sigtimedwait(sigset, timeout)",
+    arguments: [
+      {
+        name: "sigset",
+        description:
+          "Итерируемый объект с номерами ожидаемых сигналов.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах (float). 0 — немедленный опрос без блокировки.",
+      },
+    ],
+    example: `import signal
+
+wait_set = {signal.SIGUSR1}
+signal.pthread_sigmask(signal.SIG_BLOCK, wait_set)
+
+# Ждём SIGUSR1 максимум 2 секунды
+info = signal.sigtimedwait(wait_set, 2.0)
+
+if info is None:
+    print("Timed out — signal not received")
+else:
+    print(f"Got signal {info.si_signo} from PID {info.si_pid}")
+
+# Немедленный опрос (timeout=0) — не блокирует
+info = signal.sigtimedwait(wait_set, 0)
+print("Pending SIGUSR1:", info is not None)`,
+  },
+  {
+    name: "signal.valid_signals",
+    description:
+      "Возвращает множество (frozenset) номеров всех допустимых сигналов на текущей платформе. Набор зависит от ОС: Linux, macOS и другие UNIX-системы поддерживают разные сигналы. Полезно для проверки перед передачей номера сигнала в функции модуля signal, а также для итерации по всем сигналам. Добавлен в Python 3.8.",
+    syntax: "signal.valid_signals()",
+    arguments: [],
+    example: `import signal
+
+valid = signal.valid_signals()
+print(type(valid))   # <class 'frozenset'>
+print(len(valid))    # зависит от ОС (обычно 31-64)
+
+# Проверить, поддерживается ли сигнал
+def is_valid(signum: int) -> bool:
+    return signum in signal.valid_signals()
+
+print(is_valid(signal.SIGTERM))  # True
+print(is_valid(99))              # False на большинстве платформ
+
+# Перечислить все доступные именованные сигналы
+for sig in sorted(valid):
+    try:
+        name = signal.Signals(sig).name
+        print(f"  {sig:2d}: {name}")
+    except ValueError:
+        pass`,
+  },
+  {
+    name: "signal.strsignal",
+    description:
+      "Возвращает описание сигнала в виде строки — человекочитаемое имя, соответствующее системной функции strsignal(). Например, для SIGTERM возвращает 'Terminated', для SIGSEGV — 'Segmentation fault'. Если номер сигнала неизвестен — возвращает None. Добавлен в Python 3.8.",
+    syntax: "signal.strsignal(signalnum)",
+    arguments: [
+      {
+        name: "signalnum",
+        description:
+          "Номер сигнала. Можно передавать как int или как член перечисления signal.Signals.",
+      },
+    ],
+    example: `import signal
+
+print(signal.strsignal(signal.SIGTERM))   # Terminated
+print(signal.strsignal(signal.SIGSEGV))  # Segmentation fault
+print(signal.strsignal(signal.SIGINT))   # Interrupt
+print(signal.strsignal(signal.SIGKILL))  # Killed
+
+# Неизвестный номер
+print(signal.strsignal(99))              # None
+
+# Удобно для логирования при получении сигнала
+def handler(signum, frame):
+    desc = signal.strsignal(signum) or "Unknown"
+    print(f"Received signal {signum}: {desc}")
+
+signal.signal(signal.SIGTERM, handler)`,
+  },
+  {
+    name: "signal.pidfd_send_signal",
+    description:
+      "Отправляет сигнал процессу через файловый дескриптор pidfd (process file descriptor), а не через PID. pidfd однозначно идентифицирует процесс: если процесс завершился и его PID переиспользован другим — сигнал не будет отправлен ошибочному процессу. Устраняет классическое race condition при использовании kill() по PID. Доступен только на Linux (ядро 5.1+). Добавлен в Python 3.9.",
+    syntax: "signal.pidfd_send_signal(pidfd, sig, siginfo=None, flags=0)",
+    arguments: [
+      {
+        name: "pidfd",
+        description:
+          "Файловый дескриптор pidfd, полученный через os.pidfd_open(pid).",
+      },
+      {
+        name: "sig",
+        description:
+          "Номер сигнала для отправки (например, signal.SIGTERM). 0 — проверить существование процесса без отправки.",
+      },
+      {
+        name: "siginfo",
+        description:
+          "Дополнительная информация о сигнале (si_value). Обычно None.",
+      },
+      {
+        name: "flags",
+        description: "Зарезервировано, всегда 0.",
+      },
+    ],
+    example: `import os, signal
+
+# Открываем pidfd для дочернего процесса
+child_pid = os.fork()
+if child_pid == 0:
+    # Дочерний процесс
+    import time; time.sleep(10)
+    os._exit(0)
+
+# Родительский процесс
+pidfd = os.pidfd_open(child_pid)
+
+# Безопасная отправка SIGTERM — даже если PID переиспользован,
+# сигнал уйдёт именно этому процессу
+signal.pidfd_send_signal(pidfd, signal.SIGTERM)
+
+os.waitpid(child_pid, 0)
+os.close(pidfd)`,
+  },
+  {
+    name: "signal.SIG_DFL",
+    description:
+      "Константа — значение обработчика, означающее «действие по умолчанию операционной системы» для данного сигнала. Передаётся в signal.signal() для восстановления стандартного поведения после установки пользовательского обработчика. Действие по умолчанию зависит от сигнала: SIGTERM — завершить процесс, SIGCHLD — игнорировать, SIGSTOP — приостановить.",
+    syntax: "signal.SIG_DFL",
+    arguments: [],
+    example: `import signal
+
+# Установить пользовательский обработчик
+def my_handler(signum, frame):
+    print("Custom handler")
+
+signal.signal(signal.SIGTERM, my_handler)
+
+# Восстановить действие по умолчанию (завершение процесса)
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+
+# Проверить: getsignal вернёт SIG_DFL
+handler = signal.getsignal(signal.SIGTERM)
+print(handler is signal.SIG_DFL)  # True
+
+# Действия по умолчанию для разных сигналов:
+# SIGTERM  — завершить процесс
+# SIGINT   — завершить (Python заменяет на KeyboardInterrupt)
+# SIGCHLD  — игнорировать (на большинстве систем)
+# SIGSEGV  — аварийный дамп (core dump)`,
+  },
+  {
+    name: "signal.SIG_IGN",
+    description:
+      "Константа — значение обработчика, означающее «игнорировать сигнал». Передаётся в signal.signal() чтобы процесс молча отбрасывал указанный сигнал без каких-либо действий. SIGKILL и SIGSTOP игнорировать невозможно — ядро доставляет их принудительно. Типичное применение: игнорировать SIGHUP при демонизации, SIGPIPE при работе с сокетами.",
+    syntax: "signal.SIG_IGN",
+    arguments: [],
+    example: `import signal
+
+# Игнорировать SIGHUP (терминал закрыт — процесс продолжает работу)
+signal.signal(signal.SIGHUP, signal.SIG_IGN)
+
+# Игнорировать SIGPIPE (запись в закрытый сокет/pipe не убивает процесс)
+signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+
+# Проверить
+handler = signal.getsignal(signal.SIGHUP)
+print(handler is signal.SIG_IGN)  # True
+
+# НЕЛЬЗЯ игнорировать:
+try:
+    signal.signal(signal.SIGKILL, signal.SIG_IGN)  # OSError
+except OSError as e:
+    print(e)  # [Errno 22] Invalid argument
+
+# Восстановить обработчик после игнорирования
+signal.signal(signal.SIGHUP, signal.SIG_DFL)`,
+  },
+  {
+    name: "signal.SIGABRT",
+    description:
+      "Сигнал аварийного завершения процесса (Abort). Отправляется функцией C abort() при обнаружении критической внутренней ошибки: провал assert(), нарушение инварианта в стандартной библиотеке. По умолчанию завершает процесс с созданием core dump. В Python вызывается os.abort(). Доступен на всех платформах (Windows, UNIX).",
+    syntax: "signal.SIGABRT",
+    arguments: [],
+    example: `import signal, os
+
+def handler(signum, frame):
+    print("SIGABRT received — aborting gracefully")
+    raise SystemExit(1)
+
+signal.signal(signal.SIGABRT, handler)
+
+# Инициировать SIGABRT вручную
+os.abort()          # немедленное завершение без обработчика Python
+# или
+signal.raise_signal(signal.SIGABRT)  # вызовет handler`,
+  },
+  {
+    name: "signal.SIGALRM",
+    description:
+      "Сигнал таймера реального времени. Отправляется процессу по истечении таймера, установленного через signal.alarm() или signal.setitimer(ITIMER_REAL). Стандартное действие — завершение процесса. Используется для реализации таймаутов на системных вызовах и блокирующих операциях. Доступен только на UNIX (отсутствует на Windows).",
+    syntax: "signal.SIGALRM",
+    arguments: [],
+    example: `import signal
+
+def on_timeout(signum, frame):
+    raise TimeoutError("Operation exceeded time limit")
+
+signal.signal(signal.SIGALRM, on_timeout)
+
+# Таймаут 5 секунд на блокирующую операцию
+signal.alarm(5)
+try:
+    result = some_blocking_call()
+finally:
+    signal.alarm(0)  # Сбросить таймер при любом исходе
+
+# Для дробных секунд — signal.setitimer(signal.ITIMER_REAL, 0.5)`,
+  },
+  {
+    name: "signal.SIGBREAK",
+    description:
+      "Windows-эквивалент SIGINT для нажатия Ctrl+Break. На Windows Ctrl+C генерирует SIGINT, Ctrl+Break — SIGBREAK. В отличие от SIGINT, SIGBREAK нельзя заблокировать или перехватить через стандартные механизмы в дочерних процессах. Доступен только на Windows; на UNIX не определён.",
+    syntax: "signal.SIGBREAK",
+    arguments: [],
+    example: `import signal, sys
+
+if sys.platform == "win32":
+    def handler(signum, frame):
+        print("Ctrl+Break pressed")
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGBREAK, handler)
+    print("Press Ctrl+Break to exit")
+
+    import time
+    time.sleep(60)
+else:
+    print("SIGBREAK is Windows-only")`,
+  },
+  {
+    name: "signal.SIGBUS",
+    description:
+      "Сигнал ошибки шины (Bus Error). Генерируется процессором при обращении к памяти с нарушением выравнивания (misaligned memory access) или при доступе к несуществующей физической памяти (например, к удалённой странице mmap после усечения файла). Стандартное действие — завершение с core dump. Доступен только на UNIX.",
+    syntax: "signal.SIGBUS",
+    arguments: [],
+    example: `import signal
+
+def handler(signum, frame):
+    print("SIGBUS: bus error — likely misaligned access or invalid mmap region")
+    raise MemoryError("Bus error")
+
+signal.signal(signal.SIGBUS, handler)
+
+# SIGBUS часто возникает при работе с mmap:
+import mmap, os, tempfile
+
+with tempfile.NamedTemporaryFile(delete=False) as f:
+    f.write(b"x" * 4096)
+    fname = f.name
+
+with open(fname, "r+b") as f:
+    m = mmap.mmap(f.fileno(), 4096)
+    # Усечение файла до 0 делает страницы mmap недоступными
+    os.truncate(fname, 0)
+    # Следующее обращение к m[0] вызовет SIGBUS
+    # m[0]  # ← SIGBUS здесь`,
+  },
+  {
+    name: "signal.SIGCHLD",
+    description:
+      "Сигнал изменения состояния дочернего процесса (Child Status Changed). Отправляется родительскому процессу когда дочерний процесс завершился, остановился (SIGSTOP) или продолжил работу (SIGCONT). Используется для асинхронного сбора статуса дочерних процессов без блокирующего os.wait(). Доступен только на UNIX.",
+    syntax: "signal.SIGCHLD",
+    arguments: [],
+    example: `import signal, os
+
+def on_child(signum, frame):
+    # Собираем все завершившиеся дочерние процессы
+    while True:
+        try:
+            pid, status = os.waitpid(-1, os.WNOHANG)
+            if pid == 0:
+                break  # Нет завершившихся процессов
+            print(f"Child {pid} exited with status {os.waitstatus_to_exitcode(status)}")
+        except ChildProcessError:
+            break  # Нет дочерних процессов
+
+signal.signal(signal.SIGCHLD, on_child)
+
+# Запускаем дочерний процесс
+pid = os.fork()
+if pid == 0:
+    os._exit(42)
+# Родитель получит SIGCHLD когда ребёнок завершится`,
+  },
+  {
+    name: "signal.SIGCLD",
+    description:
+      "Устаревший псевдоним сигнала SIGCHLD на некоторых UNIX-системах (System V). Функционально идентичен SIGCHLD. Определён не на всех платформах — перед использованием проверяйте наличие через hasattr(signal, 'SIGCLD'). В новом коде используйте signal.SIGCHLD.",
+    syntax: "signal.SIGCLD",
+    arguments: [],
+    example: `import signal
+
+# Проверяем наличие перед использованием
+if hasattr(signal, "SIGCLD"):
+    print(f"SIGCLD = {signal.SIGCLD}")
+    print(f"SIGCHLD = {signal.SIGCHLD}")
+    print(f"Same signal: {signal.SIGCLD == signal.SIGCHLD}")  # True
+else:
+    print("SIGCLD not available on this platform")
+
+# Рекомендуемый способ — всегда использовать SIGCHLD
+signal.signal(signal.SIGCHLD, signal.SIG_DFL)`,
+  },
+  {
+    name: "signal.SIGCONT",
+    description:
+      "Сигнал продолжения выполнения остановленного процесса (Continue). Отправляется процессу, ранее остановленному сигналом SIGSTOP или SIGTSTP, чтобы возобновить его выполнение. Нельзя заблокировать или игнорировать — ядро всегда обрабатывает его. Обработчик можно установить для выполнения действий при возобновлении (например, переинициализация состояния). Доступен только на UNIX.",
+    syntax: "signal.SIGCONT",
+    arguments: [],
+    example: `import signal, os
+
+def on_continue(signum, frame):
+    print("Process resumed — reinitializing state")
+    # Переоткрыть файлы, обновить кэш, сбросить таймеры
+
+signal.signal(signal.SIGCONT, on_continue)
+
+print(f"PID: {os.getpid()}")
+print("Send SIGSTOP to pause, SIGCONT to resume:")
+print(f"  kill -STOP {os.getpid()}")
+print(f"  kill -CONT {os.getpid()}")
+
+import time
+time.sleep(30)`,
+  },
+  {
+    name: "signal.SIGEMT",
+    description:
+      "Сигнал аппаратной ошибки эмулятора (Emulator Trap). Исторически использовался на процессорах с поддержкой эмуляции команд. В современных системах встречается редко. Определён только на некоторых UNIX-платформах (macOS, BSD); на Linux и Windows отсутствует. Перед использованием проверяйте наличие через hasattr(signal, 'SIGEMT').",
+    syntax: "signal.SIGEMT",
+    arguments: [],
+    example: `import signal
+
+if hasattr(signal, "SIGEMT"):
+    print(f"SIGEMT = {signal.SIGEMT}")
+
+    def handler(signum, frame):
+        print(f"SIGEMT received: emulator trap")
+
+    signal.signal(signal.SIGEMT, handler)
+else:
+    print("SIGEMT not available (Linux/Windows)")
+
+# Проверка наличия сигналов, зависящих от платформы:
+platform_specific = ["SIGEMT", "SIGINFO", "SIGBREAK", "SIGCLD"]
+for name in platform_specific:
+    available = hasattr(signal, name)
+    print(f"  {name}: {'yes' if available else 'no'}")`,
+  },
+  {
+    name: "signal.SIGFPE",
+    description:
+      "Сигнал ошибки вычислений с плавающей точкой (Floating-Point Exception). Генерируется при: делении целого числа на ноль, переполнении, недопустимой операции с числом. В Python деление на ноль бросает ZeroDivisionError без генерации SIGFPE. Сигнал может прийти из C-расширений или при прямой работе с FPU. Стандартное действие — завершение с core dump. Доступен на всех платформах.",
+    syntax: "signal.SIGFPE",
+    arguments: [],
+    example: `import signal
+
+def handler(signum, frame):
+    raise ArithmeticError("Floating point exception from native code")
+
+signal.signal(signal.SIGFPE, handler)
+
+# В чистом Python делить на ноль — ZeroDivisionError, не SIGFPE:
+try:
+    x = 1 / 0
+except ZeroDivisionError:
+    print("Python raises ZeroDivisionError, not SIGFPE")
+
+# SIGFPE приходит из C-расширений или ctypes при некорректных операциях FPU
+# Пример логирования для отладки нативного кода:
+import logging
+logging.basicConfig()
+log = logging.getLogger(__name__)
+
+def fpe_logger(signum, frame):
+    log.error("SIGFPE at frame: %s", frame)
+    signal.signal(signal.SIGFPE, signal.SIG_DFL)
+    signal.raise_signal(signal.SIGFPE)
+
+signal.signal(signal.SIGFPE, fpe_logger)`,
+  },
+  {
+    name: "signal.SIGHUP",
+    description:
+      "Сигнал разрыва управляющего терминала (Hang Up). Исторически отправлялся при разрыве телефонного соединения. Сейчас: отправляется при закрытии терминала или SSH-сессии всем процессам группы. Демоны используют SIGHUP как сигнал перечитать конфигурацию без перезапуска (nginx, sshd, systemd-сервисы). Доступен только на UNIX.",
+    syntax: "signal.SIGHUP",
+    arguments: [],
+    example: `import signal, logging
+
+log = logging.getLogger(__name__)
+config = {"log_level": "INFO"}  # глобальная конфигурация
+
+def reload_config(signum, frame):
+    """Перечитать конфигурацию без остановки сервиса."""
+    log.info("SIGHUP received — reloading configuration")
+    config["log_level"] = "DEBUG"  # в реальности — читаем файл
+    log.info("Config reloaded: %s", config)
+
+signal.signal(signal.SIGHUP, reload_config)
+
+# Игнорировать SIGHUP при демонизации (процесс не завершится при закрытии терминала)
+signal.signal(signal.SIGHUP, signal.SIG_IGN)
+
+# Отправить SIGHUP nginx для перечитывания конфигурации:
+# kill -HUP $(cat /run/nginx.pid)`,
+  },
+  {
+    name: "signal.SIGILL",
+    description:
+      "Сигнал недопустимой инструкции процессора (Illegal Instruction). Генерируется когда процессор встречает инструкцию, которую не распознаёт: несуществующий опкод, привилегированная инструкция в user space, некорректное выравнивание инструкций. Чаще всего возникает при повреждении стека или исполнении данных как кода. Стандартное действие — завершение с core dump. Доступен на всех платформах.",
+    syntax: "signal.SIGILL",
+    arguments: [],
+    example: `import signal
+
+def handler(signum, frame):
+    print(f"SIGILL: illegal instruction at {frame.f_code.co_filename}:{frame.f_lineno}")
+    raise RuntimeError("Illegal instruction — possible stack corruption or JIT error")
+
+signal.signal(signal.SIGILL, handler)
+
+# SIGILL в Python обычно означает:
+# 1. Баг в C-расширении (некорректная генерация кода)
+# 2. Повреждение памяти (buffer overflow в нативном коде)
+# 3. Несовместимость CPU (код собран для AVX512, запускается на CPU без него)
+# 4. Намеренная ловушка: __builtin_trap() в C/C++ для отладки
+import sys
+print(f"Platform: {sys.platform}")  # SIGILL поведение различается`,
+  },
+  {
+    name: "signal.SIGINFO",
+    description:
+      "Сигнал запроса статуса процесса (Information Request). Отправляется терминалом при нажатии Ctrl+T на BSD-системах (macOS, FreeBSD). По умолчанию ядро выводит статистику процесса (CPU, память). Приложение может перехватить его для вывода собственного статуса (прогресс, очереди, счётчики). Доступен только на BSD/macOS; на Linux и Windows отсутствует.",
+    syntax: "signal.SIGINFO",
+    arguments: [],
+    example: `import signal, sys
+
+if not hasattr(signal, "SIGINFO"):
+    print("SIGINFO is macOS/BSD only")
+    sys.exit(0)
+
+processed = 0
+total = 1000
+
+def show_status(signum, frame):
+    pct = processed / total * 100 if total else 0
+    print(f"\\rStatus: {processed}/{total} ({pct:.1f}%) processed")
+
+signal.signal(signal.SIGINFO, show_status)
+
+import time
+for i in range(total):
+    processed = i + 1
+    time.sleep(0.01)  # имитация работы
+    # Ctrl+T в терминале вызовет show_status в любой момент`,
+  },
+  {
+    name: "signal.SIGINT",
+    description:
+      "Сигнал прерывания (Interrupt). Генерируется при нажатии Ctrl+C в терминале. Python по умолчанию перехватывает его через signal.default_int_handler и бросает исключение KeyboardInterrupt в главном потоке. В дочерних потоках SIGINT не доставляется — KeyboardInterrupt возникает только в главном. Доступен на всех платформах.",
+    syntax: "signal.SIGINT",
+    arguments: [],
+    example: `import signal, time
+
+# Стандартное поведение: Ctrl+C → KeyboardInterrupt
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("\\nInterrupted by user")
+
+# Перехват для graceful shutdown
+def graceful_stop(signum, frame):
+    print("\\nSIGINT received — finishing current task...")
+    raise SystemExit(0)
+
+signal.signal(signal.SIGINT, graceful_stop)
+
+# Временно игнорировать Ctrl+C в критической секции
+old = signal.signal(signal.SIGINT, signal.SIG_IGN)
+try:
+    pass  # критическая секция
+finally:
+    signal.signal(signal.SIGINT, old)  # восстановить`,
+  },
+  {
+    name: "signal.SIGIO",
+    description:
+      "Сигнал готовности файлового дескриптора к вводу/выводу (I/O possible). Отправляется процессу когда дескриптор, настроенный на асинхронный ввод/вывод (O_ASYNC), готов к чтению или записи. Позволяет реализовать асинхронный IO без select()/poll() в однопоточном коде. Доступен только на UNIX; на многих системах является псевдонимом SIGPOLL.",
+    syntax: "signal.SIGIO",
+    arguments: [],
+    example: `import signal, os, fcntl
+
+def io_ready(signum, frame):
+    print("File descriptor is ready for I/O")
+
+signal.signal(signal.SIGIO, io_ready)
+
+# Настраиваем stdin на асинхронный IO
+fd = sys.stdin.fileno()
+# Устанавливаем O_ASYNC — ядро будет слать SIGIO при готовности данных
+fcntl.fcntl(fd, fcntl.F_SETFL, fcntl.fcntl(fd, fcntl.F_GETFL) | os.O_ASYNC)
+# Привязываем SIGIO к текущему процессу
+fcntl.fcntl(fd, fcntl.F_SETOWN, os.getpid())
+
+import time
+time.sleep(10)  # SIGIO придёт при вводе данных`,
+  },
+  {
+    name: "signal.SIGIOT",
+    description:
+      "Исторический сигнал аппаратной ловушки ввода/вывода (I/O Trap). На современных системах является псевдонимом SIGABRT. Использовался на старых архитектурах PDP-11 и ранних UNIX-системах для сигнализации об аппаратных ошибках IOT. Определён только на некоторых UNIX-платформах; проверяйте наличие через hasattr(signal, 'SIGIOT').",
+    syntax: "signal.SIGIOT",
+    arguments: [],
+    example: `import signal
+
+if hasattr(signal, "SIGIOT"):
+    print(f"SIGIOT = {signal.SIGIOT}")
+    # На большинстве Linux-систем SIGIOT == SIGABRT
+    print(f"SIGABRT = {signal.SIGABRT}")
+    print(f"Same value: {signal.SIGIOT == signal.SIGABRT}")  # True на Linux
+else:
+    print("SIGIOT not defined on this platform")`,
+  },
+  {
+    name: "signal.SIGKILL",
+    description:
+      "Сигнал принудительного завершения процесса (Kill). Единственный сигнал, который невозможно перехватить, заблокировать или игнорировать — ядро обрабатывает его напрямую, минуя обработчики процесса. Немедленно завершает процесс без возможности cleanup. Используется как последнее средство после безуспешной отправки SIGTERM. Доступен только на UNIX.",
+    syntax: "signal.SIGKILL",
+    arguments: [],
+    example: `import signal, os, time
+
+pid = os.fork()
+if pid == 0:
+    # Дочерний процесс игнорирует SIGTERM
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    time.sleep(60)
+    os._exit(0)
+
+# Родительский процесс: сначала SIGTERM, потом SIGKILL
+os.kill(pid, signal.SIGTERM)
+time.sleep(2)
+
+# Проверяем жив ли процесс (kill 0 — только проверка)
+try:
+    os.kill(pid, 0)
+    print("Process still alive — sending SIGKILL")
+    os.kill(pid, signal.SIGKILL)  # нельзя перехватить или игнорировать
+except ProcessLookupError:
+    print("Process already terminated")
+
+os.waitpid(pid, 0)
+
+# Попытка установить обработчик вызовет OSError
+try:
+    signal.signal(signal.SIGKILL, signal.SIG_IGN)
+except OSError as e:
+    print(e)  # [Errno 22] Invalid argument`,
+  },
+  {
+    name: "signal.SIGLOST",
+    description:
+      "Сигнал потери ресурса (Resource Lost). Исторически использовался в некоторых UNIX-системах (Solaris, старые BSD) для уведомления о потере блокировки файла или другого ресурса. На большинстве современных Linux-систем не определён. Перед использованием проверяйте наличие через hasattr(signal, 'SIGLOST').",
+    syntax: "signal.SIGLOST",
+    arguments: [],
+    example: `import signal
+
+if hasattr(signal, "SIGLOST"):
+    print(f"SIGLOST = {signal.SIGLOST}")
+
+    def handler(signum, frame):
+        print("Resource lost (e.g. file lock)")
+
+    signal.signal(signal.SIGLOST, handler)
+else:
+    # На большинстве Linux и macOS систем не определён
+    print("SIGLOST not available on this platform")`,
+  },
+  {
+    name: "signal.SIGPIPE",
+    description:
+      "Сигнал записи в закрытый канал или сокет (Broken Pipe). Генерируется при попытке записи в pipe, FIFO или сокет, читающая сторона которого закрыта. По умолчанию завершает процесс. В серверных приложениях обычно игнорируется (SIG_IGN), чтобы write() возвращал BrokenPipeError вместо завершения. Доступен только на UNIX.",
+    syntax: "signal.SIGPIPE",
+    arguments: [],
+    example: `import signal
+
+# Серверный паттерн: игнорировать SIGPIPE, обрабатывать BrokenPipeError
+signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+
+import socket
+sock = socket.socket()
+# ... accept connection ...
+try:
+    sock.sendall(b"data")
+except BrokenPipeError:
+    print("Client disconnected")  # вместо завершения процесса
+
+# Без SIG_IGN: запись в закрытый сокет убивает процесс
+# С SIG_IGN: write/send возвращает BrokenPipeError — можно обработать`,
+  },
+  {
+    name: "signal.SIGPOLL",
+    description:
+      "Сигнал опроса готовности (Pollable Event), System V аналог SIGIO. Отправляется при возникновении опрашиваемого события на файловом дескрипторе (готовность к чтению, записи, исключение). На Linux является синонимом SIGIO. Доступен только на UNIX-системах с System V API.",
+    syntax: "signal.SIGPOLL",
+    arguments: [],
+    example: `import signal
+
+if hasattr(signal, "SIGPOLL"):
+    print(f"SIGPOLL = {signal.SIGPOLL}")
+    # На Linux: SIGPOLL == SIGIO
+    if hasattr(signal, "SIGIO"):
+        print(f"SIGIO == SIGPOLL: {signal.SIGPOLL == signal.SIGIO}")
+
+    def handler(signum, frame):
+        print("Pollable event occurred")
+
+    signal.signal(signal.SIGPOLL, handler)
+else:
+    print("SIGPOLL not available")`,
+  },
+  {
+    name: "signal.SIGPROF",
+    description:
+      "Сигнал таймера профилирования (Profiling Timer). Отправляется по истечении таймера ITIMER_PROF — отсчитывает суммарное процессорное время в user space и kernel space. Используется профилировщиками (gprof, cProfile внутри) для периодического сэмплирования состояния программы. Доступен только на UNIX.",
+    syntax: "signal.SIGPROF",
+    arguments: [],
+    example: `import signal
+
+samples = []
+
+def profiler_sample(signum, frame):
+    # Записываем текущий стековый фрейм
+    samples.append({
+        "file":     frame.f_code.co_filename,
+        "function": frame.f_code.co_name,
+        "line":     frame.f_lineno,
+    })
+
+signal.signal(signal.SIGPROF, profiler_sample)
+
+# Запускаем таймер профилирования: каждые 10ms
+import signal as sig
+sig.setitimer(sig.ITIMER_PROF, 0.01, 0.01)
+
+# ... выполняем код для профилирования ...
+import time; time.sleep(1)
+
+sig.setitimer(sig.ITIMER_PROF, 0)
+print(f"Collected {len(samples)} samples")`,
+  },
+  {
+    name: "signal.SIGPWR",
+    description:
+      "Сигнал отказа питания (Power Failure). Отправляется системой или UPS-демоном при обнаружении проблем с питанием (переход на батарею, критический уровень заряда). Позволяет приложению сохранить состояние до отключения питания. Доступен только на Linux; на macOS и BSD обычно отсутствует.",
+    syntax: "signal.SIGPWR",
+    arguments: [],
+    example: `import signal
+
+if hasattr(signal, "SIGPWR"):
+    def on_power_failure(signum, frame):
+        print("Power failure detected — saving state")
+        # Сохранить буферы, закрыть транзакции БД, flush кэша
+        flush_all_buffers()
+        save_checkpoint()
+
+    signal.signal(signal.SIGPWR, on_power_failure)
+    print("Power failure handler registered")
+else:
+    print("SIGPWR not available (macOS/BSD)")
+
+# systemd и UPS-демоны (apcupsd, nut) отправляют SIGPWR
+# через D-Bus или напрямую при переходе на батарею`,
+  },
+  {
+    name: "signal.SIGQUIT",
+    description:
+      "Сигнал завершения с созданием core dump (Quit). Генерируется при нажатии Ctrl+\\ в терминале. В отличие от SIGTERM, стандартное действие — завершение процесса и создание файла core для post-mortem отладки. Используется когда SIGTERM не помогает и нужен снимок памяти для анализа зависания. Доступен только на UNIX.",
+    syntax: "signal.SIGQUIT",
+    arguments: [],
+    example: `import signal
+
+def handler(signum, frame):
+    import traceback
+    print("SIGQUIT received — dumping stack traces:")
+    traceback.print_stack(frame)
+    # В production: записать все стековые трейсы в лог
+    # вместо core dump
+
+signal.signal(signal.SIGQUIT, handler)
+
+# Отправить SIGQUIT из терминала: Ctrl+\\
+# или из другого процесса:
+import os
+# os.kill(os.getpid(), signal.SIGQUIT)
+
+# JVM аналог: kill -QUIT <pid> выводит thread dump
+# Python: принято логировать все потоки при SIGQUIT`,
+  },
+  {
+    name: "signal.SIGSEGV",
+    description:
+      "Сигнал ошибки сегментации (Segmentation Violation). Генерируется при обращении к памяти, к которой процесс не имеет прав доступа: разыменование NULL-указателя, выход за границы массива в нативном коде, запись в read-only страницу. В чистом Python почти невозможен — интерпретатор управляет памятью. Возникает в C-расширениях с ошибками. Стандартное действие — core dump. Доступен на всех платформах.",
+    syntax: "signal.SIGSEGV",
+    arguments: [],
+    example: `import signal, faulthandler
+
+# faulthandler — встроенный инструмент Python для диагностики SIGSEGV
+# Выводит traceback всех потоков при сбое
+faulthandler.enable()  # включить по умолчанию
+
+# Или направить вывод в файл
+import sys
+faulthandler.enable(file=sys.stderr)
+
+# Можно зарегистрировать обработчик SIGSEGV вручную:
+def segfault_handler(signum, frame):
+    print("Segmentation fault — likely bug in C extension")
+    # После SIGSEGV состояние памяти непредсказуемо
+    # Единственное безопасное действие — завершить процесс
+    import os; os._exit(1)
+
+signal.signal(signal.SIGSEGV, segfault_handler)
+
+# Запуск с диагностикой: python -X faulthandler script.py`,
+  },
+  {
+    name: "signal.SIGSTKFLT",
+    description:
+      "Сигнал ошибки стека сопроцессора (Stack Fault on Coprocessor). Исторически использовался для математического сопроцессора 80387. На современных системах практически не генерируется аппаратно. На Linux определён для совместимости, но не отправляется ядром. Некоторые программы (например, init/systemd) используют его как сигнал пользовательского назначения. Доступен только на Linux.",
+    syntax: "signal.SIGSTKFLT",
+    arguments: [],
+    example: `import signal
+
+if hasattr(signal, "SIGSTKFLT"):
+    print(f"SIGSTKFLT = {signal.SIGSTKFLT}")  # обычно 16 на Linux
+
+    # Использование как пользовательский сигнал
+    def handler(signum, frame):
+        print("SIGSTKFLT received")
+
+    signal.signal(signal.SIGSTKFLT, handler)
+    # Отправить самому себе:
+    # signal.raise_signal(signal.SIGSTKFLT)
+else:
+    print("SIGSTKFLT not defined on this platform")`,
+  },
+  {
+    name: "signal.SIGSTOP",
+    description:
+      "Сигнал остановки процесса (Stop). Приостанавливает выполнение процесса — переводит его в состояние T (stopped). Нельзя перехватить, заблокировать или игнорировать — ядро обрабатывает принудительно. Для возобновления отправьте SIGCONT. SIGTSTP (Ctrl+Z) — «мягкая» версия SIGSTOP, которую можно перехватить. Доступен только на UNIX.",
+    syntax: "signal.SIGSTOP",
+    arguments: [],
+    example: `import signal, os, time
+
+pid = os.fork()
+if pid == 0:
+    print(f"Child {os.getpid()} running")
+    time.sleep(30)
+    os._exit(0)
+
+time.sleep(0.5)
+
+# Остановить дочерний процесс
+os.kill(pid, signal.SIGSTOP)
+print(f"Child {pid} stopped")
+
+time.sleep(2)
+
+# Возобновить
+os.kill(pid, signal.SIGCONT)
+print(f"Child {pid} resumed")
+
+os.waitpid(pid, 0)
+
+# Попытка установить обработчик — OSError
+try:
+    signal.signal(signal.SIGSTOP, signal.SIG_IGN)
+except OSError as e:
+    print(e)  # [Errno 22] Invalid argument`,
+  },
+  {
+    name: "signal.SIGSYS",
+    description:
+      "Сигнал недопустимого системного вызова (Bad System Call). Генерируется когда процесс выполняет системный вызов, запрещённый политикой seccomp (secure computing mode). Используется в контейнерах (Docker, Kubernetes) и sandbox-окружениях для ограничения syscall-ов. В Python чаще всего возникает в C-расширениях, вызывающих недоступные syscall-ы. Доступен только на UNIX.",
+    syntax: "signal.SIGSYS",
+    arguments: [],
+    example: `import signal
+
+def handler(signum, frame):
+    print("SIGSYS: bad system call — likely blocked by seccomp policy")
+    raise PermissionError("System call not allowed in this environment")
+
+signal.signal(signal.SIGSYS, handler)
+
+# SIGSYS возникает при:
+# 1. seccomp-bpf фильтрах в Docker/k8s
+#    (docker run --security-opt seccomp=profile.json)
+# 2. Вызове устаревших или недоступных syscall-ов из C-расширений
+# 3. Запуске в sandbox с ограниченным набором syscall-ов (gVisor)
+
+# Диагностика: strace -e trace=! python script.py
+# Показывает какие syscall-ы выполняются`,
+  },
+  {
+    name: "signal.SIGTERM",
+    description:
+      "Сигнал завершения процесса (Terminate). Стандартный способ попросить процесс завершиться — в отличие от SIGKILL, его можно перехватить для graceful shutdown: закрыть соединения, завершить транзакции, сохранить состояние. Отправляется командой kill <pid> (без указания номера). systemd посылает SIGTERM при остановке сервиса, а затем через KillTimeoutSec — SIGKILL. Доступен на всех платформах.",
+    syntax: "signal.SIGTERM",
+    arguments: [],
+    example: `import signal, sys, logging
+
+log = logging.getLogger(__name__)
+_shutdown = False
+
+def graceful_shutdown(signum, frame):
+    global _shutdown
+    log.info("SIGTERM received — initiating graceful shutdown")
+    _shutdown = True
+
+signal.signal(signal.SIGTERM, graceful_shutdown)
+
+# Главный цикл с проверкой флага
+import time
+while not _shutdown:
+    # ... обработка задач ...
+    time.sleep(0.1)
+
+# Cleanup после выхода из цикла
+log.info("Shutting down cleanly")
+sys.exit(0)
+
+# systemd: после SIGTERM ждёт KillTimeoutSec (по умолчанию 90s),
+# затем отправляет SIGKILL если процесс не завершился`,
+  },
+  {
+    name: "signal.SIGTRAP",
+    description:
+      "Сигнал ловушки трассировки (Trace Trap). Генерируется при выполнении инструкции INT3 (точка останова) или после каждой инструкции в режиме пошагового выполнения (single-step). Используется отладчиками (gdb, pdb через ptrace) для реализации точек останова. В Python редко встречается напрямую — за исключением работы с нативными отладчиками и ptrace. Доступен на всех UNIX-платформах.",
+    syntax: "signal.SIGTRAP",
+    arguments: [],
+    example: `import signal
+
+def handler(signum, frame):
+    print(f"SIGTRAP at {frame.f_code.co_filename}:{frame.f_lineno}")
+    print(f"Function: {frame.f_code.co_name}")
+
+signal.signal(signal.SIGTRAP, handler)
+
+# SIGTRAP используется отладчиками:
+# gdb устанавливает точки останова заменяя инструкцию на INT3
+# При достижении INT3 ядро шлёт SIGTRAP трассируемому процессу
+
+# Ручная генерация для отладки:
+signal.raise_signal(signal.SIGTRAP)
+
+# В ctypes можно вставить точку останова:
+# import ctypes; ctypes.pythonapi.Py_MakePendingCalls()`,
+  },
+  {
+    name: "signal.SIGTSTP",
+    description:
+      "Сигнал остановки из терминала (Terminal Stop). Генерируется при нажатии Ctrl+Z. В отличие от SIGSTOP, его можно перехватить и игнорировать. Стандартное действие — перевести процесс в состояние остановки (аналог SIGSTOP). Оболочка (bash, zsh) использует SIGTSTP для реализации job control: fg/bg. Можно перехватить для сохранения состояния перед паузой. Доступен только на UNIX.",
+    syntax: "signal.SIGTSTP",
+    arguments: [],
+    example: `import signal, os
+
+def on_tstp(signum, frame):
+    print("\\nCtrl+Z pressed — saving state before pause")
+    # Сохраняем состояние
+    save_state()
+    # Восстанавливаем стандартный обработчик и останавливаемся
+    signal.signal(signal.SIGTSTP, signal.SIG_DFL)
+    os.kill(os.getpid(), signal.SIGTSTP)  # фактически остановиться
+
+def on_cont(signum, frame):
+    print("Resumed — restoring state")
+    restore_state()
+    # Снова ловим Ctrl+Z
+    signal.signal(signal.SIGTSTP, on_tstp)
+
+signal.signal(signal.SIGTSTP, on_tstp)
+signal.signal(signal.SIGCONT,  on_cont)
+
+import time
+print("Press Ctrl+Z to pause, fg to resume")
+time.sleep(60)`,
+  },
 ];
