@@ -55507,4 +55507,3138 @@ if data:
              age=int(data['age']), role=data.get('role', 'user'))
     print(u.name, u.role)   # Иван admin`,
   },
+   {
+    name: "redis.commands.core.CoreCommands.hincrby",
+    description: "Увеличивает целочисленное значение поля `key` в хеше `name` на величину `amount`. Если поле не существует, оно создаётся со значением 0, после чего применяется инкремент. Возвращает новое целочисленное значение поля.",
+    syntax: "hincrby(name, key, amount=1)",
+    arguments: [
+      { name: "name", description: "Ключ хеша в Redis." },
+      { name: "key", description: "Поле внутри хеша, значение которого нужно увеличить." },
+      { name: "amount", description: "Целое число, на которое увеличивается значение. По умолчанию 1." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.hset("user:1", "score", 10)
+r.hincrby("user:1", "score", 5)   # → 15
+r.hincrby("user:1", "score", -3)  # → 12  (отрицательный amount уменьшает)
+r.hincrby("user:1", "views")      # → 1   (поле не существовало, создано с 0)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.hincrbyfloat",
+    description: "Увеличивает значение поля `key` в хеше `name` на вещественное число `amount`. Значение хранится как строка, но интерпретируется как число с плавающей точкой. Возвращает новое значение в виде числа с плавающей точкой.",
+    syntax: "hincrbyfloat(name, key, amount=1.0)",
+    arguments: [
+      { name: "name", description: "Ключ хеша в Redis." },
+      { name: "key", description: "Поле внутри хеша." },
+      { name: "amount", description: "Вещественное число для прибавления. По умолчанию 1.0." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.hset("product:1", "price", "9.99")
+r.hincrbyfloat("product:1", "price", 0.50)  # → 10.49
+r.hincrbyfloat("product:1", "price", -1.5)  # → 8.99
+# Поле отсутствует — создаётся с нуля
+r.hincrbyfloat("product:1", "rating", 4.5)  # → 4.5`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.hkeys",
+    description: "Возвращает список всех полей (ключей) хеша `name`. Если хеш не существует, возвращает пустой список. Порядок полей не гарантирован.",
+    syntax: "hkeys(name)",
+    arguments: [
+      { name: "name", description: "Ключ хеша в Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.hset("user:1", mapping={"name": "Alice", "age": "30", "city": "Moscow"})
+fields = r.hkeys("user:1")  # → [b'name', b'age', b'city']
+# Декодирование байтов
+fields_str = [f.decode() for f in fields]  # → ['name', 'age', 'city']`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.hlen",
+    description: "Возвращает количество полей в хеше `name`. Если ключ не существует, возвращает 0.",
+    syntax: "hlen(name)",
+    arguments: [
+      { name: "name", description: "Ключ хеша в Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.hset("session:abc", mapping={"user_id": "42", "ip": "127.0.0.1", "ua": "Mozilla"})
+r.hlen("session:abc")    # → 3
+r.hlen("nonexistent")    # → 0`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.hmget",
+    description: "Возвращает значения для указанного набора полей из хеша `name`. Для полей, которые не существуют, возвращает `None`. Позволяет получить несколько значений за один вызов.",
+    syntax: "hmget(name, keys, *args)",
+    arguments: [
+      { name: "name", description: "Ключ хеша в Redis." },
+      { name: "keys", description: "Список полей для получения. Можно передать как список, так и отдельными аргументами через *args." },
+      { name: "*args", description: "Дополнительные поля, объединяются с keys." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.hset("user:1", mapping={"name": "Alice", "age": "30"})
+# Передача списком
+r.hmget("user:1", ["name", "age", "missing"])  # → [b'Alice', b'30', None]
+# Передача отдельными аргументами
+r.hmget("user:1", "name", "age")               # → [b'Alice', b'30']`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.hmset",
+    description: "Устанавливает несколько пар поле-значение в хеше `name` одновременно. Принимает словарь `mapping`. Существующие поля перезаписываются. Устарел начиная с Redis 4.0 — рекомендуется использовать `hset` с параметром `mapping`.",
+    syntax: "hmset(name, mapping)",
+    arguments: [
+      { name: "name", description: "Ключ хеша в Redis." },
+      { name: "mapping", description: "Словарь вида {поле: значение}." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Устаревший способ (hmset)
+r.hmset("user:1", {"name": "Bob", "age": "25", "city": "SPb"})
+# Рекомендуемый современный способ
+r.hset("user:1", mapping={"name": "Bob", "age": "25", "city": "SPb"})`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.hrandfield",
+    description: "Возвращает одно или несколько случайных полей из хеша `name`. Если `count` положительный — возвращает уникальные поля (без повторений); если отрицательный — может возвращать одно поле несколько раз. При `withvalues=True` возвращает пары поле-значение.",
+    syntax: "hrandfield(key, count=None, withvalues=False)",
+    arguments: [
+      { name: "key", description: "Ключ хеша в Redis." },
+      { name: "count", description: "Количество случайных полей. Если None — возвращается одно поле. Отрицательное значение допускает повторения." },
+      { name: "withvalues", description: "Если True — возвращает пары [поле, значение] вместо только полей." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.hset("colors", mapping={"red": "#f00", "green": "#0f0", "blue": "#00f"})
+r.hrandfield("colors")                        # → b'green'  (одно случайное поле)
+r.hrandfield("colors", count=2)               # → [b'red', b'blue']
+r.hrandfield("colors", count=-5)              # → 5 полей, могут повторяться
+r.hrandfield("colors", count=2, withvalues=True)
+# → [b'red', b'#f00', b'blue', b'#00f']`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.hscan",
+    description: "Инкрементальная итерация по полям хеша `name` с поддержкой курсора. Возвращает кортеж `(новый_курсор, {поле: значение})`. Когда возвращённый курсор равен 0, итерация завершена. Не блокирует Redis при работе с большими хешами, в отличие от `hgetall`.",
+    syntax: "hscan(name, cursor=0, match=None, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ хеша в Redis." },
+      { name: "cursor", description: "Позиция курсора. Начальное значение — 0." },
+      { name: "match", description: "Glob-паттерн для фильтрации полей (например, 'user:*'). Фильтрация происходит после выборки, count — лишь подсказка серверу." },
+      { name: "count", description: "Подсказка Redis о желаемом числе элементов за итерацию. Не гарантирует точное количество." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.hset("big_hash", mapping={f"field:{i}": i for i in range(1000)})
+
+cursor = 0
+all_fields = {}
+while True:
+    cursor, data = r.hscan("big_hash", cursor=cursor, count=100)
+    all_fields.update(data)
+    if cursor == 0:
+        break
+print(len(all_fields))  # → 1000`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.hscan_iter",
+    description: "Генератор для итерации по всем полям хеша `name`. Автоматически управляет курсором `hscan` и возвращает пары `(поле, значение)` по одной. Удобная обёртка над `hscan` для случаев когда не нужен ручной контроль курсора.",
+    syntax: "hscan_iter(name, match=None, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ хеша в Redis." },
+      { name: "match", description: "Glob-паттерн для фильтрации полей." },
+      { name: "count", description: "Подсказка Redis о числе элементов за одну итерацию hscan." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.hset("metrics", mapping={"cpu": "45", "ram": "70", "disk": "30"})
+
+# Простой перебор всех полей без управления курсором
+for field, value in r.hscan_iter("metrics"):
+    print(field.decode(), "→", value.decode())
+# cpu → 45
+# ram → 70
+# disk → 30
+
+# Фильтрация по паттерну
+for field, value in r.hscan_iter("metrics", match="*a*"):
+    print(field.decode())  # только поля содержащие 'a': ram`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.hset",
+    description: "Устанавливает одно или несколько полей хеша `name`. Можно передать одно поле через `key`/`value`, несколько — через словарь `mapping`, или оба варианта одновременно. Если хеш не существует — создаётся. Возвращает количество добавленных (не обновлённых) полей.",
+    syntax: "hset(name, key=None, value=None, mapping=None)",
+    arguments: [
+      { name: "name", description: "Ключ хеша в Redis." },
+      { name: "key", description: "Имя отдельного поля для установки. Используется совместно с value." },
+      { name: "value", description: "Значение для поля key." },
+      { name: "mapping", description: "Словарь вида {поле: значение} для массовой установки нескольких полей." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Одно поле
+r.hset("user:1", key="name", value="Alice")     # → 1 (добавлено новое поле)
+r.hset("user:1", key="name", value="Alice2")    # → 0 (поле обновлено, не добавлено)
+# Несколько полей через mapping
+r.hset("user:1", mapping={"age": "30", "city": "Moscow"})  # → 2
+# Одновременно key/value и mapping
+r.hset("user:1", key="role", value="admin", mapping={"score": "100"})`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.hsetnx",
+    description: "Устанавливает поле `key` в хеше `name` только если это поле ещё не существует (SET if Not eXists). Возвращает `True` если поле было установлено, `False` если поле уже существовало и операция не выполнена.",
+    syntax: "hsetnx(name, key, value)",
+    arguments: [
+      { name: "name", description: "Ключ хеша в Redis." },
+      { name: "key", description: "Поле внутри хеша." },
+      { name: "value", description: "Значение для установки." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.hset("config", "timeout", "30")
+# Поле уже существует — не перезаписывается
+r.hsetnx("config", "timeout", "999")   # → False, значение осталось "30"
+# Поле не существует — устанавливается
+r.hsetnx("config", "retries", "3")     # → True
+r.hget("config", "timeout")            # → b'30'
+r.hget("config", "retries")            # → b'3'`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.hvals",
+    description: "Возвращает список всех значений хеша `name`. Если хеш не существует, возвращает пустой список. Порядок значений соответствует порядку `hkeys`.",
+    syntax: "hvals(name)",
+    arguments: [
+      { name: "name", description: "Ключ хеша в Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.hset("user:1", mapping={"name": "Alice", "age": "30", "city": "Moscow"})
+values = r.hvals("user:1")  # → [b'Alice', b'30', b'Moscow']
+decoded = [v.decode() for v in values]  # → ['Alice', '30', 'Moscow']
+r.hvals("nonexistent")      # → []`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.incr",
+    description: "Увеличивает целочисленное значение строкового ключа `name` на `amount`. Если ключ не существует, создаётся со значением 0, затем применяется инкремент. Операция атомарна — безопасна при одновременном доступе нескольких клиентов. Возвращает новое целочисленное значение.",
+    syntax: "incr(name, amount=1)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis (строковый тип)." },
+      { name: "amount", description: "Целое число для прибавления. По умолчанию 1." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Счётчик посещений страницы
+r.incr("page:home:views")        # → 1 (ключ не существовал)
+r.incr("page:home:views")        # → 2
+r.incr("page:home:views", 10)    # → 12
+
+# Атомарность: безопасно из нескольких потоков/процессов
+import threading
+def increment():
+    for _ in range(1000):
+        r.incr("counter")
+
+threads = [threading.Thread(target=increment) for _ in range(10)]
+for t in threads: t.start()
+for t in threads: t.join()
+r.get("counter")  # → b'10000' (всегда, без race condition)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.incrby",
+    description: "Увеличивает целочисленное значение ключа `name` на `amount`. Если ключ не существует, создаётся со значением 0 и затем увеличивается. Отрицательный `amount` уменьшает значение. Операция атомарна. Возвращает новое целочисленное значение.",
+    syntax: "incrby(name, amount=1)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+      { name: "amount", description: "Целое число для прибавления. По умолчанию 1. Отрицательное значение уменьшает счётчик." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("downloads", 100)
+r.incrby("downloads", 50)    # → 150
+r.incrby("downloads", -20)   # → 130  (уменьшение)
+r.incrby("new_key", 5)       # → 5    (ключ создан с нуля)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.incrbyfloat",
+    description: "Увеличивает значение ключа `name` на вещественное число `amount`. Если ключ не существует, создаётся со значением 0. Значение хранится как строка, поддерживает нотацию с плавающей точкой и экспоненциальную запись. Возвращает новое значение в виде числа с плавающей точкой.",
+    syntax: "incrbyfloat(name, amount=1.0)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+      { name: "amount", description: "Вещественное число для прибавления. По умолчанию 1.0." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("temperature", "20.5")
+r.incrbyfloat("temperature", 1.3)    # → 21.8
+r.incrbyfloat("temperature", -0.5)   # → 21.3
+r.incrbyfloat("counter")             # → 1.0  (ключ не существовал)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.info",
+    description: "Возвращает статистику и информацию о сервере Redis в виде словаря. Без аргументов возвращает все основные секции. Можно запросить конкретную секцию: `server`, `clients`, `memory`, `stats`, `replication`, `cpu`, `keyspace` и другие.",
+    syntax: "info(section=None)",
+    arguments: [
+      { name: "section", description: "Название секции: 'server', 'clients', 'memory', 'stats', 'replication', 'cpu', 'keyspace', 'all', 'everything'. Если None — возвращаются основные секции." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Информация о памяти
+mem = r.info("memory")
+print(mem["used_memory_human"])     # → '1.50M'
+print(mem["maxmemory_human"])       # → '0B' (не ограничено)
+# Статистика по ключам
+ks = r.info("keyspace")
+print(ks)  # → {'db0': {'keys': 42, 'expires': 5, 'avg_ttl': 3600}}
+# Версия сервера
+print(r.info("server")["redis_version"])  # → '7.2.0'`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.keys",
+    description: "Возвращает список всех ключей, соответствующих паттерну `pattern`. Поддерживает glob-синтаксис: `*` (любые символы), `?` (один символ), `[abc]` (один из символов). **Внимание**: блокирует сервер на время выполнения. Для production-систем используйте `scan_iter` вместо `keys`.",
+    syntax: "keys(pattern='*')",
+    arguments: [
+      { name: "pattern", description: "Glob-паттерн для поиска ключей. По умолчанию '*' — все ключи." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("user:1:name", "Alice")
+r.set("user:2:name", "Bob")
+r.set("session:abc", "data")
+r.keys("user:*")          # → [b'user:1:name', b'user:2:name']
+r.keys("user:?:name")     # → [b'user:1:name', b'user:2:name']
+r.keys("*:name")          # → [b'user:1:name', b'user:2:name']
+# НЕ используйте keys('*') в production — используйте scan_iter
+for key in r.scan_iter("user:*"):
+    print(key)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.lastsave",
+    description: "Возвращает Unix timestamp последнего успешного сохранения базы данных на диск (RDB snapshot или AOF rewrite). Позволяет проверить когда последний раз данные были персистированы.",
+    syntax: "lastsave()",
+    arguments: [],
+    example: `import redis
+from datetime import datetime
+r = redis.Redis()
+timestamp = r.lastsave()
+dt = datetime.fromtimestamp(timestamp)
+print(f"Последнее сохранение: {dt}")  # → Последнее сохранение: 2024-01-15 14:30:00
+# Принудительное сохранение и проверка
+r.bgsave()
+import time; time.sleep(1)
+new_ts = r.lastsave()
+print(new_ts > timestamp)  # → True`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.latency_doctor",
+    description: "Возвращает отчёт диагностики задержек Redis с рекомендациями по устранению проблем. Анализирует историю задержек и предоставляет человекочитаемые советы. Требует включённого `latency-monitor-threshold` в конфигурации Redis.",
+    syntax: "latency_doctor()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+# Убедитесь что мониторинг задержек включён:
+# redis.conf: latency-monitor-threshold 10
+report = r.latency_doctor()
+print(report)
+# → "I have no latency events to report..." (если проблем нет)
+# Или подробный отчёт с рекомендациями если обнаружены проблемы`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.latency_graph",
+    description: "Возвращает ASCII-график истории задержек для указанного события `event`. Отображает динамику задержек во времени в текстовом виде для диагностики в терминале.",
+    syntax: "latency_graph(event)",
+    arguments: [
+      { name: "event", description: "Название события задержки (например, 'command', 'fast-command', 'aof-stat')." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Получаем доступные события
+latest = r.latency_latest()
+if latest:
+    event_name = latest[0][0]  # имя первого события
+    graph = r.latency_graph(event_name)
+    print(graph)  # ASCII-график задержек`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.latency_history",
+    description: "Возвращает историю задержек для указанного события в виде списка кортежей `(timestamp, latency_ms)`. Позволяет проанализировать динамику задержек за всё время мониторинга.",
+    syntax: "latency_history(event)",
+    arguments: [
+      { name: "event", description: "Название события задержки." },
+    ],
+    example: `import redis
+from datetime import datetime
+r = redis.Redis()
+history = r.latency_history("command")
+for ts, latency_ms in history:
+    dt = datetime.fromtimestamp(ts)
+    print(f"{dt}: {latency_ms}ms")
+# → 2024-01-15 14:00:00: 12ms
+# → 2024-01-15 14:05:00: 8ms`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.latency_latest",
+    description: "Возвращает последнее зафиксированное событие задержки для каждого типа события. Каждая запись содержит: имя события, timestamp, задержку, максимальную задержку за всё время.",
+    syntax: "latency_latest()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+events = r.latency_latest()
+for event in events:
+    name, ts, latency, max_latency = event
+    print(f"{name}: {latency}ms (max: {max_latency}ms)")
+# → command: 5ms (max: 120ms)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.latency_reset",
+    description: "Сбрасывает историю задержек для указанных событий. Без аргументов сбрасывает все события. Полезно для начала нового периода наблюдения после устранения проблемы.",
+    syntax: "latency_reset(*events)",
+    arguments: [
+      { name: "*events", description: "Имена событий для сброса. Если не указаны — сбрасываются все события." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Сбросить конкретное событие
+r.latency_reset("command")
+# Сбросить несколько событий
+r.latency_reset("command", "fast-command")
+# Сбросить все события
+r.latency_reset()`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.lindex",
+    description: "Возвращает элемент списка `name` по индексу `index`. Индексы начинаются с 0. Отрицательные индексы отсчитываются с конца: -1 — последний элемент, -2 — предпоследний. Если индекс выходит за пределы списка, возвращает `None`.",
+    syntax: "lindex(name, index)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "index", description: "Целочисленный индекс. Отрицательные значения отсчитываются с конца." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("tasks", "a", "b", "c", "d")
+r.lindex("tasks", 0)    # → b'a'  (первый)
+r.lindex("tasks", 2)    # → b'c'
+r.lindex("tasks", -1)   # → b'd'  (последний)
+r.lindex("tasks", -2)   # → b'c'  (предпоследний)
+r.lindex("tasks", 99)   # → None  (выход за пределы)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.linsert",
+    description: "Вставляет элемент `value` в список `name` перед (`BEFORE`) или после (`AFTER`) первого вхождения элемента `refvalue`. Возвращает длину списка после вставки, или -1 если `refvalue` не найден, или 0 если список не существует.",
+    syntax: "linsert(name, where, refvalue, value)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "where", description: "Позиция вставки: 'BEFORE' (перед refvalue) или 'AFTER' (после refvalue)." },
+      { name: "refvalue", description: "Опорный элемент, относительно которого производится вставка." },
+      { name: "value", description: "Значение для вставки." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("steps", "start", "end")
+r.linsert("steps", "BEFORE", "end", "middle")
+r.lrange("steps", 0, -1)  # → [b'start', b'middle', b'end']
+r.linsert("steps", "AFTER", "middle", "between")
+r.lrange("steps", 0, -1)  # → [b'start', b'middle', b'between', b'end']
+r.linsert("steps", "BEFORE", "ghost", "x")  # → -1 (refvalue не найден)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.llen",
+    description: "Возвращает длину (количество элементов) списка `name`. Если ключ не существует, возвращает 0.",
+    syntax: "llen(name)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("queue", "job1", "job2", "job3")
+r.llen("queue")        # → 3
+r.llen("empty_list")   # → 0 (ключ не существует)
+r.lpop("queue")
+r.llen("queue")        # → 2`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.lmove",
+    description: "Атомарно перемещает элемент из списка `src` в список `dst`. Параметр `srcout` задаёт с какого конца брать элемент (`LEFT` или `RIGHT`), `dstin` — в какой конец помещать. Возвращает перемещённый элемент или `None` если `src` пуст.",
+    syntax: "lmove(src, dst, srcout='RIGHT', dstin='LEFT')",
+    arguments: [
+      { name: "src", description: "Исходный список." },
+      { name: "dst", description: "Целевой список." },
+      { name: "srcout", description: "Конец исходного списка: 'LEFT' (голова) или 'RIGHT' (хвост). По умолчанию 'RIGHT'." },
+      { name: "dstin", description: "Конец целевого списка: 'LEFT' (голова) или 'RIGHT' (хвост). По умолчанию 'LEFT'." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("source", "a", "b", "c")
+# Перемещаем последний элемент source в начало dest
+r.lmove("source", "dest", srcout="RIGHT", dstin="LEFT")  # → b'c'
+r.lrange("source", 0, -1)  # → [b'a', b'b']
+r.lrange("dest", 0, -1)    # → [b'c']
+# Надёжная очередь: обработка с backup
+r.lmove("queue", "processing", "LEFT", "LEFT")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.lpop",
+    description: "Удаляет и возвращает элемент(ы) с головы (левый конец) списка `name`. Если `count` не указан — возвращает один элемент или `None` если список пуст. Если `count` указан — возвращает список из `count` элементов (или меньше если список короче).",
+    syntax: "lpop(name, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "count", description: "Количество элементов для извлечения. Если None — возвращается один элемент." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("queue", "first", "second", "third", "fourth")
+r.lpop("queue")         # → b'first'
+r.lpop("queue", 2)      # → [b'second', b'third']
+r.lpop("queue")         # → b'fourth'
+r.lpop("queue")         # → None (список пуст)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.lpos",
+    description: "Возвращает индекс(ы) первого или всех вхождений `value` в списке `name`. `rank` задаёт какое по счёту вхождение искать (1 — первое, 2 — второе, -1 — последнее). `count` — сколько вхождений вернуть (0 — все). `maxlen` ограничивает число просматриваемых элементов.",
+    syntax: "lpos(name, value, rank=None, count=None, maxlen=None)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "value", description: "Искомое значение." },
+      { name: "rank", description: "Порядковый номер вхождения (1 — первое, -1 — последнее с конца). По умолчанию 1." },
+      { name: "count", description: "Количество индексов для возврата. 0 — вернуть все вхождения." },
+      { name: "maxlen", description: "Ограничение числа просматриваемых элементов (0 — без ограничения)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("items", "a", "b", "a", "c", "a")
+r.lpos("items", "a")              # → 0  (первое вхождение)
+r.lpos("items", "a", rank=2)      # → 2  (второе вхождение)
+r.lpos("items", "a", rank=-1)     # → 4  (последнее с конца)
+r.lpos("items", "a", count=0)     # → [0, 2, 4] (все вхождения)
+r.lpos("items", "z")              # → None (не найдено)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.lpush",
+    description: "Добавляет одно или несколько значений в голову (левый конец) списка `name`. Если список не существует — создаётся. При передаче нескольких значений они добавляются по одному слева направо, так что последнее переданное значение окажется первым в списке. Возвращает длину списка после вставки.",
+    syntax: "lpush(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "*values", description: "Одно или несколько значений для добавления в начало списка." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.lpush("stack", "a")          # → 1, список: [a]
+r.lpush("stack", "b")          # → 2, список: [b, a]
+r.lpush("stack", "c", "d")     # → 4, список: [d, c, b, a]
+# "d" добавлен после "c", поэтому стоит левее
+r.lrange("stack", 0, -1)       # → [b'd', b'c', b'b', b'a']`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.lpushx",
+    description: "Добавляет значение(я) в голову списка `name` только если список уже существует. Если ключ не существует — операция не выполняется и список не создаётся. Возвращает длину списка после вставки, или 0 если список не существует.",
+    syntax: "lpushx(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "*values", description: "Значения для добавления в начало." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Список не существует — операция не выполняется
+r.lpushx("nonexistent", "value")  # → 0
+r.exists("nonexistent")            # → 0 (список не создан)
+# Список существует — вставка выполняется
+r.rpush("mylist", "existing")
+r.lpushx("mylist", "new")          # → 2
+r.lrange("mylist", 0, -1)          # → [b'new', b'existing']`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.lrange",
+    description: "Возвращает указанный диапазон элементов списка `name`. Индексы `start` и `end` включительны. Поддерживает отрицательные индексы: -1 — последний элемент. `lrange(name, 0, -1)` возвращает весь список. Не изменяет список.",
+    syntax: "lrange(name, start, end)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "start", description: "Начальный индекс диапазона (включительно)." },
+      { name: "end", description: "Конечный индекс диапазона (включительно). -1 — последний элемент." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("letters", "a", "b", "c", "d", "e")
+r.lrange("letters", 0, -1)   # → [b'a', b'b', b'c', b'd', b'e'] (весь список)
+r.lrange("letters", 1, 3)    # → [b'b', b'c', b'd']
+r.lrange("letters", -3, -1)  # → [b'c', b'd', b'e'] (последние 3)
+r.lrange("letters", 0, 1)    # → [b'a', b'b']`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.lrem",
+    description: "Удаляет вхождения элемента `value` из списка `name`. Параметр `count` управляет направлением и количеством: `count > 0` — удаляет первые `count` вхождений с головы; `count < 0` — удаляет `|count|` вхождений с хвоста; `count = 0` — удаляет все вхождения. Возвращает число удалённых элементов.",
+    syntax: "lrem(name, count, value)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "count", description: "Количество и направление удаления: >0 — с головы, <0 — с хвоста, 0 — все." },
+      { name: "value", description: "Значение для удаления." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("data", "x", "a", "x", "b", "x", "c", "x")
+# Удалить первые 2 вхождения 'x' с головы
+r.lrem("data", 2, "x")        # → 2
+r.lrange("data", 0, -1)       # → [b'a', b'b', b'x', b'c', b'x']
+# Удалить все вхождения 'x'
+r.rpush("data2", "x", "a", "x")
+r.lrem("data2", 0, "x")       # → 2`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.lset",
+    description: "Устанавливает значение элемента списка `name` по индексу `index`. Индекс должен быть в пределах существующего списка — операция не создаёт новые элементы. Поддерживает отрицательные индексы. Возвращает `True` при успехе, вызывает исключение если индекс выходит за пределы.",
+    syntax: "lset(name, index, value)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "index", description: "Индекс элемента для замены. Отрицательные значения отсчитываются с конца." },
+      { name: "value", description: "Новое значение." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("items", "a", "b", "c")
+r.lset("items", 1, "B")           # заменяем индекс 1
+r.lrange("items", 0, -1)          # → [b'a', b'B', b'c']
+r.lset("items", -1, "C")          # заменяем последний
+r.lrange("items", 0, -1)          # → [b'a', b'B', b'C']
+# Выход за пределы — исключение
+# r.lset("items", 99, "x")        # → ResponseError: index out of range`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.ltrim",
+    description: "Обрезает список `name`, оставляя только элементы в диапазоне от `start` до `end` включительно. Элементы вне диапазона удаляются. Поддерживает отрицательные индексы. Используется для ограничения размера списка.",
+    syntax: "ltrim(name, start, end)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "start", description: "Начальный индекс сохраняемого диапазона." },
+      { name: "end", description: "Конечный индекс сохраняемого диапазона. -1 — последний элемент." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("log", "entry1", "entry2", "entry3", "entry4", "entry5")
+# Оставить только последние 3 записи
+r.ltrim("log", -3, -1)
+r.lrange("log", 0, -1)  # → [b'entry3', b'entry4', b'entry5']
+
+# Паттерн: ограничение размера лога при добавлении
+r.lpush("recent", "new_event")
+r.ltrim("recent", 0, 99)   # хранить не более 100 последних элементов`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.memory_doctor",
+    description: "Возвращает человекочитаемый диагностический отчёт о состоянии памяти Redis. Анализирует фрагментацию, пиковое использование, использование RSS и предлагает рекомендации по оптимизации. Аналог `latency_doctor`, но для подсистемы памяти.",
+    syntax: "memory_doctor()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+report = r.memory_doctor()
+print(report)
+# → "Sam, I detected a few issues with this Redis instance memory implants:
+#    High fragmentation ratio (2.14). This means your allocator is wasting..."
+# Если проблем нет:
+# → "Hi Sam, this instance is healthy from a memory point of view."`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.memory_help",
+    description: "Возвращает список подкоманд команды `MEMORY` с кратким описанием каждой. Полезно для быстрого ознакомления с доступными инструментами диагностики памяти.",
+    syntax: "memory_help()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+help_text = r.memory_help()
+for line in help_text:
+    print(line.decode())
+# → MEMORY DOCTOR
+# → MEMORY MALLOC-STATS
+# → MEMORY PURGE
+# → MEMORY STATS
+# → MEMORY USAGE <key>`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.memory_malloc_stats",
+    description: "Возвращает внутреннюю статистику аллокатора памяти (jemalloc или libc). Предоставляет низкоуровневые данные о выделении памяти, пулах, фрагментации на уровне аллокатора. Вывод зависит от используемого аллокатора.",
+    syntax: "memory_malloc_stats()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+stats = r.memory_malloc_stats()
+print(stats)
+# Возвращает строку со статистикой jemalloc:
+# → "___ Begin jemalloc statistics ___
+#    Version: 5.3.0-0-g54eaed1d8b56b1aa528be3bdd1877e59c56fa90c
+#    ..."`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.memory_purge",
+    description: "Инициирует освобождение неиспользуемой памяти обратно операционной системе через аллокатор. При использовании jemalloc вызывает `mallopt(M_PURGE, 0)`. Полезно после удаления большого количества ключей для немедленного возврата памяти ОС.",
+    syntax: "memory_purge()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+# Смотрим использование памяти до purge
+before = r.info("memory")["used_memory_rss_human"]
+# Удаляем много ключей
+r.delete(*r.keys("temp:*"))
+# Запрашиваем возврат памяти ОС
+r.memory_purge()
+after = r.info("memory")["used_memory_rss_human"]
+print(f"До: {before}, После: {after}")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.memory_stats",
+    description: "Возвращает подробный словарь со статистикой использования памяти Redis: общий объём, RSS, пиковое значение, использование по типам данных (keys, clients, aof, replication), коэффициент фрагментации и другие метрики.",
+    syntax: "memory_stats()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+stats = r.memory_stats()
+print(stats["peak.allocated"])          # пиковое выделение памяти (байты)
+print(stats["total.allocated"])         # текущее выделение
+print(stats["mem_fragmentation_ratio"]) # коэффициент фрагментации (норма: 1.0–1.5)
+print(stats["keys.count"])              # число ключей в БД
+print(stats["clients.normal"])          # память под обычные клиентские соединения`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.memory_usage",
+    description: "Возвращает число байт, занимаемых ключом `key` и его значением включая накладные расходы структуры данных Redis. Параметр `samples` задаёт количество элементов для выборочной оценки у составных типов (списки, хеши и т.д.). Возвращает `None` если ключ не существует.",
+    syntax: "memory_usage(key, samples=None)",
+    arguments: [
+      { name: "key", description: "Ключ в Redis, для которого нужно узнать использование памяти." },
+      { name: "samples", description: "Количество элементов для выборки при оценке составных типов. 0 — анализировать все элементы. По умолчанию используется значение сервера (5)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("small", "hello")
+r.set("large", "x" * 10000)
+r.memory_usage("small")         # → 56  (байт включая метаданные)
+r.memory_usage("large")         # → 10073
+r.memory_usage("nonexistent")   # → None
+# Для хеша: samples=0 для точного подсчёта всех полей
+r.hset("myhash", mapping={str(i): i for i in range(100)})
+r.memory_usage("myhash", samples=0)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.mget",
+    description: "Возвращает значения для нескольких ключей за один вызов. Для ключей, которые не существуют, возвращает `None`. Порядок возвращаемых значений соответствует порядку переданных ключей. Значительно эффективнее нескольких отдельных вызовов `get`.",
+    syntax: "mget(keys, *args)",
+    arguments: [
+      { name: "keys", description: "Список ключей или первый ключ. Остальные ключи можно передать через *args." },
+      { name: "*args", description: "Дополнительные ключи для получения." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("a", "1")
+r.set("b", "2")
+# Передача списком
+r.mget(["a", "b", "missing"])   # → [b'1', b'2', None]
+# Передача отдельными аргументами
+r.mget("a", "b", "missing")     # → [b'1', b'2', None]
+# Эффективная загрузка профилей пользователей
+user_ids = [1, 2, 3]
+keys = [f"user:{uid}:name" for uid in user_ids]
+names = r.mget(keys)  # один RTT вместо трёх`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.migrate",
+    description: "Атомарно переносит один или несколько ключей с текущего сервера Redis на другой. Объединяет `DUMP`, `RESTORE` и `DEL` в одну атомарную операцию. Параметры `copy` и `replace` управляют поведением при конфликте ключей.",
+    syntax: "migrate(host, port, keys, destination_db, timeout, copy=False, replace=False, auth=None, username=None)",
+    arguments: [
+      { name: "host", description: "Хост целевого Redis-сервера." },
+      { name: "port", description: "Порт целевого Redis-сервера." },
+      { name: "keys", description: "Ключ или список ключей для переноса." },
+      { name: "destination_db", description: "Номер БД на целевом сервере." },
+      { name: "timeout", description: "Таймаут операции в миллисекундах." },
+      { name: "copy", description: "Если True — оригинальный ключ не удаляется (копирование). По умолчанию False." },
+      { name: "replace", description: "Если True — перезаписывает ключ на целевом сервере если он уже существует. По умолчанию False." },
+      { name: "auth", description: "Пароль для аутентификации на целевом сервере." },
+      { name: "username", description: "Имя пользователя для ACL-аутентификации на целевом сервере." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("migrate_me", "important_data")
+# Перенос на другой сервер (удаляет ключ с текущего)
+r.migrate("redis-target.example.com", 6379, "migrate_me", 0, timeout=5000)
+# Копирование без удаления с текущего сервера
+r.migrate("redis-target.example.com", 6379, "migrate_me", 0, timeout=5000, copy=True)
+# Перенос нескольких ключей
+r.migrate("redis-target.example.com", 6379, ["key1", "key2"], 0, timeout=5000)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.module_list",
+    description: "Возвращает список загруженных модулей Redis с их именами и версиями. Redis-модули расширяют функциональность сервера (например, RedisJSON, RediSearch, RedisTimeSeries).",
+    syntax: "module_list()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+modules = r.module_list()
+for module in modules:
+    print(module)
+# → {'name': b'ReJSON', 'ver': 20000}
+# → {'name': b'search', 'ver': 20600}
+# Если модулей нет:
+# → []`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.module_load",
+    description: "Загружает модуль Redis из файла по указанному пути `path`. Дополнительные аргументы `*args` передаются модулю при инициализации. Требует прав администратора. После загрузки модуль добавляет новые команды в Redis.",
+    syntax: "module_load(path, *args)",
+    arguments: [
+      { name: "path", description: "Абсолютный путь к файлу .so модуля на сервере Redis." },
+      { name: "*args", description: "Аргументы инициализации модуля (зависят от конкретного модуля)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Загрузка RedisJSON модуля
+r.module_load("/usr/lib/redis/modules/librejson.so")
+# Загрузка с аргументами инициализации
+r.module_load("/usr/lib/redis/modules/redisearch.so", "WORKERS", "4")
+# Проверяем что модуль загружен
+modules = r.module_list()
+names = [m["name"] for m in modules]
+print(b"ReJSON" in names)  # → True`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.module_unload",
+    description: "Выгружает ранее загруженный модуль Redis по его имени. После выгрузки все команды, добавленные модулем, становятся недоступны. Нельзя выгрузить модуль если есть ключи, использующие его типы данных.",
+    syntax: "module_unload(name)",
+    arguments: [
+      { name: "name", description: "Имя модуля для выгрузки (регистрозависимо, например 'ReJSON', 'search')." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Выгрузка модуля по имени
+r.module_unload("ReJSON")
+# Если есть ключи с типами данных модуля — выбросит исключение:
+# → ResponseError: Error unloading module: the module owns data types`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.move",
+    description: "Перемещает ключ `name` из текущей базы данных в базу данных с номером `db`. Операция атомарна. Возвращает `True` если ключ был перемещён, `False` если ключ не существует или уже присутствует в целевой БД.",
+    syntax: "move(name, db)",
+    arguments: [
+      { name: "name", description: "Имя ключа для перемещения." },
+      { name: "db", description: "Номер целевой базы данных (0–15 по умолчанию)." },
+    ],
+    example: `import redis
+r = redis.Redis(db=0)
+r.set("mykey", "value")
+r.move("mykey", 1)         # → True (перемещено в db=1)
+r.exists("mykey")          # → 0 (ключа нет в db=0)
+# Проверяем в db=1
+r1 = redis.Redis(db=1)
+r1.get("mykey")            # → b'value'
+# Если ключ уже есть в целевой БД
+r1.set("mykey", "other")
+r.set("mykey", "new")
+r.move("mykey", 1)         # → False (не перемещено — конфликт)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.mset",
+    description: "Устанавливает несколько пар ключ-значение за один вызов. Принимает словарь `mapping`. Все операции выполняются атомарно. Значительно эффективнее нескольких отдельных вызовов `set`. Всегда возвращает `True`.",
+    syntax: "mset(mapping)",
+    arguments: [
+      { name: "mapping", description: "Словарь вида {ключ: значение} для массовой установки." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.mset({"name": "Alice", "age": "30", "city": "Moscow"})
+r.mget("name", "age", "city")  # → [b'Alice', b'30', b'Moscow']
+# Эффективная запись данных сессии
+r.mset({
+    "session:abc:user_id": "42",
+    "session:abc:ip": "192.168.1.1",
+    "session:abc:created": "1705312200",
+})`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.msetnx",
+    description: "Устанавливает несколько пар ключ-значение только если ни один из указанных ключей не существует. Операция атомарна — либо устанавливаются все ключи, либо ни один. Возвращает `True` если все ключи были установлены, `False` если хотя бы один ключ уже существовал.",
+    syntax: "msetnx(mapping)",
+    arguments: [
+      { name: "mapping", description: "Словарь вида {ключ: значение}. Все ключи устанавливаются только при их полном отсутствии." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Все ключи новые — успех
+r.msetnx({"lock:a": "1", "lock:b": "1"})  # → True
+# lock:a уже существует — ни один ключ не установлен
+r.msetnx({"lock:a": "2", "lock:c": "1"})  # → False
+r.get("lock:c")  # → None (не был установлен из-за lock:a)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.object",
+    description: "Возвращает внутреннюю информацию о Redis-объекте по ключу `key`. Тип информации задаётся параметром `infotype`: `encoding` — внутреннее кодирование структуры данных; `refcount` — счётчик ссылок объекта; `idletime` — время в секундах с последнего обращения; `freq` — логарифмическая частота доступа (LFU).",
+    syntax: "object(infotype, key)",
+    arguments: [
+      { name: "infotype", description: "Тип запрашиваемой информации: 'encoding', 'refcount', 'idletime', 'freq'." },
+      { name: "key", description: "Ключ в Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("counter", 42)
+r.object("encoding", "counter")   # → b'int' (оптимизировано для целых чисел)
+r.object("refcount", "counter")   # → 1
+r.object("idletime", "counter")   # → 0 (только что обращались)
+r.lpush("mylist", *range(200))
+r.object("encoding", "mylist")    # → b'quicklist' (>128 элементов)
+r.lpush("small", "a", "b")
+r.object("encoding", "small")     # → b'listpack' (маленький список)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.persist",
+    description: "Удаляет TTL (время жизни) с ключа `name`, делая его постоянным. Возвращает `True` если TTL был успешно удалён, `False` если ключ не существует или уже не имеет TTL.",
+    syntax: "persist(name)",
+    arguments: [
+      { name: "name", description: "Ключ, с которого нужно снять время жизни." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("session", "data", ex=3600)  # TTL 1 час
+r.ttl("session")                   # → 3600
+# Делаем ключ постоянным
+r.persist("session")               # → True
+r.ttl("session")                   # → -1 (нет TTL)
+# Ключ без TTL — persist не меняет ничего
+r.set("permanent", "value")
+r.persist("permanent")             # → False`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.pexpire",
+    description: "Устанавливает TTL ключа `name` в миллисекундах. Аналог `expire`, но с миллисекундной точностью. Флаги `nx`, `xx`, `gt`, `lt` (Redis 7.0+) задают условие применения: `nx` — только если TTL не установлен, `xx` — только если TTL уже есть, `gt` — только если новый TTL больше текущего, `lt` — только если новый TTL меньше текущего.",
+    syntax: "pexpire(name, time, nx=False, xx=False, gt=False, lt=False)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+      { name: "time", description: "Время жизни в миллисекундах." },
+      { name: "nx", description: "Установить TTL только если у ключа нет TTL." },
+      { name: "xx", description: "Установить TTL только если у ключа уже есть TTL." },
+      { name: "gt", description: "Установить TTL только если новое значение больше текущего." },
+      { name: "lt", description: "Установить TTL только если новое значение меньше текущего." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("token", "abc123")
+r.pexpire("token", 30000)       # TTL = 30 000 мс (30 секунд)
+r.pttl("token")                 # → ~30000
+# Уменьшить TTL только если он ещё не установлен
+r.pexpire("token", 5000, nx=True)  # → False (TTL уже есть)
+# Продлить TTL только если новый > текущего
+r.pexpire("token", 60000, gt=True) # → True (60000 > 30000)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.pexpireat",
+    description: "Устанавливает абсолютное время истечения ключа `name` в виде Unix timestamp в миллисекундах. Принимает как целое число (мс), так и объект `datetime`. Флаги `nx`, `xx`, `gt`, `lt` работают аналогично `pexpire`.",
+    syntax: "pexpireat(name, when, nx=False, xx=False, gt=False, lt=False)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+      { name: "when", description: "Unix timestamp в миллисекундах или объект datetime." },
+      { name: "nx", description: "Установить только если у ключа нет времени истечения." },
+      { name: "xx", description: "Установить только если у ключа уже есть время истечения." },
+      { name: "gt", description: "Установить только если новое время позже текущего." },
+      { name: "lt", description: "Установить только если новое время раньше текущего." },
+    ],
+    example: `import redis
+from datetime import datetime, timedelta, UTC
+r = redis.Redis()
+r.set("promo", "SALE50")
+# Задать истечение через объект datetime
+expires = datetime.now(UTC) + timedelta(days=7)
+r.pexpireat("promo", expires)
+r.pttl("promo")  # → ~604800000 (7 дней в мс)
+# Через timestamp в миллисекундах
+import time
+ts_ms = int((time.time() + 3600) * 1000)  # через 1 час
+r.pexpireat("promo", ts_ms)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.pexpiretime",
+    description: "Возвращает абсолютное время истечения ключа `name` в виде Unix timestamp в миллисекундах. Возвращает -1 если у ключа нет TTL, -2 если ключ не существует.",
+    syntax: "pexpiretime(name)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+    ],
+    example: `import redis
+from datetime import datetime, UTC
+r = redis.Redis()
+r.set("event", "data", px=86400000)    # TTL = 24 часа в мс
+ts_ms = r.pexpiretime("event")
+expires_at = datetime.fromtimestamp(ts_ms / 1000, tz=UTC)
+print(f"Истекает: {expires_at}")       # → Истекает: 2024-01-16 12:00:00+00:00
+r.pexpiretime("permanent_key")         # → -1 (нет TTL)
+r.pexpiretime("nonexistent")           # → -2 (ключ не существует)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.ping",
+    description: "Отправляет серверу Redis команду PING для проверки соединения. Возвращает `True` если сервер отвечает (или `b'PONG'` при использовании `message`). Используется для проверки живости соединения и измерения задержки.",
+    syntax: "ping()",
+    arguments: [],
+    example: `import redis
+import time
+r = redis.Redis()
+r.ping()   # → True
+# Измерение RTT (round-trip time)
+start = time.perf_counter()
+r.ping()
+rtt_ms = (time.perf_counter() - start) * 1000
+print(f"Redis RTT: {rtt_ms:.2f}ms")
+# Проверка соединения перед работой
+try:
+    r.ping()
+    print("Redis доступен")
+except redis.ConnectionError:
+    print("Redis недоступен")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.psetex",
+    description: "Устанавливает значение ключа `name` и одновременно задаёт TTL в миллисекундах. Атомарная операция — эквивалент `SET key value PX time_ms`. Аналог `setex`, но с миллисекундной точностью.",
+    syntax: "psetex(name, time_ms, value)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+      { name: "time_ms", description: "Время жизни в миллисекундах. Должно быть положительным целым числом." },
+      { name: "value", description: "Значение для сохранения." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.psetex("otp_code", 300000, "847291")  # TTL = 5 минут
+r.pttl("otp_code")                      # → ~300000 (мс)
+r.get("otp_code")                       # → b'847291'
+# Через 300 секунд ключ автоматически удалится`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.pttl",
+    description: "Возвращает оставшееся время жизни ключа `name` в миллисекундах. Возвращает -1 если у ключа нет TTL, -2 если ключ не существует. Аналог `ttl`, но с миллисекундной точностью.",
+    syntax: "pttl(name)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("token", "abc", px=90000)  # TTL = 90 секунд
+r.pttl("token")                  # → ~90000 (убывает)
+r.set("permanent", "value")
+r.pttl("permanent")              # → -1 (нет TTL)
+r.pttl("nonexistent")            # → -2`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.publish",
+    description: "Публикует сообщение `message` в канал `channel` в рамках механизма Pub/Sub. Возвращает число подписчиков, которые получили сообщение. Если подписчиков нет — возвращает 0 и сообщение теряется (fire-and-forget).",
+    syntax: "publish(channel, message)",
+    arguments: [
+      { name: "channel", description: "Имя канала для публикации." },
+      { name: "message", description: "Сообщение для отправки. Может быть строкой или байтами." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Публикация события
+subscribers = r.publish("notifications", "user:42:logged_in")
+print(f"Получили {subscribers} подписчиков")
+# Публикация JSON
+import json
+r.publish("orders", json.dumps({"id": 101, "status": "shipped"}))
+# Если никто не подписан — сообщение теряется
+r.publish("empty_channel", "lost")  # → 0`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.pubsub_channels",
+    description: "Возвращает список активных каналов Pub/Sub (каналов с хотя бы одним подписчиком). Параметр `pattern` фильтрует каналы по glob-паттерну. По умолчанию возвращает все активные каналы.",
+    syntax: "pubsub_channels(pattern='*')",
+    arguments: [
+      { name: "pattern", description: "Glob-паттерн для фильтрации каналов. По умолчанию '*' — все активные каналы." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Предполагаем что есть подписчики на эти каналы
+r.pubsub_channels()               # → [b'news', b'alerts', b'chat:room1']
+r.pubsub_channels("chat:*")       # → [b'chat:room1']
+r.pubsub_channels("nonexistent*") # → []`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.pubsub_numpat",
+    description: "Возвращает общее число активных подписок по паттернам (`psubscribe`). Не считает обычные подписки на конкретные каналы (`subscribe`). Полезно для мониторинга нагрузки на Pub/Sub подсистему.",
+    syntax: "pubsub_numpat()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+# Предполагаем активные psubscribe-подписки
+count = r.pubsub_numpat()
+print(f"Активных pattern-подписок: {count}")
+# → Активных pattern-подписок: 3`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.pubsub_numsub",
+    description: "Возвращает число подписчиков для каждого из указанных каналов. Результат — словарь вида `{channel: count}`. Без аргументов возвращает пустой словарь. Считает только подписки через `subscribe`, не через `psubscribe`.",
+    syntax: "pubsub_numsub(*channels)",
+    arguments: [
+      { name: "*channels", description: "Имена каналов для проверки." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.pubsub_numsub("news", "alerts", "chat")
+# → {b'news': 5, b'alerts': 2, b'chat': 0}
+# Канал без подписчиков возвращает 0 (не ошибку)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.pubsub_shardchannels",
+    description: "Возвращает список активных шардированных каналов (Redis 7.0+, `ssubscribe`). Шардированный Pub/Sub ограничивает сообщения одним шардом кластера, снижая нагрузку на репликацию. Параметр `pattern` фильтрует по glob-паттерну.",
+    syntax: "pubsub_shardchannels(pattern='*')",
+    arguments: [
+      { name: "pattern", description: "Glob-паттерн для фильтрации шардированных каналов." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Требует Redis 7.0+ и режим кластера
+channels = r.pubsub_shardchannels()
+print(channels)  # → [b'shard:events', b'shard:metrics']
+r.pubsub_shardchannels("shard:*")  # → [b'shard:events', b'shard:metrics']`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.pubsub_shardnumsub",
+    description: "Возвращает число подписчиков шардированных каналов (Redis 7.0+, `ssubscribe`). Аналог `pubsub_numsub` для шардированного Pub/Sub. Результат — словарь `{channel: count}`.",
+    syntax: "pubsub_shardnumsub(*channels)",
+    arguments: [
+      { name: "*channels", description: "Имена шардированных каналов для проверки." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Требует Redis 7.0+ и режим кластера
+r.pubsub_shardnumsub("shard:events", "shard:metrics")
+# → {b'shard:events': 3, b'shard:metrics': 1}`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.quit",
+    description: "Корректно завершает текущее соединение с сервером Redis, отправив команду QUIT. Сервер подтверждает запрос и закрывает соединение. В большинстве случаев предпочтительнее просто закрыть объект соединения через контекстный менеджер.",
+    syntax: "quit()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+r.ping()    # → True
+r.quit()    # → True (соединение закрыто)
+# Последующие вызовы вызовут переподключение (пул соединений)
+r.ping()    # → True (новое соединение из пула)
+# Рекомендуемый способ — контекстный менеджер:
+with redis.Redis() as conn:
+    conn.set("key", "val")
+# соединение закрыто автоматически`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.randomkey",
+    description: "Возвращает случайный ключ из текущей базы данных. Если база данных пуста, возвращает `None`. Полезно для случайной выборки или диагностики содержимого БД.",
+    syntax: "randomkey()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+r.set("user:1", "Alice")
+r.set("user:2", "Bob")
+r.set("session:abc", "data")
+r.randomkey()   # → b'user:2' или любой другой ключ
+r.randomkey()   # → b'session:abc' (случайно)
+# Пустая БД
+r.flushdb()
+r.randomkey()   # → None`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.rename",
+    description: "Переименовывает ключ `src` в `dst`. Если `dst` уже существует — он перезаписывается. Если `src` не существует — вызывает исключение `ResponseError`. Операция атомарна.",
+    syntax: "rename(src, dst)",
+    arguments: [
+      { name: "src", description: "Исходное имя ключа." },
+      { name: "dst", description: "Новое имя ключа." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("old_name", "value")
+r.rename("old_name", "new_name")   # → True
+r.exists("old_name")               # → 0
+r.get("new_name")                  # → b'value'
+# Если dst существует — перезаписывается
+r.set("existing", "old_value")
+r.set("temp", "new_value")
+r.rename("temp", "existing")
+r.get("existing")                  # → b'new_value'`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.renamenx",
+    description: "Переименовывает ключ `src` в `dst` только если `dst` ещё не существует (Rename if Not eXists). Возвращает `True` если переименование выполнено, `False` если `dst` уже существует. Вызывает исключение если `src` не существует.",
+    syntax: "renamenx(src, dst)",
+    arguments: [
+      { name: "src", description: "Исходное имя ключа." },
+      { name: "dst", description: "Новое имя ключа (должно отсутствовать)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("temp_key", "data")
+r.renamenx("temp_key", "final_key")   # → True (final_key не существовал)
+r.set("temp2", "other")
+r.renamenx("temp2", "final_key")      # → False (final_key уже есть)
+r.get("temp2")                        # → b'other' (ключ не переименован)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.replicaof",
+    description: "Управляет репликацией текущего сервера. Вызов с `host` и `port` делает сервер репликой указанного мастера. Вызов без аргументов (или с `host=None`) переводит сервер в режим мастера (`REPLICAOF NO ONE`). Используется для настройки репликации и failover.",
+    syntax: "replicaof(host=None, port=None)",
+    arguments: [
+      { name: "host", description: "Хост мастер-сервера. Если None — переключает сервер в режим мастера." },
+      { name: "port", description: "Порт мастер-сервера." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Сделать текущий сервер репликой мастера
+r.replicaof("redis-master.example.com", 6379)
+# Посмотреть роль
+info = r.info("replication")
+print(info["role"])  # → 'slave'
+# Повысить до мастера (REPLICAOF NO ONE)
+r.replicaof()
+print(r.info("replication")["role"])  # → 'master'`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.restore",
+    description: "Десериализует и восстанавливает ключ `name` из сериализованного значения `value` (полученного командой `DUMP`). Параметр `ttl` задаёт TTL в миллисекундах (0 — без TTL). Используется совместно с `dump` для ручной миграции ключей.",
+    syntax: "restore(name, ttl, value, replace=False, absttl=False, idletime=None, freq=None)",
+    arguments: [
+      { name: "name", description: "Имя ключа для восстановления." },
+      { name: "ttl", description: "TTL в миллисекундах. 0 — ключ без TTL." },
+      { name: "value", description: "Сериализованное значение, полученное через DUMP." },
+      { name: "replace", description: "Если True — перезаписывает существующий ключ. По умолчанию False." },
+      { name: "absttl", description: "Если True — ttl интерпретируется как абсолютный Unix timestamp в мс." },
+      { name: "idletime", description: "Начальное время простоя для LRU-политики вытеснения." },
+      { name: "freq", description: "Начальная частота доступа для LFU-политики вытеснения." },
+    ],
+    example: `import redis
+src = redis.Redis(host="redis-source")
+dst = redis.Redis(host="redis-dest")
+# Сериализуем ключ с источника
+serialized = src.dump("important_key")
+ttl_ms = src.pttl("important_key")
+ttl_ms = max(ttl_ms, 0)   # pttl возвращает -1/-2 если нет TTL
+# Восстанавливаем на целевом сервере
+dst.restore("important_key", ttl_ms, serialized, replace=True)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.role",
+    description: "Возвращает роль текущего сервера Redis в инфраструктуре репликации: `master`, `slave` или `sentinel`. Для мастера также возвращает смещение репликации и список подключённых реплик. Для реплики — адрес мастера и статус репликации.",
+    syntax: "role()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+info = r.role()
+print(info[0])  # → b'master' | b'slave' | b'sentinel'
+# Для мастера: [b'master', replication_offset, [[replica_ip, replica_port, offset], ...]]
+# Для реплики: [b'slave', master_ip, master_port, repl_state, repl_offset]
+if info[0] == b"master":
+    print(f"Реплик подключено: {len(info[2])}")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.rpop",
+    description: "Удаляет и возвращает элемент(ы) с хвоста (правый конец) списка `name`. Если `count` не указан — возвращает один элемент или `None` если список пуст. Если `count` указан — возвращает список из до `count` элементов. Симметричен `lpop`.",
+    syntax: "rpop(name, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "count", description: "Количество элементов для извлечения. Если None — возвращается один элемент." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("stack", "first", "second", "third")
+r.rpop("stack")       # → b'third'  (с хвоста)
+r.rpop("stack", 2)    # → [b'second', b'first']
+r.rpop("stack")       # → None (список пуст)
+# Стек (LIFO): lpush + rpop или rpush + lpop`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.rpoplpush",
+    description: "Атомарно извлекает последний элемент списка `src` и помещает его в начало списка `dst`. Возвращает перемещённый элемент или `None` если `src` пуст. Устарел в Redis 6.2 — рекомендуется `lmove`.",
+    syntax: "rpoplpush(src, dst)",
+    arguments: [
+      { name: "src", description: "Исходный список (элемент берётся с хвоста)." },
+      { name: "dst", description: "Целевой список (элемент помещается в голову)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("queue", "task1", "task2", "task3")
+# Надёжная очередь: перемещаем задачу в список "в обработке"
+task = r.rpoplpush("queue", "processing")
+print(task)  # → b'task3'
+r.lrange("queue", 0, -1)       # → [b'task1', b'task2']
+r.lrange("processing", 0, -1)  # → [b'task3']
+# Эквивалент через lmove (рекомендуется):
+r.lmove("queue", "processing", "RIGHT", "LEFT")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.rpush",
+    description: "Добавляет одно или несколько значений в хвост (правый конец) списка `name`. Если список не существует — создаётся. При передаче нескольких значений они добавляются слева направо: первый аргумент окажется левее последнего. Возвращает длину списка после вставки.",
+    syntax: "rpush(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "*values", description: "Одно или несколько значений для добавления в конец списка." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("queue", "task1")          # → 1, список: [task1]
+r.rpush("queue", "task2")          # → 2, список: [task1, task2]
+r.rpush("queue", "task3", "task4") # → 4, список: [task1, task2, task3, task4]
+r.lrange("queue", 0, -1)
+# → [b'task1', b'task2', b'task3', b'task4']
+# Очередь FIFO: rpush для добавления, lpop для извлечения`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.rpushx",
+    description: "Добавляет значение(я) в хвост списка `name` только если список уже существует. Если ключ не существует — операция не выполняется. Возвращает длину списка после вставки, или 0 если список не существует.",
+    syntax: "rpushx(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ списка в Redis." },
+      { name: "*values", description: "Значения для добавления в конец." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Список не существует — операция игнорируется
+r.rpushx("missing", "value")   # → 0
+r.exists("missing")             # → 0
+# Список существует — вставка выполняется
+r.rpush("mylist", "a", "b")
+r.rpushx("mylist", "c")         # → 3
+r.lrange("mylist", 0, -1)       # → [b'a', b'b', b'c']`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sadd",
+    description: "Добавляет одно или несколько значений в множество `name`. Если множество не существует — создаётся. Дубликаты игнорируются. Возвращает количество фактически добавленных элементов (не считая уже существующих).",
+    syntax: "sadd(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ множества в Redis." },
+      { name: "*values", description: "Одно или несколько значений для добавления." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("tags", "python")           # → 1
+r.sadd("tags", "redis", "python")  # → 1 (python уже есть, redis новый)
+r.sadd("tags", "fastapi", "pydantic", "sqlalchemy")  # → 3
+r.smembers("tags")
+# → {b'python', b'redis', b'fastapi', b'pydantic', b'sqlalchemy'}
+r.scard("tags")  # → 5`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.save",
+    description: "Выполняет синхронное сохранение базы данных Redis на диск (RDB snapshot). Блокирует сервер до завершения записи. Для фонового сохранения без блокировки используйте `bgsave`. Возвращает `True` при успехе.",
+    syntax: "save()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+# Синхронное сохранение (блокирует сервер!)
+r.save()             # → True
+# Проверяем время последнего сохранения
+from datetime import datetime
+ts = r.lastsave()
+print(datetime.fromtimestamp(ts))  # → текущее время
+# Для production используйте bgsave (неблокирующее):
+r.bgsave()           # запускает сохранение в фоне`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.scan",
+    description: "Инкрементальная итерация по всем ключам базы данных с поддержкой курсора. Возвращает кортеж `(новый_курсор, [ключи])`. Когда курсор вернулся к 0 — итерация завершена. Безопасен для production: не блокирует сервер в отличие от `keys`. Параметр `_type` фильтрует по типу данных Redis.",
+    syntax: "scan(cursor=0, match=None, count=None, _type=None)",
+    arguments: [
+      { name: "cursor", description: "Позиция курсора. Начальное значение — 0." },
+      { name: "match", description: "Glob-паттерн для фильтрации ключей (например, 'user:*')." },
+      { name: "count", description: "Подсказка Redis о желаемом числе ключей за итерацию (не гарантирует точность)." },
+      { name: "_type", description: "Фильтрация по типу Redis-объекта: 'string', 'list', 'set', 'zset', 'hash', 'stream'." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Полный обход всех ключей
+cursor = 0
+all_keys = []
+while True:
+    cursor, keys = r.scan(cursor=cursor, count=100)
+    all_keys.extend(keys)
+    if cursor == 0:
+        break
+# Только хеши с паттерном
+cursor = 0
+while True:
+    cursor, keys = r.scan(cursor, match="user:*", _type="hash")
+    for key in keys:
+        print(key)
+    if cursor == 0:
+        break`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.scan_iter",
+    description: "Генератор-обёртка над `scan`: автоматически управляет курсором и возвращает ключи по одному. Удобная замена `keys` для production: не блокирует сервер. Поддерживает фильтрацию по паттерну и типу данных.",
+    syntax: "scan_iter(match=None, count=None, _type=None)",
+    arguments: [
+      { name: "match", description: "Glob-паттерн для фильтрации ключей." },
+      { name: "count", description: "Подсказка Redis о размере выборки за одну итерацию." },
+      { name: "_type", description: "Фильтрация по типу: 'string', 'list', 'set', 'zset', 'hash', 'stream'." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Удаление всех временных ключей без блокировки
+for key in r.scan_iter("temp:*"):
+    r.delete(key)
+# Сбор всех хешей с данными пользователей
+users = []
+for key in r.scan_iter("user:*", _type="hash", count=50):
+    users.append(r.hgetall(key))
+# Батчевое удаление (эффективнее)
+pipeline = r.pipeline()
+for key in r.scan_iter("cache:*"):
+    pipeline.delete(key)
+pipeline.execute()`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.scard",
+    description: "Возвращает мощность (количество элементов) множества `name`. Если ключ не существует, возвращает 0. Операция выполняется за O(1).",
+    syntax: "scard(name)",
+    arguments: [
+      { name: "name", description: "Ключ множества в Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("online_users", "alice", "bob", "carol")
+r.scard("online_users")    # → 3
+r.sadd("online_users", "alice")   # дубль — не добавлен
+r.scard("online_users")    # → 3
+r.scard("nonexistent")     # → 0`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.script_debug",
+    description: "Управляет режимом отладки Lua-скриптов. Режимы: `YES` — синхронная отладка (сервер блокируется), `SYNC` — синхронная отладка без перехода в async-режим, `NO` — выключить отладку. Используется совместно с Redis Lua debugger (redis-cli --ldb).",
+    syntax: "script_debug(mode)",
+    arguments: [
+      { name: "mode", description: "Режим отладки: 'YES', 'SYNC' или 'NO'." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Включить синхронную отладку скриптов
+r.script_debug("YES")
+# Отключить отладку (вернуть в production-режим)
+r.script_debug("NO")
+# Отладка ведётся через redis-cli --ldb`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.script_exists",
+    description: "Проверяет наличие Lua-скриптов в кеше скриптов Redis по их SHA1-хешам. Принимает один или несколько хешей. Возвращает список булевых значений: `True` если скрипт кеширован, `False` если нет.",
+    syntax: "script_exists(*scripts)",
+    arguments: [
+      { name: "*scripts", description: "Один или несколько SHA1-хешей скриптов для проверки." },
+    ],
+    example: `import redis
+r = redis.Redis()
+sha = r.script_load("return 1")
+r.script_exists(sha)               # → [True]
+r.script_exists(sha, "deadbeef")   # → [True, False]
+# После script_flush скрипты удаляются из кеша
+r.script_flush()
+r.script_exists(sha)               # → [False]`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.script_flush",
+    description: "Очищает кеш всех загруженных Lua-скриптов на сервере Redis. После этого `evalsha` не сможет выполнить скрипты по SHA1 — их нужно будет загрузить заново. Параметр `asynchronous=True` выполняет очистку в фоне (Redis 6.2+).",
+    syntax: "script_flush(asynchronous=False)",
+    arguments: [
+      { name: "asynchronous", description: "Если True — очистка выполняется асинхронно в фоне (Redis 6.2+). По умолчанию False — синхронная очистка." },
+    ],
+    example: `import redis
+r = redis.Redis()
+sha = r.script_load("return redis.call('ping')")
+r.script_exists(sha)       # → [True]
+r.script_flush()            # синхронная очистка
+r.script_exists(sha)       # → [False]
+# Асинхронная очистка (Redis 6.2+)
+r.script_flush(asynchronous=True)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.script_kill",
+    description: "Завершает текущий выполняющийся Lua-скрипт, если он не выполнял операций записи. Если скрипт уже произвёл запись — завершить его нельзя (только `shutdown nosave`). Используется когда скрипт завис или выполняется слишком долго.",
+    syntax: "script_kill()",
+    arguments: [],
+    example: `import redis
+import threading
+r = redis.Redis()
+# В отдельном потоке запускаем бесконечный скрипт
+def run_infinite():
+    try:
+        r.eval("while true do end", 0)
+    except redis.ResponseError:
+        pass
+t = threading.Thread(target=run_infinite)
+t.start()
+import time; time.sleep(0.1)
+# Завершаем зависший скрипт
+r.script_kill()   # → True`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.script_load",
+    description: "Загружает Lua-скрипт в кеш Redis без выполнения. Возвращает SHA1-хеш скрипта. Впоследствии скрипт можно вызывать через `evalsha(sha, ...)` без повторной передачи кода — экономит трафик при частых вызовах.",
+    syntax: "script_load(script)",
+    arguments: [
+      { name: "script", description: "Строка с кодом Lua-скрипта." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Загружаем скрипт один раз
+lua_code = """
+local current = redis.call('GET', KEYS[1])
+if current then
+    return redis.call('INCR', KEYS[1])
+else
+    return redis.call('SET', KEYS[1], ARGV[1])
+end
+"""
+sha = r.script_load(lua_code)
+print(sha)  # → 'a1b2c3d4e5...' (SHA1 хеш)
+# Вызываем по хешу — код не передаётся повторно
+r.evalsha(sha, 1, "counter", "0")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sdiff",
+    description: "Возвращает разность множеств: элементы, которые есть в первом множестве, но отсутствуют во всех остальных. Принимает список ключей. Результирующее множество не сохраняется. Порядок ключей важен: вычитание производится из первого.",
+    syntax: "sdiff(keys, *args)",
+    arguments: [
+      { name: "keys", description: "Список ключей множеств или первый ключ." },
+      { name: "*args", description: "Дополнительные ключи множеств." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("all_users",    "alice", "bob", "carol", "dave")
+r.sadd("active_users", "alice", "carol")
+r.sadd("banned_users", "dave")
+# Пользователи которые не активны и не забанены
+r.sdiff("all_users", "active_users", "banned_users")
+# → {b'bob'}
+# Активные но не забаненные
+r.sdiff("active_users", "banned_users")
+# → {b'alice', b'carol'}`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sdiffstore",
+    description: "Вычисляет разность множеств (аналогично `sdiff`) и сохраняет результат в ключ `dest`. Если `dest` уже существует — перезаписывается. Возвращает количество элементов в результирующем множестве.",
+    syntax: "sdiffstore(dest, keys, *args)",
+    arguments: [
+      { name: "dest", description: "Ключ для сохранения результата разности." },
+      { name: "keys", description: "Список ключей множеств." },
+      { name: "*args", description: "Дополнительные ключи множеств." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("premium", "alice", "bob", "carol")
+r.sadd("churned", "bob")
+# Сохраняем активных premium-пользователей
+count = r.sdiffstore("premium_active", "premium", "churned")
+print(count)   # → 2
+r.smembers("premium_active")  # → {b'alice', b'carol'}`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.select",
+    description: "Переключает текущее соединение на базу данных с номером `db` (0–15 по умолчанию). Все последующие команды будут выполняться в выбранной БД. Каждая БД изолирована: ключи из db=0 недоступны в db=1.",
+    syntax: "select(db)",
+    arguments: [
+      { name: "db", description: "Номер базы данных (0–15)." },
+    ],
+    example: `import redis
+r = redis.Redis()          # подключение к db=0
+r.set("key", "in_db0")
+r.select(1)                # переключаемся на db=1
+r.get("key")               # → None (ключа нет в db=1)
+r.set("key", "in_db1")
+r.select(0)
+r.get("key")               # → b'in_db0'
+# Предпочтительный способ выбора БД — при создании соединения:
+r2 = redis.Redis(db=1)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.set",
+    description: "Устанавливает значение ключа `name`. Поддерживает богатый набор опций: `ex`/`px`/`exat`/`pxat` — TTL в секундах, мс или как Unix timestamp; `nx` — установить только если ключ не существует; `xx` — только если существует; `keepttl` — сохранить текущий TTL; `get` — вернуть предыдущее значение.",
+    syntax: "set(name, value, ex=None, px=None, nx=False, xx=False, keepttl=False, get=False, exat=None, pxat=None)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+      { name: "value", description: "Значение для сохранения." },
+      { name: "ex", description: "TTL в секундах." },
+      { name: "px", description: "TTL в миллисекундах." },
+      { name: "exat", description: "Абсолютный Unix timestamp истечения в секундах." },
+      { name: "pxat", description: "Абсолютный Unix timestamp истечения в миллисекундах." },
+      { name: "nx", description: "Установить только если ключ НЕ существует (SET if Not eXists)." },
+      { name: "xx", description: "Установить только если ключ уже существует." },
+      { name: "keepttl", description: "Сохранить текущий TTL ключа без изменения." },
+      { name: "get", description: "Вернуть предыдущее значение ключа (Redis 6.2+)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("name", "Alice")                      # простая запись
+r.set("session", "data", ex=3600)           # TTL 1 час
+r.set("token", "abc", px=30000)             # TTL 30 секунд
+r.set("slot", "taken", nx=True)             # только если не занято
+r.set("slot", "taken2", nx=True)            # → None (уже существует)
+r.set("slot", "updated", xx=True)           # обновить существующий
+r.set("name", "Bob", get=True)              # → b'Alice' (прежнее значение)
+r.set("name", "Carol", keepttl=True)        # значение меняем, TTL не трогаем`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.setbit",
+    description: "Устанавливает или сбрасывает бит по смещению `offset` в строке, хранящейся по ключу `name`. Значение `value` — 0 или 1. Если строка короче позиции — автоматически расширяется нулями. Возвращает предыдущее значение бита.",
+    syntax: "setbit(name, offset, value)",
+    arguments: [
+      { name: "name", description: "Ключ строки в Redis." },
+      { name: "offset", description: "Позиция бита (неотрицательное целое число)." },
+      { name: "value", description: "Новое значение бита: 0 или 1." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Битовый массив для отслеживания активности пользователей
+# offset = user_id, value = 1 если пользователь активен
+r.setbit("active_users", 42, 1)   # → 0 (было 0)
+r.setbit("active_users", 101, 1)  # → 0
+r.getbit("active_users", 42)      # → 1
+r.getbit("active_users", 99)      # → 0
+r.bitcount("active_users")        # → 2 (число активных)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.setex",
+    description: "Устанавливает значение ключа `name` и задаёт TTL в секундах или объект `timedelta`. Атомарная операция — эквивалент `SET key value EX time`. Если значение TTL равно нулю или отрицательное — вызывает исключение.",
+    syntax: "setex(name, time, value)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+      { name: "time", description: "Время жизни: целое число секунд или объект timedelta." },
+      { name: "value", description: "Значение для сохранения." },
+    ],
+    example: `import redis
+from datetime import timedelta
+r = redis.Redis()
+r.setex("verification_code", 600, "ABC123")  # TTL 10 минут
+r.ttl("verification_code")                   # → ~600
+# Через timedelta
+r.setex("cache_entry", timedelta(hours=1), "cached_data")
+r.ttl("cache_entry")  # → ~3600`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.setnx",
+    description: "Устанавливает значение ключа `name` только если ключ не существует (SET if Not eXists). Возвращает `True` если значение установлено, `False` если ключ уже существовал. Аналог `set(name, value, nx=True)`. Часто используется для реализации простых распределённых блокировок.",
+    syntax: "setnx(name, value)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+      { name: "value", description: "Значение для сохранения при отсутствии ключа." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.setnx("lock:resource", "worker-1")   # → True (ключ создан)
+r.setnx("lock:resource", "worker-2")   # → False (уже занят)
+r.get("lock:resource")                  # → b'worker-1'
+# Для надёжной блокировки используйте SET с NX + EX:
+r.set("lock:resource", "worker-1", nx=True, ex=30)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.setrange",
+    description: "Перезаписывает часть строки ключа `name`, начиная с позиции `offset`, значением `value`. Если строка короче — дополняется нулевыми байтами. Если ключ не существует — создаётся. Возвращает длину строки после операции.",
+    syntax: "setrange(name, offset, value)",
+    arguments: [
+      { name: "name", description: "Ключ строки в Redis." },
+      { name: "offset", description: "Байтовая позиция для начала замены (0-indexed)." },
+      { name: "value", description: "Строка для записи начиная с offset." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("greeting", "Hello World!")
+r.setrange("greeting", 6, "Redis")   # → 12 (длина)
+r.get("greeting")                     # → b'Hello Redis!'
+# Создание строки с паддингом
+r.setrange("padded", 5, "X")
+r.get("padded")  # → b'\x00\x00\x00\x00\x00X' (5 нулей + X)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.shutdown",
+    description: "Завершает работу сервера Redis. Параметры управляют поведением перед остановкой: `save=True` — принудительное RDB-сохранение; `nosave=True` — остановка без сохранения; `now=True` — немедленная остановка без graceful shutdown; `force=True` — принудительная остановка; `abort=True` — отмена запланированного shutdown.",
+    syntax: "shutdown(save=False, nosave=False, now=False, force=False, abort=False)",
+    arguments: [
+      { name: "save", description: "Принудительно сохранить RDB перед остановкой." },
+      { name: "nosave", description: "Остановить без сохранения данных на диск." },
+      { name: "now", description: "Немедленная остановка без ожидания завершения операций (Redis 7.0+)." },
+      { name: "force", description: "Принудительная остановка даже при активных клиентах (Redis 7.0+)." },
+      { name: "abort", description: "Отменить запланированный shutdown (Redis 7.0+)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Сохранить данные и остановиться
+r.shutdown(save=True)
+# Остановиться без сохранения (осторожно: потеря данных!)
+r.shutdown(nosave=True)
+# После shutdown сервер недоступен
+# r.ping()  # → ConnectionError`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sinter",
+    description: "Возвращает пересечение множеств: элементы, присутствующие во всех указанных множествах. Принимает список ключей. Результат не сохраняется. Если хотя бы одно множество пусто или не существует — результат пустое множество.",
+    syntax: "sinter(keys, *args)",
+    arguments: [
+      { name: "keys", description: "Список ключей множеств или первый ключ." },
+      { name: "*args", description: "Дополнительные ключи множеств." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("python_devs", "alice", "bob", "carol")
+r.sadd("js_devs",     "bob", "carol", "dave")
+r.sadd("rust_devs",   "carol", "eve")
+# Разработчики знающие все три языка
+r.sinter("python_devs", "js_devs", "rust_devs")
+# → {b'carol'}
+# Знающие Python и JS
+r.sinter(["python_devs", "js_devs"])
+# → {b'bob', b'carol'}`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sinterstore",
+    description: "Вычисляет пересечение множеств (аналогично `sinter`) и сохраняет результат в ключ `dest`. Если `dest` уже существует — перезаписывается. Возвращает количество элементов в результирующем множестве.",
+    syntax: "sinterstore(dest, keys, *args)",
+    arguments: [
+      { name: "dest", description: "Ключ для сохранения результата пересечения." },
+      { name: "keys", description: "Список ключей множеств." },
+      { name: "*args", description: "Дополнительные ключи множеств." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("subscribers_email", "alice", "bob", "carol")
+r.sadd("subscribers_push",  "bob", "carol", "dave")
+# Пользователи подписанные на оба канала
+count = r.sinterstore("subscribers_both", "subscribers_email", "subscribers_push")
+print(count)  # → 2
+r.smembers("subscribers_both")  # → {b'bob', b'carol'}`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sismember",
+    description: "Проверяет, является ли `value` элементом множества `name`. Возвращает `True` если элемент присутствует, `False` если нет или если ключ не существует. Операция выполняется за O(1).",
+    syntax: "sismember(name, value)",
+    arguments: [
+      { name: "name", description: "Ключ множества в Redis." },
+      { name: "value", description: "Проверяемое значение." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("banned_ips", "192.168.1.1", "10.0.0.5")
+r.sismember("banned_ips", "192.168.1.1")  # → True
+r.sismember("banned_ips", "8.8.8.8")      # → False
+r.sismember("nonexistent", "value")        # → False
+# Проверка нескольких значений — используйте smismember
+r.smismember("banned_ips", ["192.168.1.1", "8.8.8.8"])
+# → [True, False]`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.slaveof",
+    description: "Устаревший псевдоним для `replicaof`. Управляет репликацией: вызов с `host` и `port` делает сервер репликой; вызов без аргументов переводит в режим мастера (`SLAVEOF NO ONE`). Рекомендуется использовать `replicaof` начиная с Redis 5.0.",
+    syntax: "slaveof(host=None, port=None)",
+    arguments: [
+      { name: "host", description: "Хост мастер-сервера. Если None — переключает сервер в режим мастера." },
+      { name: "port", description: "Порт мастер-сервера." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Устаревший способ (slaveof)
+r.slaveof("redis-master.example.com", 6379)
+r.slaveof()  # SLAVEOF NO ONE — стать мастером
+# Рекомендуемый современный способ (Redis 5.0+)
+r.replicaof("redis-master.example.com", 6379)
+r.replicaof()  # REPLICAOF NO ONE`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.slowlog_get",
+    description: "Возвращает записи из журнала медленных запросов Redis. Каждая запись содержит: уникальный ID, Unix timestamp, время выполнения в микросекундах, аргументы команды, имя клиента и его адрес. Параметр `num` ограничивает число возвращаемых записей.",
+    syntax: "slowlog_get(num=None)",
+    arguments: [
+      { name: "num", description: "Максимальное число записей для возврата. Если None — возвращает все записи (до slowlog-max-len)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Получить последние 10 медленных запросов
+entries = r.slowlog_get(10)
+for entry in entries:
+    print(f"ID: {entry['id']}")
+    print(f"Время выполнения: {entry['duration']} мкс")
+    print(f"Команда: {entry['command']}")
+    print(f"Клиент: {entry.get('client_addr', 'N/A')}")
+# Порог медленных запросов задаётся в redis.conf:
+# slowlog-log-slower-than 10000  (10 мс в микросекундах)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.slowlog_len",
+    description: "Возвращает текущее количество записей в журнале медленных запросов Redis. Полезно для мониторинга: если значение растёт — это сигнал о наличии медленных операций. Максимальный размер журнала задаётся параметром `slowlog-max-len` в конфигурации.",
+    syntax: "slowlog_len()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+count = r.slowlog_len()
+print(f"Медленных запросов в журнале: {count}")
+# Мониторинг через алерт
+if count > 100:
+    print("WARN: журнал slowlog переполнен, нужна оптимизация")
+# Сброс журнала после анализа
+r.slowlog_reset()
+r.slowlog_len()  # → 0`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.slowlog_reset",
+    description: "Очищает журнал медленных запросов Redis. После вызова `slowlog_len()` вернёт 0. Используется после анализа медленных запросов для начала отсчёта заново или при ротации логов.",
+    syntax: "slowlog_reset()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+# Анализируем медленные запросы
+entries = r.slowlog_get()
+for e in entries:
+    print(f"{e['duration']} мкс: {e['command']}")
+# Очищаем журнал после анализа
+r.slowlog_reset()
+r.slowlog_len()  # → 0`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.smembers",
+    description: "Возвращает все элементы множества `name` в виде Python-множества (`set`). Если ключ не существует — возвращает пустое множество. Для больших множеств предпочтительнее использовать `sscan_iter` (не блокирует сервер).",
+    syntax: "smembers(name)",
+    arguments: [
+      { name: "name", description: "Ключ множества в Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("permissions", "read", "write", "delete")
+r.smembers("permissions")
+# → {b'read', b'write', b'delete'}
+r.smembers("nonexistent")   # → set()
+# Для декодирования строк:
+r2 = redis.Redis(decode_responses=True)
+r2.sadd("tags", "python", "redis")
+r2.smembers("tags")  # → {'python', 'redis'}`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.smismember",
+    description: "Проверяет принадлежность нескольких значений множеству `name` за один запрос. Возвращает список булевых значений в том же порядке, что и входные `values`. Эффективнее нескольких вызовов `sismember`.",
+    syntax: "smismember(name, values, *args)",
+    arguments: [
+      { name: "name", description: "Ключ множества в Redis." },
+      { name: "values", description: "Список значений для проверки." },
+      { name: "*args", description: "Дополнительные значения для проверки." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("premium_users", "alice", "carol", "eve")
+r.smismember("premium_users", ["alice", "bob", "carol", "dave"])
+# → [True, False, True, False]
+# Пакетная проверка доступа
+users = ["alice", "bob", "carol"]
+results = r.smismember("premium_users", users)
+access = dict(zip(users, results))
+# → {'alice': True, 'bob': False, 'carol': True}`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.smove",
+    description: "Атомарно перемещает элемент `value` из множества `src` в множество `dst`. Возвращает `True` если элемент был в `src` и успешно перемещён, `False` если элемент не найден в `src`. Если `dst` не существует — создаётся.",
+    syntax: "smove(src, dst, value)",
+    arguments: [
+      { name: "src", description: "Исходное множество." },
+      { name: "dst", description: "Целевое множество." },
+      { name: "value", description: "Перемещаемый элемент." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("queue_pending",    "task:1", "task:2", "task:3")
+r.sadd("queue_processing", "task:0")
+# Атомарно перемещаем задачу в обработку
+r.smove("queue_pending", "queue_processing", "task:1")  # → True
+r.smembers("queue_pending")     # → {b'task:2', b'task:3'}
+r.smembers("queue_processing")  # → {b'task:0', b'task:1'}
+r.smove("queue_pending", "queue_processing", "task:99")  # → False`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sort",
+    description: "Сортирует элементы списка, множества или отсортированного множества `name`. Поддерживает: числовую и алфавитную сортировку, сортировку по внешним ключам (`by`), получение связанных значений (`get`), пагинацию (`start`/`num`), сохранение результата (`store`). Возвращает список или число элементов при `store`.",
+    syntax: "sort(name, start=None, num=None, by=None, get=None, desc=False, alpha=False, store=None, groups=False)",
+    arguments: [
+      { name: "name", description: "Ключ списка, множества или zset для сортировки." },
+      { name: "start", description: "Смещение для пагинации (аналог OFFSET в SQL)." },
+      { name: "num", description: "Количество элементов для возврата (аналог LIMIT)." },
+      { name: "by", description: "Паттерн внешнего ключа для сортировки (например, 'weight_*')." },
+      { name: "get", description: "Паттерн ключа или список паттернов для получения связанных данных." },
+      { name: "desc", description: "Если True — сортировка по убыванию." },
+      { name: "alpha", description: "Если True — алфавитная (лексикографическая) сортировка." },
+      { name: "store", description: "Ключ для сохранения результата (вместо возврата)." },
+      { name: "groups", description: "Если True — результат группируется при множественном GET." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("scores", 5, 3, 8, 1, 9, 2)
+r.sort("scores")                   # → [1, 2, 3, 5, 8, 9]
+r.sort("scores", desc=True)        # → [9, 8, 5, 3, 2, 1]
+r.sort("scores", start=0, num=3)   # → [1, 2, 3] (первые 3)
+# Алфавитная сортировка
+r.sadd("names", "banana", "apple", "cherry")
+r.sort("names", alpha=True)        # → [b'apple', b'banana', b'cherry']
+# Сохранение результата
+r.sort("scores", store="sorted_scores")  # → 6 (число элементов)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sort_ro",
+    description: "Read-only версия команды `sort` (Redis 7.0+). Аналогична `sort`, но не поддерживает параметр `store` и гарантированно не изменяет данные. Безопасна для выполнения на репликах.",
+    syntax: "sort_ro(name, start=None, num=None, by=None, get=None, desc=False, alpha=False, groups=False)",
+    arguments: [
+      { name: "name", description: "Ключ списка, множества или zset для сортировки." },
+      { name: "start", description: "Смещение для пагинации." },
+      { name: "num", description: "Количество элементов для возврата." },
+      { name: "by", description: "Паттерн внешнего ключа для сортировки." },
+      { name: "get", description: "Паттерн ключа для получения связанных данных." },
+      { name: "desc", description: "Если True — сортировка по убыванию." },
+      { name: "alpha", description: "Если True — алфавитная сортировка." },
+      { name: "groups", description: "Группировка результатов при множественном GET." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.rpush("ids", 5, 2, 8, 1)
+# Только чтение — безопасно на репликах (Redis 7.0+)
+r.sort_ro("ids")                # → [1, 2, 5, 8]
+r.sort_ro("ids", desc=True)     # → [8, 5, 2, 1]
+r.sort_ro("ids", start=1, num=2) # → [2, 5]`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.spop",
+    description: "Удаляет и возвращает один или несколько случайных элементов из множества `name`. Если `count` не указан — возвращает один элемент или `None` если множество пусто. Если `count` указан — возвращает список. В отличие от `srandmember`, элементы удаляются из множества.",
+    syntax: "spop(name, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ множества в Redis." },
+      { name: "count", description: "Количество элементов для извлечения. Если None — возвращается один элемент." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("lottery", "alice", "bob", "carol", "dave", "eve")
+winner = r.spop("lottery")          # → b'carol' (случайный)
+print(f"Победитель: {winner}")
+r.scard("lottery")                  # → 4 (alice удалена из множества)
+# Выбрать 2 победителя
+winners = r.spop("lottery", 2)
+print(f"Победители: {winners}")     # → [b'alice', b'bob']
+r.scard("lottery")                  # → 2`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.srandmember",
+    description: "Возвращает один или несколько случайных элементов из множества `name` без удаления. Если `count > 0` — возвращает до `count` уникальных элементов. Если `count < 0` — возвращает `|count|` элементов, возможно с повторами. Без `count` — один элемент или `None`.",
+    syntax: "srandmember(name, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ множества в Redis." },
+      { name: "count", description: "Количество случайных элементов. Положительное — уникальные, отрицательное — с повторами." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("pool", "a", "b", "c", "d", "e")
+r.srandmember("pool")        # → b'c' (случайный, без удаления)
+r.srandmember("pool", 3)     # → [b'a', b'c', b'e'] (3 уникальных)
+r.srandmember("pool", -5)    # → [b'b', b'a', b'b', b'e', b'c'] (с повторами)
+r.scard("pool")              # → 5 (множество не изменилось)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.srem",
+    description: "Удаляет одно или несколько значений из множества `name`. Несуществующие значения игнорируются. Возвращает количество фактически удалённых элементов.",
+    syntax: "srem(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ множества в Redis." },
+      { name: "*values", description: "Одно или несколько значений для удаления." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("roles", "admin", "editor", "viewer", "guest")
+r.srem("roles", "guest")             # → 1 (удалён 1 элемент)
+r.srem("roles", "editor", "viewer")  # → 2
+r.srem("roles", "nonexistent")       # → 0 (ничего не удалено)
+r.smembers("roles")                  # → {b'admin'}`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sscan",
+    description: "Инкрементальная курсорная итерация по элементам множества `name`. Возвращает кортеж `(новый_курсор, [элементы])`. Безопасен для production: не блокирует сервер. Аналог `scan` но для конкретного множества.",
+    syntax: "sscan(name, cursor=0, match=None, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ множества в Redis." },
+      { name: "cursor", description: "Позиция курсора. Начальное значение — 0." },
+      { name: "match", description: "Glob-паттерн для фильтрации элементов." },
+      { name: "count", description: "Подсказка Redis о желаемом числе элементов за итерацию." },
+    ],
+    example: `import redis
+r = redis.Redis()
+for i in range(1000):
+    r.sadd("large_set", f"member:{i}")
+# Инкрементальная итерация без блокировки
+cursor = 0
+all_members = []
+while True:
+    cursor, members = r.sscan("large_set", cursor=cursor, count=100)
+    all_members.extend(members)
+    if cursor == 0:
+        break
+print(f"Всего элементов: {len(all_members)}")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sscan_iter",
+    description: "Генератор-обёртка над `sscan`: автоматически управляет курсором и возвращает элементы множества по одному. Удобная и безопасная альтернатива `smembers` для больших множеств.",
+    syntax: "sscan_iter(name, match=None, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ множества в Redis." },
+      { name: "match", description: "Glob-паттерн для фильтрации элементов." },
+      { name: "count", description: "Подсказка о размере выборки за одну итерацию." },
+    ],
+    example: `import redis
+r = redis.Redis()
+for i in range(500):
+    r.sadd("emails", f"user{i}@example.com")
+# Обработка без загрузки всего множества в память
+for email in r.sscan_iter("emails", match="user1*@*"):
+    print(email)
+# Сбор в список (аналог smembers, но безопаснее)
+all_emails = list(r.sscan_iter("emails", count=50))`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.stralgo",
+    description: "Выполняет алгоритмы над строками (Redis 6.0–6.2, удалён в Redis 7.0). Поддерживает нахождение наибольшей общей подпоследовательности (LCS). Параметры `event` и `key` определяют режим работы: со строками или с ключами Redis. Для Redis 7.0+ используйте команду `lcs`.",
+    syntax: "stralgo(algo, event, key, arg, modifier)",
+    arguments: [
+      { name: "algo", description: "Алгоритм: на данный момент поддерживается только 'LCS'." },
+      { name: "event", description: "'STRINGS' — работать со строками, 'KEYS' — с ключами Redis." },
+      { name: "key", description: "Строки или ключи в зависимости от event." },
+      { name: "arg", description: "Дополнительный аргумент." },
+      { name: "modifier", description: "Модификатор: IDX, LEN, WITHMATCHLEN и др." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Redis 6.0–6.2 (устарело, удалено в Redis 7.0)
+# Найти наибольшую общую подпоследовательность
+r.stralgo("LCS", "STRINGS", ["ohmytext", "mynewtext"])
+# → b'mytext'
+# Для Redis 7.0+ используйте:
+r.set("key1", "ohmytext")
+r.set("key2", "mynewtext")
+# r.lcs("key1", "key2")  # → b'mytext'`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.strlen",
+    description: "Возвращает длину строкового значения ключа `name` в байтах. Если ключ не существует — возвращает 0. Если ключ существует, но не является строкой — вызывает исключение `ResponseError`.",
+    syntax: "strlen(name)",
+    arguments: [
+      { name: "name", description: "Ключ строки в Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("greeting", "Hello, World!")
+r.strlen("greeting")       # → 13
+r.set("empty", "")
+r.strlen("empty")          # → 0
+r.strlen("nonexistent")    # → 0
+# UTF-8: длина в байтах, не символах
+r.set("russian", "привет")
+r.strlen("russian")        # → 12 (6 символов × 2 байта)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sunion",
+    description: "Возвращает объединение множеств: все уникальные элементы из всех указанных множеств. Несуществующие ключи трактуются как пустые множества. Результат не сохраняется.",
+    syntax: "sunion(keys, *args)",
+    arguments: [
+      { name: "keys", description: "Список ключей множеств или первый ключ." },
+      { name: "*args", description: "Дополнительные ключи множеств." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("fruits_a", "apple", "banana", "cherry")
+r.sadd("fruits_b", "banana", "date", "elderberry")
+r.sadd("fruits_c", "cherry", "fig")
+r.sunion("fruits_a", "fruits_b", "fruits_c")
+# → {b'apple', b'banana', b'cherry', b'date', b'elderberry', b'fig'}
+# Объединение тегов из нескольких постов
+r.sunion(["post:1:tags", "post:2:tags", "post:3:tags"])`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sunionstore",
+    description: "Вычисляет объединение множеств (аналогично `sunion`) и сохраняет результат в ключ `dest`. Если `dest` уже существует — перезаписывается. Возвращает количество элементов в результирующем множестве.",
+    syntax: "sunionstore(dest, keys, *args)",
+    arguments: [
+      { name: "dest", description: "Ключ для сохранения результата объединения." },
+      { name: "keys", description: "Список ключей множеств." },
+      { name: "*args", description: "Дополнительные ключи множеств." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.sadd("admins",   "alice", "bob")
+r.sadd("editors",  "carol", "dave")
+r.sadd("viewers",  "eve", "alice")
+# Все пользователи системы (union без дублей)
+count = r.sunionstore("all_users", "admins", "editors", "viewers")
+print(count)  # → 5 (alice только один раз)
+r.smembers("all_users")
+# → {b'alice', b'bob', b'carol', b'dave', b'eve'}`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.swapdb",
+    description: "Атомарно меняет местами содержимое двух баз данных Redis. Все ключи db1 становятся ключами db2 и наоборот. Операция мгновенная и не блокирует сервер надолго. Полезно для атомарного переключения кешей или развёртывания обновлённых данных.",
+    syntax: "swapdb(db1, db2)",
+    arguments: [
+      { name: "db1", description: "Номер первой базы данных." },
+      { name: "db2", description: "Номер второй базы данных." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Паттерн Blue/Green для Redis-кеша:
+# Шаг 1: наполняем db=1 свежими данными
+r1 = redis.Redis(db=1)
+r1.set("config", "new_value")
+r1.set("data",   "fresh_data")
+# Шаг 2: атомарно переключаем db=0 <-> db=1
+r.swapdb(0, 1)
+# Теперь db=0 содержит свежие данные
+r.get("config")  # → b'new_value'`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.sync",
+    description: "Инициирует полную репликацию между мастером и текущим соединением (внутренняя команда протокола RESP). Используется при реализации кастомных реплик или инструментов миграции. В обычном коде приложений не применяется.",
+    syntax: "sync()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+# Низкоуровневая команда для инструментов репликации
+# Обычно не используется в прикладном коде
+r.sync()   # инициирует полную синхронизацию (SYNC)
+# Для мониторинга состояния репликации используйте:
+info = r.info("replication")
+print(info["master_replid"])
+print(info["master_repl_offset"])`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.time",
+    description: "Возвращает текущее время сервера Redis в виде кортежа `(секунды, микросекунды)` — Unix timestamp с микросекундной точностью. Полезно для синхронизации временных меток между несколькими клиентами, т.к. использует серверные часы, а не локальные.",
+    syntax: "time()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+seconds, microseconds = r.time()
+print(f"Unix timestamp: {seconds}.{microseconds:06d}")
+# Преобразование в datetime
+from datetime import datetime, timezone
+ts = seconds + microseconds / 1_000_000
+dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+print(dt.isoformat())  # → 2026-06-08T12:34:56.789012+00:00
+# Используйте серверное время для согласованности
+# между несколькими клиентами в распределённой системе`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.touch",
+    description: "Обновляет время последнего обращения (LRU clock) для одного или нескольких ключей без изменения их значений. Возвращает количество ключей, которые были «тронуты» (существующих). Влияет на вытеснение при политике `allkeys-lru`/`volatile-lru`.",
+    syntax: "touch(*names)",
+    arguments: [
+      { name: "*names", description: "Один или несколько ключей для обновления времени доступа." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("important", "data")
+r.set("other", "data2")
+# Обновляем LRU-время чтобы ключ не вытеснялся
+touched = r.touch("important", "other", "nonexistent")
+print(touched)  # → 2 (только существующие ключи)
+# Полезно при LRU-вытеснении: "прогреть" ключи
+# чтобы они не удалялись под давлением памяти`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.ttl",
+    description: "Возвращает оставшееся время жизни ключа `name` в секундах. Возвращает -1 если ключ существует, но TTL не установлен; -2 если ключ не существует. Для миллисекундной точности используйте `pttl`.",
+    syntax: "ttl(name)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("session", "data", ex=3600)
+r.ttl("session")         # → ~3600 (убывает)
+r.set("permanent", "v")
+r.ttl("permanent")       # → -1 (нет TTL)
+r.ttl("nonexistent")     # → -2
+# Продление TTL при активности пользователя
+if r.ttl("session") < 600:
+    r.expire("session", 3600)  # сбросить TTL`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.type",
+    description: "Возвращает тип данных ключа `name` в виде строки: `string`, `list`, `set`, `zset`, `hash`, `stream`. Если ключ не существует — возвращает `none`. Полезно для динамической диспетчеризации обработки ключей.",
+    syntax: "type(name)",
+    arguments: [
+      { name: "name", description: "Ключ в Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("str_key", "hello")
+r.lpush("list_key", "a", "b")
+r.sadd("set_key", "x", "y")
+r.hset("hash_key", "field", "val")
+r.type("str_key")     # → b'string'
+r.type("list_key")    # → b'list'
+r.type("set_key")     # → b'set'
+r.type("hash_key")    # → b'hash'
+r.type("missing")     # → b'none'`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.unwatch",
+    description: "Снимает наблюдение со всех ключей, отслеживаемых через `watch`. Используется в паттерне оптимистичных транзакций (CAS): если транзакция не нужна, `unwatch` освобождает отслеживаемые ключи без выполнения `MULTI/EXEC`.",
+    syntax: "unwatch()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+r.set("balance", 100)
+# Оптимистичная транзакция
+with r.pipeline() as pipe:
+    while True:
+        try:
+            pipe.watch("balance")
+            balance = int(pipe.get("balance"))
+            if balance < 50:
+                pipe.unwatch()   # снимаем наблюдение, транзакция не нужна
+                break
+            pipe.multi()
+            pipe.decrby("balance", 50)
+            pipe.execute()
+            break
+        except redis.WatchError:
+            continue`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.wait",
+    description: "Блокирует выполнение до тех пор, пока `numreplicas` реплик не подтвердят получение всех предыдущих команд записи, или до истечения `timeout` миллисекунд. Возвращает число реплик, подтвердивших синхронизацию. Используется для гарантии durability.",
+    syntax: "wait(numreplicas, timeout)",
+    arguments: [
+      { name: "numreplicas", description: "Минимальное число реплик, которые должны подтвердить запись." },
+      { name: "timeout", description: "Максимальное время ожидания в миллисекундах. 0 — ждать бесконечно." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("critical_data", "important_value")
+# Ждём подтверждения от минимум 1 реплики (максимум 500 мс)
+confirmed = r.wait(1, 500)
+if confirmed < 1:
+    print("WARN: реплика не подтвердила запись вовремя")
+else:
+    print(f"Данные подтверждены {confirmed} репликами")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.waitaof",
+    description: "Ожидает записи данных в AOF-файл на мастере и/или репликах (Redis 7.2+). Параметры `numlocal` и `numreplicas` задают требуемое число подтверждений fsync. Возвращает словарь `{'local': n, 'replicas': n}`. Более детальная гарантия durability, чем `wait`.",
+    syntax: "waitaof(numlocal, numreplicas, timeout)",
+    arguments: [
+      { name: "numlocal", description: "Число подтверждений fsync от локального AOF (0 или 1)." },
+      { name: "numreplicas", description: "Число реплик, записавших данные в AOF." },
+      { name: "timeout", description: "Максимальное время ожидания в миллисекундах. 0 — бесконечно." },
+    ],
+    example: `import redis
+r = redis.Redis()  # Redis 7.2+
+r.set("financial_record", "transaction_data")
+# Ждём подтверждения записи в AOF на мастере и 1 реплике
+result = r.waitaof(1, 1, 1000)
+print(result)  # → {'local': 1, 'replicas': 1}
+if result["local"] < 1:
+    print("WARN: данные не сброшены на диск мастера")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.watch",
+    description: "Устанавливает наблюдение за одним или несколькими ключами для реализации оптимистичных транзакций (CAS — Compare-And-Swap). Если любой из наблюдаемых ключей изменится до выполнения `EXEC`, транзакция будет отменена (`WatchError`). Используется в паре с `pipeline.multi()`.",
+    syntax: "watch(*names)",
+    arguments: [
+      { name: "*names", description: "Один или несколько ключей для отслеживания." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.set("inventory", 10)
+def buy_item(r):
+    with r.pipeline() as pipe:
+        while True:
+            try:
+                pipe.watch("inventory")
+                stock = int(pipe.get("inventory"))
+                if stock <= 0:
+                    raise Exception("Нет в наличии")
+                pipe.multi()
+                pipe.decr("inventory")
+                pipe.execute()
+                return True
+            except redis.WatchError:
+                continue  # кто-то изменил ключ — повторяем
+buy_item(r)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xack",
+    description: "Подтверждает обработку сообщений потока (Stream) с указанными `ids` в группе `group`. После подтверждения сообщения удаляются из PEL (Pending Entries List). Возвращает количество успешно подтверждённых сообщений.",
+    syntax: "xack(name, group, *ids)",
+    arguments: [
+      { name: "name", description: "Ключ потока (Stream)." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "*ids", description: "Один или несколько ID сообщений для подтверждения." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("orders", "processors", id="0", mkstream=True)
+msg_id = r.xadd("orders", {"order_id": "42", "amount": "99.99"})
+# Читаем сообщение
+msgs = r.xreadgroup("processors", "worker-1", {"orders": ">"}, count=1)
+# Обрабатываем...
+# Подтверждаем успешную обработку
+r.xack("orders", "processors", msg_id)   # → 1`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xadd",
+    description: "Добавляет новое сообщение (запись) в поток `name`. Параметр `id` задаёт ID записи (`'*'` — автогенерация). `maxlen` ограничивает размер потока; `approximate=True` позволяет Redis делать это эффективнее. `nomkstream=True` не создаёт поток если не существует. `minid` удаляет записи с ID меньше указанного.",
+    syntax: "xadd(name, fields, id='*', maxlen=None, approximate=True, nomkstream=False, minid=None)",
+    arguments: [
+      { name: "name", description: "Ключ потока (Stream)." },
+      { name: "fields", description: "Словарь с полями и значениями добавляемой записи." },
+      { name: "id", description: "ID записи. '*' — автоматическая генерация (timestamp-sequence)." },
+      { name: "maxlen", description: "Максимальное число записей в потоке (обрезает старые)." },
+      { name: "approximate", description: "Приблизительное ограничение maxlen (эффективнее, по умолчанию True)." },
+      { name: "nomkstream", description: "Если True — не создавать поток автоматически." },
+      { name: "minid", description: "Удалять записи с ID меньше указанного." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Добавление события
+msg_id = r.xadd("events", {"user_id": "42", "action": "login", "ip": "1.2.3.4"})
+print(msg_id)   # → b'1749380096000-0' (timestamp-sequence)
+# Ограниченный поток (последние 1000 записей)
+r.xadd("metrics", {"cpu": "45", "mem": "2048"}, maxlen=1000)
+# Явный ID
+r.xadd("events", {"action": "logout"}, id="1000-1")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xautoclaim",
+    description: "Автоматически перехватывает сообщения из PEL (Pending Entries List), которые не были подтверждены дольше `min_idle_time` миллисекунд. Передаёт их консьюмеру `consumer`. Возвращает кортеж `(следующий_start_id, [сообщения], [удалённые_id])`. Более эффективная альтернатива `xclaim` (Redis 7.0+).",
+    syntax: "xautoclaim(name, group, consumer, min_idle_time, start_id='0-0', count=None, justid=False)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "consumer", description: "Имя консьюмера, которому передаются сообщения." },
+      { name: "min_idle_time", description: "Минимальное время простоя сообщения в мс для перехвата." },
+      { name: "start_id", description: "ID с которого начинать сканирование PEL." },
+      { name: "count", description: "Максимальное число перехватываемых сообщений." },
+      { name: "justid", description: "Если True — возвращать только ID без содержимого." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("jobs", "workers", id="0", mkstream=True)
+r.xadd("jobs", {"task": "send_email", "to": "user@example.com"})
+# Перехватываем зависшие задачи (не обработаны > 60 секунд)
+next_id, claimed, deleted = r.xautoclaim(
+    "jobs", "workers", "worker-2",
+    min_idle_time=60000,  # 60 сек
+    count=10
+)
+for msg_id, fields in claimed:
+    print(f"Перехвачена задача: {msg_id} → {fields}")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xclaim",
+    description: "Передаёт владение указанными сообщениями из PEL другому консьюмеру. В отличие от `xautoclaim`, требует явного указания списка ID. Возвращает список перехваченных сообщений. Используется для повторной обработки зависших сообщений.",
+    syntax: "xclaim(name, group, consumer, min_idle_time, ids, idle=None, retrycount=None, force=False, justid=False)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "consumer", description: "Новый владелец сообщений." },
+      { name: "min_idle_time", description: "Перехватывать только сообщения простаивающие дольше этого времени (мс)." },
+      { name: "ids", description: "Список ID сообщений для перехвата." },
+      { name: "idle", description: "Установить время простоя сообщения после перехвата (мс)." },
+      { name: "retrycount", description: "Установить счётчик попыток обработки." },
+      { name: "force", description: "Если True — перехватить даже если min_idle_time не достигнут." },
+      { name: "justid", description: "Если True — вернуть только ID." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Получаем зависшие сообщения из PEL
+pending = r.xpending_range("jobs", "workers", "-", "+", 10)
+stale_ids = [p["message_id"] for p in pending if p["time_since_delivered"] > 60000]
+# Перехватываем их для повторной обработки
+if stale_ids:
+    claimed = r.xclaim("jobs", "workers", "worker-2", 60000, stale_ids)
+    for msg_id, fields in claimed:
+        print(f"Повторная обработка: {fields}")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xdel",
+    description: "Удаляет одно или несколько сообщений из потока `name` по их ID. Сообщение удаляется из потока, но НЕ из PEL групп потребителей — его нужно подтвердить через `xack` отдельно. Возвращает количество удалённых сообщений.",
+    syntax: "xdel(name, *ids)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "*ids", description: "Один или несколько ID сообщений для удаления." },
+    ],
+    example: `import redis
+r = redis.Redis()
+id1 = r.xadd("log", {"level": "ERROR", "msg": "crash"})
+id2 = r.xadd("log", {"level": "INFO",  "msg": "start"})
+r.xlen("log")             # → 2
+r.xdel("log", id1)        # → 1 (удалено 1 сообщение)
+r.xlen("log")             # → 1
+# Удаление нескольких
+r.xdel("log", id1, id2)   # → 1 (id1 уже удалён)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xgroup_create",
+    description: "Создаёт группу потребителей `group` для потока `name`. Параметр `id` задаёт позицию, с которой группа начнёт читать: `'$'` — только новые сообщения, `'0'` — все с начала. `mkstream=True` создаёт поток если не существует. Группы необходимы для `xreadgroup`.",
+    syntax: "xgroup_create(name, group, id='$', mkstream=False)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя создаваемой группы потребителей." },
+      { name: "id", description: "Начальный ID: '$' — только новые, '0' — все существующие." },
+      { name: "mkstream", description: "Если True — создать поток если не существует." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Создаём поток и группу одновременно
+r.xgroup_create("notifications", "email_workers", id="0", mkstream=True)
+# Добавляем сообщения
+r.xadd("notifications", {"user_id": "42", "type": "welcome"})
+r.xadd("notifications", {"user_id": "43", "type": "promo"})
+# Читаем через группу
+msgs = r.xreadgroup("email_workers", "worker-1", {"notifications": ">"}, count=10)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xgroup_createconsumer",
+    description: "Явно создаёт консьюмера `consumer` в группе `group` потока `name`. Обычно консьюмеры создаются автоматически при первом вызове `xreadgroup`, но этот метод позволяет создать их заранее. Возвращает `True` при успехе.",
+    syntax: "xgroup_createconsumer(name, group, consumer)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "consumer", description: "Имя создаваемого консьюмера." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("tasks", "workers", id="0", mkstream=True)
+# Регистрируем воркеров заранее
+for i in range(3):
+    r.xgroup_createconsumer("tasks", "workers", f"worker-{i}")
+# Проверяем
+consumers = r.xinfo_consumers("tasks", "workers")
+for c in consumers:
+    print(c["name"], "pending:", c["pending"])`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xgroup_delconsumer",
+    description: "Удаляет консьюмера `consumer` из группы `group` потока `name`. Все сообщения в PEL удалённого консьюмера также удаляются — они не будут обработаны. Возвращает число удалённых pending-сообщений консьюмера.",
+    syntax: "xgroup_delconsumer(name, group, consumer)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "consumer", description: "Имя удаляемого консьюмера." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("jobs", "workers", id="0", mkstream=True)
+r.xgroup_createconsumer("jobs", "workers", "worker-retired")
+# Удаляем вышедшего из строя воркера
+# (его pending-сообщения удаляются из PEL!)
+deleted_pending = r.xgroup_delconsumer("jobs", "workers", "worker-retired")
+print(f"Потеряно pending-сообщений: {deleted_pending}")
+# Перед удалением лучше перехватить pending через xautoclaim`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xgroup_destroy",
+    description: "Полностью уничтожает группу потребителей `group` потока `name`. Удаляет группу, всех её консьюмеров и весь PEL. Сам поток и его сообщения не затрагиваются. Возвращает `True` если группа существовала и была удалена.",
+    syntax: "xgroup_destroy(name, group)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя уничтожаемой группы." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("events", "old_processors", id="0", mkstream=True)
+r.xadd("events", {"type": "click"})
+# Уничтожаем устаревшую группу
+r.xgroup_destroy("events", "old_processors")   # → True
+# Поток цел, группы нет
+r.xlen("events")     # → 1 (сообщения остались)
+r.xinfo_groups("events")  # → [] (группа удалена)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xgroup_setid",
+    description: "Устанавливает позицию (last-delivered-id) группы потребителей `group` в потоке `name`. Все сообщения до этого ID будут считаться доставленными и не попадут в `xreadgroup`. Позволяет перематывать группу вперёд или назад.",
+    syntax: "xgroup_setid(name, group, id='$')",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "id", description: "Новая позиция: '$' — конец потока, '0' — начало, или конкретный ID." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("orders", "billing", id="0", mkstream=True)
+r.xadd("orders", {"order_id": "1"})
+r.xadd("orders", {"order_id": "2"})
+# Пропустить все старые сообщения (переместиться в конец)
+r.xgroup_setid("orders", "billing", "$")
+# Новые сообщения будут читаться; старые — нет
+# Перемотать в начало для повторной обработки
+r.xgroup_setid("orders", "billing", "0")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xinfo_consumers",
+    description: "Возвращает информацию о консьюмерах группы `group` в потоке `name`. Для каждого консьюмера: имя, число pending-сообщений, время с последней активности. Полезно для мониторинга состояния воркеров.",
+    syntax: "xinfo_consumers(name, group)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("tasks", "workers", id="0", mkstream=True)
+for i in range(3):
+    r.xgroup_createconsumer("tasks", "workers", f"worker-{i}")
+consumers = r.xinfo_consumers("tasks", "workers")
+for c in consumers:
+    print(f"{c['name']}: pending={c['pending']}, idle={c['idle']}ms")
+# Обнаружение зависших воркеров (idle > 5 минут)
+stale = [c for c in consumers if c["idle"] > 300_000]`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xinfo_groups",
+    description: "Возвращает список групп потребителей потока `name`. Для каждой группы: имя, число консьюмеров, число pending-сообщений, last-delivered-id. Используется для мониторинга отставания обработки (consumer lag).",
+    syntax: "xinfo_groups(name)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("events", "analytics", id="0", mkstream=True)
+r.xgroup_create("events", "alerts",    id="$", mkstream=False)
+groups = r.xinfo_groups("events")
+for g in groups:
+    print(f"Группа: {g['name']}")
+    print(f"  Консьюмеров: {g['consumers']}")
+    print(f"  Pending: {g['pending']}")
+    print(f"  Last ID: {g['last-delivered-id']}")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xinfo_stream",
+    description: "Возвращает подробную информацию о потоке `name`: длину, первое и последнее сообщение, число групп, использование памяти. При `full=True` возвращает расширенный отчёт с деталями всех групп и их PEL (может быть большим).",
+    syntax: "xinfo_stream(name, full=False)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "full", description: "Если True — расширенный отчёт с деталями групп и PEL." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("logs", "processors", id="0", mkstream=True)
+r.xadd("logs", {"level": "INFO", "msg": "started"})
+info = r.xinfo_stream("logs")
+print(f"Сообщений: {info['length']}")
+print(f"Первое: {info['first-entry']}")
+print(f"Последнее: {info['last-entry']}")
+print(f"Групп: {info['groups']}")
+# Расширенный отчёт
+full_info = r.xinfo_stream("logs", full=True)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xlen",
+    description: "Возвращает число записей в потоке (Stream) `name`. Если поток не существует — возвращает 0. Операция выполняется за O(1). Отражает текущий размер с учётом удалённых через `xdel` записей и обрезки через `maxlen`.",
+    syntax: "xlen(name)",
+    arguments: [
+      { name: "name", description: "Ключ потока (Stream)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xadd("events", {"type": "click"})
+r.xadd("events", {"type": "view"})
+r.xadd("events", {"type": "purchase"})
+r.xlen("events")    # → 3
+r.xlen("missing")   # → 0
+# Мониторинг роста потока
+size = r.xlen("events")
+if size > 100_000:
+    print(f"WARN: поток разросся до {size} записей")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xpending",
+    description: "Возвращает сводную информацию о pending-сообщениях (PEL) группы `group` в потоке `name`: общее число, диапазон ID и разбивку по консьюмерам. Для получения детальных записей с конкретными ID используйте `xpending_range`.",
+    syntax: "xpending(name, group)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("jobs", "workers", id="0", mkstream=True)
+r.xadd("jobs", {"task": "send_email"})
+r.xadd("jobs", {"task": "resize_image"})
+# Читаем без xack — сообщения попадают в PEL
+r.xreadgroup("workers", "worker-1", {"jobs": ">"}, count=2)
+summary = r.xpending("jobs", "workers")
+print(f"Pending всего: {summary['pending']}")
+print(f"Первый ID: {summary['min']}")
+print(f"Последний ID: {summary['max']}")
+print(f"По консьюмерам: {summary['consumers']}")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xpending_range",
+    description: "Возвращает детальный список pending-сообщений группы `group` в диапазоне ID от `min` до `max`. Для каждой записи: ID, имя консьюмера, время с момента доставки (мс), число попыток доставки. Параметр `consumer` фильтрует по конкретному консьюмеру.",
+    syntax: "xpending_range(name, group, min, max, count, consumer=None)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "min", description: "Нижняя граница диапазона ID (включительно). '-' — с начала." },
+      { name: "max", description: "Верхняя граница диапазона ID (включительно). '+' — до конца." },
+      { name: "count", description: "Максимальное число возвращаемых записей." },
+      { name: "consumer", description: "Имя консьюмера для фильтрации. Если None — все консьюмеры." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("tasks", "workers", id="0", mkstream=True)
+r.xadd("tasks", {"job": "compress"})
+r.xreadgroup("workers", "worker-1", {"tasks": ">"}, count=5)
+# Все pending-записи
+entries = r.xpending_range("tasks", "workers", "-", "+", 10)
+for e in entries:
+    print(f"ID: {e['message_id']}, idle: {e['time_since_delivered']}ms, "
+          f"tries: {e['times_delivered']}, consumer: {e['consumer']}")
+# Только для одного воркера
+r.xpending_range("tasks", "workers", "-", "+", 10, consumer="worker-1")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xrange",
+    description: "Читает сообщения потока `name` в диапазоне ID от `start` до `end` в хронологическом порядке. `'-'` — с начала потока, `'+'` — до конца. Параметр `count` ограничивает число сообщений. Не требует группы потребителей — подходит для разового чтения.",
+    syntax: "xrange(name, start='-', end='+', count=None)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "start", description: "Нижняя граница ID. '-' — начало потока." },
+      { name: "end", description: "Верхняя граница ID. '+' — конец потока." },
+      { name: "count", description: "Максимальное число возвращаемых сообщений." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xadd("logs", {"level": "INFO",  "msg": "start"})
+r.xadd("logs", {"level": "WARN",  "msg": "slow query"})
+r.xadd("logs", {"level": "ERROR", "msg": "crash"})
+# Все сообщения
+all_msgs = r.xrange("logs")
+for msg_id, fields in all_msgs:
+    print(msg_id, fields)
+# Последние 2
+r.xrange("logs", count=2)
+# Диапазон по временным меткам
+r.xrange("logs", start="1700000000000-0", end="1800000000000-0")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xread",
+    description: "Читает сообщения из одного или нескольких потоков начиная с указанных ID. Параметр `block` позволяет ждать новых сообщений (0 — бесконечно, N — N мс). Возвращает словарь `{stream: [(id, fields), ...]}`. Не требует групп потребителей — каждый клиент читает независимо.",
+    syntax: "xread(streams, count=None, block=None)",
+    arguments: [
+      { name: "streams", description: "Словарь {имя_потока: последний_прочитанный_id}. ID '$' — только новые сообщения." },
+      { name: "count", description: "Максимальное число сообщений на поток." },
+      { name: "block", description: "Таймаут блокирующего ожидания в мс. 0 — бесконечно. None — без блокировки." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xadd("events", {"type": "click", "user": "42"})
+r.xadd("metrics", {"cpu": "65", "mem": "4096"})
+# Читать все сообщения с начала
+result = r.xread({"events": "0-0", "metrics": "0-0"}, count=100)
+for stream_name, messages in result:
+    print(f"Поток: {stream_name}")
+    for msg_id, fields in messages:
+        print(f"  {msg_id}: {fields}")
+# Блокирующее ожидание новых (до 5 секунд)
+result = r.xread({"events": "$"}, block=5000)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xreadgroup",
+    description: "Читает сообщения из потока через группу потребителей. Прочитанные сообщения попадают в PEL группы и требуют подтверждения через `xack`. ID `'>'` — только новые непрочитанные; `'0'` — pending-сообщения консьюмера. `noack=True` не добавляет в PEL. `block` — ждать новых сообщений.",
+    syntax: "xreadgroup(group, consumer, streams, count=None, block=None, noack=False)",
+    arguments: [
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "consumer", description: "Имя текущего консьюмера." },
+      { name: "streams", description: "Словарь {поток: id}. '>' — новые, '0' — свои pending." },
+      { name: "count", description: "Максимальное число сообщений." },
+      { name: "block", description: "Таймаут блокирующего ожидания в мс." },
+      { name: "noack", description: "Если True — не добавлять в PEL (fire-and-forget режим)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.xgroup_create("orders", "billing", id="0", mkstream=True)
+r.xadd("orders", {"order_id": "101", "amount": "59.99"})
+# Читаем новые сообщения
+msgs = r.xreadgroup("billing", "worker-1", {"orders": ">"}, count=10)
+for stream, entries in msgs:
+    for msg_id, fields in entries:
+        print(f"Обрабатываем заказ: {fields}")
+        # ... обработка ...
+        r.xack("orders", "billing", msg_id)
+# Блокирующее ожидание
+r.xreadgroup("billing", "worker-1", {"orders": ">"}, block=0)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xrevrange",
+    description: "Читает сообщения потока `name` в обратном хронологическом порядке (от новых к старым). Параметры `end` и `start` задают диапазон. `'+'` — с конца, `'-'` — до начала. Полезно для получения N последних сообщений.",
+    syntax: "xrevrange(name, end='+', start='-', count=None)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "end", description: "Верхняя граница ID. '+' — конец потока (самые новые)." },
+      { name: "start", description: "Нижняя граница ID. '-' — начало потока." },
+      { name: "count", description: "Максимальное число сообщений." },
+    ],
+    example: `import redis
+r = redis.Redis()
+for i in range(5):
+    r.xadd("feed", {"item": str(i)})
+# 3 последних сообщения (в обратном порядке)
+r.xrevrange("feed", count=3)
+# → [(id4, {item:4}), (id3, {item:3}), (id2, {item:2})]
+# Все сообщения в обратном порядке
+r.xrevrange("feed")  # от новых к старым
+# Ограниченный диапазон
+r.xrevrange("feed", end="+", start="1700000000000-0")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.xtrim",
+    description: "Обрезает поток `name`, ограничивая его размер. `maxlen` задаёт максимальное число записей (удаляет старые). `minid` удаляет все записи с ID меньше указанного. `approximate=True` позволяет Redis делать обрезку эффективнее (может оставить чуть больше). Возвращает число удалённых записей.",
+    syntax: "xtrim(name, maxlen=None, approximate=True, minid=None)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "maxlen", description: "Максимальное число записей. Старые удаляются." },
+      { name: "approximate", description: "Приблизительная обрезка (эффективнее, по умолчанию True)." },
+      { name: "minid", description: "Удалить все записи с ID меньше указанного." },
+    ],
+    example: `import redis
+r = redis.Redis()
+for i in range(1000):
+    r.xadd("metrics", {"value": str(i)})
+r.xlen("metrics")             # → 1000
+# Оставить последние 100 записей
+deleted = r.xtrim("metrics", maxlen=100)
+print(f"Удалено: {deleted}")  # → 900
+r.xlen("metrics")             # → ~100
+# Точная обрезка (медленнее)
+r.xtrim("metrics", maxlen=50, approximate=False)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zadd",
+    description: "Добавляет элементы в отсортированное множество `name` с указанными очками (`mapping`: {элемент: очко}). Опции: `nx` — только новые; `xx` — только существующие; `gt`/`lt` — обновить только если новый score больше/меньше; `ch` — считать изменённые; `incr` — инкрементировать score. Возвращает число добавленных или 1 при `incr`.",
+    syntax: "zadd(name, mapping, nx=False, xx=False, ch=False, incr=False, gt=False, lt=False)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "mapping", description: "Словарь {элемент: score}." },
+      { name: "nx", description: "Добавить только если элемент НЕ существует." },
+      { name: "xx", description: "Обновить только если элемент уже существует." },
+      { name: "ch", description: "Возвращать число изменённых элементов (не только новых)." },
+      { name: "incr", description: "Инкрементировать score вместо установки." },
+      { name: "gt", description: "Обновить score только если новый БОЛЬШЕ текущего." },
+      { name: "lt", description: "Обновить score только если новый МЕНЬШЕ текущего." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("leaderboard", {"alice": 100, "bob": 85, "carol": 120})
+r.zadd("leaderboard", {"alice": 110}, xx=True)   # обновить alice
+r.zadd("leaderboard", {"dave": 95}, nx=True)     # добавить dave
+r.zadd("leaderboard", {"alice": 5}, incr=True)   # alice += 5 → 115
+r.zadd("leaderboard", {"bob": 90}, gt=True)      # 90 > 85, обновится
+r.zadd("leaderboard", {"carol": 50}, gt=True)    # 50 < 120, не обновится`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zcard",
+    description: "Возвращает мощность (число элементов) отсортированного множества `name`. Если ключ не существует — возвращает 0. Операция выполняется за O(1).",
+    syntax: "zcard(name)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("scores", {"alice": 100, "bob": 85, "carol": 120})
+r.zcard("scores")       # → 3
+r.zcard("nonexistent")  # → 0
+# Мониторинг размера рейтинга
+size = r.zcard("leaderboard")
+if size > 10_000:
+    # Обрезать до топ-10000
+    r.zremrangebyrank("leaderboard", 0, -(10_001))`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zcount",
+    description: "Считает число элементов в отсортированном множестве `name` со score в диапазоне от `min` до `max` включительно. Поддерживает `'-inf'` и `'+inf'` для открытых границ, а также `'(значение'` для исключающих границ.",
+    syntax: "zcount(name, min, max)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "min", description: "Нижняя граница score. '-inf' — без ограничения снизу." },
+      { name: "max", description: "Верхняя граница score. '+inf' — без ограничения сверху." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("scores", {"alice": 100, "bob": 85, "carol": 120, "dave": 60})
+r.zcount("scores", 80, 110)       # → 2 (bob=85, alice=100)
+r.zcount("scores", "-inf", "+inf") # → 4 (все)
+r.zcount("scores", 100, "+inf")   # → 2 (alice=100, carol=120)
+# Исключающая граница (строго больше 100)
+r.zcount("scores", "(100", "+inf") # → 1 (carol=120)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zdiff",
+    description: "Возвращает разность отсортированных множеств: элементы из первого ключа, которых нет ни в одном из остальных. При `withscores=True` возвращает список кортежей `(элемент, score)`.",
+    syntax: "zdiff(keys, withscores=False)",
+    arguments: [
+      { name: "keys", description: "Список ключей отсортированных множеств." },
+      { name: "withscores", description: "Если True — возвращать пары (элемент, score)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("all_players",    {"alice": 1, "bob": 2, "carol": 3, "dave": 4})
+r.zadd("banned_players", {"bob": 2, "dave": 4})
+# Активные игроки (не забаненные)
+r.zdiff(["all_players", "banned_players"])
+# → [b'alice', b'carol']
+r.zdiff(["all_players", "banned_players"], withscores=True)
+# → [(b'alice', 1.0), (b'carol', 3.0)]`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zdiffstore",
+    description: "Вычисляет разность отсортированных множеств (аналогично `zdiff`) и сохраняет результат в ключ `dest`. Если `dest` уже существует — перезаписывается. Возвращает число элементов в результирующем множестве.",
+    syntax: "zdiffstore(dest, keys)",
+    arguments: [
+      { name: "dest", description: "Ключ для сохранения результата." },
+      { name: "keys", description: "Список ключей отсортированных множеств." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("candidates", {"alice": 95, "bob": 80, "carol": 70, "dave": 60})
+r.zadd("hired",      {"bob": 80, "dave": 60})
+count = r.zdiffstore("remaining", ["candidates", "hired"])
+print(count)  # → 2
+r.zrange("remaining", 0, -1, withscores=True)
+# → [(b'carol', 70.0), (b'alice', 95.0)]`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zincrby",
+    description: "Увеличивает score элемента `value` в отсортированном множестве `name` на `amount`. Если элемент не существует — создаётся с score равным `amount`. Если ключ не существует — создаётся. Возвращает новый score как `float`.",
+    syntax: "zincrby(name, amount, value)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "amount", description: "Значение для прибавления к score (может быть отрицательным)." },
+      { name: "value", description: "Элемент, чей score изменяется." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("votes", {"python": 100, "javascript": 150})
+r.zincrby("votes", 10, "python")     # → 110.0
+r.zincrby("votes", -5, "javascript") # → 145.0
+r.zincrby("votes", 1, "rust")        # → 1.0 (новый элемент)
+# Подсчёт очков в игре
+r.zincrby("leaderboard", 50, "player:alice")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zinter",
+    description: "Возвращает пересечение отсортированных множеств: элементы присутствующие во всех указанных ключах. `aggregate` задаёт функцию объединения scores: `'SUM'` (по умолчанию), `'MIN'` или `'MAX'`. При `withscores=True` возвращает пары `(элемент, score)`.",
+    syntax: "zinter(keys, aggregate=None, withscores=False)",
+    arguments: [
+      { name: "keys", description: "Список ключей отсортированных множеств." },
+      { name: "aggregate", description: "Функция агрегации scores: 'SUM' (по умолчанию), 'MIN', 'MAX'." },
+      { name: "withscores", description: "Если True — возвращать пары (элемент, score)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("math_scores",    {"alice": 90, "bob": 70, "carol": 85})
+r.zadd("science_scores", {"alice": 80, "carol": 95, "dave": 75})
+# Студенты сдавшие оба предмета
+r.zinter(["math_scores", "science_scores"])
+# → [b'alice', b'carol']
+# С суммой очков
+r.zinter(["math_scores", "science_scores"], aggregate="SUM", withscores=True)
+# → [(b'carol', 180.0), (b'alice', 170.0)]`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zinterstore",
+    description: "Вычисляет пересечение отсортированных множеств и сохраняет результат в `dest`. Параметр `aggregate` управляет объединением scores: `'SUM'` (по умолчанию), `'MIN'`, `'MAX'`. Возвращает число элементов в результирующем множестве.",
+    syntax: "zinterstore(dest, keys, aggregate=None)",
+    arguments: [
+      { name: "dest", description: "Ключ для сохранения результата пересечения." },
+      { name: "keys", description: "Список ключей или словарь {ключ: вес} для взвешенного пересечения." },
+      { name: "aggregate", description: "Функция агрегации: 'SUM', 'MIN' или 'MAX'." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("feature_a_users", {"alice": 1, "bob": 1, "carol": 1})
+r.zadd("feature_b_users", {"bob": 1, "carol": 1, "dave": 1})
+# Пользователи использующие обе фичи
+count = r.zinterstore("both_features", ["feature_a_users", "feature_b_users"])
+print(count)  # → 2
+r.zrange("both_features", 0, -1)  # → [b'bob', b'carol']
+# Взвешенное пересечение
+r.zinterstore("weighted", {"feature_a_users": 2, "feature_b_users": 1})`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zlexcount",
+    description: "Считает число элементов в отсортированном множестве `name` в лексикографическом диапазоне от `min` до `max`. Используется когда все элементы имеют одинаковый score. Границы задаются как `'[значение'` (включительно) или `'(значение'` (исключительно). `'-'` и `'+'` обозначают начало и конец алфавита.",
+    syntax: "zlexcount(name, min, max)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества (все элементы должны иметь равный score)." },
+      { name: "min", description: "Нижняя лексикографическая граница: '-' или '[строка' или '(строка'." },
+      { name: "max", description: "Верхняя лексикографическая граница: '+' или '[строка' или '(строка'." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Все элементы с одинаковым score — лексикографическая сортировка
+r.zadd("words", {"apple": 0, "apricot": 0, "banana": 0, "blueberry": 0, "cherry": 0})
+r.zlexcount("words", "-", "+")           # → 5 (все)
+r.zlexcount("words", "[a", "[b")         # → 2 (apple, apricot)
+r.zlexcount("words", "[b", "[c")         # → 2 (banana, blueberry)
+r.zlexcount("words", "(apple", "[b")     # → 1 (apricot, apple исключён)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zmpop",
+    description: "Атомарно извлекает и удаляет один или несколько элементов из первого непустого отсортированного множества среди `keys`. `modifier='MIN'` — извлекает элементы с наименьшим score; `'MAX'` — с наибольшим. `count` задаёт максимальное число извлекаемых элементов. Возвращает `(имя_ключа, [(элемент, score), ...])` или `None`.",
+    syntax: "zmpop(numkeys, keys, modifier='MIN', count=None)",
+    arguments: [
+      { name: "numkeys", description: "Число ключей в списке keys." },
+      { name: "keys", description: "Список ключей отсортированных множеств для проверки." },
+      { name: "modifier", description: "'MIN' — извлечь с минимальным score, 'MAX' — с максимальным." },
+      { name: "count", description: "Максимальное число элементов для извлечения." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("queue:high",   {"urgent_task": 1, "critical": 2})
+r.zadd("queue:normal", {"regular_task": 5, "low_prio": 8})
+# Извлечь задачу с наименьшим score из первой непустой очереди
+result = r.zmpop(2, ["queue:high", "queue:normal"], modifier="MIN")
+print(result)
+# → (b'queue:high', [(b'urgent_task', 1.0)])
+# Извлечь 2 элемента с наибольшим score
+r.zmpop(1, ["queue:normal"], modifier="MAX", count=2)
+# → (b'queue:normal', [(b'low_prio', 8.0), (b'regular_task', 5.0)])`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zmspop",
+    description: "Атомарно извлекает и удаляет элементы из нескольких отсортированных множеств `keys`. В отличие от `zmpop`, принимает список ключей напрямую без параметра `numkeys`. `modifier='MIN'` — извлекает элементы с наименьшим score, `'MAX'` — с наибольшим. `count` задаёт максимальное число извлекаемых элементов.",
+    syntax: "zmspop(keys, modifier='MIN', count=None)",
+    arguments: [
+      { name: "keys", description: "Список ключей отсортированных множеств для проверки." },
+      { name: "modifier", description: "'MIN' — извлечь с минимальным score, 'MAX' — с максимальным." },
+      { name: "count", description: "Максимальное число элементов для извлечения." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("prio:high",   {"critical": 1, "urgent": 2})
+r.zadd("prio:normal", {"task_a": 5, "task_b": 8})
+# Извлечь задачу с наименьшим score из первой непустой очереди
+result = r.zmspop(["prio:high", "prio:normal"], modifier="MIN")
+print(result)
+# → (b'prio:high', [(b'critical', 1.0)])
+# Извлечь 2 элемента с наибольшим score
+r.zmspop(["prio:normal"], modifier="MAX", count=2)
+# → (b'prio:normal', [(b'task_b', 8.0), (b'task_a', 5.0)])`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zpopmax",
+    description: "Извлекает и удаляет один или несколько элементов с наибольшим score из отсортированного множества `name`. Без `count` — возвращает один элемент в виде списка `[(элемент, score)]`. С `count` — список из до `count` элементов, отсортированных по убыванию score.",
+    syntax: "zpopmax(name, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "count", description: "Число элементов для извлечения. Если None — один элемент." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("leaderboard", {"alice": 100, "bob": 85, "carol": 120, "dave": 60})
+r.zpopmax("leaderboard")       # → [(b'carol', 120.0)]
+r.zpopmax("leaderboard", 2)    # → [(b'alice', 100.0), (b'bob', 85.0)]
+r.zrange("leaderboard", 0, -1, withscores=True)
+# → [(b'dave', 60.0)]`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zpopmin",
+    description: "Извлекает и удаляет один или несколько элементов с наименьшим score из отсортированного множества `name`. Без `count` — возвращает один элемент. С `count` — список из до `count` элементов, отсортированных по возрастанию score. Симметричен `zpopmax`.",
+    syntax: "zpopmin(name, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "count", description: "Число элементов для извлечения. Если None — один элемент." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("tasks", {"low": 1, "medium": 5, "high": 10, "critical": 20})
+r.zpopmin("tasks")          # → [(b'low', 1.0)]
+r.zpopmin("tasks", 2)       # → [(b'medium', 5.0), (b'high', 10.0)]
+# Очередь приоритетов: добавляй через zadd, читай через zpopmin
+r.zadd("tasks", {"new_task": 3})
+r.zpopmin("tasks")          # → [(b'new_task', 3.0)]`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zrandmember",
+    description: "Возвращает один или несколько случайных элементов из отсортированного множества `key` без удаления. Если `count > 0` — уникальные элементы; `count < 0` — `|count|` элементов с возможными повторами. `withscores=True` добавляет score к каждому элементу. Без `count` — один элемент или `None`.",
+    syntax: "zrandmember(key, count=None, withscores=False)",
+    arguments: [
+      { name: "key", description: "Ключ отсортированного множества." },
+      { name: "count", description: "Число элементов. Положительное — уникальные, отрицательное — с повторами." },
+      { name: "withscores", description: "Если True — возвращать пары (элемент, score)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("prizes", {"gold": 3, "silver": 2, "bronze": 1, "wood": 0})
+r.zrandmember("prizes")             # → b'silver' (случайный)
+r.zrandmember("prizes", 2)          # → [b'gold', b'bronze'] (2 уникальных)
+r.zrandmember("prizes", -3)         # → [b'silver', b'gold', b'silver'] (с повторами)
+r.zrandmember("prizes", 2, withscores=True)
+# → [(b'bronze', 1.0), (b'gold', 3.0)]`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zrange",
+    description: "Универсальная команда чтения диапазона из отсортированного множества. Поддерживает три режима через флаги: по рангу (позиции), по score (`byscore=True`) или лексикографически (`bylex=True`). `desc=True` — обратный порядок. `offset`/`num` — пагинация. `withscores=True` — возвращать score. Унифицирует `zrangebyscore`, `zrangebylex` и др.",
+    syntax: "zrange(name, start, end, desc=False, withscores=False, score_cast_func=float, byscore=False, bylex=False, offset=None, num=None)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "start", description: "Начало диапазона: индекс ранга, score или лексема в зависимости от режима." },
+      { name: "end", description: "Конец диапазона. -1 означает последний элемент при ранговом режиме." },
+      { name: "desc", description: "Если True — порядок убывания." },
+      { name: "withscores", description: "Если True — возвращать пары (элемент, score)." },
+      { name: "score_cast_func", description: "Функция преобразования score. По умолчанию float." },
+      { name: "byscore", description: "Если True — start/end интерпретируются как score-значения." },
+      { name: "bylex", description: "Если True — лексикографический диапазон." },
+      { name: "offset", description: "Смещение для пагинации (требует byscore или bylex)." },
+      { name: "num", description: "Число элементов для пагинации." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("scores", {"alice": 100, "bob": 85, "carol": 120, "dave": 60})
+# По рангу (позиции, 0-indexed)
+r.zrange("scores", 0, -1)                         # все, от низкого к высокому
+r.zrange("scores", 0, -1, withscores=True)        # с очками
+r.zrange("scores", 0, -1, desc=True)              # от высокого к низкому
+# По score
+r.zrange("scores", 80, 110, byscore=True)         # score между 80 и 110
+r.zrange("scores", "(80", 110, byscore=True)      # строго > 80
+# По лексике (одинаковый score)
+r.zadd("abc", {"a": 0, "b": 0, "c": 0, "d": 0})
+r.zrange("abc", "[a", "[c", bylex=True)           # → [b'a', b'b', b'c']`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zrangebylex",
+    description: "Возвращает элементы отсортированного множества в лексикографическом диапазоне от `min` до `max`. Применимо когда все элементы имеют одинаковый score. Границы: `'[строка'` — включительно, `'(строка'` — исключительно, `'-'`/`'+'` — начало/конец. `start`/`num` — пагинация.",
+    syntax: "zrangebylex(name, min, max, start=None, num=None)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "min", description: "Нижняя лексикографическая граница: '-', '[строка' или '(строка'." },
+      { name: "max", description: "Верхняя лексикографическая граница: '+', '[строка' или '(строка'." },
+      { name: "start", description: "Смещение для пагинации." },
+      { name: "num", description: "Число элементов для пагинации." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Автодополнение: все слова начинающиеся с 'ap'
+words = ["apple", "apricot", "application", "banana", "cherry", "apt"]
+r.zadd("dictionary", {w: 0 for w in words})
+# Диапазон от 'ap' до 'aq' (все слова с префиксом 'ap')
+r.zrangebylex("dictionary", "[ap", "(aq")
+# → [b'apple', b'application', b'apricot', b'apt']
+# С пагинацией
+r.zrangebylex("dictionary", "-", "+", start=0, num=3)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zrangebyscore",
+    description: "Возвращает элементы отсортированного множества `name` со score в диапазоне от `min` до `max` по возрастанию. Поддерживает `'-inf'`/`'+inf'` и `'(значение'` для исключающих границ. `start`/`num` — пагинация. `withscores=True` — возвращать пары.",
+    syntax: "zrangebyscore(name, min, max, start=None, num=None, withscores=False, score_cast_func=float)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "min", description: "Нижняя граница score. '-inf' — без нижнего ограничения." },
+      { name: "max", description: "Верхняя граница score. '+inf' — без верхнего ограничения." },
+      { name: "start", description: "Смещение для пагинации." },
+      { name: "num", description: "Число элементов страницы." },
+      { name: "withscores", description: "Если True — возвращать пары (элемент, score)." },
+      { name: "score_cast_func", description: "Функция преобразования score (по умолчанию float)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("players", {"alice": 1500, "bob": 1200, "carol": 1800, "dave": 900})
+# Игроки со score от 1000 до 1600
+r.zrangebyscore("players", 1000, 1600)
+# → [b'bob', b'alice']
+r.zrangebyscore("players", 1000, 1600, withscores=True)
+# → [(b'bob', 1200.0), (b'alice', 1500.0)]
+# Все кроме нижних (строго > 1000)
+r.zrangebyscore("players", "(1000", "+inf")
+# Страница 2 из 2 по 2 элемента
+r.zrangebyscore("players", "-inf", "+inf", start=2, num=2)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zrangestore",
+    description: "Читает диапазон из отсортированного множества `src` и сохраняет результат в `dest`. Поддерживает те же режимы что и `zrange`: по рангу, по score (`byscore=True`), лексикографически (`bylex=True`), обратный порядок (`desc=True`) и пагинацию. Возвращает число сохранённых элементов.",
+    syntax: "zrangestore(dest, src, start, end, desc=False, byscore=False, bylex=False, offset=None, num=None)",
+    arguments: [
+      { name: "dest", description: "Ключ для сохранения результата." },
+      { name: "src", description: "Исходный ключ отсортированного множества." },
+      { name: "start", description: "Начало диапазона (ранг, score или лексема)." },
+      { name: "end", description: "Конец диапазона." },
+      { name: "desc", description: "Если True — обратный порядок." },
+      { name: "byscore", description: "Если True — диапазон по score." },
+      { name: "bylex", description: "Если True — лексикографический диапазон." },
+      { name: "offset", description: "Смещение пагинации." },
+      { name: "num", description: "Число элементов для пагинации." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("all_scores", {"alice": 95, "bob": 60, "carol": 80, "dave": 45, "eve": 75})
+# Сохранить топ-3 в отдельный ключ
+r.zrangestore("top3", "all_scores", 0, 2, desc=True)
+r.zrange("top3", 0, -1, withscores=True)
+# → [(b'carol', 80.0), (b'alice', 95.0), (b'eve', 75.0)]
+# Сохранить по диапазону score (>=70)
+r.zrangestore("high_scores", "all_scores", 70, "+inf", byscore=True)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zrank",
+    description: "Возвращает ранг (позицию, 0-indexed) элемента `value` в отсортированном множестве `name`. Ранг 0 — элемент с наименьшим score. Если элемент не существует или ключ не существует — возвращает `None`. Для обратного порядка используйте `zrevrank`.",
+    syntax: "zrank(name, value)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "value", description: "Элемент, ранг которого нужно определить." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("leaderboard", {"alice": 100, "bob": 85, "carol": 120, "dave": 60})
+r.zrank("leaderboard", "dave")    # → 0 (наименьший score)
+r.zrank("leaderboard", "bob")     # → 1
+r.zrank("leaderboard", "alice")   # → 2
+r.zrank("leaderboard", "carol")   # → 3 (наибольший)
+r.zrank("leaderboard", "unknown") # → None
+# Позиция от конца — zrevrank
+r.zrevrank("leaderboard", "carol")  # → 0 (первый с конца)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zrem",
+    description: "Удаляет один или несколько элементов из отсортированного множества `name`. Несуществующие элементы игнорируются. Возвращает число фактически удалённых элементов.",
+    syntax: "zrem(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "*values", description: "Один или несколько элементов для удаления." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("ranking", {"alice": 100, "bob": 85, "carol": 120})
+r.zrem("ranking", "bob")                  # → 1
+r.zrem("ranking", "alice", "carol")       # → 2
+r.zrem("ranking", "nonexistent")          # → 0
+r.zcard("ranking")                        # → 0
+# Удаление забаненного игрока из всех рейтингов
+for board in r.scan_iter("leaderboard:*", _type="zset"):
+    r.zrem(board, "banned_user")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zremrangebylex",
+    description: "Удаляет все элементы отсортированного множества `name` в лексикографическом диапазоне от `min` до `max`. Применимо когда все элементы имеют одинаковый score. Границы: `'[строка'` — включительно, `'(строка'` — исключительно, `'-'`/`'+'` — начало/конец. Возвращает число удалённых элементов.",
+    syntax: "zremrangebylex(name, min, max)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "min", description: "Нижняя лексикографическая граница: '-', '[строка' или '(строка'." },
+      { name: "max", description: "Верхняя лексикографическая граница: '+', '[строка' или '(строка'." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("tags", {t: 0 for t in ["apple", "apricot", "banana", "cherry", "apt"]})
+# Удалить все теги начинающиеся с 'ap'
+deleted = r.zremrangebylex("tags", "[ap", "(aq")
+print(deleted)  # → 3 (apple, apricot, apt)
+r.zrange("tags", 0, -1)
+# → [b'banana', b'cherry']`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zremrangebyrank",
+    description: "Удаляет элементы отсортированного множества `name` в диапазоне рангов от `start` до `end` включительно (0-indexed). Поддерживает отрицательные индексы: `-1` — последний элемент (с наибольшим score). Возвращает число удалённых элементов.",
+    syntax: "zremrangebyrank(name, start, end)",
+    arguments: [
+      { name: "name", description: "Ключ отсортированного множества." },
+      { name: "start", description: "Начальный ранг (0 — элемент с наименьшим score)." },
+      { name: "end", description: "Конечный ранг включительно. -1 — последний элемент." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.zadd("scores", {"e": 10, "d": 20, "c": 30, "b": 40, "a": 50})
+r.zcard("scores")  # → 5
+# Удалить 2 элемента с наименьшим score (ранги 0 и 1)
+r.zremrangebyrank("scores", 0, 1)   # → 2 (удалены e и d)
+r.zrange("scores", 0, -1, withscores=True)
+# → [(b'c', 30.0), (b'b', 40.0), (b'a', 50.0)]
+# Оставить только топ-100 (удалить всё кроме последних 100)
+r.zremrangebyrank("leaderboard", 0, -(101))`,
+  },
 ];
