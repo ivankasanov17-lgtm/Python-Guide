@@ -52348,4 +52348,3163 @@ import time
 print("Press Ctrl+Z to pause, fg to resume")
 time.sleep(60)`,
   },
+{
+    name: 'signal.SIGTTIN',
+    description:
+      'Константа модуля signal. Сигнал SIGTTIN (номер 21) — отправляется фоновому процессу при попытке чтения из управляющего терминала. По умолчанию приостанавливает процесс (аналогично SIGSTOP). Используется в системах управления заданиями (job control) оболочки. Доступен только на Unix-системах.',
+    syntax: 'signal.SIGTTIN',
+    arguments: [],
+    example: `import signal
+import os
+
+print(signal.SIGTTIN)   # 21
+
+# Игнорирование сигнала (процесс не будет приостанавливаться):
+signal.signal(signal.SIGTTIN, signal.SIG_IGN)
+
+# Восстановление поведения по умолчанию:
+signal.signal(signal.SIGTTIN, signal.SIG_DFL)
+
+# Кастомный обработчик:
+def handle_ttin(signum, frame):
+    print(f'Получен SIGTTIN (сигнал {signum})')
+    print('Попытка чтения из терминала в фоновом режиме')
+
+signal.signal(signal.SIGTTIN, handle_ttin)
+
+# Проверка текущего обработчика:
+handler = signal.getsignal(signal.SIGTTIN)
+print(handler)   # <function handle_ttin ...>`,
+  },
+  {
+    name: 'signal.SIGTTOU',
+    description:
+      'Константа модуля signal. Сигнал SIGTTOU (номер 22) — отправляется фоновому процессу при попытке записи в управляющий терминал (если включён режим TOSTOP). По умолчанию приостанавливает процесс. Парный к SIGTTIN: SIGTTIN — для чтения, SIGTTOU — для записи. Доступен только на Unix-системах.',
+    syntax: 'signal.SIGTTOU',
+    arguments: [],
+    example: `import signal
+
+print(signal.SIGTTOU)   # 22
+
+# Игнорирование — фоновый процесс сможет писать в терминал:
+signal.signal(signal.SIGTTOU, signal.SIG_IGN)
+
+# Обработчик для логирования:
+def handle_ttou(signum, frame):
+    print(f'Получен SIGTTOU: попытка записи в терминал из фона')
+
+signal.signal(signal.SIGTTOU, handle_ttou)
+
+# Оба сигнала часто обрабатываются вместе в демонах:
+for sig in (signal.SIGTTIN, signal.SIGTTOU):
+    signal.signal(sig, signal.SIG_IGN)
+
+# Восстановление:
+signal.signal(signal.SIGTTOU, signal.SIG_DFL)`,
+  },
+  {
+    name: 'signal.SIGUNUSED',
+    description:
+      'Константа модуля signal. Сигнал SIGUNUSED — зарезервированный, неиспользуемый сигнал. На большинстве современных Linux-систем совпадает с SIGSYS (номер 31). Исторически зарезервирован для будущего использования. Поведение и наличие могут различаться в зависимости от платформы. Доступен только на некоторых Unix-системах.',
+    syntax: 'signal.SIGUNUSED',
+    arguments: [],
+    example: `import signal
+
+# Доступность зависит от платформы:
+if hasattr(signal, 'SIGUNUSED'):
+    print(signal.SIGUNUSED)   # 31 (на Linux, совпадает с SIGSYS)
+
+    # Обработчик (нетипичное использование):
+    def handle_unused(signum, frame):
+        print(f'Получен SIGUNUSED (сигнал {signum})')
+
+    signal.signal(signal.SIGUNUSED, handle_unused)
+else:
+    print('SIGUNUSED недоступен на этой платформе')
+
+# Проверка всех доступных сигналов:
+available = [s for s in dir(signal) if s.startswith('SIG') and not s.startswith('SIG_')]
+print(available)`,
+  },
+  {
+    name: 'signal.SIGURG',
+    description:
+      'Константа модуля signal. Сигнал SIGURG (номер 23) — отправляется процессу при получении срочных (out-of-band) данных через сокет. По умолчанию игнорируется. Используется в сетевых приложениях для уведомления о приходе внеполосных TCP-данных (OOB data). Доступен только на Unix-системах.',
+    syntax: 'signal.SIGURG',
+    arguments: [],
+    example: `import signal
+import socket
+
+print(signal.SIGURG)   # 23
+
+# Обработчик срочных данных из сокета:
+def handle_urg(signum, frame):
+    print('Получены срочные (OOB) данные через сокет')
+    # Читаем OOB-данные:
+    # data = sock.recv(1, socket.MSG_OOB)
+
+signal.signal(signal.SIGURG, handle_urg)
+
+# Привязка SIGURG к сокету:
+# sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# sock.connect(('host', port))
+# fcntl.fcntl(sock.fileno(), fcntl.F_SETOWN, os.getpid())
+# Теперь при получении OOB-данных процесс получит SIGURG
+
+# Восстановление поведения по умолчанию (игнорирование):
+signal.signal(signal.SIGURG, signal.SIG_DFL)`,
+  },
+  {
+    name: 'signal.SIGUSR1',
+    description:
+      'Константа модуля signal. Сигнал SIGUSR1 (номер 10) — пользовательский сигнал без предопределённого значения. Поведение полностью определяется приложением. По умолчанию завершает процесс. Широко используется для управления демонами: перечитать конфигурацию, переоткрыть лог-файлы, сбросить кэш. Доступен только на Unix-системах.',
+    syntax: 'signal.SIGUSR1',
+    arguments: [],
+    example: `import signal
+import logging
+
+logger = logging.getLogger(__name__)
+
+def reload_config(signum, frame):
+    """Перечитать конфигурацию при получении SIGUSR1."""
+    logger.info('Получен SIGUSR1 — перезагрузка конфигурации')
+    # config.reload()
+    print('Конфигурация перезагружена')
+
+signal.signal(signal.SIGUSR1, reload_config)
+
+print(f'PID процесса: {__import__("os").getpid()}')
+print('Для перезагрузки конфигурации выполните:')
+print(f'  kill -USR1 {__import__("os").getpid()}')
+
+# Сигнал можно отправить из Python:
+import os
+# os.kill(os.getpid(), signal.SIGUSR1)   # Себе
+# os.kill(pid, signal.SIGUSR1)           # Другому процессу
+
+import time
+time.sleep(30)   # Ожидание сигнала`,
+  },
+  {
+    name: 'signal.SIGUSR2',
+    description:
+      'Константа модуля signal. Сигнал SIGUSR2 (номер 12) — второй пользовательский сигнал, аналогичный SIGUSR1. Поведение полностью определяется приложением. По умолчанию завершает процесс. Часто используется в паре с SIGUSR1 для разных команд управления: SIGUSR1 — мягкая перезагрузка, SIGUSR2 — дамп состояния или экстренный сброс. Доступен только на Unix-системах.',
+    syntax: 'signal.SIGUSR2',
+    arguments: [],
+    example: `import signal
+import os
+import json
+
+app_state = {'requests': 0, 'errors': 0}
+
+def dump_state(signum, frame):
+    """Записать текущее состояние при получении SIGUSR2."""
+    print('Получен SIGUSR2 — дамп состояния приложения')
+    with open(f'state_{os.getpid()}.json', 'w') as f:
+        json.dump(app_state, f, indent=2)
+    print(f'Состояние сохранено в state_{os.getpid()}.json')
+
+def reload_config(signum, frame):
+    print('Получен SIGUSR1 — перезагрузка конфигурации')
+
+# Два разных действия на два пользовательских сигнала:
+signal.signal(signal.SIGUSR1, reload_config)
+signal.signal(signal.SIGUSR2, dump_state)
+
+print(f'PID: {os.getpid()}')
+# kill -USR1 <pid>  → перезагрузка конфигурации
+# kill -USR2 <pid>  → дамп состояния
+
+import time
+time.sleep(30)`,
+  },
+  {
+    name: 'signal.SIGVTALRM',
+    description:
+      'Константа модуля signal. Сигнал SIGVTALRM (номер 26) — виртуальный таймер, отсчитывающий только процессорное время, потраченное пользовательским кодом процесса (не учитывает системные вызовы и время сна). Устанавливается через signal.setitimer(ITIMER_VIRTUAL). По умолчанию завершает процесс. Доступен только на Unix-системах.',
+    syntax: 'signal.SIGVTALRM',
+    arguments: [],
+    example: `import signal
+import time
+
+print(signal.SIGVTALRM)   # 26
+
+call_count = 0
+
+def virtual_alarm(signum, frame):
+    global call_count
+    call_count += 1
+    print(f'SIGVTALRM #{call_count}: виртуальный таймер сработал')
+    # Перезапуск таймера:
+    signal.setitimer(signal.ITIMER_VIRTUAL, 0.5)
+
+signal.signal(signal.SIGVTALRM, virtual_alarm)
+
+# Запуск виртуального таймера на 0.5 сек CPU-времени:
+signal.setitimer(signal.ITIMER_VIRTUAL, 0.5)
+
+# Активная работа (накапливает CPU-время):
+total = 0
+for i in range(10_000_000):
+    total += i
+
+# Остановка таймера:
+signal.setitimer(signal.ITIMER_VIRTUAL, 0)
+print(f'Итого срабатываний: {call_count}')`,
+  },
+  {
+    name: 'signal.SIGWINCH',
+    description:
+      'Константа модуля signal. Сигнал SIGWINCH (номер 28, от "window change") — отправляется процессу при изменении размера окна терминала. По умолчанию игнорируется. Используется в терминальных приложениях (curses, TUI) для динамического перерисовывания интерфейса под новый размер окна. Доступен только на Unix-системах.',
+    syntax: 'signal.SIGWINCH',
+    arguments: [],
+    example: `import signal
+import os
+import shutil
+
+def on_resize(signum, frame):
+    """Обработка изменения размера терминала."""
+    cols, rows = shutil.get_terminal_size()
+    print(f'\\nРазмер терминала изменился: {cols}x{rows}')
+    redraw_ui(cols, rows)
+
+def redraw_ui(cols, rows):
+    print(f'Перерисовка интерфейса {cols}x{rows}')
+    print('─' * cols)
+
+signal.signal(signal.SIGWINCH, on_resize)
+
+# Получить текущий размер:
+cols, rows = shutil.get_terminal_size()
+print(f'Начальный размер: {cols}x{rows}')
+print('Измените размер окна терминала...')
+
+import time
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print('\\nЗавершение')`,
+  },
+  {
+    name: 'signal.SIGXCPU',
+    description:
+      'Константа модуля signal. Сигнал SIGXCPU (номер 24) — отправляется процессу при превышении лимита процессорного времени, установленного через resource.setrlimit(RLIMIT_CPU). По умолчанию завершает процесс с созданием core dump. Может использоваться для мягкого завершения: обработчик сохраняет состояние при получении первого сигнала. Доступен только на Unix-системах.',
+    syntax: 'signal.SIGXCPU',
+    arguments: [],
+    example: `import signal
+import resource
+import time
+
+print(signal.SIGXCPU)   # 24
+
+def handle_cpu_limit(signum, frame):
+    print(f'Получен SIGXCPU: превышен лимит CPU-времени!')
+    print('Сохранение состояния перед завершением...')
+    # save_state()
+    raise SystemExit(1)
+
+signal.signal(signal.SIGXCPU, handle_cpu_limit)
+
+# Установка лимита CPU: 2 секунды (мягкий) и 5 секунд (жёсткий):
+resource.setrlimit(resource.RLIMIT_CPU, (2, 5))
+
+soft, hard = resource.getrlimit(resource.RLIMIT_CPU)
+print(f'Лимит CPU: мягкий={soft}с, жёсткий={hard}с')
+
+# При превышении мягкого лимита → SIGXCPU
+# При превышении жёсткого лимита → SIGKILL (не перехватить)`,
+  },
+  {
+    name: 'signal.SIGXFSZ',
+    description:
+      'Константа модуля signal. Сигнал SIGXFSZ (номер 25) — отправляется процессу при попытке создать файл, превышающий максимально допустимый размер (RLIMIT_FSIZE). По умолчанию завершает процесс с созданием core dump. Обработчик позволяет мягко завершить запись или переключиться на другой файл. Доступен только на Unix-системах.',
+    syntax: 'signal.SIGXFSZ',
+    arguments: [],
+    example: `import signal
+import resource
+import os
+
+print(signal.SIGXFSZ)   # 25
+
+def handle_file_size(signum, frame):
+    print('Получен SIGXFSZ: превышен максимальный размер файла!')
+    print('Переключение на резервный файл...')
+    # Логика ротации файлов
+
+signal.signal(signal.SIGXFSZ, handle_file_size)
+
+# Установка лимита размера файла: 1 МБ:
+one_mb = 1 * 1024 * 1024
+resource.setrlimit(resource.RLIMIT_FSIZE, (one_mb, one_mb))
+
+soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+print(f'Лимит размера файла: {soft / 1024 / 1024:.1f} МБ')
+
+# Попытка записать больше лимита вызовет SIGXFSZ:
+try:
+    with open('large_file.bin', 'wb') as f:
+        f.write(b'0' * (one_mb + 1))
+except OSError as e:
+    print(f'Ошибка записи: {e}')`,
+  },
+  {
+    name: 'signal.SIG_BLOCK',
+    description:
+      'Константа модуля signal. Используется как аргумент how в функции signal.pthread_sigmask(). Указывает добавить переданные сигналы к текущей маске блокировки потока — заблокированные сигналы не будут доставляться до их разблокировки. Доступен только на Unix-системах с поддержкой POSIX-потоков.',
+    syntax: 'signal.pthread_sigmask(signal.SIG_BLOCK, sigset)',
+    arguments: [],
+    example: `import signal
+import threading
+
+def worker():
+    signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM})
+    print('Рабочий поток: SIGINT и SIGTERM заблокированы')
+    import time
+    time.sleep(5)
+    print('Рабочий поток завершён')
+
+t = threading.Thread(target=worker)
+t.start()
+
+def handler(signum, frame):
+    print(f'Главный поток получил сигнал {signum}')
+
+signal.signal(signal.SIGINT, handler)
+t.join()`,
+  },
+  {
+    name: 'signal.SIG_UNBLOCK',
+    description:
+      'Константа модуля signal. Используется как аргумент how в функции signal.pthread_sigmask(). Указывает снять блокировку с переданных сигналов — удаляет их из текущей маски блокировки потока. После разблокировки отложенные сигналы доставляются немедленно. Доступен только на Unix-системах.',
+    syntax: 'signal.pthread_sigmask(signal.SIG_UNBLOCK, sigset)',
+    arguments: [],
+    example: `import signal
+import time
+
+signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGUSR1})
+print('SIGUSR1 заблокирован')
+
+import os
+os.kill(os.getpid(), signal.SIGUSR1)
+print('Сигнал отправлен, но ещё не доставлен')
+
+def handle_usr1(signum, frame):
+    print('SIGUSR1 доставлен!')
+
+signal.signal(signal.SIGUSR1, handle_usr1)
+
+time.sleep(1)
+print('Разблокируем SIGUSR1...')
+
+# Разблокировка — отложенный сигнал доставляется немедленно:
+signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGUSR1})`,
+  },
+  {
+    name: 'signal.SIG_SETMASK',
+    description:
+      'Константа модуля signal. Используется как аргумент how в функции signal.pthread_sigmask(). Заменяет текущую маску блокировки потока на переданный набор сигналов целиком (в отличие от SIG_BLOCK, который добавляет, и SIG_UNBLOCK, который убирает). Доступен только на Unix-системах.',
+    syntax: 'signal.pthread_sigmask(signal.SIG_SETMASK, sigset)',
+    arguments: [],
+    example: `import signal
+
+# Получить текущую маску:
+old_mask = signal.pthread_sigmask(signal.SIG_SETMASK, set())
+print(f'Текущая маска: {old_mask}')
+
+# Установить новую маску — блокируем только SIGUSR1 и SIGUSR2:
+new_mask = {signal.SIGUSR1, signal.SIGUSR2}
+signal.pthread_sigmask(signal.SIG_SETMASK, new_mask)
+print(f'Новая маска: {new_mask}')
+
+# SIG_SETMASK заменяет маску полностью:
+# До: {SIGTERM, SIGINT, SIGUSR1}
+# После SIG_SETMASK({SIGUSR2}): только {SIGUSR2}
+
+# Восстановление исходной маски:
+signal.pthread_sigmask(signal.SIG_SETMASK, old_mask)
+print('Маска восстановлена')`,
+  },
+  {
+    name: 'signal.ITIMER_REAL',
+    description:
+      'Константа модуля signal. Идентификатор таймера реального времени для signal.setitimer() и signal.getitimer(). Отсчитывает реальное астрономическое время (wall clock) независимо от загрузки CPU. По истечении отправляет сигнал SIGALRM. Аналог функции alarm(), но с поддержкой дробных секунд.',
+    syntax: 'signal.setitimer(signal.ITIMER_REAL, seconds, interval=0.0)',
+    arguments: [],
+    example: `import signal
+import time
+
+def alarm_handler(signum, frame):
+    print(f'SIGALRM: ITIMER_REAL сработал в {time.time():.3f}')
+
+signal.signal(signal.SIGALRM, alarm_handler)
+
+# Однократный таймер через 2 секунды реального времени:
+signal.setitimer(signal.ITIMER_REAL, 2.0)
+print(f'Таймер запущен в {time.time():.3f}')
+
+time.sleep(3)
+
+# Повторяющийся таймер: первый через 1с, затем каждые 0.5с:
+signal.setitimer(signal.ITIMER_REAL, 1.0, 0.5)
+
+# Проверка оставшегося времени:
+remaining, interval = signal.getitimer(signal.ITIMER_REAL)
+print(f'Осталось: {remaining:.3f}с, интервал: {interval:.3f}с')
+
+# Отмена таймера:
+signal.setitimer(signal.ITIMER_REAL, 0)`,
+  },
+  {
+    name: 'signal.ITIMER_VIRTUAL',
+    description:
+      'Константа модуля signal. Идентификатор виртуального таймера для signal.setitimer() и signal.getitimer(). Отсчитывает только процессорное время пользовательского режима (не считает время системных вызовов и время ожидания). По истечении отправляет сигнал SIGVTALRM. Используется для профилирования пользовательского кода.',
+    syntax: 'signal.setitimer(signal.ITIMER_VIRTUAL, seconds, interval=0.0)',
+    arguments: [],
+    example: `import signal
+
+call_count = 0
+
+def vtalrm_handler(signum, frame):
+    global call_count
+    call_count += 1
+    print(f'SIGVTALRM #{call_count}: накоплено 0.1с CPU-времени')
+    signal.setitimer(signal.ITIMER_VIRTUAL, 0.1)
+
+signal.signal(signal.SIGVTALRM, vtalrm_handler)
+
+# Таймер сработает после накопления 0.1с CPU-времени:
+signal.setitimer(signal.ITIMER_VIRTUAL, 0.1)
+
+# Активные вычисления накапливают CPU-время:
+total = 0
+for i in range(50_000_000):
+    total += i * i
+
+signal.setitimer(signal.ITIMER_VIRTUAL, 0)
+print(f'Итого срабатываний: {call_count}')`,
+  },
+  {
+    name: 'signal.ITIMER_PROF',
+    description:
+      'Константа модуля signal. Идентификатор профилировочного таймера для signal.setitimer() и signal.getitimer(). Отсчитывает суммарное процессорное время: пользовательский режим + системные вызовы. По истечении отправляет сигнал SIGPROF. Используется для профилирования полного времени выполнения программы включая системные вызовы.',
+    syntax: 'signal.setitimer(signal.ITIMER_PROF, seconds, interval=0.0)',
+    arguments: [],
+    example: `import signal
+import os
+
+prof_count = 0
+
+def prof_handler(signum, frame):
+    global prof_count
+    prof_count += 1
+    signal.setitimer(signal.ITIMER_PROF, 0.05)
+
+signal.signal(signal.SIGPROF, prof_handler)
+
+# Таймер считает CPU-время пользователя + системные вызовы:
+signal.setitimer(signal.ITIMER_PROF, 0.05)
+
+# Код с системными вызовами (учитывается ITIMER_PROF, но не ITIMER_VIRTUAL):
+for _ in range(1000):
+    os.stat('.')
+
+signal.setitimer(signal.ITIMER_PROF, 0)
+print(f'Профилировочный таймер сработал {prof_count} раз')`,
+  },
+  {
+    name: 'signal.SIGRTMIN',
+    description:
+      'Константа модуля signal. Минимальный номер сигнала реального времени (real-time signal) в диапазоне POSIX RT-сигналов. На Linux обычно равен 34. Сигналы реального времени (SIGRTMIN..SIGRTMAX) имеют очередь доставки, поддерживают передачу дополнительных данных и гарантируют порядок доставки. Доступен только на Unix-системах.',
+    syntax: 'signal.SIGRTMIN',
+    arguments: [],
+    example: `import signal
+import os
+
+print(signal.SIGRTMIN)   # Обычно 34 на Linux
+
+rt_count = signal.SIGRTMAX - signal.SIGRTMIN + 1
+print(f'Доступно RT-сигналов: {rt_count}')   # Обычно 30
+
+def handle_rt(signum, frame):
+    print(f'Получен RT-сигнал: {signum}')
+
+signal.signal(signal.SIGRTMIN, handle_rt)
+signal.signal(signal.SIGRTMIN + 1, handle_rt)
+signal.signal(signal.SIGRTMIN + 2, handle_rt)
+
+# Отправка RT-сигнала себе:
+os.kill(os.getpid(), signal.SIGRTMIN)
+os.kill(os.getpid(), signal.SIGRTMIN + 1)
+
+# RT-сигналы доставляются в порядке отправки
+# и могут ставиться в очередь (не теряются)`,
+  },
+  {
+    name: 'signal.SIGRTMAX',
+    description:
+      'Константа модуля signal. Максимальный номер сигнала реального времени. На Linux обычно равен 64. Совместно с SIGRTMIN определяет диапазон доступных RT-сигналов. Не рекомендуется использовать SIGRTMAX напрямую — некоторые значения в конце диапазона зарезервированы системными библиотеками (например, libpthread). Доступен только на Unix-системах.',
+    syntax: 'signal.SIGRTMAX',
+    arguments: [],
+    example: `import signal
+import os
+
+print(signal.SIGRTMAX)   # Обычно 64 на Linux
+
+# Безопасный диапазон: последние 3 зарезервированы системными библиотеками
+safe_max = signal.SIGRTMAX - 3
+
+print(f'Диапазон RT-сигналов: {signal.SIGRTMIN}..{signal.SIGRTMAX}')
+print(f'Безопасный диапазон:   {signal.SIGRTMIN}..{safe_max}')
+
+def make_handler(n):
+    def handler(signum, frame):
+        print(f'RT-сигнал {n} получен')
+    return handler
+
+for signum in range(signal.SIGRTMIN, safe_max + 1):
+    signal.signal(signum, make_handler(signum))
+
+os.kill(os.getpid(), safe_max)`,
+  },
+  {
+    name: 'signal.NSIG',
+    description:
+      'Константа модуля signal. Общее количество сигналов, поддерживаемых операционной системой (SIGRTMAX + 1 или максимальный номер сигнала + 1). Используется для итерации по всем сигналам или создания массивов обработчиков фиксированного размера. На Linux обычно равна 65. Доступна только на Unix-системах.',
+    syntax: 'signal.NSIG',
+    arguments: [],
+    example: `import signal
+
+print(signal.NSIG)   # Обычно 65 на Linux (SIGRTMAX + 1)
+
+# Итерация по всем именованным сигналам с их обработчиками:
+for signum in range(1, signal.NSIG):
+    try:
+        name = signal.Signals(signum).name
+        handler = signal.getsignal(signum)
+        print(f'{signum:3d}  {name:<15}  {handler}')
+    except ValueError:
+        pass   # Некоторые номера не используются
+
+# Все именованные сигналы через Signals enum:
+print('\\nВсе именованные сигналы:')
+for s in signal.Signals:
+    print(f'  {s.name} = {s.value}')
+
+# Валидация номера сигнала:
+def is_valid_signal(signum: int) -> bool:
+    return 1 <= signum < signal.NSIG`,
+  },
+  {
+    name: 'redis.CoreCommands.append',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Добавляет строку value к существующему значению ключа key. Если ключ не существует — создаёт его со значением value. Возвращает длину результирующей строки. Операция атомарна.',
+    syntax: 'r.append(key, value)',
+    arguments: [
+      { name: 'key', description: 'Имя ключа в Redis.' },
+      { name: 'value', description: 'Строка для добавления к текущему значению ключа.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Создание и добавление:
+r.delete('mykey')
+length = r.append('mykey', 'Hello')
+print(length)              # 5
+length = r.append('mykey', ', World!')
+print(length)              # 13
+print(r.get('mykey'))      # 'Hello, World!'
+
+# Построение строки по частям:
+r.delete('log')
+for entry in ['2024-01-15 ', 'INFO ', 'Запуск сервера']:
+    r.append('log', entry)
+print(r.get('log'))   # '2024-01-15 INFO Запуск сервера'`,
+  },
+  {
+    name: 'redis.CoreCommands.asking',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Отправляет команду ASKING серверу Redis Cluster. Используется при перенаправлении (MOVED/ASK) в кластере — позволяет выполнить следующую команду на узле, который временно владеет слотом при миграции. В большинстве случаев обрабатывается автоматически клиентом кластера.',
+    syntax: 'r.asking()',
+    arguments: [],
+    example: `import redis
+
+# asking() используется внутри Redis Cluster при ASK-редиректах.
+# Напрямую вызывается редко — клиент кластера обрабатывает это автоматически.
+
+r = redis.RedisCluster(host='localhost', port=7000, decode_responses=True)
+
+# Автоматическая обработка ASK-редиректа при миграции слота:
+# Клиент сам вызывает ASKING перед повторной командой на новый узел
+r.set('mykey', 'value')
+print(r.get('mykey'))   # 'value'
+
+# Ручной вызов (нетипично — только для низкоуровневой работы с кластером):
+node = r.get_node(host='localhost', port=7001)
+r.asking()`,
+  },
+  {
+    name: 'redis.CoreCommands.auth',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Аутентифицирует соединение с сервером Redis. Если сервер настроен с requirepass — необходимо вызвать auth() с паролем перед другими командами. В Redis 6+ поддерживается ACL-аутентификация с именем пользователя.',
+    syntax: 'r.auth(password, username=None)',
+    arguments: [
+      { name: 'password', description: 'Пароль для аутентификации.' },
+      { name: 'username', description: 'Имя пользователя для ACL-аутентификации (Redis 6+). Если None — используется пользователь default.' },
+    ],
+    example: `import redis
+
+# Аутентификация по паролю (Redis < 6):
+r = redis.Redis(host='localhost', port=6379)
+r.auth('mysecretpassword')
+
+# Аутентификация с именем пользователя (Redis 6+ ACL):
+r.auth(password='userpassword', username='myuser')
+
+# Обычно пароль передаётся при создании соединения:
+r = redis.Redis(
+    host='localhost',
+    port=6379,
+    password='mysecretpassword',
+    username='myuser',       # Redis 6+ ACL
+    decode_responses=True,
+)
+r.ping()   # OK`,
+  },
+  {
+    name: 'redis.CoreCommands.bgrewriteaof',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Запускает асинхронную перезапись файла AOF (Append Only File) в фоновом режиме. Команда возвращается немедленно, не дожидаясь завершения перезаписи. Используется для оптимизации AOF-файла: уменьшает его размер, устраняя избыточные записи.',
+    syntax: 'r.bgrewriteaof()',
+    arguments: [],
+    example: `import redis
+import time
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Запуск перезаписи AOF в фоне:
+result = r.bgrewriteaof()
+print(result)   # True или 'Background append only file rewriting started'
+
+# Проверка статуса через INFO:
+time.sleep(1)
+info = r.info('persistence')
+print(info['aof_rewrite_in_progress'])   # 0 (завершено) или 1 (в процессе)
+print(info['aof_last_rewrite_time_sec']) # Время последней перезаписи в секундах
+print(info['aof_enabled'])               # 1 если AOF включён`,
+  },
+  {
+    name: 'redis.CoreCommands.bgsave',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Запускает асинхронное сохранение снимка базы данных (RDB) в фоновом режиме. Возвращается немедленно. Параметр schedule=True планирует сохранение при следующем удобном моменте, не прерывая текущую фоновую операцию.',
+    syntax: 'r.bgsave(schedule=False)',
+    arguments: [
+      { name: 'schedule', description: 'Если True — планирует BGSAVE через BGSAVE SCHEDULE (не прерывает текущий BGSAVE). По умолчанию False.' },
+    ],
+    example: `import redis
+import time
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Немедленный запуск BGSAVE:
+result = r.bgsave()
+print(result)   # True
+
+# Запланированный BGSAVE:
+r.bgsave(schedule=True)
+
+# Ожидание завершения:
+while True:
+    info = r.info('persistence')
+    if info['rdb_bgsave_in_progress'] == 0:
+        print('BGSAVE завершён')
+        print(f'Последнее сохранение: {info["rdb_last_save_time"]}')
+        break
+    time.sleep(0.5)
+
+# Время последнего успешного сохранения:
+last_save = r.lastsave()
+print(f'Последнее сохранение: {last_save}')`,
+  },
+  {
+    name: 'redis.CoreCommands.bitcount',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Подсчитывает количество установленных битов (равных 1) в строковом значении ключа. Можно ограничить диапазон байтами или битами. Возвращает целое число.',
+    syntax: 'r.bitcount(key, start=None, end=None, mode=None)',
+    arguments: [
+      { name: 'key', description: 'Имя ключа со строковым значением.' },
+      { name: 'start', description: 'Начальный индекс диапазона. По умолчанию None (с начала). Отрицательные значения отсчитываются с конца.' },
+      { name: 'end', description: 'Конечный индекс диапазона (включительно). По умолчанию None (до конца).' },
+      { name: 'mode', description: '"BYTE" (по умолчанию) — start/end в байтах; "BIT" — start/end в битах. Добавлено в Redis 7.0.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('bits', 'foobar')
+
+# Все биты:
+print(r.bitcount('bits'))          # 26
+
+# Только первые 2 байта ('fo'):
+print(r.bitcount('bits', 0, 1))    # 10
+
+# Только первый байт ('f'):
+print(r.bitcount('bits', 0, 0))    # 4
+
+# Подсчёт битов в диапазоне битов (Redis 7.0+):
+print(r.bitcount('bits', 0, 7, mode='BIT'))   # 4
+
+# Битовые флаги (true/false для пользователей):
+r.setbit('online_users', 100, 1)
+r.setbit('online_users', 200, 1)
+r.setbit('online_users', 300, 1)
+print(r.bitcount('online_users'))   # 3`,
+  },
+  {
+    name: 'redis.CoreCommands.bitfield',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает объект BitFieldOperation для выполнения составных операций над битовыми полями в строке. Позволяет читать, устанавливать и инкрементировать целочисленные поля произвольной ширины по битовому смещению.',
+    syntax: 'r.bitfield(key, default_overflow=None)',
+    arguments: [
+      { name: 'key', description: 'Имя ключа для битовых операций.' },
+      { name: 'default_overflow', description: 'Поведение при переполнении: "WRAP" (по умолчанию), "SAT" (насыщение), "FAIL" (вернуть None).' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# GET, SET, INCRBY для битовых полей:
+result = r.bitfield('myfield') \\
+    .set('u8', 0, 200) \\
+    .get('u8', 0) \\
+    .incrby('u8', 0, 10) \\
+    .execute()
+print(result)   # [0, 200, 210]
+
+# Счётчики в одном ключе (8-битные, беззнаковые):
+r.bitfield('counters').set('u8', 0, 0).execute()    # счётчик 1 = 0
+r.bitfield('counters').set('u8', 8, 0).execute()    # счётчик 2 = 0
+
+r.bitfield('counters').incrby('u8', 0, 1).execute() # счётчик 1 ++
+r.bitfield('counters').incrby('u8', 8, 5).execute() # счётчик 2 += 5
+
+vals = r.bitfield('counters').get('u8', 0).get('u8', 8).execute()
+print(vals)   # [1, 5]`,
+  },
+  {
+    name: 'redis.CoreCommands.bitop',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Выполняет побитовую операцию между несколькими строковыми ключами и сохраняет результат в destkey. Поддерживает операции AND, OR, XOR и NOT. Возвращает длину результирующей строки.',
+    syntax: 'r.bitop(operation, destkey, *keys)',
+    arguments: [
+      { name: 'operation', description: 'Побитовая операция: "AND", "OR", "XOR", "NOT" (только один ключ).' },
+      { name: 'destkey', description: 'Ключ для сохранения результата.' },
+      { name: '*keys', description: 'Один или несколько ключей с операндами.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Битовые маски активных пользователей по дням:
+r.setbit('day:mon', 1, 1); r.setbit('day:mon', 2, 1); r.setbit('day:mon', 3, 1)
+r.setbit('day:tue', 2, 1); r.setbit('day:tue', 3, 1); r.setbit('day:tue', 4, 1)
+
+# Пользователи, активные оба дня (AND):
+r.bitop('AND', 'active:both', 'day:mon', 'day:tue')
+print(r.bitcount('active:both'))   # 2 (пользователи 2 и 3)
+
+# Пользователи, активные хотя бы один день (OR):
+r.bitop('OR', 'active:any', 'day:mon', 'day:tue')
+print(r.bitcount('active:any'))    # 4
+
+# XOR — только один из двух дней:
+r.bitop('XOR', 'active:one', 'day:mon', 'day:tue')
+print(r.bitcount('active:one'))    # 2`,
+  },
+  {
+    name: 'redis.CoreCommands.bitpos',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Находит позицию первого бита со значением bit (0 или 1) в строковом значении ключа. Поиск можно ограничить диапазоном. Возвращает позицию бита (0-индексирование) или -1 если бит не найден.',
+    syntax: 'r.bitpos(key, bit, start=None, end=None, mode=None)',
+    arguments: [
+      { name: 'key', description: 'Имя ключа.' },
+      { name: 'bit', description: 'Искомое значение бита: 0 или 1.' },
+      { name: 'start', description: 'Начальный индекс диапазона поиска.' },
+      { name: 'end', description: 'Конечный индекс диапазона поиска.' },
+      { name: 'mode', description: '"BYTE" (по умолчанию) — индексы в байтах; "BIT" — индексы в битах (Redis 7.0+).' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('bits', b'\\xff\\xf0\\x00')   # 11111111 11110000 00000000
+
+# Первый нулевой бит:
+print(r.bitpos('bits', 0))    # 12
+
+# Первый единичный бит:
+print(r.bitpos('bits', 1))    # 0
+
+# Поиск в диапазоне байт 1-2:
+print(r.bitpos('bits', 0, 1))    # 12
+print(r.bitpos('bits', 1, 1))    # 8
+
+# Поиск свободного слота (бит=0) среди пользователей:
+r.set('slots', b'\\xff\\xf8')   # первые 13 слотов заняты
+free_slot = r.bitpos('slots', 0)
+print(f'Первый свободный слот: {free_slot}')   # 13`,
+  },
+  {
+    name: 'redis.CoreCommands.blmove',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Блокирующая версия LMOVE. Атомарно перемещает элемент из одного конца списка src в другой конец списка dst. Если список src пуст — блокируется до появления элемента или истечения timeout. Возвращает перемещённый элемент или None при таймауте.',
+    syntax: "r.blmove(src, dst, srcout='RIGHT', dstin='LEFT', timeout=0.0)",
+    arguments: [
+      { name: 'src', description: 'Имя исходного списка.' },
+      { name: 'dst', description: 'Имя целевого списка.' },
+      { name: 'srcout', description: 'Конец источника: "LEFT" или "RIGHT". По умолчанию "RIGHT".' },
+      { name: 'dstin', description: 'Конец назначения: "LEFT" или "RIGHT". По умолчанию "LEFT".' },
+      { name: 'timeout', description: 'Максимальное время ожидания в секундах. 0 — ждать бесконечно.' },
+    ],
+    example: `import redis
+import threading
+import time
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Простое перемещение:
+r.rpush('src_list', 'a', 'b', 'c')
+item = r.blmove('src_list', 'dst_list', srcout='LEFT', dstin='RIGHT', timeout=1.0)
+print(item)                        # 'a'
+print(r.lrange('dst_list', 0, -1)) # ['a']
+
+# Надёжная очередь (reliable queue):
+r.rpush('queue', 'task1', 'task2')
+
+def worker():
+    while True:
+        # Перемещаем в обработку; при сбое задача сохраняется в processing:
+        task = r.blmove('queue', 'processing', srcout='LEFT', dstin='RIGHT', timeout=5.0)
+        if task:
+            print(f'Обрабатываем: {task}')
+            r.lrem('processing', 1, task)   # Удаляем после обработки`,
+  },
+  {
+    name: 'redis.CoreCommands.blpop',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Блокирующая версия LPOP. Удаляет и возвращает первый элемент из первого непустого списка в keys. Если все списки пусты — блокируется до появления элемента или истечения timeout. Возвращает кортеж (имя_ключа, значение) или None при таймауте.',
+    syntax: 'r.blpop(keys, timeout=0)',
+    arguments: [
+      { name: 'keys', description: 'Строка или список имён ключей-списков. Проверяются слева направо.' },
+      { name: 'timeout', description: 'Максимальное время ожидания в секундах. 0 — ждать бесконечно.' },
+    ],
+    example: `import redis
+import threading
+import time
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Простое использование:
+r.rpush('mylist', 'first', 'second')
+result = r.blpop('mylist', timeout=1)
+print(result)   # ('mylist', 'first')
+
+# Очередь задач (worker pattern):
+def producer():
+    time.sleep(2)
+    r.rpush('tasks', 'task1', 'task2', 'task3')
+
+def consumer():
+    while True:
+        result = r.blpop(['tasks', 'priority_tasks'], timeout=5)
+        if result is None:
+            print('Таймаут — задач нет')
+            break
+        queue_name, task = result
+        print(f'Получена задача из {queue_name}: {task}')
+
+threading.Thread(target=producer, daemon=True).start()
+consumer()`,
+  },
+  {
+    name: 'redis.CoreCommands.brpop',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Блокирующая версия RPOP. Удаляет и возвращает последний элемент из первого непустого списка в keys. Если все списки пусты — блокируется до появления элемента или истечения timeout. Возвращает кортеж (имя_ключа, значение) или None при таймауте.',
+    syntax: 'r.brpop(keys, timeout=0)',
+    arguments: [
+      { name: 'keys', description: 'Строка или список имён ключей-списков.' },
+      { name: 'timeout', description: 'Максимальное время ожидания в секундах. 0 — ждать бесконечно.' },
+    ],
+    example: `import redis
+import threading
+import time
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.rpush('stack', 'bottom', 'middle', 'top')
+
+# Снятие элементов со стека (LIFO):
+result = r.brpop('stack', timeout=1)
+print(result)   # ('stack', 'top')
+
+# Приоритетные очереди — проверяем несколько очередей:
+def worker():
+    queues = ['critical', 'high', 'normal', 'low']
+    while True:
+        result = r.brpop(queues, timeout=10)
+        if result:
+            queue, task = result
+            print(f'[{queue}] Задача: {task}')
+
+# Продюсер:
+r.rpush('critical', 'срочное задание')
+r.rpush('normal', 'обычное задание')`,
+  },
+  {
+    name: 'redis.CoreCommands.brpoplpush',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Блокирующая версия RPOPLPUSH (устарела в Redis 6.2, замена — BLMOVE). Атомарно извлекает последний элемент из src и помещает его в начало dst. Блокируется если src пуст. Возвращает перемещённый элемент или None при таймауте.',
+    syntax: 'r.brpoplpush(src, dst, timeout=0)',
+    arguments: [
+      { name: 'src', description: 'Имя исходного списка.' },
+      { name: 'dst', description: 'Имя целевого списка.' },
+      { name: 'timeout', description: 'Максимальное время ожидания в секундах. 0 — ждать бесконечно.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.rpush('source', 'task1', 'task2', 'task3')
+
+# Перемещение с ожиданием:
+item = r.brpoplpush('source', 'backup', timeout=2)
+print(item)                          # 'task3'
+print(r.lrange('backup', 0, -1))     # ['task3']
+
+# Надёжная очередь (до Redis 6.2):
+# В Redis 6.2+ используйте blmove('source', 'backup', 'RIGHT', 'LEFT'):
+item = r.brpoplpush('queue', 'processing', timeout=5)
+if item:
+    try:
+        print(f'Обрабатываем: {item}')
+        # ... обработка ...
+        r.lrem('processing', 1, item)
+    except Exception:
+        r.rpush('queue', item)   # Возврат в очередь при ошибке`,
+  },
+  {
+    name: 'redis.CoreCommands.bzpopmax',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Блокирующая версия ZPOPMAX. Удаляет и возвращает элемент с наибольшим score из первого непустого отсортированного множества в keys. Блокируется если все множества пусты. Возвращает кортеж (имя_ключа, элемент, score) или None при таймауте.',
+    syntax: 'r.bzpopmax(keys, timeout=0)',
+    arguments: [
+      { name: 'keys', description: 'Строка или список имён ключей отсортированных множеств.' },
+      { name: 'timeout', description: 'Максимальное время ожидания в секундах. 0 — ждать бесконечно.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.zadd('scores', {'player1': 100, 'player2': 250, 'player3': 175})
+
+# Получить лидера (максимальный score):
+result = r.bzpopmax('scores', timeout=1)
+print(result)   # ('scores', 'player2', 250.0)
+
+# Очередь с приоритетами (высокий score = высокий приоритет):
+r.zadd('tasks', {'критическое': 100, 'обычное': 10, 'фоновое': 1})
+
+while True:
+    result = r.bzpopmax('tasks', timeout=5)
+    if result is None:
+        print('Задач нет')
+        break
+    key, task, priority = result
+    print(f'Выполняем задачу [{priority:.0f}]: {task}')`,
+  },
+  {
+    name: 'redis.CoreCommands.bzpopmin',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Блокирующая версия ZPOPMIN. Удаляет и возвращает элемент с наименьшим score из первого непустого отсортированного множества в keys. Блокируется если все множества пусты. Возвращает кортеж (имя_ключа, элемент, score) или None при таймауте.',
+    syntax: 'r.bzpopmin(keys, timeout=0)',
+    arguments: [
+      { name: 'keys', description: 'Строка или список имён ключей отсортированных множеств.' },
+      { name: 'timeout', description: 'Максимальное время ожидания в секундах. 0 — ждать бесконечно.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.zadd('jobs', {'job_a': 5, 'job_b': 1, 'job_c': 3})
+
+# Получить задачу с наименьшим приоритетом/временем:
+result = r.bzpopmin('jobs', timeout=1)
+print(result)   # ('jobs', 'job_b', 1.0)
+
+# Очередь задач по времени (score = UNIX timestamp):
+import time
+r.zadd('scheduled', {
+    'task_morning': time.time() + 3600,
+    'task_soon':    time.time() + 60,
+    'task_later':   time.time() + 7200,
+})
+
+# Получаем ближайшую задачу:
+result = r.bzpopmin('scheduled', timeout=2)
+if result:
+    key, task, scheduled_at = result
+    print(f'Следующая задача: {task} (в {scheduled_at:.0f})')`,
+  },
+  {
+    name: 'redis.CoreCommands.client_getname',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает имя текущего соединения, установленное командой CLIENT SETNAME. Если имя не задано — возвращает None. Используется для идентификации соединений при мониторинге через CLIENT LIST.',
+    syntax: 'r.client_getname()',
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# По умолчанию имя не задано:
+print(r.client_getname())   # None
+
+# Установка имени соединения:
+r.client_setname('my-worker-1')
+print(r.client_getname())   # 'my-worker-1'
+
+# Именованные соединения полезны при мониторинге:
+r_reader = redis.Redis(host='localhost', port=6379, decode_responses=True)
+r_reader.client_setname('reader')
+
+r_writer = redis.Redis(host='localhost', port=6379, decode_responses=True)
+r_writer.client_setname('writer')
+
+# Просмотр всех соединений:
+clients = r.client_list()
+for client in clients:
+    print(f"ID: {client['id']}, Имя: {client['name']}, Команда: {client['cmd']}")`,
+  },
+  {
+    name: 'redis.CoreCommands.client_getredir',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает идентификатор клиента, на который перенаправляются уведомления клиентского трекинга (client tracking). Если перенаправление не настроено — возвращает -1. Используется совместно с client_tracking().',
+    syntax: 'r.client_getredir()',
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Без настроенного трекинга:
+print(r.client_getredir())   # -1
+
+# Включение трекинга с перенаправлением на другой клиент:
+r2 = redis.Redis(host='localhost', port=6379, decode_responses=True)
+target_id = r2.client_id()
+
+r.client_tracking(on=True, redirect=target_id, bcast=True)
+print(r.client_getredir())   # ID клиента r2
+
+# Отключение трекинга:
+r.client_tracking(on=False)
+print(r.client_getredir())   # -1`,
+  },
+  {
+    name: 'redis.CoreCommands.client_id',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает уникальный идентификатор текущего соединения с сервером Redis. ID монотонно возрастает при каждом новом подключении. Используется для идентификации соединения в командах client_kill_filter(), client_unblock(), client_tracking().',
+    syntax: 'r.client_id()',
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+client_id = r.client_id()
+print(f'ID текущего соединения: {client_id}')   # например, 42
+
+# Использование ID для разблокировки:
+r2 = redis.Redis(host='localhost', port=6379, decode_responses=True)
+blocked_id = r2.client_id()
+
+# Разблокировать заблокированный клиент:
+# r.client_unblock(blocked_id)
+
+# Использование в трекинге:
+r.client_tracking(on=True, redirect=client_id)
+
+# Убить конкретное соединение по ID:
+# r.client_kill_filter(_id=blocked_id)`,
+  },
+  {
+    name: 'redis.CoreCommands.client_info',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает подробную информацию о текущем соединении в виде словаря: ID, адрес, имя, используемые команды, флаги, время последней активности и другие параметры. Аналог CLIENT INFO в Redis CLI.',
+    syntax: 'r.client_info()',
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+r.client_setname('my-connection')
+
+info = r.client_info()
+print(f"ID:       {info['id']}")
+print(f"Имя:      {info['name']}")
+print(f"Адрес:    {info['addr']}")
+print(f"Команда:  {info['cmd']}")
+print(f"Флаги:    {info['flags']}")
+print(f"БД:       {info['db']}")
+print(f"Подписок: {info['sub']}")
+
+# Все доступные поля:
+for key, value in info.items():
+    print(f'  {key}: {value}')`,
+  },
+  {
+    name: 'redis.CoreCommands.client_kill',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Закрывает соединение клиента по его адресу (ip:port). Устаревший способ — рекомендуется использовать client_kill_filter() для более гибкой фильтрации. Возвращает True при успехе.',
+    syntax: 'r.client_kill(address)',
+    arguments: [
+      { name: 'address', description: 'Адрес клиента в формате "ip:port", например "127.0.0.1:54321".' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Получить список клиентов:
+clients = r.client_list()
+for client in clients:
+    print(f"Адрес: {client['addr']}, Имя: {client['name']}")
+
+# Закрыть соединение по адресу:
+# r.client_kill('127.0.0.1:54321')
+
+# Закрыть все соединения кроме текущего:
+my_addr = r.client_info()['addr']
+for client in r.client_list():
+    if client['addr'] != my_addr:
+        try:
+            r.client_kill(client['addr'])
+            print(f"Закрыт клиент: {client['addr']}")
+        except redis.ResponseError:
+            pass`,
+  },
+  {
+    name: 'redis.CoreCommands.client_kill_filter',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Закрывает соединения клиентов по фильтрам: ID, тип, адрес, пользователь. Более гибкая альтернатива client_kill(). Возвращает количество закрытых соединений.',
+    syntax: 'r.client_kill_filter(_id=None, _type=None, addr=None, laddr=None, skipme=None, user=None)',
+    arguments: [
+      { name: '_id', description: 'ID клиента для закрытия.' },
+      { name: '_type', description: 'Тип клиента: "normal", "replica", "pubsub", "multi".' },
+      { name: 'addr', description: 'Адрес клиента в формате ip:port.' },
+      { name: 'laddr', description: 'Локальный адрес сервера ip:port, на котором принято соединение.' },
+      { name: 'skipme', description: 'Пропустить текущее соединение. По умолчанию True.' },
+      { name: 'user', description: 'Имя пользователя ACL для фильтрации.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Закрыть по ID:
+# count = r.client_kill_filter(_id=42)
+
+# Закрыть все pubsub-соединения:
+count = r.client_kill_filter(_type='pubsub')
+print(f'Закрыто pubsub-соединений: {count}')
+
+# Закрыть по конкретному адресу:
+count = r.client_kill_filter(addr='127.0.0.1:54321')
+print(f'Закрыто по адресу: {count}')
+
+# Закрыть всех пользователей "guest", кроме текущего:
+count = r.client_kill_filter(user='guest', skipme=True)
+print(f'Закрыто гостевых соединений: {count}')`,
+  },
+  {
+    name: 'redis.CoreCommands.client_list',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает список словарей с информацией обо всех подключённых клиентах: ID, адрес, имя, флаги, БД, время активности и другие параметры. Можно фильтровать по типу и ID клиентов.',
+    syntax: 'r.client_list(_type=None, client_ids=[])',
+    arguments: [
+      { name: '_type', description: 'Фильтр по типу: "normal", "replica", "pubsub", "multi". Если None — возвращаются все.' },
+      { name: 'client_ids', description: 'Список ID клиентов для фильтрации. Пустой список — все клиенты.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Все соединения:
+clients = r.client_list()
+print(f'Подключено клиентов: {len(clients)}')
+
+for client in clients:
+    print(f"  ID={client['id']} addr={client['addr']} name={client['name']} cmd={client['cmd']}")
+
+# Только обычные соединения:
+normal = r.client_list(_type='normal')
+print(f'Normal-клиентов: {len(normal)}')
+
+# По конкретным ID:
+ids = [c['id'] for c in clients[:2]]
+filtered = r.client_list(client_ids=ids)
+print(f'По ID: {len(filtered)}')
+
+# Мониторинг долго простаивающих клиентов:
+for c in clients:
+    if int(c.get('idle', 0)) > 300:
+        print(f"Клиент {c['id']} простаивает {c['idle']}с")`,
+  },
+  {
+    name: 'redis.CoreCommands.client_no_evict',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Включает или отключает защиту текущего соединения от вытеснения при нехватке памяти. Если включено (on="ON") — клиент не будет отключён даже при достижении лимита maxmemory-clients. Полезно для критически важных соединений.',
+    syntax: 'r.client_no_evict(on)',
+    arguments: [
+      { name: 'on', description: 'Строка "ON" — включить защиту от вытеснения, "OFF" — отключить.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Защитить соединение от вытеснения:
+r.client_no_evict('ON')
+print('Соединение защищено от вытеснения')
+
+# Выполняем критически важные операции:
+r.set('critical_key', 'important_value')
+result = r.get('critical_key')
+
+# Снять защиту:
+r.client_no_evict('OFF')
+print('Защита снята')
+
+# Используется для административных/мониторинговых соединений,
+# которые не должны отключаться при нагрузке на память`,
+  },
+  {
+    name: 'redis.CoreCommands.client_no_touch',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Включает или отключает режим, при котором обращения к ключам не обновляют время последнего доступа (LRU/LFU). Полезно для аналитических запросов: просмотр данных без влияния на политику вытеснения.',
+    syntax: 'r.client_no_touch(on)',
+    arguments: [
+      { name: 'on', description: 'Строка "ON" — не обновлять время доступа, "OFF" — обновлять (стандартное поведение).' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('mykey', 'value')
+
+# Без client_no_touch: get() обновит время последнего доступа:
+val = r.get('mykey')   # LRU/LFU обновлён
+
+# С client_no_touch: чтение не влияет на политику вытеснения:
+r.client_no_touch('ON')
+val = r.get('mykey')   # LRU/LFU НЕ обновляется
+r.client_no_touch('OFF')
+
+# Полезно для аналитики и мониторинга:
+r.client_no_touch('ON')
+# Сканирование ключей для анализа не "нагревает" кэш:
+for key in r.scan_iter('session:*'):
+    data = r.get(key)
+r.client_no_touch('OFF')`,
+  },
+  {
+    name: 'redis.CoreCommands.client_pause',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Приостанавливает обработку команд от всех клиентов на заданное время (в миллисекундах). Используется для технического обслуживания: переключения на реплику, создания согласованного снимка. Команды продолжают приниматься, но выполняются после снятия паузы.',
+    syntax: 'r.client_pause(timeout)',
+    arguments: [
+      { name: 'timeout', description: 'Время паузы в миллисекундах.' },
+    ],
+    example: `import redis
+import time
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Пауза на 2 секунды (2000 мс):
+r.client_pause(2000)
+print('Все клиенты приостановлены на 2 секунды')
+
+# Снятие паузы досрочно:
+r.client_unpause()
+
+# Типичный сценарий — переключение на реплику:
+# 1. Пауза — новые записи не принимаются
+r.client_pause(5000)
+# 2. Дожидаемся синхронизации реплики
+time.sleep(1)
+# 3. Переключаем приложение на реплику
+# 4. Пауза снимается автоматически или через client_unpause()
+r.client_unpause()`,
+  },
+  {
+    name: 'redis.CoreCommands.client_reply',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Управляет режимом ответов сервера на команды текущего соединения. Режим "OFF" отключает ответы (только запись), "SKIP" пропускает ответ на одну следующую команду, "ON" восстанавливает стандартное поведение.',
+    syntax: 'r.client_reply(reply)',
+    arguments: [
+      { name: 'reply', description: '"ON" — включить ответы (по умолчанию), "OFF" — отключить все ответы, "SKIP" — пропустить ответ на следующую команду.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Пропустить ответ на следующую команду:
+r.client_reply('SKIP')
+r.set('key', 'value')   # Ответ пропущен
+
+# Восстановить стандартный режим:
+r.client_reply('ON')
+
+# Режим OFF используется для высокопроизводительной записи
+# когда подтверждения не нужны (fire-and-forget):
+# r.client_reply('OFF')
+# r.set('k1', 'v1')   # Ответ не ожидается
+# r.set('k2', 'v2')   # Ответ не ожидается
+# r.client_reply('ON') # После этого ответы снова включаются`,
+  },
+  {
+    name: 'redis.CoreCommands.client_setinfo',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Устанавливает метаданные библиотеки для текущего соединения: имя и версию клиентской библиотеки. Отображается в выводе CLIENT LIST и CLIENT INFO. Позволяет серверу Redis различать клиентские библиотеки при мониторинге.',
+    syntax: 'r.client_setinfo(lib_name=None, lib_version=None)',
+    arguments: [
+      { name: 'lib_name', description: 'Название клиентской библиотеки. Например: "redis-py", "myapp".' },
+      { name: 'lib_version', description: 'Версия библиотеки. Например: "5.0.1".' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Установить информацию о библиотеке:
+r.client_setinfo(lib_name='myapp-redis-client', lib_version='2.1.0')
+
+# Проверить в client_info:
+info = r.client_info()
+print(f"lib-name: {info.get('lib-name')}")      # 'myapp-redis-client'
+print(f"lib-ver:  {info.get('lib-ver')}")       # '2.1.0'
+
+# Или через CLIENT LIST:
+clients = r.client_list()
+for c in clients:
+    print(f"  {c.get('lib-name')} v{c.get('lib-ver')}")`,
+  },
+  {
+    name: 'redis.CoreCommands.client_setname',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Устанавливает имя для текущего соединения. Имя отображается в выводе CLIENT LIST и CLIENT INFO, что упрощает идентификацию соединений при отладке и мониторинге. Имя не должно содержать пробелы.',
+    syntax: 'r.client_setname(name)',
+    arguments: [
+      { name: 'name', description: 'Имя соединения. Строка без пробелов. Пустая строка — сбросить имя.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Установка имени:
+r.client_setname('worker-1')
+print(r.client_getname())   # 'worker-1'
+
+# Именованные пулы соединений:
+pool = redis.ConnectionPool(host='localhost', port=6379)
+
+def get_named_connection(name: str) -> redis.Redis:
+    r = redis.Redis(connection_pool=pool, decode_responses=True)
+    r.client_setname(name)
+    return r
+
+reader = get_named_connection('reader')
+writer = get_named_connection('writer')
+monitor = get_named_connection('monitor')
+
+# Теперь в CLIENT LIST видны имена:
+for c in writer.client_list():
+    print(f"  {c['id']}: {c['name']}")
+
+# Сброс имени:
+r.client_setname('')
+print(r.client_getname())   # None`,
+  },
+  {
+    name: 'redis.CoreCommands.client_tracking',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Включает или отключает client-side caching tracking для текущего соединения. Сервер отправляет инвалидационные уведомления при изменении отслеживаемых ключей. Используется для реализации клиентского кэша с автоматической инвалидацией.',
+    syntax: 'r.client_tracking(on, redirect=None, prefixes=[], bcast=False, optin=False, optout=False, noloop=False)',
+    arguments: [
+      { name: 'on', description: 'True — включить трекинг, False — выключить.' },
+      { name: 'redirect', description: 'ID клиента для перенаправления инвалидационных сообщений (для RESP2).' },
+      { name: 'prefixes', description: 'Список префиксов ключей для отслеживания (только в режиме bcast).' },
+      { name: 'bcast', description: 'Широковещательный режим — уведомления по префиксу, не по конкретным ключам.' },
+      { name: 'optin', description: 'Отслеживать только ключи, явно помеченные через CLIENT CACHING yes.' },
+      { name: 'optout', description: 'Отслеживать все ключи, кроме явно исключённых.' },
+      { name: 'noloop', description: 'Не отправлять уведомления об изменениях, сделанных самим этим клиентом.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Включение трекинга (RESP3):
+r.client_tracking(on=True)
+
+# Широковещательный режим с префиксом:
+r.client_tracking(on=True, bcast=True, prefixes=['user:', 'session:'])
+
+# Перенаправление уведомлений на отдельный канал:
+r_notify = redis.Redis(host='localhost', port=6379, decode_responses=True)
+notify_id = r_notify.client_id()
+r.client_tracking(on=True, redirect=notify_id, bcast=True)
+
+# Без уведомлений о собственных изменениях:
+r.client_tracking(on=True, noloop=True)
+
+# Отключение:
+r.client_tracking(on=False)`,
+  },
+  {
+    name: 'redis.CoreCommands.client_trackinginfo',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает словарь с текущими настройками клиентского трекинга для данного соединения: статус, режим, флаги, список отслеживаемых префиксов и ID соединения для перенаправления уведомлений.',
+    syntax: 'r.client_trackinginfo()',
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Без трекинга:
+info = r.client_trackinginfo()
+print(info)
+# {'flags': ['off'], 'redirect': -1, 'prefixes': []}
+
+# После включения трекинга:
+r.client_tracking(on=True, bcast=True, prefixes=['user:', 'cache:'])
+
+info = r.client_trackinginfo()
+print(f"Флаги:    {info['flags']}")      # ['on', 'bcast']
+print(f"Редирект: {info['redirect']}")   # -1 (без перенаправления)
+print(f"Префиксы: {info['prefixes']}")   # ['user:', 'cache:']
+
+r.client_tracking(on=False)`,
+  },
+  {
+    name: 'redis.CoreCommands.client_unblock',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Разблокирует клиента, заблокированного командой ожидания (BLPOP, BRPOP, XREAD и др.), не дожидаясь появления данных. Полезно для мягкого завершения заблокированных воркеров.',
+    syntax: 'r.client_unblock(client_id, error=False)',
+    arguments: [
+      { name: 'client_id', description: 'ID клиента для разблокировки.' },
+      { name: 'error', description: 'Если True — разблокированный клиент получит ошибку. Если False (по умолчанию) — вернёт None как при таймауте.' },
+    ],
+    example: `import redis
+import threading
+import time
+
+r_admin = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+def blocking_worker():
+    r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+    worker_id = r.client_id()
+    print(f'Воркер {worker_id} ждёт задачи...')
+    result = r.blpop('tasks', timeout=0)   # Ждёт бесконечно
+    print(f'Воркер получил: {result}')
+
+t = threading.Thread(target=blocking_worker, daemon=True)
+t.start()
+time.sleep(0.5)
+
+# Найти заблокированного клиента:
+clients = r_admin.client_list()
+for c in clients:
+    if c.get('cmd') == 'blpop':
+        blocked_id = int(c['id'])
+        print(f'Разблокируем клиента {blocked_id}')
+        r_admin.client_unblock(blocked_id)   # → None
+        # r_admin.client_unblock(blocked_id, error=True)  # → ошибка`,
+  },
+  {
+    name: 'redis.CoreCommands.client_unpause',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Досрочно снимает паузу на выполнение команд клиентами, установленную через client_pause(). Все накопленные команды начинают выполняться немедленно. Возвращает True при успехе.',
+    syntax: 'r.client_unpause()',
+    arguments: [],
+    example: `import redis
+import threading
+import time
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+def pause_and_resume():
+    print('Пауза на 10 секунд...')
+    r.client_pause(10000)   # 10 сек
+
+    time.sleep(2)   # Имитация обслуживания
+
+    print('Досрочное снятие паузы')
+    r.client_unpause()
+    print('Клиенты разблокированы')
+
+# Типичный сценарий — плановое обслуживание:
+# 1. Приостановить запись
+r.client_pause(30000)   # 30 сек
+
+# 2. Дождаться синхронизации реплики
+time.sleep(1)
+
+# 3. После переключения — снять паузу досрочно
+r.client_unpause()`,
+  },
+  {
+    name: 'redis.CoreCommands.cluster',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Выполняет произвольную команду CLUSTER с заданными аргументами. Используется для управления Redis Cluster: просмотра информации, управления слотами, узлами и состоянием кластера.',
+    syntax: 'r.cluster(command, *args, **kwargs)',
+    arguments: [
+      { name: 'command', description: 'Подкоманда CLUSTER: "INFO", "NODES", "SLOTS", "MYID", "RESET", "MEET", "FAILOVER" и другие.' },
+      { name: '*args', description: 'Дополнительные аргументы команды.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Информация о кластере:
+info = r.cluster('INFO')
+print(info)
+# {'cluster_enabled': '1', 'cluster_state': 'ok', ...}
+
+# ID текущего узла:
+my_id = r.cluster('MYID')
+print(f'Мой ID: {my_id}')
+
+# Список узлов:
+nodes = r.cluster('NODES')
+print(nodes)
+
+# Сброс мягкого:
+# r.cluster('RESET', 'SOFT')
+
+# Добавление узла в кластер:
+# r.cluster('MEET', '127.0.0.1', 7001)`,
+  },
+  {
+    name: 'redis.CoreCommands.command',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает информацию обо всех командах Redis: имя, арность (количество аргументов), флаги, первый/последний ключевой аргумент, шаг. Полезно для интроспекции возможностей сервера.',
+    syntax: 'r.command()',
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Информация обо всех командах:
+commands = r.command()
+print(f'Всего команд: {len(commands)}')
+
+# Информация о конкретной команде:
+get_info = commands.get('get')
+if get_info:
+    print(f"GET: арность={get_info['arity']}, флаги={get_info['flags']}")
+
+# Найти все команды только для чтения:
+read_only = [
+    name for name, info in commands.items()
+    if 'readonly' in info.get('flags', [])
+]
+print(f'Команд только для чтения: {len(read_only)}')`,
+  },
+  {
+    name: 'redis.CoreCommands.command_count',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает общее количество команд, поддерживаемых текущим сервером Redis. Быстрая альтернатива command() когда нужно только число команд без детальной информации.',
+    syntax: 'r.command_count()',
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+count = r.command_count()
+print(f'Сервер поддерживает {count} команд')   # например, 246
+
+# Сравнение версий сервера по числу команд:
+info = r.info('server')
+version = info['redis_version']
+print(f'Redis {version}: {count} команд')
+
+# Быстрая проверка доступности сервера:
+def ping_server(host, port):
+    try:
+        r = redis.Redis(host=host, port=port)
+        return r.command_count() > 0
+    except redis.ConnectionError:
+        return False
+
+print(ping_server('localhost', 6379))   # True`,
+  },
+  {
+    name: 'redis.CoreCommands.command_docs',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает документацию к указанным командам Redis: описание, группу, сложность, аргументы и флаги. Если список команд не указан — возвращает документацию для всех команд сервера.',
+    syntax: 'r.command_docs(*commands)',
+    arguments: [
+      { name: '*commands', description: 'Имена команд Redis для получения документации. Без аргументов — все команды.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Документация по конкретным командам:
+docs = r.command_docs('GET', 'SET', 'HSET')
+for name, doc in docs.items():
+    print(f"\\n{name}:")
+    print(f"  Группа:     {doc.get('group')}")
+    print(f"  Сложность:  {doc.get('complexity')}")
+    print(f"  Описание:   {doc.get('summary')}")
+
+# Вся документация:
+all_docs = r.command_docs()
+print(f'Задокументировано команд: {len(all_docs)}')`,
+  },
+  {
+    name: 'redis.CoreCommands.command_getkeys',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает список ключей, которые будет использовать указанная команда. Полезно для инструментов маршрутизации в Redis Cluster и аудита: позволяет определить ключи без выполнения самой команды.',
+    syntax: 'r.command_getkeys(command, *args)',
+    arguments: [
+      { name: 'command', description: 'Имя команды Redis, например "SET", "MSET", "EVAL".' },
+      { name: '*args', description: 'Аргументы команды в том виде, как они были бы переданы.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Ключи команды SET:
+keys = r.command_getkeys('SET', 'mykey', 'myvalue')
+print(keys)   # ['mykey']
+
+# Ключи команды MSET:
+keys = r.command_getkeys('MSET', 'k1', 'v1', 'k2', 'v2', 'k3', 'v3')
+print(keys)   # ['k1', 'k2', 'k3']
+
+# Ключи команды MGET:
+keys = r.command_getkeys('MGET', 'key1', 'key2', 'key3')
+print(keys)   # ['key1', 'key2', 'key3']
+
+# Ключи скрипта Lua (EVAL):
+keys = r.command_getkeys('EVAL', 'return 1', '2', 'key1', 'key2', 'arg1')
+print(keys)   # ['key1', 'key2']`,
+  },
+  {
+    name: 'redis.CoreCommands.command_info',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает краткую техническую информацию о конкретных командах Redis: арность, флаги, позицию первого/последнего ключа и шаг. Более лёгкий вариант по сравнению с command_docs().',
+    syntax: 'r.command_info(*commands)',
+    arguments: [
+      { name: '*commands', description: 'Имена команд Redis для получения информации.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Информация о командах:
+info = r.command_info('GET', 'SET', 'LPUSH')
+for name, data in info.items():
+    print(f"\\n{name}:")
+    print(f"  Арность:     {data['arity']}")
+    print(f"  Флаги:       {data['flags']}")
+    print(f"  Первый ключ: {data['first_key_pos']}")
+    print(f"  Последний:   {data['last_key_pos']}")
+    print(f"  Шаг:         {data['step']}")
+
+# Проверить флаги команды:
+info = r.command_info('GET')
+is_readonly = 'readonly' in info['GET']['flags']
+print(f'GET только для чтения: {is_readonly}')   # True`,
+  },
+  {
+    name: 'redis.CoreCommands.command_list',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает список имён всех команд сервера. Можно фильтровать по модулю, категории ACL или шаблону имени. Добавлено в Redis 7.0.',
+    syntax: 'r.command_list(filter_by=None, value=None)',
+    arguments: [
+      { name: 'filter_by', description: 'Тип фильтра: "MODULE" — по модулю, "ACLCAT" — по категории ACL, "PATTERN" — по шаблону имени.' },
+      { name: 'value', description: 'Значение фильтра: имя модуля, категория ACL или glob-шаблон.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Все команды:
+all_cmds = r.command_list()
+print(f'Всего команд: {len(all_cmds)}')
+
+# Фильтрация по шаблону имени:
+client_cmds = r.command_list(filter_by='PATTERN', value='client*')
+print(f'Команды client*: {sorted(client_cmds)}')
+# ['client getname', 'client id', 'client info', ...]
+
+# По категории ACL:
+read_cmds = r.command_list(filter_by='ACLCAT', value='read')
+print(f'Команд для чтения: {len(read_cmds)}')
+
+write_cmds = r.command_list(filter_by='ACLCAT', value='write')
+print(f'Команд для записи: {len(write_cmds)}')`,
+  },
+  {
+    name: 'redis.CoreCommands.config_get',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Читает текущие значения параметров конфигурации Redis. Поддерживает glob-шаблоны. Возвращает словарь {параметр: значение}.',
+    syntax: "r.config_get(parameter='*')",
+    arguments: [
+      { name: 'parameter', description: "Имя параметра или glob-шаблон. По умолчанию '*' — все параметры." },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Все параметры конфигурации:
+all_config = r.config_get('*')
+print(f'Параметров: {len(all_config)}')
+
+# Конкретный параметр:
+max_mem = r.config_get('maxmemory')
+print(f"maxmemory: {max_mem['maxmemory']}")
+
+# По шаблону:
+save_params = r.config_get('save')
+print(f"save: {save_params['save']}")
+
+# Параметры AOF:
+aof = r.config_get('appendonly')
+print(f"appendonly: {aof['appendonly']}")
+
+# Несколько параметров сразу:
+mem_params = r.config_get('maxmemory*')
+for key, val in mem_params.items():
+    print(f'  {key}: {val}')`,
+  },
+  {
+    name: 'redis.CoreCommands.config_resetstat',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Сбрасывает статистику сервера Redis: количество подключений, обработанных команд, попаданий/промахов в кэш, статистику отказов и другие счётчики. Не затрагивает данные. Возвращает True при успехе.',
+    syntax: 'r.config_resetstat()',
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Статистика до сброса:
+info_before = r.info('stats')
+print(f"Команд обработано: {info_before['total_commands_processed']}")
+print(f"Подключений:       {info_before['total_connections_received']}")
+
+# Сброс статистики:
+r.config_resetstat()
+print('Статистика сброшена')
+
+# Статистика после сброса:
+info_after = r.info('stats')
+print(f"Команд после сброса: {info_after['total_commands_processed']}")
+
+# Полезно перед нагрузочным тестированием:
+# config_resetstat() → тест → info('stats') для чистых данных`,
+  },
+  {
+    name: 'redis.CoreCommands.config_rewrite',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Перезаписывает файл redis.conf, сохраняя в него текущие значения конфигурации, изменённые через config_set(). Работает только если Redis был запущен с указанием файла конфигурации. Возвращает True при успехе.',
+    syntax: 'r.config_rewrite()',
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Изменить параметр и сохранить в файл:
+r.config_set('maxmemory', '512mb')
+r.config_set('maxmemory-policy', 'allkeys-lru')
+
+# Сохранить изменения в redis.conf:
+try:
+    r.config_rewrite()
+    print('Конфигурация сохранена в redis.conf')
+except redis.ResponseError as e:
+    # Ошибка если Redis запущен без файла конфигурации:
+    print(f'Ошибка: {e}')
+
+# Проверить текущий файл конфигурации:
+cfg = r.config_get('configfile')
+print(f"Файл конфигурации: {cfg.get('configfile', 'не задан')}")`,
+  },
+  {
+    name: 'redis.CoreCommands.config_set',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Изменяет параметры конфигурации Redis в реальном времени без перезапуска сервера. В Redis 7.0+ поддерживает одновременное изменение нескольких параметров через словарь. Возвращает True при успехе.',
+    syntax: 'r.config_set(parameter, value=None)',
+    arguments: [
+      { name: 'parameter', description: 'Имя параметра (строка) или словарь {параметр: значение} для массового изменения (Redis 7.0+).' },
+      { name: 'value', description: 'Новое значение параметра. Не нужен если parameter — словарь.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Изменение одного параметра:
+r.config_set('maxmemory', '256mb')
+r.config_set('loglevel', 'notice')
+
+# Изменение нескольких параметров сразу (Redis 7.0+):
+r.config_set({
+    'maxmemory': '512mb',
+    'maxmemory-policy': 'allkeys-lru',
+    'hz': '20',
+})
+
+# Включение AOF:
+r.config_set('appendonly', 'yes')
+
+# Проверка применения:
+print(r.config_get('maxmemory'))
+# {'maxmemory': '536870912'}
+
+# Динамическое изменение числа баз данных недоступно,
+# но можно менять: bind, save, requirepass, maxclients и др.`,
+  },
+  {
+    name: 'redis.CoreCommands.copy',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Копирует значение ключа source в ключ destination. Поддерживает копирование в другую базу данных. По умолчанию не перезаписывает существующий ключ — нужен replace=True. Добавлено в Redis 6.2.',
+    syntax: 'r.copy(source, destination, db=None, replace=False)',
+    arguments: [
+      { name: 'source', description: 'Имя исходного ключа.' },
+      { name: 'destination', description: 'Имя целевого ключа.' },
+      { name: 'db', description: 'Номер базы данных назначения. Если None — та же БД.' },
+      { name: 'replace', description: 'Перезаписать destination если существует. По умолчанию False.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('original', 'hello world')
+
+# Копирование в той же БД:
+result = r.copy('original', 'backup')
+print(result)               # True
+print(r.get('backup'))      # 'hello world'
+
+# Не перезаписывает существующий ключ:
+r.set('backup', 'old value')
+result = r.copy('original', 'backup')
+print(result)               # False (не скопировано)
+
+# С заменой:
+result = r.copy('original', 'backup', replace=True)
+print(result)               # True
+print(r.get('backup'))      # 'hello world'
+
+# Копирование в другую БД (db=1):
+r.copy('original', 'original_copy', db=1)
+r1 = redis.Redis(host='localhost', port=6379, db=1, decode_responses=True)
+print(r1.get('original_copy'))   # 'hello world'`,
+  },
+  {
+    name: 'redis.CoreCommands.dbsize',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает количество ключей в текущей базе данных Redis. Работает мгновенно — Redis хранит счётчик ключей. Полезно для мониторинга размера базы данных.',
+    syntax: 'r.dbsize()',
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Количество ключей:
+size = r.dbsize()
+print(f'Ключей в БД: {size}')
+
+# Добавить ключи и проверить:
+r.mset({'k1': 'v1', 'k2': 'v2', 'k3': 'v3'})
+print(f'После добавления: {r.dbsize()}')
+
+# Мониторинг роста:
+import time
+for i in range(5):
+    r.set(f'monitor:{i}', i)
+    print(f'dbsize = {r.dbsize()}')
+    time.sleep(0.1)
+
+# Размер разных БД:
+for db_num in range(4):
+    r_db = redis.Redis(host='localhost', port=6379, db=db_num)
+    print(f'БД {db_num}: {r_db.dbsize()} ключей')`,
+  },
+  {
+    name: 'redis.CoreCommands.debug_object',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает отладочную информацию о ключе: адрес в памяти, кодировку, счётчик обращений (LRU), размер сериализованного значения и количество ссылок. Используется для диагностики и оптимизации памяти.',
+    syntax: 'r.debug_object(key)',
+    arguments: [
+      { name: 'key', description: 'Имя ключа для отладки.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('mykey', 'Hello, Redis!')
+
+# Отладочная информация:
+info = r.debug_object('mykey')
+print(info)
+# {'ql_nodes': 0, 'encoding': 'embstr', 'serializedlength': 13,
+#  'lru': 12345678, 'lru_seconds_idle': 0, 'refcount': 1}
+
+print(f"Кодировка:  {info['encoding']}")
+print(f"Сериализован (байт): {info['serializedlength']}")
+print(f"Простаивает (сек):   {info['lru_seconds_idle']}")
+
+# Сравнение кодировок для оптимизации памяти:
+r.set('small_int', 42)
+r.set('large_str', 'a' * 100)
+print(r.debug_object('small_int')['encoding'])   # 'int'
+print(r.debug_object('large_str')['encoding'])   # 'raw'`,
+  },
+  {
+    name: 'redis.CoreCommands.debug_segfault',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Намеренно вызывает ошибку сегментации (segmentation fault) и аварийное завершение процесса Redis. Используется исключительно для тестирования устойчивости систем мониторинга и механизмов перезапуска. Никогда не используйте в продакшне.',
+    syntax: 'r.debug_segfault()',
+    arguments: [],
+    example: `import redis
+
+# ВНИМАНИЕ: эта команда немедленно завершает процесс Redis!
+# Используйте только на тестовом/изолированном сервере.
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Типичный сценарий — тест системы мониторинга:
+import subprocess
+import time
+
+# Запустить Redis в отдельном процессе
+# proc = subprocess.Popen(['redis-server', '--port', '6399'])
+# r_test = redis.Redis(port=6399)
+
+# Вызвать аварийное завершение:
+# try:
+#     r_test.debug_segfault()   # Redis падает немедленно
+# except redis.ConnectionError:
+#     pass  # Ожидаемо — соединение разорвано
+#
+# time.sleep(1)
+# assert proc.returncode is not None   # Процесс завершился
+print('debug_segfault() вызывает немедленное падение Redis — только для тестов!')`,
+  },
+  {
+    name: 'redis.CoreCommands.decr',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Уменьшает целочисленное значение ключа на 1. Если ключ не существует — создаётся со значением 0, затем уменьшается до -1. Операция атомарна. Возвращает новое значение.',
+    syntax: 'r.decr(name, amount=1)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа.' },
+      { name: 'amount', description: 'Величина уменьшения. По умолчанию 1.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('counter', 10)
+
+# Уменьшение на 1:
+val = r.decr('counter')
+print(val)   # 9
+
+# Повторно:
+print(r.decr('counter'))   # 8
+
+# На несуществующем ключе:
+r.delete('new_counter')
+print(r.decr('new_counter'))   # -1
+
+# Количество доступных мест в очереди:
+r.set('available_slots', 100)
+def occupy_slot():
+    remaining = r.decr('available_slots')
+    if remaining < 0:
+        r.incr('available_slots')   # Вернуть обратно
+        return False
+    return True
+
+print(occupy_slot())                  # True
+print(r.get('available_slots'))       # '99'`,
+  },
+  {
+    name: 'redis.CoreCommands.decrby',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Уменьшает целочисленное значение ключа на заданную величину amount. Если ключ не существует — создаётся со значением 0, затем уменьшается. Операция атомарна. Возвращает новое значение.',
+    syntax: 'r.decrby(name, amount=1)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа.' },
+      { name: 'amount', description: 'Величина уменьшения. По умолчанию 1.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('stock', 500)
+
+# Уменьшение на произвольную величину:
+remaining = r.decrby('stock', 50)
+print(remaining)   # 450
+
+remaining = r.decrby('stock', 200)
+print(remaining)   # 250
+
+# Списание баланса:
+r.set('balance', 10000)
+
+def withdraw(amount: int) -> bool:
+    new_balance = r.decrby('balance', amount)
+    if new_balance < 0:
+        r.incrby('balance', amount)   # Откат
+        return False
+    return True
+
+print(withdraw(3000))              # True
+print(r.get('balance'))            # '7000'
+print(withdraw(10000))             # False (недостаточно средств)
+print(r.get('balance'))            # '7000'`,
+  },
+  {
+    name: 'redis.CoreCommands.delete',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Удаляет один или несколько ключей. Ключи, которые не существуют, игнорируются. Возвращает количество фактически удалённых ключей.',
+    syntax: 'r.delete(*names)',
+    arguments: [
+      { name: '*names', description: 'Одно или несколько имён ключей для удаления.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.mset({'k1': 'v1', 'k2': 'v2', 'k3': 'v3'})
+
+# Удаление одного ключа:
+deleted = r.delete('k1')
+print(deleted)   # 1
+
+# Удаление нескольких ключей:
+deleted = r.delete('k2', 'k3', 'nonexistent')
+print(deleted)   # 2 (nonexistent игнорируется)
+
+# Очистка по шаблону:
+r.mset({f'session:{i}': 'data' for i in range(5)})
+keys = r.keys('session:*')
+if keys:
+    deleted = r.delete(*keys)
+    print(f'Удалено сессий: {deleted}')
+
+# Проверка существования после удаления:
+r.set('temp', 'value')
+r.delete('temp')
+print(r.exists('temp'))   # 0`,
+  },
+  {
+    name: 'redis.CoreCommands.dump',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает сериализованное (RDB-формат) представление значения ключа в виде байтовой строки. Используется совместно с restore() для копирования ключей между серверами. Если ключ не существует — возвращает None.',
+    syntax: 'r.dump(name)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа для сериализации.' },
+    ],
+    example: `import redis
+
+r_src = redis.Redis(host='localhost', port=6379)
+r_dst = redis.Redis(host='localhost', port=6380)
+
+# Сериализация ключа:
+r_src.set('mykey', 'Hello, Redis!')
+serialized = r_src.dump('mykey')
+print(type(serialized))   # <class 'bytes'>
+print(len(serialized))    # размер в байтах
+
+# Восстановление на другом сервере:
+if serialized:
+    r_dst.restore('mykey', 0, serialized)
+    print(r_dst.get('mykey'))   # b'Hello, Redis!'
+
+# Несуществующий ключ:
+print(r_src.dump('nonexistent'))   # None
+
+# Перенос ключа с TTL:
+r_src.setex('temp', 3600, 'temporary value')
+data = r_src.dump('temp')
+ttl = r_src.pttl('temp')   # TTL в миллисекундах
+r_dst.restore('temp', ttl, data)`,
+  },
+  {
+    name: 'redis.CoreCommands.echo',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Отправляет команду ECHO серверу и получает обратно ту же строку. Используется для проверки связи, тестирования кодировки и задержки соединения. Возвращает переданную строку.',
+    syntax: 'r.echo(value)',
+    arguments: [
+      { name: 'value', description: 'Строка для отправки серверу.' },
+    ],
+    example: `import redis
+import time
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Базовая проверка:
+response = r.echo('Hello, Redis!')
+print(response)   # 'Hello, Redis!'
+
+# Измерение задержки round-trip:
+def measure_latency(r: redis.Redis, iterations: int = 100) -> float:
+    start = time.perf_counter()
+    for _ in range(iterations):
+        r.echo('ping')
+    elapsed = time.perf_counter() - start
+    return (elapsed / iterations) * 1000   # мс
+
+latency = measure_latency(r)
+print(f'Средняя задержка: {latency:.2f} мс')
+
+# Проверка кодировки Unicode:
+r.echo('Привет, мир!')   # 'Привет, мир!'
+r.echo('🚀 Redis')       # '🚀 Redis'`,
+  },
+  {
+    name: 'redis.CoreCommands.eval',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Выполняет скрипт на языке Lua на стороне сервера Redis. Скрипт выполняется атомарно — другие команды не обрабатываются во время его выполнения. Ключи передаются через KEYS[], аргументы — через ARGV[].',
+    syntax: 'r.eval(script, numkeys, *keys_and_args)',
+    arguments: [
+      { name: 'script', description: 'Lua-скрипт в виде строки.' },
+      { name: 'numkeys', description: 'Количество имён ключей в keys_and_args. Остальное — аргументы.' },
+      { name: '*keys_and_args', description: 'Сначала ключи (доступны как KEYS[1..N]), затем аргументы (ARGV[1..M]).' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Простой скрипт — получить и вернуть значение:
+script = "return redis.call('GET', KEYS[1])"
+r.set('mykey', 'hello')
+result = r.eval(script, 1, 'mykey')
+print(result)   # 'hello'
+
+# Атомарное получение и удаление:
+script = """
+local val = redis.call('GET', KEYS[1])
+if val then
+    redis.call('DEL', KEYS[1])
+end
+return val
+"""
+r.set('token', 'abc123')
+token = r.eval(script, 1, 'token')
+print(token)              # 'abc123'
+print(r.exists('token'))  # 0
+
+# Скрипт с аргументами:
+script = "return redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])"
+r.eval(script, 1, 'session', 'user_data', '3600')`,
+  },
+  {
+    name: 'redis.CoreCommands.eval_ro',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Выполняет Lua-скрипт в режиме только для чтения — команды изменения данных внутри скрипта запрещены. Позволяет безопасно запускать скрипты на репликах. Добавлено в Redis 7.0.',
+    syntax: 'r.eval_ro(script, numkeys, *keys_and_args)',
+    arguments: [
+      { name: 'script', description: 'Lua-скрипт, использующий только команды чтения.' },
+      { name: 'numkeys', description: 'Количество ключей в keys_and_args.' },
+      { name: '*keys_and_args', description: 'Ключи и аргументы скрипта.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Безопасный скрипт только для чтения:
+script = """
+local val = redis.call('GET', KEYS[1])
+local ttl = redis.call('TTL', KEYS[1])
+return {val, ttl}
+"""
+r.setex('mykey', 3600, 'myvalue')
+result = r.eval_ro(script, 1, 'mykey')
+print(result)   # ['myvalue', 3600]
+
+# Попытка записи вызовет ошибку:
+bad_script = "return redis.call('SET', KEYS[1], 'x')"
+try:
+    r.eval_ro(bad_script, 1, 'mykey')
+except redis.ResponseError as e:
+    print(f'Ошибка: {e}')   # Write commands not allowed from read-only scripts`,
+  },
+  {
+    name: 'redis.CoreCommands.evalsha',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Выполняет ранее загруженный Lua-скрипт по его SHA1-хешу. Эффективнее eval() — скрипт не передаётся по сети повторно. Скрипт предварительно загружается командой script_load().',
+    syntax: 'r.evalsha(sha, numkeys, *keys_and_args)',
+    arguments: [
+      { name: 'sha', description: 'SHA1-хеш скрипта, возвращённый script_load().' },
+      { name: 'numkeys', description: 'Количество ключей в keys_and_args.' },
+      { name: '*keys_and_args', description: 'Ключи и аргументы скрипта.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Загрузить скрипт один раз:
+script = """
+local current = redis.call('GET', KEYS[1])
+if not current then current = '0' end
+local new_val = tonumber(current) + tonumber(ARGV[1])
+redis.call('SET', KEYS[1], new_val)
+return new_val
+"""
+sha = r.script_load(script)
+print(f'SHA1: {sha}')
+
+# Выполнять по хешу — без повторной передачи скрипта:
+r.set('counter', 10)
+result = r.evalsha(sha, 1, 'counter', 5)
+print(result)   # 15
+
+result = r.evalsha(sha, 1, 'counter', 3)
+print(result)   # 18
+
+# Если скрипт не найден на сервере:
+try:
+    r.evalsha('unknown_sha', 0)
+except redis.exceptions.NoScriptError:
+    sha = r.script_load(script)`,
+  },
+  {
+    name: 'redis.CoreCommands.evalsha_ro',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Выполняет ранее загруженный Lua-скрипт по SHA1-хешу в режиме только для чтения. Сочетает преимущества evalsha() (кэш скрипта) и eval_ro() (безопасность на репликах). Добавлено в Redis 7.0.',
+    syntax: 'r.evalsha_ro(sha, numkeys, *keys_and_args)',
+    arguments: [
+      { name: 'sha', description: 'SHA1-хеш скрипта, загруженного через script_load().' },
+      { name: 'numkeys', description: 'Количество ключей в keys_and_args.' },
+      { name: '*keys_and_args', description: 'Ключи и аргументы скрипта.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Скрипт только для чтения — загружаем один раз:
+readonly_script = """
+local keys_data = {}
+for _, key in ipairs(KEYS) do
+    local val = redis.call('GET', key)
+    local ttl = redis.call('TTL', key)
+    table.insert(keys_data, key .. '=' .. (val or 'nil') .. ':ttl=' .. ttl)
+end
+return keys_data
+"""
+sha = r.script_load(readonly_script)
+
+# Многократное выполнение по хешу без передачи скрипта:
+r.setex('k1', 100, 'value1')
+r.setex('k2', 200, 'value2')
+
+result = r.evalsha_ro(sha, 2, 'k1', 'k2')
+for item in result:
+    print(item)`,
+  },
+  {
+    name: 'redis.CoreCommands.exists',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Проверяет существование одного или нескольких ключей. Возвращает количество существующих ключей. Если один ключ указан несколько раз — учитывается кратно. Не удаляет и не изменяет ключи.',
+    syntax: 'r.exists(*names)',
+    arguments: [
+      { name: '*names', description: 'Одно или несколько имён ключей для проверки.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('k1', 'v1')
+r.set('k2', 'v2')
+
+# Один ключ:
+print(r.exists('k1'))              # 1
+print(r.exists('nonexistent'))     # 0
+
+# Несколько ключей:
+print(r.exists('k1', 'k2'))        # 2
+print(r.exists('k1', 'nonexistent'))  # 1
+
+# Дублирование считается:
+print(r.exists('k1', 'k1', 'k1'))  # 3
+
+# Идиоматическая проверка:
+if r.exists('mykey'):
+    print('Ключ существует')
+
+# Проверка нескольких ключей сразу:
+keys = ['session:1', 'session:2', 'session:3']
+count = r.exists(*keys)
+print(f'Активных сессий: {count} из {len(keys)}')`,
+  },
+  {
+    name: 'redis.CoreCommands.expire',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Устанавливает время жизни (TTL) ключа в секундах. После истечения TTL ключ автоматически удаляется. Флаги NX/XX/GT/LT (Redis 7.0+) позволяют управлять условиями применения. Возвращает True при успехе.',
+    syntax: 'r.expire(name, time, nx=False, xx=False, gt=False, lt=False)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа.' },
+      { name: 'time', description: 'TTL в секундах (целое число или timedelta).' },
+      { name: 'nx', description: 'Установить TTL только если ключ не имеет срока истечения.' },
+      { name: 'xx', description: 'Установить TTL только если ключ уже имеет срок истечения.' },
+      { name: 'gt', description: 'Установить TTL только если новый TTL больше текущего.' },
+      { name: 'lt', description: 'Установить TTL только если новый TTL меньше текущего.' },
+    ],
+    example: `import redis
+from datetime import timedelta
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('mykey', 'value')
+
+# Установка TTL в секундах:
+r.expire('mykey', 60)
+print(r.ttl('mykey'))   # ~60
+
+# timedelta:
+r.expire('mykey', timedelta(minutes=30))
+
+# Только если TTL ещё не задан (Redis 7.0+):
+r.expire('mykey', 3600, nx=True)
+
+# Только увеличение TTL (Redis 7.0+):
+r.expire('mykey', 7200, gt=True)
+
+# Сессия с автоматическим истечением:
+def create_session(session_id: str, data: str, ttl: int = 1800):
+    r.set(f'session:{session_id}', data)
+    r.expire(f'session:{session_id}', ttl)
+
+create_session('abc123', 'user_data', ttl=1800)`,
+  },
+  {
+    name: 'redis.CoreCommands.expireat',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Устанавливает время истечения ключа как UNIX-timestamp (в секундах). В отличие от expire() задаёт точный момент удаления. Поддерживает datetime-объекты. Флаги NX/XX/GT/LT доступны начиная с Redis 7.0.',
+    syntax: 'r.expireat(name, when, nx=False, xx=False, gt=False, lt=False)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа.' },
+      { name: 'when', description: 'UNIX-timestamp (int) или объект datetime.' },
+      { name: 'nx', description: 'Установить только если TTL ещё не задан.' },
+      { name: 'xx', description: 'Установить только если TTL уже задан.' },
+      { name: 'gt', description: 'Установить только если новое время истечения позже текущего.' },
+      { name: 'lt', description: 'Установить только если новое время истечения раньше текущего.' },
+    ],
+    example: `import redis
+from datetime import datetime, timezone, timedelta
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('promo', 'sale_50_percent')
+
+# Истечение по datetime:
+expire_at = datetime(2025, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+r.expireat('promo', expire_at)
+
+# Истечение через UNIX-timestamp:
+import time
+r.expireat('promo', int(time.time()) + 86400)   # через сутки
+
+# Конец рабочего дня:
+today = datetime.now(timezone.utc)
+end_of_day = today.replace(hour=18, minute=0, second=0, microsecond=0)
+if end_of_day > today:
+    r.expireat('daily_report', end_of_day)
+
+# Проверить время истечения:
+ts = r.expiretime('promo')
+print(f'Истечёт: {datetime.fromtimestamp(ts, tz=timezone.utc)}')\``,
+  },
+  {
+    name: 'redis.CoreCommands.expiretime',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает абсолютное время истечения ключа в виде UNIX-timestamp (секунды). Возвращает -1 если TTL не задан, -2 если ключ не существует. Добавлено в Redis 7.0.',
+    syntax: 'r.expiretime(name)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа.' },
+    ],
+    example: `import redis
+from datetime import datetime, timezone
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Ключ с TTL:
+r.setex('mykey', 3600, 'value')
+ts = r.expiretime('mykey')
+print(f'UNIX-timestamp истечения: {ts}')
+print(f'Истечёт: {datetime.fromtimestamp(ts, tz=timezone.utc)}')
+
+# Ключ без TTL:
+r.set('persistent', 'value')
+print(r.expiretime('persistent'))   # -1
+
+# Несуществующий ключ:
+print(r.expiretime('missing'))      # -2
+
+# Вывод оставшегося времени в удобном формате:
+remaining = ts - int(datetime.now(timezone.utc).timestamp())
+hours, rem = divmod(remaining, 3600)
+minutes, seconds = divmod(rem, 60)
+print(f'Осталось: {hours}ч {minutes}м {seconds}с')`,
+  },
+  {
+    name: 'redis.CoreCommands.failover',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Инициирует ручное переключение главного узла Redis на реплику. Основной узел синхронизируется с репликой и передаёт ей управление. Используется для планового обслуживания без потери данных. Добавлено в Redis 6.2.',
+    syntax: 'r.failover(to=None, force=False, timeout=None)',
+    arguments: [
+      { name: 'to', description: 'Адрес целевой реплики в формате "host port". Если None — выбирается автоматически.' },
+      { name: 'force', description: 'Принудительное переключение без ожидания синхронизации реплики.' },
+      { name: 'timeout', description: 'Таймаут в миллисекундах для ожидания подтверждения от реплики.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Проверить роль текущего сервера:
+info = r.info('replication')
+print(f"Роль: {info['role']}")            # 'master'
+print(f"Реплик: {info['connected_slaves']}")
+
+# Плановое переключение на конкретную реплику:
+# r.failover(to='replica-host 6379', timeout=5000)
+
+# Автоматический выбор реплики:
+# r.failover(timeout=10000)
+
+# Принудительное (без синхронизации — риск потери данных):
+# r.failover(force=True)
+
+# После failover текущий сервер становится репликой:
+info_after = r.info('replication')
+print(f"Новая роль: {info_after['role']}")   # 'slave'`,
+  },
+  {
+    name: 'redis.CoreCommands.flushall',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Удаляет все ключи из всех баз данных на сервере Redis. Необратимая операция. Параметр asynchronous=True выполняет очистку в фоновом потоке (ASYNC), не блокируя сервер.',
+    syntax: 'r.flushall(asynchronous=False)',
+    arguments: [
+      { name: 'asynchronous', description: 'Если True — очистка выполняется асинхронно (FLUSHALL ASYNC). По умолчанию False.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.mset({'k1': 'v1', 'k2': 'v2'})
+r.select(1)   # Не поддерживается в этом интерфейсе напрямую
+
+# ВНИМАНИЕ: удаляет ВСЕ данные на сервере!
+print(f'До: {r.dbsize()} ключей')
+
+# Синхронная очистка (блокирует сервер):
+r.flushall()
+print(f'После: {r.dbsize()} ключей')   # 0
+
+# Асинхронная очистка (не блокирует):
+r.mset({'a': 1, 'b': 2, 'c': 3})
+r.flushall(asynchronous=True)
+
+# Используйте только в тестах или при полном сбросе данных!
+# В продакшне предпочтительнее flushdb() для одной БД.`,
+  },
+  {
+    name: 'redis.CoreCommands.flushdb',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Удаляет все ключи только из текущей базы данных Redis (выбранной через параметр db при подключении). Менее опасен чем flushall() — затрагивает только одну БД. Асинхронный режим не блокирует сервер.',
+    syntax: 'r.flushdb(asynchronous=False)',
+    arguments: [
+      { name: 'asynchronous', description: 'Если True — очистка в фоновом потоке (FLUSHDB ASYNC). По умолчанию False.' },
+    ],
+    example: `import redis
+
+# Очистка конкретной БД (db=1):
+r = redis.Redis(host='localhost', port=6379, db=1, decode_responses=True)
+
+r.mset({'user:1': 'Alice', 'user:2': 'Bob', 'session:xyz': 'data'})
+print(f'До очистки: {r.dbsize()} ключей')
+
+# Очистить только БД №1:
+r.flushdb()
+print(f'После очистки: {r.dbsize()} ключей')   # 0
+
+# БД №0 не затронута:
+r0 = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+print(f'БД 0 не изменилась: {r0.dbsize()} ключей')
+
+# Асинхронная очистка (для больших БД):
+r.mset({f'key:{i}': i for i in range(10000)})
+r.flushdb(asynchronous=True)
+print('Очистка запущена в фоне')`,
+  },
+  {
+    name: 'redis.CoreCommands.geoadd',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Добавляет геопространственные координаты (долгота, широта) с именем в ключ. Хранит данные во внутреннем отсортированном множестве. Возвращает количество добавленных (не обновлённых) элементов.',
+    syntax: 'r.geoadd(name, values, nx=False, xx=False, ch=False)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа для хранения геоданных.' },
+      { name: 'values', description: 'Список в формате [longitude, latitude, member, ...] или словарь {member: (lon, lat)}.' },
+      { name: 'nx', description: 'Добавлять только новые элементы, не обновлять существующие.' },
+      { name: 'xx', description: 'Обновлять только существующие, не добавлять новые.' },
+      { name: 'ch', description: 'Возвращать число изменённых элементов (добавленных + обновлённых).' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Добавление нескольких объектов:
+added = r.geoadd('city_locations', [
+    37.6173,  55.7558, 'Москва',
+    30.3158,  59.9386, 'Санкт-Петербург',
+    82.9346,  55.0415, 'Новосибирск',
+    49.1221,  55.7887, 'Казань',
+])
+print(f'Добавлено: {added}')   # 4
+
+# Обновление координат:
+r.geoadd('city_locations', [37.6200, 55.7600, 'Москва'], xx=True)
+
+# Только новые (не перезаписывать):
+r.geoadd('city_locations', [60.6122, 56.8519, 'Екатеринбург'], nx=True)
+
+# Проверить позицию:
+pos = r.geopos('city_locations', 'Москва')
+print(f'Москва: {pos[0]}')`,
+  },
+  {
+    name: 'redis.CoreCommands.geodist',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Вычисляет расстояние между двумя геопространственными точками, хранящимися в одном ключе. Возвращает расстояние в указанных единицах или None если один из элементов не найден.',
+    syntax: "r.geodist(name, place1, place2, unit='m')",
+    arguments: [
+      { name: 'name', description: 'Имя ключа с геоданными.' },
+      { name: 'place1', description: 'Имя первого элемента.' },
+      { name: 'place2', description: 'Имя второго элемента.' },
+      { name: 'unit', description: 'Единицы: "m" (метры), "km" (километры), "mi" (мили), "ft" (футы). По умолчанию "m".' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.geoadd('cities', [
+    37.6173, 55.7558, 'Москва',
+    30.3158, 59.9386, 'Санкт-Петербург',
+    82.9346, 55.0415, 'Новосибирск',
+])
+
+# Расстояние в километрах:
+dist_km = r.geodist('cities', 'Москва', 'Санкт-Петербург', unit='km')
+print(f'Москва — СПб: {dist_km:.0f} км')   # ~634 км
+
+# В метрах (по умолчанию):
+dist_m = r.geodist('cities', 'Москва', 'Санкт-Петербург')
+print(f'Москва — СПб: {dist_m:.0f} м')
+
+# Несуществующий элемент → None:
+dist = r.geodist('cities', 'Москва', 'Владивосток', unit='km')
+print(dist)   # None
+
+print(f'Москва — Новосибирск: {r.geodist("cities", "Москва", "Новосибирск", "km"):.0f} км')`,
+  },
+  {
+    name: 'redis.CoreCommands.geohash',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает геохеш (Geohash) в виде строки для каждого указанного элемента. Геохеш — компактное строковое представление координат. Полезно для кластеризации близких точек и передачи координат.',
+    syntax: 'r.geohash(name, *values)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа с геоданными.' },
+      { name: '*values', description: 'Имена элементов для получения геохеша.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.geoadd('cities', [
+    37.6173, 55.7558, 'Москва',
+    30.3158, 59.9386, 'Санкт-Петербург',
+])
+
+# Геохеш одного элемента:
+hashes = r.geohash('cities', 'Москва')
+print(hashes[0])   # 'ucfult0zge0' (11 символов, ~1.2 м точность)
+
+# Несколько элементов:
+hashes = r.geohash('cities', 'Москва', 'Санкт-Петербург')
+print(hashes)   # ['ucfult0zge0', 'ud9wh4dkb80']
+
+# Несуществующий элемент → None:
+hashes = r.geohash('cities', 'Москва', 'Нет')
+print(hashes)   # ['ucfult0zge0', None]
+
+# Общий префикс геохеша = географическая близость:
+# 'ucfu...' и 'ud9w...' — разный регион (Москва vs СПб)`,
+  },
+  {
+    name: 'redis.CoreCommands.geopos',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает координаты (долгота, широта) для каждого указанного элемента. Возвращает список кортежей (longitude, latitude) или None для несуществующих элементов. Координаты могут незначительно отличаться из-за кодирования.',
+    syntax: 'r.geopos(name, *values)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа с геоданными.' },
+      { name: '*values', description: 'Имена элементов.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.geoadd('cities', [
+    37.6173, 55.7558, 'Москва',
+    30.3158, 59.9386, 'Санкт-Петербург',
+])
+
+# Координаты одного элемента:
+positions = r.geopos('cities', 'Москва')
+lon, lat = positions[0]
+print(f'Москва: {lat:.4f}°N, {lon:.4f}°E')
+
+# Несколько элементов:
+positions = r.geopos('cities', 'Москва', 'Санкт-Петербург')
+for city, pos in zip(['Москва', 'Санкт-Петербург'], positions):
+    if pos:
+        print(f'{city}: lon={pos[0]:.4f}, lat={pos[1]:.4f}')
+
+# Несуществующий элемент → None:
+positions = r.geopos('cities', 'Москва', 'Нет')
+print(positions)   # [(37.617..., 55.755...), None]`,
+  },
+  {
+    name: 'redis.CoreCommands.georadius',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает элементы геоиндекса в пределах указанного радиуса от заданных координат. Устарел в Redis 6.2 — рекомендуется geosearch(). Поддерживает сортировку, ограничение числа результатов и дополнительные данные.',
+    syntax: "r.georadius(name, longitude, latitude, radius, unit='m', withcoord=False, withdist=False, withhash=False, count=None, any=False, sort=None, store=None, store_dist=None)",
+    arguments: [
+      { name: 'name', description: 'Имя ключа с геоданными.' },
+      { name: 'longitude', description: 'Долгота центра поиска.' },
+      { name: 'latitude', description: 'Широта центра поиска.' },
+      { name: 'radius', description: 'Радиус поиска.' },
+      { name: 'unit', description: 'Единицы радиуса: "m", "km", "mi", "ft".' },
+      { name: 'withcoord', description: 'Включить координаты в результат.' },
+      { name: 'withdist', description: 'Включить расстояние до центра.' },
+      { name: 'count', description: 'Максимальное число результатов.' },
+      { name: 'sort', description: '"ASC" или "DESC" — сортировка по расстоянию.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.geoadd('restaurants', [
+    37.618, 55.757, 'Пушкинская',
+    37.624, 55.752, 'Кофемания',
+    37.601, 55.745, 'Братья Карамазовы',
+    37.640, 55.770, 'Белуга',
+])
+
+# Рестораны в радиусе 2 км от Красной площади (устаревший метод):
+results = r.georadius('restaurants', 37.6215, 55.7520, 2, unit='km',
+                       withdist=True, sort='ASC')
+for item in results:
+    print(f'{item[0]}: {item[1]:.2f} км')
+
+# Современная альтернатива:
+# r.geosearch('restaurants', longitude=37.6215, latitude=55.7520,
+#             radius=2, unit='km', sort='ASC', withdist=True)`,
+  },
+  {
+    name: 'redis.CoreCommands.georadiusbymember',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает элементы геоиндекса в пределах радиуса от указанного члена (а не от координат). Устарел в Redis 6.2 — используйте geosearch() с параметром member. Полезно для поиска объектов рядом с известным элементом.',
+    syntax: "r.georadiusbymember(name, member, radius, unit='m', withcoord=False, withdist=False, withhash=False, count=None, any=False, sort=None, store=None, store_dist=None)",
+    arguments: [
+      { name: 'name', description: 'Имя ключа с геоданными.' },
+      { name: 'member', description: 'Имя элемента, от которого ищем.' },
+      { name: 'radius', description: 'Радиус поиска.' },
+      { name: 'unit', description: 'Единицы: "m", "km", "mi", "ft".' },
+      { name: 'withdist', description: 'Включить расстояние в результат.' },
+      { name: 'sort', description: '"ASC" или "DESC".' },
+      { name: 'count', description: 'Ограничить число результатов.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.geoadd('metro', [
+    37.6215, 55.7520, 'Охотный ряд',
+    37.6155, 55.7575, 'Библиотека Ленина',
+    37.6270, 55.7575, 'Лубянка',
+    37.6215, 55.7650, 'Пушкинская',
+])
+
+# Станции в радиусе 1 км от "Охотный ряд" (устаревший метод):
+nearby = r.georadiusbymember('metro', 'Охотный ряд', 1,
+                              unit='km', withdist=True, sort='ASC')
+for station, dist in nearby:
+    print(f'{station}: {dist:.3f} км')
+
+# Современная замена (Redis 6.2+):
+# r.geosearch('metro', member='Охотный ряд', radius=1, unit='km',
+#             sort='ASC', withdist=True)`,
+  },
+  {
+    name: 'redis.CoreCommands.geosearch',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Современная замена georadius() и georadiusbymember() (Redis 6.2+). Поиск элементов геоиндекса в круговой зоне (radius) или прямоугольной (boxw/boxh). Центр задаётся координатами или именем существующего элемента.',
+    syntax: "r.geosearch(name, longitude=None, latitude=None, member=None, radius=None, unit='m', boxw=None, boxh=None, boxunit='m', sort=None, count=None, any=False, withcoord=False, withdist=False, withhash=False)",
+    arguments: [
+      { name: 'name', description: 'Имя ключа с геоданными.' },
+      { name: 'longitude', description: 'Долгота центра (используется вместо member).' },
+      { name: 'latitude', description: 'Широта центра.' },
+      { name: 'member', description: 'Имя элемента как центр поиска (вместо координат).' },
+      { name: 'radius', description: 'Радиус круговой зоны поиска.' },
+      { name: 'unit', description: 'Единицы радиуса: "m", "km", "mi", "ft".' },
+      { name: 'boxw', description: 'Ширина прямоугольной зоны (вместо radius).' },
+      { name: 'boxh', description: 'Высота прямоугольной зоны.' },
+      { name: 'sort', description: '"ASC" или "DESC" — сортировка по расстоянию.' },
+      { name: 'count', description: 'Максимальное число результатов.' },
+      { name: 'withdist', description: 'Включить расстояние до центра.' },
+      { name: 'withcoord', description: 'Включить координаты элементов.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.geoadd('shops', [
+    37.618,  55.757, 'ЦУМ',
+    37.624,  55.752, 'ГУМ',
+    37.601,  55.745, 'Европейский',
+    37.580,  55.730, 'Ашан Киевская',
+])
+
+# Поиск по координатам в радиусе 2 км:
+results = r.geosearch('shops',
+    longitude=37.6215, latitude=55.7520,
+    radius=2, unit='km',
+    sort='ASC', withdist=True, withcoord=True)
+
+for item in results:
+    print(f'{item[0]}: {item[1]:.2f} км, coords={item[2]}')
+
+# Поиск от члена:
+results = r.geosearch('shops', member='ГУМ', radius=3, unit='km',
+                       sort='ASC', withdist=True)
+
+# Прямоугольная зона:
+results = r.geosearch('shops',
+    longitude=37.61, latitude=55.75,
+    boxw=5, boxh=3, boxunit='km', sort='ASC')`,
+  },
+  {
+    name: 'redis.CoreCommands.geosearchstore',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Аналог geosearch(), но сохраняет результаты в новый ключ-множество (dest) вместо возврата. Поддерживает сохранение расстояний вместо геохешей (store_dist=True). Добавлено в Redis 6.2.',
+    syntax: "r.geosearchstore(dest, src, longitude=None, latitude=None, member=None, radius=None, unit='m', boxw=None, boxh=None, boxunit='m', sort=None, count=None, any=False, store_dist=False)",
+    arguments: [
+      { name: 'dest', description: 'Имя ключа для сохранения результатов.' },
+      { name: 'src', description: 'Имя исходного ключа с геоданными.' },
+      { name: 'longitude', description: 'Долгота центра поиска.' },
+      { name: 'latitude', description: 'Широта центра поиска.' },
+      { name: 'member', description: 'Элемент как центр поиска.' },
+      { name: 'radius', description: 'Радиус поиска.' },
+      { name: 'unit', description: 'Единицы радиуса.' },
+      { name: 'store_dist', description: 'Если True — сохранить расстояния как score вместо геохешей.' },
+      { name: 'sort', description: '"ASC" или "DESC".' },
+      { name: 'count', description: 'Ограничить число результатов.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.geoadd('all_shops', [
+    37.618, 55.757, 'ЦУМ',
+    37.624, 55.752, 'ГУМ',
+    37.601, 55.745, 'Европейский',
+    37.540, 55.700, 'Мега Тёплый Стан',
+])
+
+# Найти и сохранить магазины в радиусе 3 км:
+count = r.geosearchstore(
+    'nearby_shops', 'all_shops',
+    longitude=37.6215, latitude=55.7520,
+    radius=3, unit='km', sort='ASC'
+)
+print(f'Сохранено: {count} магазинов')
+
+# nearby_shops теперь — отсортированное множество с геохешами:
+shops = r.zrange('nearby_shops', 0, -1)
+print(f'Ближайшие: {shops}')
+
+# С расстояниями в score:
+r.geosearchstore('shops_by_dist', 'all_shops',
+    longitude=37.6215, latitude=55.7520,
+    radius=3, unit='km', sort='ASC', store_dist=True)`,
+  },
+  {
+    name: 'redis.CoreCommands.get',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает значение строкового ключа. Если ключ не существует — возвращает None. Если ключ хранит не строку — выбрасывает ошибку. Самая базовая команда чтения в Redis.',
+    syntax: 'r.get(name)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('greeting', 'Привет, мир!')
+
+# Получить значение:
+value = r.get('greeting')
+print(value)   # 'Привет, мир!'
+
+# Несуществующий ключ → None:
+value = r.get('nonexistent')
+print(value)   # None
+
+# Безопасная обработка:
+value = r.get('config:timeout') or '30'
+print(f'Таймаут: {value}')
+
+# Ключ с истёкшим TTL:
+r.setex('temp', 1, 'временное')
+import time; time.sleep(1.1)
+print(r.get('temp'))   # None
+
+# Нельзя применять к не-строковым типам:
+r.lpush('mylist', 'a', 'b')
+try:
+    r.get('mylist')
+except redis.ResponseError as e:
+    print(f'Ошибка: {e}')`,
+  },
+  {
+    name: 'redis.CoreCommands.getbit',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает значение бита (0 или 1) по заданному смещению в строковом значении ключа. Если смещение выходит за пределы длины строки — возвращает 0. Используется совместно с setbit() для работы с битовыми картами.',
+    syntax: 'r.getbit(name, offset)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа.' },
+      { name: 'offset', description: 'Позиция бита (0-индексирование, от старшего к младшему).' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Установка и чтение битов:
+r.setbit('flags', 0, 1)   # Первый бит = 1
+r.setbit('flags', 7, 1)   # Восьмой бит = 1
+
+print(r.getbit('flags', 0))    # 1
+print(r.getbit('flags', 1))    # 0
+print(r.getbit('flags', 7))    # 1
+
+# За пределами строки — всегда 0:
+print(r.getbit('flags', 100))  # 0
+
+# Битовая карта активных пользователей:
+r.setbit('online', 42, 1)    # Пользователь 42 онлайн
+r.setbit('online', 100, 1)   # Пользователь 100 онлайн
+
+def is_online(user_id: int) -> bool:
+    return bool(r.getbit('online', user_id))
+
+print(is_online(42))    # True
+print(is_online(99))    # False`,
+  },
+  {
+    name: 'redis.CoreCommands.getdel',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Атомарно возвращает значение ключа и удаляет его. Если ключ не существует — возвращает None. Аналог GET + DEL в одной атомарной операции. Добавлено в Redis 6.2.',
+    syntax: 'r.getdel(name)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа для получения и удаления.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('one_time_token', 'secret-abc123')
+
+# Получить и удалить атомарно:
+token = r.getdel('one_time_token')
+print(token)                         # 'secret-abc123'
+
+# Ключ уже удалён:
+print(r.getdel('one_time_token'))    # None
+print(r.exists('one_time_token'))    # 0
+
+# Одноразовые токены / OTP:
+def consume_token(token_id: str) -> str | None:
+    value = r.getdel(f'token:{token_id}')
+    return value   # None если уже использован или не существует
+
+r.set('token:reset_pwd_xyz', 'user:42')
+print(consume_token('reset_pwd_xyz'))   # 'user:42'
+print(consume_token('reset_pwd_xyz'))   # None (повторное использование невозможно)`,
+  },
+  {
+    name: 'redis.CoreCommands.getex',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает значение ключа и одновременно изменяет его TTL. Позволяет получить значение и продлить/сбросить/убрать срок жизни в одной атомарной операции. Добавлено в Redis 6.2.',
+    syntax: 'r.getex(name, ex=None, px=None, exat=None, pxat=None, persist=False)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа.' },
+      { name: 'ex', description: 'Новый TTL в секундах.' },
+      { name: 'px', description: 'Новый TTL в миллисекундах.' },
+      { name: 'exat', description: 'Абсолютное время истечения (UNIX-timestamp, секунды).' },
+      { name: 'pxat', description: 'Абсолютное время истечения (UNIX-timestamp, миллисекунды).' },
+      { name: 'persist', description: 'Если True — убрать TTL, сделать ключ постоянным.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.setex('session', 300, 'user_data')
+
+# Получить и продлить сессию (sliding expiration):
+value = r.getex('session', ex=300)
+print(value)              # 'user_data'
+print(r.ttl('session'))   # ~300 (обновлено)
+
+# Получить без изменения TTL:
+value = r.getex('session')
+print(value)   # 'user_data'
+
+# Получить и сделать постоянным:
+value = r.getex('session', persist=True)
+print(r.ttl('session'))   # -1 (бессрочный)
+
+# TTL в миллисекундах:
+r.getex('session', px=60000)    # 60 секунд
+
+# Sliding window session:
+def get_session(session_id: str) -> str | None:
+    return r.getex(f'session:{session_id}', ex=1800)  # Продлить на 30 мин`,
+  },
+  {
+    name: 'redis.CoreCommands.getrange',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает подстроку значения ключа в диапазоне [start, end] включительно. Отрицательные индексы отсчитываются с конца строки. Если диапазон выходит за пределы — возвращается доступная часть.',
+    syntax: 'r.getrange(key, start, end)',
+    arguments: [
+      { name: 'key', description: 'Имя ключа.' },
+      { name: 'start', description: 'Начальный байтовый индекс (включительно). Отрицательные — с конца.' },
+      { name: 'end', description: 'Конечный байтовый индекс (включительно). -1 означает конец строки.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('greeting', 'Hello, World!')
+
+# Подстрока:
+print(r.getrange('greeting', 0, 4))     # 'Hello'
+print(r.getrange('greeting', 7, 11))    # 'World'
+
+# Отрицательные индексы (с конца):
+print(r.getrange('greeting', -6, -1))   # 'orld!'
+
+# Вся строка:
+print(r.getrange('greeting', 0, -1))    # 'Hello, World!'
+
+# Структурированные данные фиксированной ширины:
+r.set('record', '2024-01-15АЛИСА     30')
+date    = r.getrange('record', 0, 9)     # '2024-01-15'
+name    = r.getrange('record', 10, 19)   # 'АЛИСА     '
+age_str = r.getrange('record', 20, 21)   # '30'
+print(f'Дата: {date}, Имя: {name.strip()}, Возраст: {age_str}')`,
+  },
+  {
+    name: 'redis.CoreCommands.getset',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Атомарно устанавливает новое значение ключа и возвращает старое. Если ключ не существовал — возвращает None. Устарел в Redis 6.2 — используйте set() с параметром get=True.',
+    syntax: 'r.getset(name, value)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа.' },
+      { name: 'value', description: 'Новое значение для установки.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.set('status', 'idle')
+
+# Получить старое, установить новое:
+old = r.getset('status', 'processing')
+print(old)               # 'idle'
+print(r.get('status'))   # 'processing'
+
+# Несуществующий ключ → None:
+old = r.getset('new_key', 'value')
+print(old)   # None
+
+# Современная альтернатива (Redis 6.2+):
+old = r.set('status', 'done', get=True)
+print(old)   # 'processing'
+
+# Паттерн "флаг занятости" (lock-like):
+def try_acquire(key: str) -> bool:
+    old = r.getset(key, 'locked')
+    return old != 'locked'   # True если захватили`,
+  },
+  {
+    name: 'redis.CoreCommands.hdel',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Удаляет одно или несколько полей из хеш-таблицы. Поля, которых нет в хеше, игнорируются. Если после удаления хеш становится пустым — ключ удаляется автоматически. Возвращает количество фактически удалённых полей.',
+    syntax: 'r.hdel(name, *keys)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа хеш-таблицы.' },
+      { name: '*keys', description: 'Одно или несколько имён полей для удаления.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.hset('user:1', mapping={
+    'name': 'Алексей',
+    'email': 'alex@example.com',
+    'age': '30',
+    'temp_token': 'xyz',
+    'reset_code': '1234',
+})
+
+# Удалить одно поле:
+deleted = r.hdel('user:1', 'temp_token')
+print(deleted)   # 1
+
+# Удалить несколько полей сразу:
+deleted = r.hdel('user:1', 'reset_code', 'nonexistent_field')
+print(deleted)   # 1 (nonexistent игнорируется)
+
+# Проверить оставшиеся поля:
+print(r.hgetall('user:1'))
+# {'name': 'Алексей', 'email': 'alex@example.com', 'age': '30'}
+
+# Если удалить все поля — ключ исчезает:
+r.hdel('user:1', 'name', 'email', 'age')
+print(r.exists('user:1'))   # 0`,
+  },
+  {
+    name: 'redis.CoreCommands.hexists',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Проверяет существование поля в хеш-таблице. Возвращает True если поле существует, False если нет (или ключ не существует). Не изменяет данные.',
+    syntax: 'r.hexists(name, key)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа хеш-таблицы.' },
+      { name: 'key', description: 'Имя поля для проверки.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.hset('user:1', mapping={'name': 'Мария', 'email': 'maria@example.com'})
+
+# Проверка существования поля:
+print(r.hexists('user:1', 'name'))     # True
+print(r.hexists('user:1', 'age'))      # False
+print(r.hexists('user:1', 'email'))    # True
+
+# Несуществующий ключ:
+print(r.hexists('user:999', 'name'))   # False
+
+# Условная запись:
+if not r.hexists('user:1', 'created_at'):
+    import time
+    r.hset('user:1', 'created_at', str(int(time.time())))
+
+# Проверка наличия обязательных полей:
+required_fields = ['name', 'email', 'role']
+missing = [f for f in required_fields if not r.hexists('user:1', f)]
+if missing:
+    print(f'Отсутствуют поля: {missing}')`,
+  },
+  {
+    name: 'redis.CoreCommands.hget',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает значение конкретного поля хеш-таблицы. Если поле или ключ не существуют — возвращает None. Для получения нескольких полей используйте hmget(), для всех — hgetall().',
+    syntax: 'r.hget(name, key)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа хеш-таблицы.' },
+      { name: 'key', description: 'Имя поля.' },
+    ],
+    example: `import redis
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.hset('product:42', mapping={
+    'title': 'Ноутбук Pro',
+    'price': '89999',
+    'stock': '15',
+})
+
+# Получить одно поле:
+title = r.hget('product:42', 'title')
+print(title)   # 'Ноутбук Pro'
+
+price = r.hget('product:42', 'price')
+print(int(price))   # 89999
+
+# Несуществующее поле → None:
+discount = r.hget('product:42', 'discount')
+print(discount)   # None
+
+# Безопасное получение с дефолтом:
+discount = r.hget('product:42', 'discount') or '0'
+print(f'Скидка: {discount}%')
+
+# Несуществующий ключ → None:
+print(r.hget('product:999', 'title'))   # None`,
+  },
+  {
+    name: 'redis.CoreCommands.hgetall',
+    description:
+      'Метод класса CoreCommands библиотеки redis-py. Возвращает все поля и значения хеш-таблицы в виде словаря. Если ключ не существует — возвращает пустой словарь. Для больших хешей предпочтительнее hscan() во избежание блокировки сервера.',
+    syntax: 'r.hgetall(name)',
+    arguments: [
+      { name: 'name', description: 'Имя ключа хеш-таблицы.' },
+    ],
+    example: `import redis
+from dataclasses import dataclass
+
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+r.hset('user:1', mapping={
+    'name': 'Иван',
+    'email': 'ivan@example.com',
+    'age': '28',
+    'role': 'admin',
+})
+
+# Получить всё:
+user = r.hgetall('user:1')
+print(user)
+# {'name': 'Иван', 'email': 'ivan@example.com', 'age': '28', 'role': 'admin'}
+
+# Несуществующий ключ → {}:
+print(r.hgetall('user:999'))   # {}
+
+# Десериализация в dataclass:
+@dataclass
+class User:
+    name: str
+    email: str
+    age: int
+    role: str = 'user'
+
+data = r.hgetall('user:1')
+if data:
+    u = User(name=data['name'], email=data['email'],
+             age=int(data['age']), role=data.get('role', 'user'))
+    print(u.name, u.role)   # Иван admin`,
+  },
 ];
