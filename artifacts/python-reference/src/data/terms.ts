@@ -58642,4 +58642,1164 @@ r.zrange("scores", 0, -1, withscores=True)
 # Оставить только топ-100 (удалить всё кроме последних 100)
 r.zremrangebyrank("leaderboard", 0, -(101))`,
   },
+   {
+    name: "redis.commands.core.CoreCommands.zremrangebyscore",
+    description:
+      "Удаляет из отсортированного множества все элементы, чей score находится в диапазоне [min, max] включительно. Возвращает количество удалённых элементов. Поддерживает специальные значения: -inf и +inf для открытых границ. Для исключающих границ используйте префикс '(' перед числом (например, '(1' означает score > 1). Операция выполняется атомарно.",
+    syntax: "zremrangebyscore(name, min, max)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ отсортированного множества (sorted set).",
+      },
+      {
+        name: "min",
+        description:
+          "Нижняя граница score. Числовое значение, '-inf', или строка с префиксом '(' для исключающей границы (например, '(0').",
+      },
+      {
+        name: "max",
+        description:
+          "Верхняя граница score. Числовое значение, '+inf', или строка с префиксом '(' для исключающей границы.",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+
+r.zadd("scores", {"alice": 10, "bob": 20, "carol": 30, "dave": 40})
+
+# Удалить элементы со score от 15 до 35 включительно
+removed = r.zremrangebyscore("scores", 15, 35)
+print(removed)  # 2 (bob и carol удалены)
+
+# Удалить всё с score > 10 (исключающая нижняя граница)
+r.zremrangebyscore("scores", "(10", "+inf")
+
+# Удалить всё
+r.zremrangebyscore("scores", "-inf", "+inf")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zrevrange",
+    description:
+      "Возвращает элементы отсортированного множества в диапазоне индексов [start, end] в обратном порядке (от наибольшего score к наименьшему). Индексы отсчитываются от 0; отрицательные значения считаются с конца (-1 — последний элемент в обратном порядке, то есть с наименьшим score). При withscores=True возвращает список кортежей (элемент, score).",
+    syntax: "zrevrange(name, start, end, withscores=False, score_cast_func=float)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ отсортированного множества.",
+      },
+      {
+        name: "start",
+        description:
+          "Начальный индекс диапазона (0 — элемент с наибольшим score).",
+      },
+      {
+        name: "end",
+        description:
+          "Конечный индекс диапазона включительно. -1 — последний элемент (с наименьшим score).",
+      },
+      {
+        name: "withscores",
+        description:
+          "Если True — возвращает список кортежей (bytes, score) вместо списка bytes.",
+      },
+      {
+        name: "score_cast_func",
+        description:
+          "Функция для преобразования score. По умолчанию float. Можно передать int или Decimal.",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+r.zadd("leaderboard", {"alice": 100, "bob": 85, "carol": 92, "dave": 78})
+
+# Топ-3 игрока (от лучшего к худшему)
+top3 = r.zrevrange("leaderboard", 0, 2)
+print(top3)  # [b'alice', b'carol', b'bob']
+
+# Все игроки с очками
+with_scores = r.zrevrange("leaderboard", 0, -1, withscores=True)
+for name, score in with_scores:
+    print(f"{name.decode()}: {score}")
+# alice: 100.0 / carol: 92.0 / bob: 85.0 / dave: 78.0
+
+# Score как int
+r.zrevrange("leaderboard", 0, -1, withscores=True, score_cast_func=int)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zrevrangebylex",
+    description:
+      "Возвращает элементы отсортированного множества в лексикографически убывающем порядке в диапазоне [min, max]. Работает корректно только когда все элементы имеют одинаковый score. Границы задаются строками с обязательным префиксом: '[' для включающей (например, '[c'), '(' для исключающей, '+' для максимума, '-' для минимума. Аргументы start/num используются для пагинации (аналог LIMIT).",
+    syntax: "zrevrangebylex(name, max, min, start=None, num=None)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ отсортированного множества.",
+      },
+      {
+        name: "max",
+        description:
+          "Верхняя лексикографическая граница. Строка с префиксом '[' (включительно), '(' (исключительно) или '+' (максимум).",
+      },
+      {
+        name: "min",
+        description:
+          "Нижняя лексикографическая граница. Строка с префиксом '[' (включительно), '(' (исключительно) или '-' (минимум).",
+      },
+      {
+        name: "start",
+        description:
+          "Смещение для пагинации (LIMIT offset). Используется вместе с num.",
+      },
+      {
+        name: "num",
+        description:
+          "Количество возвращаемых элементов (LIMIT count). Используется вместе с start.",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+
+# Все элементы с одинаковым score для лекс. сортировки
+r.zadd("letters", {c: 0 for c in ["a", "b", "c", "d", "e", "f"]})
+
+# Элементы от 'e' до 'b' в обратном порядке
+result = r.zrevrangebylex("letters", "[e", "[b")
+print(result)  # [b'e', b'd', b'c', b'b']
+
+# От максимума до 'c' включительно
+r.zrevrangebylex("letters", "+", "[c")
+# [b'f', b'e', b'd', b'c']
+
+# С пагинацией: пропустить 1, взять 2
+r.zrevrangebylex("letters", "+", "-", start=1, num=2)
+# [b'e', b'd']`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zrevrangebyscore",
+    description:
+      "Возвращает элементы отсортированного множества с score в диапазоне [min, max] в обратном порядке (от наибольшего score к наименьшему). Порядок аргументов обратный по сравнению с zrangebyscore: сначала max, потом min. Поддерживает '-inf', '+inf' и исключающие границы с префиксом '('. Аргументы start/num задают пагинацию (LIMIT).",
+    syntax: "zrevrangebyscore(name, max, min, start=None, num=None, withscores=False, score_cast_func=float)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ отсортированного множества.",
+      },
+      {
+        name: "max",
+        description:
+          "Верхняя граница score (первый аргумент). Числовое значение, '+inf', или строка с '(' для исключающей границы.",
+      },
+      {
+        name: "min",
+        description:
+          "Нижняя граница score (второй аргумент). Числовое значение, '-inf', или строка с '(' для исключающей границы.",
+      },
+      {
+        name: "start",
+        description: "Смещение для пагинации (LIMIT offset).",
+      },
+      {
+        name: "num",
+        description: "Количество элементов (LIMIT count).",
+      },
+      {
+        name: "withscores",
+        description: "Если True — возвращает кортежи (элемент, score).",
+      },
+      {
+        name: "score_cast_func",
+        description: "Функция преобразования score. По умолчанию float.",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+r.zadd("prices", {"apple": 1.5, "banana": 0.8, "cherry": 3.2, "date": 5.0})
+
+# Товары с ценой от 1 до 4 в порядке убывания цены
+items = r.zrevrangebyscore("prices", 4, 1, withscores=True)
+for name, price in items:
+    print(f"{name.decode()}: {price}")
+# cherry: 3.2 / apple: 1.5
+
+# Все элементы в убывающем порядке
+r.zrevrangebyscore("prices", "+inf", "-inf")
+
+# Пагинация: 2 элемента начиная со второго
+r.zrevrangebyscore("prices", "+inf", "-inf", start=1, num=2)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zrevrank",
+    description:
+      "Возвращает позицию (ранг) элемента в отсортированном множестве в обратном порядке: 0 — элемент с наибольшим score, 1 — следующий и так далее. Если элемент не существует или ключ не найден — возвращает None. Для получения ранга в прямом порядке (от наименьшего score) используйте zrank.",
+    syntax: "zrevrank(name, value)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ отсортированного множества.",
+      },
+      {
+        name: "value",
+        description: "Значение элемента, ранг которого нужно получить.",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+r.zadd("leaderboard", {"alice": 100, "bob": 85, "carol": 92})
+
+# Место в рейтинге (0-based, 0 = лучший)
+print(r.zrevrank("leaderboard", "alice"))  # 0 (первое место)
+print(r.zrevrank("leaderboard", "carol"))  # 1 (второе место)
+print(r.zrevrank("leaderboard", "bob"))    # 2 (третье место)
+
+# Элемент не существует
+print(r.zrevrank("leaderboard", "eve"))    # None
+
+# Удобный перевод в "место" для отображения (1-based)
+rank = r.zrevrank("leaderboard", "carol")
+place = rank + 1 if rank is not None else None
+print(f"Place: {place}")  # Place: 2`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zscan",
+    description:
+      "Инкрементально перебирает элементы отсортированного множества с помощью курсора. Возвращает кортеж (новый_курсор, список_кортежей_(элемент, score)). Когда курсор возвращается как 0 — итерация завершена. Не блокирует сервер в отличие от получения всего множества сразу. Подходит для больших множеств. Параметры match и count позволяют фильтровать и управлять размером порции.",
+    syntax: "zscan(name, cursor=0, match=None, count=None)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ отсортированного множества.",
+      },
+      {
+        name: "cursor",
+        description:
+          "Текущая позиция курсора. 0 для начала новой итерации.",
+      },
+      {
+        name: "match",
+        description:
+          "Glob-паттерн для фильтрации элементов (например, 'user:*'). Фильтрация происходит на стороне Redis.",
+      },
+      {
+        name: "count",
+        description:
+          "Подсказка Redis о желаемом количестве элементов за один вызов. Реальное количество может отличаться.",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+r.zadd("bigset", {f"item:{i}": i for i in range(1000)})
+
+# Ручная итерация с курсором
+cursor = 0
+total = 0
+while True:
+    cursor, items = r.zscan("bigset", cursor=cursor, count=100)
+    total += len(items)
+    if cursor == 0:
+        break
+print(f"Total items scanned: {total}")
+
+# С фильтрацией по паттерну
+cursor, items = r.zscan("bigset", match="item:5*")
+print([name.decode() for name, score in items])`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zscan_iter",
+    description:
+      "Итератор поверх zscan — автоматически управляет курсором и возвращает элементы по одному. Удобная обёртка для полного обхода отсортированного множества без ручного управления курсором. Каждый элемент итерации — кортеж (bytes, score). Подходит для использования в цикле for и генераторных выражениях.",
+    syntax: "zscan_iter(name, match=None, count=None)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ отсортированного множества.",
+      },
+      {
+        name: "match",
+        description:
+          "Glob-паттерн для фильтрации элементов. Фильтрация на стороне Redis до возврата клиенту.",
+      },
+      {
+        name: "count",
+        description:
+          "Подсказка о желаемом размере порции за один вызов ZSCAN.",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+r.zadd("products", {"apple": 1.5, "avocado": 2.3, "banana": 0.8, "apricot": 1.1})
+
+# Полный обход без управления курсором
+for name, score in r.zscan_iter("products"):
+    print(f"{name.decode()}: {score}")
+
+# Фильтрация по паттерну (только элементы начинающиеся на 'a')
+a_items = list(r.zscan_iter("products", match="a*"))
+print(a_items)
+# [(b'apple', 1.5), (b'avocado', 2.3), (b'apricot', 1.1)]
+
+# Генераторное выражение — обработка без загрузки всего в память
+total = sum(score for _, score in r.zscan_iter("products"))
+print(f"Total: {total}")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zscore",
+    description:
+      "Возвращает score элемента в отсортированном множестве. Если элемент или ключ не существует — возвращает None. Возвращаемое значение — float (или результат преобразования). Операция выполняется за O(1). Используется для проверки существования элемента и получения его текущего значения.",
+    syntax: "zscore(name, value)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ отсортированного множества.",
+      },
+      {
+        name: "value",
+        description: "Значение элемента, score которого нужно получить.",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+r.zadd("scores", {"alice": 42.5, "bob": 18.0})
+
+# Получить score
+print(r.zscore("scores", "alice"))  # 42.5
+print(r.zscore("scores", "bob"))    # 18.0
+
+# Элемент не существует → None
+print(r.zscore("scores", "carol"))  # None
+
+# Удобная проверка существования элемента
+def member_exists(r, key, member):
+    return r.zscore(key, member) is not None
+
+# Атомарное обновление с проверкой
+score = r.zscore("scores", "alice")
+if score is not None and score < 100:
+    r.zincrby("scores", 10, "alice")`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zunion",
+    description:
+      "Вычисляет объединение нескольких отсортированных множеств и возвращает результат клиенту без сохранения в Redis (в отличие от zunionstore). Для элементов, присутствующих в нескольких множествах, score вычисляется согласно параметру aggregate. Требует Redis 6.2+. При withscores=True возвращает список кортежей (элемент, score).",
+    syntax: "zunion(keys, aggregate=None, withscores=False)",
+    arguments: [
+      {
+        name: "keys",
+        description:
+          "Список ключей отсортированных множеств для объединения. Можно передавать словарь {ключ: вес} для взвешенного объединения.",
+      },
+      {
+        name: "aggregate",
+        description:
+          "Способ агрегации score при совпадении элементов: 'SUM' (сумма, по умолчанию), 'MIN' (минимум), 'MAX' (максимум).",
+      },
+      {
+        name: "withscores",
+        description:
+          "Если True — возвращает список кортежей (элемент, score).",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+r.zadd("set1", {"a": 1, "b": 2, "c": 3})
+r.zadd("set2", {"b": 10, "c": 20, "d": 30})
+
+# Объединение с суммированием score (по умолчанию)
+result = r.zunion(["set1", "set2"], withscores=True)
+print(result)
+# [(b'a', 1.0), (b'd', 30.0), (b'b', 12.0), (b'c', 23.0)]
+
+# Объединение с MAX score
+r.zunion(["set1", "set2"], aggregate="MAX", withscores=True)
+# [(b'a', 1.0), (b'b', 10.0), (b'c', 20.0), (b'd', 30.0)]
+
+# Взвешенное объединение: set1 × 2, set2 × 1
+r.zunion({"set1": 2, "set2": 1}, aggregate="SUM", withscores=True)`,
+  },
+  {
+    name: "redis.commands.core.CoreCommands.zunionstore",
+    description:
+      "Вычисляет объединение нескольких отсортированных множеств и сохраняет результат в новый ключ dest. Возвращает количество элементов в результирующем множестве. Если dest уже существует — перезаписывает. Для элементов из нескольких множеств score агрегируется согласно параметру aggregate. Ключи можно передавать со весами через словарь для взвешенного объединения.",
+    syntax: "zunionstore(dest, keys, aggregate=None)",
+    arguments: [
+      {
+        name: "dest",
+        description: "Ключ для сохранения результата объединения.",
+      },
+      {
+        name: "keys",
+        description:
+          "Список ключей или словарь {ключ: вес} для взвешенного объединения.",
+      },
+      {
+        name: "aggregate",
+        description:
+          "Способ агрегации score: 'SUM' (сумма, по умолчанию), 'MIN' (минимум), 'MAX' (максимум).",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+r.zadd("week1", {"alice": 10, "bob": 20, "carol": 15})
+r.zadd("week2", {"alice": 25, "bob": 5,  "dave": 30})
+
+# Суммарный рейтинг за 2 недели
+count = r.zunionstore("total", ["week1", "week2"], aggregate="SUM")
+print(count)  # 4 элемента (alice, bob, carol, dave)
+
+result = r.zrange("total", 0, -1, withscores=True)
+# [(b'carol', 15.0), (b'bob', 25.0), (b'alice', 35.0), (b'dave', 30.0)]
+
+# Взвешенное: week2 в 2 раза важнее
+r.zunionstore("weighted", {"week1": 1, "week2": 2}, aggregate="SUM")
+
+# Лучший результат из двух недель
+r.zunionstore("best", ["week1", "week2"], aggregate="MAX")`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_cat",
+    description: "Возвращает список категорий ACL или список команд внутри категории. Без аргументов — возвращает все доступные категории (`@read`, `@write`, `@string`, `@hash` и др.). С указанием `category` — возвращает все команды, входящие в эту категорию. Используется для построения ACL-правил.",
+    syntax: "acl_cat(category=None, **kwargs)",
+    arguments: [
+      { name: "category", description: "Имя категории для получения её команд. Если None — возвращает список всех категорий." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Все категории ACL
+r.acl_cat()
+# → [b'keyspace', b'read', b'write', b'set', b'string', b'hash', ...]
+# Команды категории 'string'
+r.acl_cat("string")
+# → [b'set', b'get', b'mset', b'strlen', b'append', ...]
+# Команды категории 'hash'
+r.acl_cat("hash")
+# → [b'hset', b'hget', b'hdel', b'hmget', ...]`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_deluser",
+    description: "Удаляет одного или нескольких пользователей из системы ACL Redis. Удалённые пользователи теряют все права и их активные соединения разрываются. Нельзя удалить пользователя `default`. Возвращает число фактически удалённых пользователей.",
+    syntax: "acl_deluser(*username, **kwargs)",
+    arguments: [
+      { name: "*username", description: "Одно или несколько имён пользователей для удаления." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Создаём пользователей
+r.acl_setuser("alice", enabled=True, passwords=["+secret"], commands=["+get", "+set"])
+r.acl_setuser("bob",   enabled=True, passwords=["+pass2"],  commands=["+get"])
+# Удаляем одного
+r.acl_deluser("bob")            # → 1
+# Удаляем нескольких сразу
+r.acl_deluser("alice", "carol") # → 1 (carol не существовал)
+# Проверяем
+r.acl_list()  # alice и bob отсутствуют`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_dryrun",
+    description: "Проверяет, имеет ли пользователь `username` право выполнить указанную команду с заданными аргументами, без фактического выполнения команды. Возвращает `'OK'` если доступ разрешён или строку с описанием ошибки ACL. Полезно для аудита прав и отладки ACL-правил.",
+    syntax: "acl_dryrun(username, command, *args, **kwargs)",
+    arguments: [
+      { name: "username", description: "Имя пользователя для проверки прав." },
+      { name: "command", description: "Команда Redis для проверки (например, 'GET', 'SET')." },
+      { name: "*args", description: "Аргументы команды (ключи, значения) для точной проверки." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.acl_setuser("reader", enabled=True, passwords=["+readpass"], commands=["+get"], keys=["data:*"])
+# Проверяем разрешённую команду
+r.acl_dryrun("reader", "GET", "data:user:1")
+# → 'OK'
+# Проверяем запрещённую команду
+r.acl_dryrun("reader", "SET", "data:user:1", "value")
+# → "This user has no permissions to run the 'set' command"
+# Проверяем доступ к запрещённому ключу
+r.acl_dryrun("reader", "GET", "secret:key")
+# → "No permissions to access a key"`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_genpass",
+    description: "Генерирует криптографически стойкий случайный пароль для использования в ACL. По умолчанию возвращает 64-символьную hex-строку (256 бит энтропии). Параметр `bits` задаёт число бит (округляется до кратного 4): например, 128 даёт 32-символьный hex.",
+    syntax: "acl_genpass(bits=None, **kwargs)",
+    arguments: [
+      { name: "bits", description: "Число бит энтропии (кратно 4). По умолчанию 256 (64 hex-символа)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Стандартный пароль (256 бит)
+password = r.acl_genpass()
+print(len(password))   # → 64 (hex-символов)
+# Короткий пароль (128 бит)
+short_pass = r.acl_genpass(128)
+print(len(short_pass)) # → 32
+# Использование при создании пользователя
+new_pass = r.acl_genpass().decode()
+r.acl_setuser("bot_user", enabled=True, passwords=[f"+{new_pass}"])`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_getuser",
+    description: "Возвращает подробные сведения об ACL-правилах пользователя `username`: статус (enabled/disabled), список хешей паролей, разрешённые команды и их флаги, разрешённые ключи и каналы Pub/Sub. Возвращает `None` если пользователь не существует.",
+    syntax: "acl_getuser(username, **kwargs)",
+    arguments: [
+      { name: "username", description: "Имя пользователя Redis ACL." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.acl_setuser("alice", enabled=True, passwords=["+mypassword"],
+              commands=["+get", "+set", "+hget"],
+              keys=["user:*"])
+info = r.acl_getuser("alice")
+print(info["flags"])     # → [b'on'] (включён)
+print(info["passwords"]) # → [b'sha256hash...']
+print(info["commands"])  # → b'+@all -@dangerous +get +set +hget'
+print(info["keys"])      # → b'user:*'
+r.acl_getuser("nonexistent")  # → None`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_help",
+    description: "Возвращает справочный текст по синтаксису ACL-правил Redis. Включает описание всех субкоманд ACL, формат строк правил и примеры. Полезно как быстрая справка прямо из клиента без обращения к документации.",
+    syntax: "acl_help(**kwargs)",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+help_text = r.acl_help()
+for line in help_text:
+    print(line.decode())
+# Выводит справку вида:
+# ACL <subcommand> [<arg> [value] [opt] ...]. Subcommands are:
+# CAT [<category>]
+#     List all commands that belong to <category>, or all command categories
+#     when no category is specified.
+# DELUSER <username> [<username> ...]
+#     Delete a list of users.
+# ...`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_list",
+    description: "Возвращает список всех пользователей ACL в виде строк формата ACL DSL (Domain Specific Language). Каждая строка представляет полное правило пользователя: имя, статус, пароли (хеши), разрешённые команды и ключи. Формат совместим с конфигурационным файлом `aclfile`.",
+    syntax: "acl_list(**kwargs)",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+r.acl_setuser("alice", enabled=True, passwords=["+secret"], commands=["+get", "+set"], keys=["data:*"])
+rules = r.acl_list()
+for rule in rules:
+    print(rule.decode())
+# Вывод:
+# user default on nopass ~* &* +@all
+# user alice on #sha256hash ~data:* &* -@all +get +set
+# Парсинг для аудита
+users = [r.split()[1].decode() for r in rules]
+print(users)  # → ['default', 'alice']`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_load",
+    description: "Перезагружает правила ACL из внешнего файла, указанного в директиве `aclfile` конфигурации Redis. Применяет все изменения из файла к текущему состоянию сервера. Если файл содержит ошибки — возвращает исключение и ACL не изменяется. Используется после ручного редактирования файла ACL.",
+    syntax: "acl_load(**kwargs)",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+# redis.conf должен содержать: aclfile /etc/redis/users.acl
+# После ручного редактирования /etc/redis/users.acl:
+try:
+    r.acl_load()
+    print("ACL успешно перезагружен")
+    # Проверяем применённые правила
+    for rule in r.acl_list():
+        print(rule.decode())
+except redis.ResponseError as e:
+    print(f"Ошибка в ACL-файле: {e}")`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_log",
+    description: "Возвращает записи из журнала ACL-нарушений: попытки выполнить запрещённые команды, обращения к запрещённым ключам или неуспешные аутентификации. Для каждой записи: тип нарушения, имя пользователя, команда, ключ, число повторений, timestamp. `count='RESET'` очищает журнал.",
+    syntax: "acl_log(count=None, **kwargs)",
+    arguments: [
+      { name: "count", description: "Максимальное число записей для возврата. Если 'RESET' — очистить журнал." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Просматриваем последние нарушения
+entries = r.acl_log()
+for e in entries:
+    print(f"Тип: {e['reason']}")
+    print(f"Пользователь: {e['username']}")
+    print(f"Команда: {e['object']}")
+    print(f"Повторений: {e['count']}")
+# Последние 5 нарушений
+r.acl_log(5)
+# Очистить журнал
+r.acl_log(count="RESET")`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_save",
+    description: "Сохраняет текущие ACL-правила всех пользователей в файл, указанный директивой `aclfile` в конфигурации Redis. Если `aclfile` не настроен — вызывает исключение. Используется для персистентного сохранения изменений, внесённых через `acl_setuser`/`acl_deluser` в рантайме.",
+    syntax: "acl_save(**kwargs)",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+# Создаём пользователя в рантайме
+r.acl_setuser("deploy_bot", enabled=True,
+              passwords=["+botpassword"],
+              commands=["+get", "+set", "+del"],
+              keys=["deploy:*"])
+# Сохраняем на диск (требует aclfile в redis.conf)
+try:
+    r.acl_save()
+    print("ACL сохранён в файл")
+except redis.ResponseError as e:
+    print(f"aclfile не настроен: {e}")`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_setuser",
+    description: "Создаёт или обновляет пользователя ACL с заданными правилами. `rules` — список строк ACL DSL или именованные параметры: `enabled`, `passwords` (префикс `+` — добавить, `-` — удалить), `commands`, `keys`, `channels`, `nopass`, `reset`. Если пользователь существует — правила дополняются, а не заменяются (если не передать `reset=True`).",
+    syntax: "acl_setuser(username, rules=None, **kwargs)",
+    arguments: [
+      { name: "username", description: "Имя пользователя для создания или обновления." },
+      { name: "rules", description: "Список строк ACL DSL (например, ['+get', '~data:*', 'on']). Альтернативно — именованные параметры." },
+      { name: "enabled", description: "True — включить пользователя (on), False — отключить (off)." },
+      { name: "passwords", description: "Список паролей с префиксом: '+pass' — добавить, '-pass' — удалить, 'nopass' — без пароля." },
+      { name: "commands", description: "Разрешённые команды: '+get', '-set', '+@read', '-@all' и т.д." },
+      { name: "keys", description: "Шаблоны ключей: ['user:*', 'session:*']." },
+      { name: "reset", description: "Если True — сначала сбросить все права до дефолтных." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Создать read-only пользователя
+r.acl_setuser("reader",
+    enabled=True,
+    passwords=["+readpass"],
+    commands=["+@read", "-@dangerous"],
+    keys=["public:*"])
+# Пользователь только для записи метрик
+r.acl_setuser("metrics_writer",
+    enabled=True,
+    nopass=True,
+    commands=["+set", "+incr", "+expire"],
+    keys=["metrics:*"])
+# Сбросить и переопределить права
+r.acl_setuser("alice", reset=True, enabled=True,
+    passwords=["+newpass"], commands=["+@all"])`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_users",
+    description: "Возвращает список имён всех пользователей, определённых в системе ACL Redis. Всегда включает пользователя `default`. Для получения подробных прав каждого пользователя используйте `acl_getuser` или `acl_list`.",
+    syntax: "acl_users(**kwargs)",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+r.acl_setuser("alice", enabled=True, nopass=True)
+r.acl_setuser("bob",   enabled=True, nopass=True)
+users = r.acl_users()
+print(users)  # → [b'default', b'alice', b'bob']
+# Аудит: проверить у каких пользователей нет пароля
+for username in users:
+    info = r.acl_getuser(username.decode())
+    if b'nopass' in info.get('flags', []):
+        print(f"WARN: {username.decode()} без пароля")`,
+  },
+  {
+    name: "redis.commands.core.DataAccessCommands.acl_whoami",
+    description: "Возвращает имя пользователя, от имени которого выполняется текущее соединение. Полезно для диагностики: убедиться, что клиент аутентифицирован под правильным пользователем, особенно в средах с несколькими ролями.",
+    syntax: "acl_whoami(**kwargs)",
+    arguments: [],
+    example: `import redis
+# Подключение под пользователем по умолчанию
+r = redis.Redis()
+r.acl_whoami()  # → b'default'
+# Подключение под конкретным пользователем
+r2 = redis.Redis(username="alice", password="secret")
+r2.acl_whoami()  # → b'alice'
+# Проверка в приложении
+current_user = r.acl_whoami().decode()
+if current_user != "app_user":
+    raise RuntimeError(f"Неожиданный пользователь Redis: {current_user}")`,
+  },
+  {
+    name: "redis.commands.core.ManagementCommands.function_delete",
+    description: "Удаляет библиотеку функций с именем `name` из Redis (Redis 7.0+). Все функции, принадлежащие библиотеке, удаляются вместе с ней. Если библиотека не существует — вызывает исключение `ResponseError`.",
+    syntax: "function_delete(name)",
+    arguments: [
+      { name: "name", description: "Имя библиотеки функций для удаления." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Загружаем библиотеку
+r.function_load("""#!lua name=mylib
+redis.register_function('myfunc', function(keys, args)
+  return redis.call('GET', keys[1])
+end)
+""")
+# Проверяем
+r.function_list()  # → [{name: 'mylib', ...}]
+# Удаляем
+r.function_delete("mylib")
+r.function_list()  # → []`,
+  },
+  {
+    name: "redis.commands.core.ManagementCommands.function_dump",
+    description: "Сериализует все загруженные библиотеки функций в бинарный формат RDB и возвращает результат в виде байтовой строки. Используется совместно с `function_restore` для резервного копирования и переноса функций между серверами (Redis 7.0+).",
+    syntax: "function_dump()",
+    arguments: [],
+    example: `import redis
+src = redis.Redis(host="redis-source")
+dst = redis.Redis(host="redis-dest")
+# Создаём дамп всех функций с источника
+dump = src.function_dump()
+print(f"Размер дампа: {len(dump)} байт")
+# Восстанавливаем на целевом сервере
+dst.function_restore(dump, policy="flush")
+# Проверяем
+for lib in dst.function_list():
+    print(lib["library_name"])`,
+  },
+  {
+    name: "redis.commands.core.ManagementCommands.function_flush",
+    description: "Удаляет все библиотеки функций с сервера Redis (Redis 7.0+). `asynchronous=True` выполняет очистку в фоне без блокировки. После вызова все зарегистрированные функции становятся недоступными. Необратимая операция — используйте `function_dump` для резервной копии заранее.",
+    syntax: "function_flush(asynchronous=False)",
+    arguments: [
+      { name: "asynchronous", description: "Если True — асинхронная очистка в фоне. По умолчанию False — синхронная." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Резервная копия перед очисткой
+backup = r.function_dump()
+# Синхронная очистка
+r.function_flush()
+r.function_list()  # → []
+# Асинхронная очистка (не блокирует)
+r.function_flush(asynchronous=True)
+# Восстановление из резервной копии
+r.function_restore(backup)`,
+  },
+  {
+    name: "redis.commands.core.ManagementCommands.function_kill",
+    description: "Завершает текущую выполняющуюся функцию Redis, если она не произвела никаких операций записи (Redis 7.0+). Аналог `script_kill` для функций. Если функция уже записала данные — остановить её нельзя без `shutdown nosave`. Возвращает `True` при успехе.",
+    syntax: "function_kill()",
+    arguments: [],
+    example: `import redis
+import threading
+r = redis.Redis()
+r.function_load("""#!lua name=slowlib
+redis.register_function('slowfunc', function(keys, args)
+  local i = 0
+  while true do i = i + 1 end
+end)
+""")
+def run_slow():
+    try:
+        r.fcall("slowfunc", 0)
+    except redis.ResponseError:
+        pass
+t = threading.Thread(target=run_slow)
+t.start()
+import time; time.sleep(0.1)
+r.function_kill()   # → True`,
+  },
+  {
+    name: "redis.commands.core.ManagementCommands.function_list",
+    description: "Возвращает список всех загруженных библиотек функций (Redis 7.0+). Для каждой библиотеки: имя, движок (Lua и др.), список функций с описаниями. `library_name` фильтрует по имени. `withcode=True` включает исходный код библиотек в ответ.",
+    syntax: "function_list(library_name=None, withcode=False)",
+    arguments: [
+      { name: "library_name", description: "Фильтр по имени библиотеки. Если None — возвращает все." },
+      { name: "withcode", description: "Если True — включать исходный код библиотек в ответ." },
+    ],
+    example: `import redis
+r = redis.Redis()
+r.function_load("""#!lua name=utils
+redis.register_function('greet', function(keys, args)
+  return 'Hello, ' .. args[1]
+end)
+""")
+libs = r.function_list()
+for lib in libs:
+    print(f"Библиотека: {lib['library_name']}")
+    for fn in lib["functions"]:
+        print(f"  Функция: {fn['name']}")
+# С исходным кодом
+r.function_list(withcode=True)
+# Фильтр
+r.function_list(library_name="utils")`,
+  },
+  {
+    name: "redis.commands.core.ManagementCommands.function_load",
+    description: "Загружает новую библиотеку функций на сервер Redis (Redis 7.0+). `code` содержит исходный код с заголовком `#!lua name=libname`. `replace=True` перезаписывает существующую библиотеку с тем же именем. Возвращает имя загруженной библиотеки.",
+    syntax: "function_load(code, replace=False)",
+    arguments: [
+      { name: "code", description: "Исходный код библиотеки. Должен начинаться с заголовка '#!lua name=libname'." },
+      { name: "replace", description: "Если True — заменить существующую библиотеку. По умолчанию False (ошибка при дубле)." },
+    ],
+    example: `import redis
+r = redis.Redis()
+lua_code = """#!lua name=cachelib
+redis.register_function('get_or_set', function(keys, args)
+  local val = redis.call('GET', keys[1])
+  if val == false then
+    redis.call('SET', keys[1], args[1], 'EX', args[2])
+    return args[1]
+  end
+  return val
+end)
+"""
+lib_name = r.function_load(lua_code)
+print(lib_name)  # → b'cachelib'
+# Вызов функции
+r.fcall("get_or_set", 1, "mykey", "default_value", 300)
+# Обновление функции
+r.function_load(lua_code, replace=True)`,
+  },
+  {
+    name: "redis.commands.core.ManagementCommands.function_restore",
+    description: "Восстанавливает библиотеки функций из бинарного дампа, полученного через `function_dump` (Redis 7.0+). Параметр `policy` управляет поведением при конфликтах: `'flush'` — очистить все существующие функции перед восстановлением; `'append'` — добавить к существующим (ошибка при дублях); `'replace'` — заменить конфликтующие библиотеки.",
+    syntax: "function_restore(code, policy='flush')",
+    arguments: [
+      { name: "code", description: "Бинарный дамп функций, полученный через function_dump()." },
+      { name: "policy", description: "'flush' — очистить и восстановить; 'append' — добавить; 'replace' — заменить конфликты." },
+    ],
+    example: `import redis
+src = redis.Redis(host="redis-prod")
+dst = redis.Redis(host="redis-staging")
+# Копирование функций между серверами
+dump = src.function_dump()
+# Восстановление с очисткой (по умолчанию)
+dst.function_restore(dump, policy="flush")
+# Добавить без перезаписи существующих
+dst.function_restore(dump, policy="append")
+# Заменить конфликтующие, остальные оставить
+dst.function_restore(dump, policy="replace")`,
+  },
+  {
+    name: "redis.commands.core.ManagementCommands.function_stats",
+    description: "Возвращает статистику выполнения функций Redis (Redis 7.0+): информацию о текущей выполняющейся функции (если есть), движках скриптов (Lua и др.) с числом загруженных библиотек и функций. Полезно для мониторинга и отладки.",
+    syntax: "function_stats()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+stats = r.function_stats()
+# Текущая выполняемая функция (None если нет)
+running = stats.get("running_script")
+if running:
+    print(f"Выполняется: {running['name']}, "
+          f"время: {running['duration_ms']}мс")
+# Статистика движков
+engines = stats["engines"]
+lua = engines.get("LUA", {})
+print(f"Библиотек: {lua.get('libraries_count', 0)}")
+print(f"Функций:   {lua.get('functions_count', 0)}")`,
+  },
+  {
+    name: "redis.client.PubSub.__init__",
+    description: "Создаёт объект PubSub, привязанный к пулу соединений. Объект управляет одним выделенным соединением для подписок. Как правило не создаётся напрямую — используйте `redis.pubsub()`. `push_handler` позволяет задать кастомный обработчик push-сообщений (для протокола RESP3).",
+    syntax: "PubSub(connection_pool, shard_hint=None, encoder=None, push_handler=None)",
+    arguments: [
+      { name: "connection_pool", description: "Пул соединений Redis, из которого берётся выделенное соединение." },
+      { name: "shard_hint", description: "Подсказка для шардирования в кластерном режиме." },
+      { name: "encoder", description: "Энкодер для сериализации значений. Если None — используется энкодер пула." },
+      { name: "push_handler", description: "Функция-обработчик push-сообщений (RESP3). По умолчанию None." },
+    ],
+    example: `import redis
+r = redis.Redis()
+# Рекомендуемый способ — через метод pubsub()
+pubsub = r.pubsub()
+# Или через ShardedPubSub для кластера (Redis 7.0+)
+pubsub = r.sharded_pubsub()
+# Тип объекта
+print(type(pubsub))  # → <class 'redis.client.PubSub'>`,
+  },
+  {
+    name: "redis.client.PubSub.__del__",
+    description: "Деструктор объекта PubSub: автоматически вызывает `reset()` при сборке мусора, освобождая соединение обратно в пул. Не следует полагаться на вызов деструктора — всегда явно закрывайте объект через `close()` или используйте контекстный менеджер.",
+    syntax: "PubSub.__del__()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+# Плохой стиль — полагаться на __del__
+pubsub = r.pubsub()
+pubsub.subscribe("channel")
+del pubsub  # __del__ вызывает reset(), но момент не гарантирован
+# Хороший стиль — явное управление ресурсом
+pubsub = r.pubsub()
+try:
+    pubsub.subscribe("channel")
+    # ... работа ...
+finally:
+    pubsub.close()`,
+  },
+  {
+    name: "redis.client.PubSub.reset",
+    description: "Отписывается от всех каналов и паттернов, затем освобождает соединение обратно в пул. Состояние объекта сбрасывается. Вызывается автоматически из `close()` и деструктора. После `reset()` объект можно использовать повторно — он получит новое соединение при следующей подписке.",
+    syntax: "pubsub.reset()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+pubsub = r.pubsub()
+pubsub.subscribe("news", "alerts")
+# Сброс: отписка от всех каналов, соединение возвращается в пул
+pubsub.reset()
+# Объект можно использовать снова
+pubsub.subscribe("new_channel")
+for message in pubsub.listen():
+    print(message)
+    break
+pubsub.close()`,
+  },
+  {
+    name: "redis.client.PubSub.close",
+    description: "Полностью закрывает объект PubSub: отписывается от всех каналов/паттернов и освобождает соединение в пул. Рекомендуется вызывать явно или использовать контекстный менеджер (`with`). После `close()` объект нельзя использовать повторно.",
+    syntax: "pubsub.close()",
+    arguments: [],
+    example: `import redis
+r = redis.Redis()
+# Явное закрытие
+pubsub = r.pubsub()
+pubsub.subscribe("events")
+try:
+    for message in pubsub.listen():
+        if message["type"] == "message":
+            print(message["data"])
+            break
+finally:
+    pubsub.close()   # всегда освобождаем соединение
+# Контекстный менеджер (close вызывается автоматически)
+with r.pubsub() as ps:
+    ps.subscribe("events")`,
+  },
+  {
+    name: "redis.client.PubSub.on_connect",
+    description: "Вызывается автоматически при установлении нового соединения (например, после переподключения). Восстанавливает все активные подписки (`subscribe`/`psubscribe`/`ssubscribe`) на новом соединении. Не вызывается вручную — это внутренний callback протокола соединения.",
+    syntax: "pubsub.on_connect(connection)",
+    arguments: [
+      { name: "connection", description: "Объект нового соединения с Redis-сервером." },
+    ],
+    example: `import redis
+r = redis.Redis()
+pubsub = r.pubsub()
+pubsub.subscribe("events", "alerts")
+# on_connect вызывается автоматически при reconnect:
+# - если сервер перезапустился
+# - если соединение разорвалось по таймауту
+# - при переключении в кластере
+# После автоматического reconnect подписки восстанавливаются
+# прозрачно для пользователя`,
+  },
+  {
+    name: "redis.client.PubSub.encode",
+    description: "Кодирует значение `value` в байтовое представление, используя энкодер пула соединений. Используется внутри объекта PubSub для сериализации имён каналов и сообщений перед отправкой на сервер. Обычно не вызывается напрямую.",
+    syntax: "pubsub.encode(value)",
+    arguments: [
+      { name: "value", description: "Строка или байты для кодирования в wire-формат Redis." },
+    ],
+    example: `import redis
+r = redis.Redis()
+pubsub = r.pubsub()
+# Внутреннее использование — кодирует имя канала
+pubsub.encode("my_channel")   # → b'my_channel'
+pubsub.encode(b"raw_bytes")   # → b'raw_bytes'
+# При decode_responses=True энкодер работает в обратную сторону
+r2 = redis.Redis(decode_responses=True)
+ps2 = r2.pubsub()
+# Имена каналов автоматически декодируются в str`,
+  },
+  {
+    name: "redis.client.PubSub.execute_command",
+    description: "Выполняет команду Pub/Sub (SUBSCRIBE, PSUBSCRIBE, UNSUBSCRIBE и др.) через выделенное соединение объекта. При необходимости устанавливает соединение. Используется внутренне методами `subscribe`, `psubscribe` и др. — напрямую вызывается редко.",
+    syntax: "pubsub.execute_command(*args, **kwargs)",
+    arguments: [
+      { name: "*args", description: "Команда и её аргументы (например, 'SUBSCRIBE', 'channel1', 'channel2')." },
+    ],
+    example: `import redis
+r = redis.Redis()
+pubsub = r.pubsub()
+# Внутреннее использование — вызывается из subscribe/psubscribe
+# Эквиваленты:
+pubsub.subscribe("news")
+# ... внутри вызывает:
+pubsub.execute_command("SUBSCRIBE", "news")
+# Для отладки протокола можно вызвать напрямую:
+pubsub.execute_command("SUBSCRIBE", "debug_channel")`,
+  },
+  {
+    name: "redis.client.PubSub.parse_response",
+    description: "Читает и разбирает одно сообщение от сервера из буфера соединения. `block=True` — ждёт новое сообщение (блокирующий режим), `block=False` — возвращает `None` если нет данных. `timeout` задаёт максимальное время ожидания в секундах. Используется внутри `listen()` и при ручном опросе.",
+    syntax: "pubsub.parse_response(block=True, timeout=0)",
+    arguments: [
+      { name: "block", description: "Если True — блокировать до получения сообщения. Если False — вернуть None при отсутствии данных." },
+      { name: "timeout", description: "Максимальное время ожидания в секундах при block=True. 0 — без таймаута." },
+    ],
+    example: `import redis
+r = redis.Redis()
+pubsub = r.pubsub()
+pubsub.subscribe("events")
+# Разовый опрос с таймаутом (неблокирующий)
+message = pubsub.parse_response(block=False)
+print(message)  # → None если нет новых сообщений
+# С таймаутом 1 секунда
+message = pubsub.parse_response(block=True, timeout=1.0)
+# Ручная обработка в цикле (обычно используйте listen())
+while True:
+    msg = pubsub.parse_response(block=True, timeout=5.0)
+    if msg:
+        print(msg)`,
+  },
+  {
+    name: "redis.client.PubSub.psubscribe",
+    description: "Подписывается на каналы по glob-паттернам. Сообщения из всех каналов, соответствующих паттерну, будут доставляться подписчику. Можно передать `**kwargs` для назначения обработчиков: `{паттерн: callback}`. Callback получает словарь сообщения и вызывается автоматически в `listen()`/`get_message()`.",
+    syntax: "pubsub.psubscribe(*args, **kwargs)",
+    arguments: [
+      { name: "*args", description: "Glob-паттерны для подписки (например, 'news:*', 'user:?:events')." },
+      { name: "**kwargs", description: "Словарь {паттерн: callback} для назначения обработчиков." },
+    ],
+    example: `import redis
+r = redis.Redis()
+pubsub = r.pubsub()
+# Подписка без callback
+pubsub.psubscribe("news:*", "alert:*")
+# Подписка с callback
+def handle_news(message):
+    print(f"Новость: {message['data']} из канала {message['channel']}")
+pubsub.psubscribe(**{"news:*": handle_news})
+# Чтение сообщений
+for message in pubsub.listen():
+    if message["type"] == "pmessage":
+        print(f"Паттерн: {message['pattern']}")
+        print(f"Канал:   {message['channel']}")
+        print(f"Данные:  {message['data']}")`,
+  },
+  {
+    name: "redis.client.PubSub.punsubscribe",
+    description: "Отменяет подписку на паттерны. Без аргументов — отписывается от всех паттернов. С аргументами — только от указанных. После отписки сообщения с этих паттернов поступать не будут. Сервер подтверждает отписку сообщением типа `punsubscribe`.",
+    syntax: "pubsub.punsubscribe(*args)",
+    arguments: [
+      { name: "*args", description: "Паттерны для отписки. Если не указаны — отписывается от всех." },
+    ],
+    example: `import redis
+r = redis.Redis()
+pubsub = r.pubsub()
+pubsub.psubscribe("news:*", "alert:*", "user:*")
+# Отписаться от конкретного паттерна
+pubsub.punsubscribe("alert:*")
+# Отписаться от нескольких
+pubsub.punsubscribe("news:*", "user:*")
+# Отписаться от всех паттернов
+pubsub.punsubscribe()
+pubsub.close()`,
+  },
+  {
+    name: "redis.client.PubSub.subscribe",
+    description: "Подписывается на один или несколько каналов по точному имени. `**kwargs` позволяет назначить обработчики `{канал: callback}`, вызываемые автоматически в `listen()`/`get_message()`. Callback получает словарь: `type`, `channel`, `data`. Первым приходит служебное сообщение `subscribe` с числом подписок.",
+    syntax: "pubsub.subscribe(*args, **kwargs)",
+    arguments: [
+      { name: "*args", description: "Имена каналов для подписки." },
+      { name: "**kwargs", description: "Словарь {канал: callback} для назначения обработчиков сообщений." },
+    ],
+    example: `import redis
+r = redis.Redis()
+pubsub = r.pubsub()
+# Простая подписка
+pubsub.subscribe("notifications", "updates")
+# Подписка с обработчиком
+def on_notification(message):
+    data = message["data"]
+    if isinstance(data, bytes):
+        data = data.decode()
+    print(f"Уведомление: {data}")
+pubsub.subscribe(**{"notifications": on_notification})
+# Цикл чтения в отдельном потоке
+import threading
+def reader():
+    for msg in pubsub.listen():
+        pass  # callback вызывается автоматически
+t = threading.Thread(target=reader, daemon=True)
+t.start()`,
+  },
+  {
+    name: "redis.client.PubSub.unsubscribe",
+    description: "Отменяет подписку на каналы. Без аргументов — отписывается от всех каналов. С аргументами — только от указанных. Сервер подтверждает отписку сообщением типа `unsubscribe` с оставшимся числом подписок. Когда все подписки сняты — объект больше не получает сообщений.",
+    syntax: "pubsub.unsubscribe(*args)",
+    arguments: [
+      { name: "*args", description: "Имена каналов для отписки. Если не указаны — отписывается от всех." },
+    ],
+    example: `import redis
+r = redis.Redis()
+pubsub = r.pubsub()
+pubsub.subscribe("news", "alerts", "updates")
+# Отписаться от одного канала
+pubsub.unsubscribe("alerts")
+# Отписаться от нескольких
+pubsub.unsubscribe("news", "updates")
+# Отписаться от всех
+pubsub.unsubscribe()
+pubsub.close()`,
+  },
+  {
+    name: "redis.client.PubSub.ssubscribe",
+    description: "Подписывается на шардированные каналы (Redis 7.0+, только кластерный режим). Сообщения ограничены одним шардом кластера — снижает нагрузку на репликацию по сравнению с обычным `subscribe`. Поддерживает назначение callback-обработчиков через `**kwargs`.",
+    syntax: "pubsub.ssubscribe(*args, **kwargs)",
+    arguments: [
+      { name: "*args", description: "Имена шардированных каналов для подписки." },
+      { name: "**kwargs", description: "Словарь {канал: callback} для назначения обработчиков." },
+    ],
+    example: `import redis
+# Требует Redis 7.0+ в кластерном режиме
+from redis.cluster import RedisCluster
+rc = RedisCluster(host="redis-cluster", port=6379)
+pubsub = rc.pubsub()
+def handle_event(message):
+    print(f"Шардированное сообщение: {message['data']}")
+# Подписка на шардированный канал
+pubsub.ssubscribe(**{"shard:events": handle_event})
+for message in pubsub.listen():
+    if message["type"] == "smessage":
+        print(message["data"])`,
+  },
+  {
+    name: "redis.client.PubSub.sunsubscribe",
+    description: "Отменяет подписку на шардированные каналы (Redis 7.0+, кластерный режим). Без аргументов — отписывается от всех шардированных каналов. Симметрична `ssubscribe`.",
+    syntax: "pubsub.sunsubscribe(*args)",
+    arguments: [
+      { name: "*args", description: "Имена шардированных каналов для отписки. Если не указаны — отписывается от всех." },
+    ],
+    example: `import redis
+from redis.cluster import RedisCluster
+rc = RedisCluster(host="redis-cluster", port=6379)
+pubsub = rc.pubsub()
+pubsub.ssubscribe("shard:events", "shard:metrics")
+# Отписаться от конкретного шардированного канала
+pubsub.sunsubscribe("shard:metrics")
+# Отписаться от всех шардированных каналов
+pubsub.sunsubscribe()
+pubsub.close()`,
+  },
+  {
+    name: "redis.client.PubSub.listen",
+    description: "Генератор, который в бесконечном цикле читает и возвращает сообщения из подписанных каналов/паттернов. Каждое сообщение — словарь с ключами `type`, `channel`, `data` (и `pattern` для pmessage). Типы: `subscribe`/`unsubscribe` — служебные; `message`/`pmessage`/`smessage` — данные. Если назначены callback-и, они вызываются автоматически.",
+    syntax: "pubsub.listen()",
+    arguments: [],
+    example: `import redis
+import threading
+r = redis.Redis(decode_responses=True)
+pubsub = r.pubsub(ignore_subscribe_messages=True)
+pubsub.subscribe("chat:general", "chat:support")
+def message_handler():
+    for message in pubsub.listen():
+        if message["type"] == "message":
+            channel = message["channel"]
+            data    = message["data"]
+            print(f"[{channel}] {data}")
+# Запускаем в фоновом потоке
+t = threading.Thread(target=message_handler, daemon=True)
+t.start()
+# Из другого соединения публикуем сообщение
+r.publish("chat:general", "Привет!")
+import time; time.sleep(0.1)
+pubsub.close()`,
+  },
 ];
