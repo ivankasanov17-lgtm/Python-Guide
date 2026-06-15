@@ -59993,4 +59993,6813 @@ print(p.patterns)
 print(p.channels)
 # {} — patterns и channels хранятся раздельно`,
   },
+   // ─── redis.client.Pipeline ────────────────────────────────────────────────
+    {
+        name: "redis.client.Pipeline.__init__(connection_pool, response_callbacks, transaction, shard_hint)",
+        description:
+            "Инициализирует объект Pipeline. Не вызывается напрямую — получайте Pipeline через redis.pipeline() или redis.client.Pipeline(). Pipeline буферизует команды и отправляет их одним пакетом при execute(). В режиме transaction=True оборачивает пакет в MULTI/EXEC, обеспечивая атомарность выполнения всех команд.",
+        syntax: `# Стандартный способ получить Pipeline:
+pipe = redis_client.pipeline(transaction=True, shard_hint=None)`,
+        arguments: [
+            {
+                name: "connection_pool",
+                description: "Пул соединений redis.ConnectionPool, из которого Pipeline получает соединение при выполнении команд.",
+            },
+            {
+                name: "response_callbacks",
+                description: "Словарь колбэков для обработки ответов Redis. Наследуется от родительского клиента.",
+            },
+            {
+                name: "transaction",
+                description: "Если True — команды оборачиваются в MULTI/EXEC (транзакционный режим). Если False — отправляются пакетом без транзакции (pipeline-режим). По умолчанию True.",
+            },
+            {
+                name: "shard_hint",
+                description: "Подсказка для шардинга в кластерном Redis. Позволяет направить pipeline на конкретный шард. Обычно None.",
+            },
+        ],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# Транзакционный pipeline (MULTI/EXEC)
+pipe = r.pipeline(transaction=True)
+
+# Нетранзакционный pipeline — команды пакетом без MULTI/EXEC
+pipe_no_tx = r.pipeline(transaction=False)
+
+# Пример: атомарное обновление нескольких ключей
+with r.pipeline(transaction=True) as pipe:
+    pipe.set("user:1:name", "Алексей")
+    pipe.set("user:1:email", "alex@example.com")
+    pipe.incr("user:1:login_count")
+    results = pipe.execute()
+    # results = [True, True, 1]
+    print(results)
+
+# Пример без транзакции — быстрее, но не атомарно
+with r.pipeline(transaction=False) as pipe:
+    for i in range(100):
+        pipe.set(f"key:{i}", i)
+    pipe.execute()  # 100 SET отправлены одним пакетом`,
+    },
+    {
+        name: "redis.client.Pipeline.__enter__()",
+        description:
+            "Поддержка протокола контекстного менеджера (with). При входе в блок with возвращает сам объект Pipeline, позволяя накапливать команды внутри блока. При выходе из блока (в __exit__) автоматически вызывает reset() — сбрасывает буфер команд, освобождает соединение и сбрасывает состояние WATCH. Всегда используйте Pipeline через with для гарантированной очистки ресурсов.",
+        syntax: `with redis_client.pipeline() as pipe:
+    pipe.set("key", "value")
+    pipe.execute()`,
+        arguments: [],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# __enter__ возвращает pipe, __exit__ вызывает reset()
+with r.pipeline() as pipe:
+    pipe.set("session:abc", "user_id:42")
+    pipe.expire("session:abc", 3600)
+    pipe.hset("user:42", mapping={"last_seen": "2026-06-15", "online": "1"})
+    results = pipe.execute()
+    print(results)  # [True, True, 3]
+# После выхода из блока: reset() → соединение вернулось в пул
+
+# При исключении внутри with — reset() всё равно вызывается
+try:
+    with r.pipeline() as pipe:
+        pipe.set("x", 1)
+        raise RuntimeError("Что-то пошло не так")
+        pipe.execute()
+except RuntimeError:
+    pass  # pipeline сброшен, соединение освобождено
+print(r.exists("x"))  # 0 — execute() не вызывался`,
+    },
+    {
+        name: "redis.client.Pipeline.__exit__(exc_type, exc_val, exc_tb)",
+        description:
+            "Вызывается автоматически при выходе из блока with — как при нормальном завершении, так и при исключении. Всегда вызывает reset() для сброса буфера команд, освобождения соединения в пул и снятия WATCH. Не подавляет исключения (возвращает None/False), поэтому они продолжают распространяться после очистки.",
+        syntax: `# Вызывается автоматически — не вызывайте напрямую
+# При выходе из:
+with redis_client.pipeline() as pipe:
+    ...  # __exit__ вызывается здесь`,
+        arguments: [
+            {
+                name: "exc_type",
+                description: "Тип исключения, если оно возникло внутри блока with, иначе None.",
+            },
+            {
+                name: "exc_val",
+                description: "Экземпляр исключения, если оно возникло, иначе None.",
+            },
+            {
+                name: "exc_tb",
+                description: "Трейсбек исключения, если оно возникло, иначе None.",
+            },
+        ],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# Сценарий 1: нормальное завершение — __exit__(None, None, None)
+with r.pipeline() as pipe:
+    pipe.set("a", 1)
+    pipe.set("b", 2)
+    pipe.execute()
+# reset() вызван, соединение освобождено
+
+# Сценарий 2: исключение — __exit__(ValueError, ..., ...)
+try:
+    with r.pipeline() as pipe:
+        pipe.set("c", 3)
+        raise ValueError("Ошибка бизнес-логики")
+        pipe.execute()  # Не достигается
+except ValueError as e:
+    print(f"Поймано: {e}")
+# reset() всё равно вызван → команда "c" НЕ выполнена
+print(r.exists("c"))  # 0
+
+# Сценарий 3: WATCH + исключение
+try:
+    with r.pipeline() as pipe:
+        pipe.watch("balance")
+        balance = int(r.get("balance") or 0)
+        pipe.multi()
+        pipe.set("balance", balance - 100)
+        raise RuntimeError("Прерывание транзакции")
+        pipe.execute()
+except RuntimeError:
+    pass
+# __exit__ вызвал reset() → UNWATCH выполнен автоматически`,
+    },
+    {
+        name: "redis.client.Pipeline.__len__()",
+        description:
+            "Возвращает количество команд, накопленных в буфере Pipeline на текущий момент. Используется для проверки размера пакета перед выполнением: можно реализовать автоматический сброс при достижении порога, что позволяет контролировать использование памяти при большом числе команд.",
+        syntax: `len(pipe)`,
+        arguments: [],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+BATCH_SIZE = 1000  # Сбрасывать каждые 1000 команд
+
+with r.pipeline(transaction=False) as pipe:
+    for i in range(5000):
+        pipe.set(f"item:{i}", f"value:{i}")
+
+        # Автоматический сброс при достижении порога
+        if len(pipe) >= BATCH_SIZE:
+            pipe.execute()
+            print(f"Сброшен пакет из {BATCH_SIZE} команд")
+
+    # Сброс оставшихся команд
+    if len(pipe) > 0:
+        pipe.execute()
+        print(f"Финальный сброс: {len(pipe)} команд")  # 0 после execute
+
+# Проверка состояния
+with r.pipeline() as pipe:
+    print(len(pipe))  # 0 — буфер пуст
+    pipe.set("x", 1)
+    pipe.get("x")
+    pipe.delete("x")
+    print(len(pipe))  # 3 — три команды в буфере`,
+    },
+    {
+        name: "redis.client.Pipeline.__bool__()",
+        description:
+            "Возвращает True если в буфере Pipeline есть хотя бы одна команда, False если буфер пуст. Позволяет использовать Pipeline в булевых выражениях для проверки наличия накопленных команд. Эквивалентно проверке len(pipe) > 0.",
+        syntax: `bool(pipe)
+if pipe:
+    pipe.execute()`,
+        arguments: [],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+with r.pipeline(transaction=False) as pipe:
+    print(bool(pipe))  # False — буфер пуст
+
+    pipe.set("counter", 0)
+    pipe.set("status", "active")
+
+    print(bool(pipe))  # True — есть 2 команды
+
+    if pipe:  # Эквивалентно if len(pipe) > 0
+        print(f"Выполняем {len(pipe)} команды")
+        pipe.execute()
+
+    print(bool(pipe))  # False — после execute() буфер очищен
+
+# Паттерн: условный flush
+def flush_if_needed(pipe: redis.client.Pipeline, threshold: int = 500):
+    if pipe and len(pipe) >= threshold:
+        pipe.execute()
+
+with r.pipeline(transaction=False) as pipe:
+    for i in range(1200):
+        pipe.incr(f"counter:{i % 10}")
+        flush_if_needed(pipe, threshold=500)
+    if pipe:  # Финальный сброс остатка
+        pipe.execute()`,
+    },
+    {
+        name: "redis.client.Pipeline.multi()",
+        description:
+            "Явно отправляет команду MULTI в Redis, переводя pipeline в транзакционный режим. Вызывается вручную только в сценарии оптимистичной блокировки (WATCH): сначала вызывается watch(), затем читаются данные, потом multi() начинает транзакцию, и после добавления команд вызывается execute(). При transaction=True в конструкторе MULTI добавляется автоматически — явный вызов multi() не нужен.",
+        syntax: `pipe.multi()`,
+        arguments: [],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# Оптимистичная блокировка: WATCH + multi() + execute()
+def transfer(from_key: str, to_key: str, amount: int) -> bool:
+    with r.pipeline() as pipe:
+        while True:
+            try:
+                # WATCH: если ключи изменятся — execute() вернёт None
+                pipe.watch(from_key, to_key)
+
+                # Читаем данные ВНЕ транзакции (обычные команды)
+                from_balance = int(pipe.get(from_key) or 0)
+                to_balance   = int(pipe.get(to_key) or 0)
+
+                if from_balance < amount:
+                    pipe.unwatch()
+                    return False  # Недостаточно средств
+
+                # MULTI: всё что ниже — часть транзакции
+                pipe.multi()
+                pipe.set(from_key, from_balance - amount)
+                pipe.set(to_key,   to_balance   + amount)
+
+                pipe.execute()  # EXEC — если WATCH не сработал
+                return True
+
+            except redis.WatchError:
+                # Данные изменились другим клиентом — повтор
+                continue
+
+r.set("alice", 1000)
+r.set("bob", 500)
+ok = transfer("alice", "bob", 200)
+print(ok)                # True
+print(r.get("alice"))    # 800
+print(r.get("bob"))      # 700`,
+    },
+    {
+        name: "redis.client.Pipeline.execute(raise_on_error=True)",
+        description:
+            "Отправляет все накопленные в буфере команды в Redis и возвращает список ответов в том же порядке. В транзакционном режиме (transaction=True) оборачивает в MULTI/EXEC. Если raise_on_error=True (по умолчанию) и хотя бы одна команда вернула ошибку — выбрасывает исключение. Если raise_on_error=False — ошибочные ответы включаются в список как объекты ResponseError. После выполнения буфер команд очищается.",
+        syntax: `results = pipe.execute(raise_on_error=True)`,
+        arguments: [
+            {
+                name: "raise_on_error",
+                description: "Если True (по умолчанию) — первая ошибка среди ответов выбрасывается как исключение. Если False — все ошибки включаются в список результатов как исключения.",
+            },
+        ],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# Базовый пример: список результатов в порядке команд
+with r.pipeline() as pipe:
+    pipe.set("name", "Алексей")
+    pipe.get("name")
+    pipe.incr("visits")
+    pipe.expire("visits", 86400)
+    results = pipe.execute()
+    # results = [True, "Алексей", 1, True]
+    print(results)
+
+# raise_on_error=True (по умолчанию)
+with r.pipeline() as pipe:
+    pipe.set("str_key", "not_a_number")
+    pipe.incr("str_key")  # Ошибка: INCR на строке
+    pipe.set("ok_key", "value")
+    try:
+        results = pipe.execute(raise_on_error=True)
+    except redis.ResponseError as e:
+        print(f"Ошибка: {e}")  # ERR value is not an integer
+
+# raise_on_error=False — все результаты включая ошибки
+with r.pipeline() as pipe:
+    pipe.set("str_key", "not_a_number")
+    pipe.incr("str_key")
+    pipe.set("ok_key", "value")
+    results = pipe.execute(raise_on_error=False)
+    for i, res in enumerate(results):
+        if isinstance(res, Exception):
+            print(f"Команда {i}: ОШИБКА — {res}")
+        else:
+            print(f"Команда {i}: OK — {res}")`,
+    },
+    {
+        name: "redis.client.Pipeline.immediate_execute_command(*args, **options)",
+        description:
+            "Выполняет одну команду немедленно через соединение, минуя буфер pipeline. Используется внутри Pipeline для команд, которые должны выполниться немедленно в контексте текущего соединения — например, WATCH, которая должна быть отправлена до MULTI. Напрямую пользователями вызывается редко.",
+        syntax: `pipe.immediate_execute_command(*args, **options)`,
+        arguments: [
+            {
+                name: "*args",
+                description: "Команда Redis и её аргументы. Например: 'WATCH', 'key1', 'key2' или 'SET', 'key', 'value'.",
+            },
+            {
+                name: "**options",
+                description: "Дополнительные опции, передаваемые в обработчик ответа (response callback).",
+            },
+        ],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# Пример того, как watch() использует immediate_execute_command внутри
+# (для понимания механизма — не для прямого вызова пользователем)
+
+with r.pipeline() as pipe:
+    # pipe.watch() использует immediate_execute_command("WATCH", "balance")
+    # — WATCH отправляется немедленно, не буферизуется
+    pipe.watch("balance")
+
+    balance = int(r.get("balance") or 0)
+
+    pipe.multi()
+    pipe.set("balance", balance + 100)
+    results = pipe.execute()
+    print(results)  # [True]
+
+# Прямой вызов immediate_execute_command (нестандартный сценарий):
+with r.pipeline() as pipe:
+    # Немедленная отправка команды DEBUG SLEEP (не буферизуется)
+    # pipe.immediate_execute_command("DEBUG", "SLEEP", 0)
+    pipe.set("key1", "val1")
+    pipe.set("key2", "val2")
+    pipe.execute()`,
+    },
+    {
+        name: "redis.client.Pipeline.pipeline(transaction=True, shard_hint=None)",
+        description:
+            "Создаёт новый Pipeline из текущего Pipeline. Возвращает вложенный pipeline с теми же настройками соединения. В стандартном клиенте redis-py фактически создаёт независимый pipeline от того же пула соединений. Используется редко — в большинстве случаев pipeline создаётся напрямую через redis_client.pipeline().",
+        syntax: `nested_pipe = pipe.pipeline(transaction=True, shard_hint=None)`,
+        arguments: [
+            {
+                name: "transaction",
+                description: "Если True — новый pipeline работает в режиме MULTI/EXEC. Если False — команды отправляются пакетом без транзакции.",
+            },
+            {
+                name: "shard_hint",
+                description: "Подсказка шардинга для кластерного Redis. None для стандартного Redis.",
+            },
+        ],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# Создание pipeline из pipeline (нестандартный сценарий)
+with r.pipeline() as outer_pipe:
+    outer_pipe.set("outer:key", "outer_value")
+
+    # Создаём независимый pipeline от того же пула
+    inner_pipe = outer_pipe.pipeline(transaction=False)
+    inner_pipe.set("inner:key", "inner_value")
+    inner_pipe.get("inner:key")
+    inner_results = inner_pipe.execute()
+    print(f"inner results: {inner_results}")  # [True, "inner_value"]
+    inner_pipe.reset()
+
+    outer_pipe.get("outer:key")
+    outer_results = outer_pipe.execute()
+    print(f"outer results: {outer_results}")  # [True, "outer_value"]
+
+# Стандартный способ (предпочтительный):
+with r.pipeline(transaction=True) as pipe:
+    pipe.set("standard", "way")
+    pipe.execute()`,
+    },
+    {
+        name: "redis.client.Pipeline.reset()",
+        description:
+            "Сбрасывает pipeline в исходное состояние: очищает буфер команд (command_stack), снимает WATCH через UNWATCH (если были установлены наблюдения), закрывает транзакцию если она была открыта, и возвращает соединение в пул. Вызывается автоматически из __exit__ при выходе из блока with. При ручном использовании pipeline (без with) необходимо вызывать явно для освобождения ресурсов.",
+        syntax: `pipe.reset()`,
+        arguments: [],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# Ручное использование pipeline без with — reset() вызывается явно
+pipe = r.pipeline()
+try:
+    pipe.set("x", 100)
+    pipe.set("y", 200)
+    results = pipe.execute()
+    print(results)  # [True, True]
+finally:
+    pipe.reset()  # Очистка буфера и освобождение соединения
+
+# reset() после WatchError — снимает WATCH и очищает состояние
+pipe2 = r.pipeline()
+try:
+    pipe2.watch("counter")
+    current = int(r.get("counter") or 0)
+    pipe2.multi()
+    pipe2.set("counter", current + 1)
+    pipe2.execute()
+except redis.WatchError:
+    pipe2.reset()  # UNWATCH + очистка состояния
+    print("Конкурентное изменение — повторите операцию")
+finally:
+    pipe2.reset()
+
+# Повторное использование pipeline после reset()
+pipe3 = r.pipeline()
+pipe3.set("a", 1)
+print(len(pipe3))  # 1
+pipe3.reset()
+print(len(pipe3))  # 0 — буфер очищен
+pipe3.set("b", 2)
+pipe3.execute()
+pipe3.reset()`,
+    },
+    {
+        name: "redis.client.Pipeline.watch(*names)",
+        description:
+            "Устанавливает наблюдение (WATCH) за одним или несколькими ключами для реализации оптимистичной блокировки. Если любой из наблюдаемых ключей будет изменён другим клиентом между вызовом watch() и execute(), то execute() вернёт None вместо списка результатов (выбросит WatchError). После watch() pipeline переходит в немедленный режим — команды выполняются сразу, пока не вызван multi(). Наблюдение снимается при execute() или unwatch().",
+        syntax: `pipe.watch(*names)`,
+        arguments: [
+            {
+                name: "*names",
+                description: "Имена ключей Redis для наблюдения. При изменении любого из них до EXEC транзакция будет отменена.",
+            },
+        ],
+        example: `import redis
+import time
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+r.set("stock", 10)
+
+# Оптимистичная блокировка: атомарное уменьшение остатка
+def buy_item(item_key: str, quantity: int) -> bool:
+    with r.pipeline() as pipe:
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                pipe.watch(item_key)           # Начать наблюдение
+                stock = int(pipe.get(item_key) or 0)
+
+                if stock < quantity:
+                    pipe.unwatch()
+                    return False               # Нет нужного количества
+
+                pipe.multi()                   # Начало транзакции
+                pipe.decrby(item_key, quantity)
+                pipe.execute()                 # EXEC
+                return True
+
+            except redis.WatchError:
+                # Кто-то изменил ключ — повтор
+                print(f"Попытка {attempt + 1}: конкуренция, повторяем")
+                continue
+        return False  # Превышено число попыток
+
+print(buy_item("stock", 3))  # True
+print(r.get("stock"))        # 7`,
+    },
+    {
+        name: "redis.client.Pipeline.unwatch()",
+        description:
+            "Отменяет все активные WATCH-наблюдения на текущем соединении, отправляя команду UNWATCH в Redis. После unwatch() pipeline перестаёт следить за ключами, и любые последующие изменения не вызовут WatchError. Используется для явного выхода из режима WATCH без выполнения транзакции — например, если бизнес-логика решила отказаться от транзакции.",
+        syntax: `pipe.unwatch()`,
+        arguments: [],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+r.set("balance", 500)
+
+# Явный unwatch() при отказе от транзакции
+with r.pipeline() as pipe:
+    pipe.watch("balance")
+    balance = int(pipe.get("balance") or 0)
+
+    MIN_BALANCE = 100
+    if balance < MIN_BALANCE:
+        # Отказываемся от транзакции — снимаем WATCH явно
+        pipe.unwatch()
+        print("Недостаточно средств — транзакция отменена")
+    else:
+        pipe.multi()
+        pipe.decrby("balance", MIN_BALANCE)
+        results = pipe.execute()
+        print(f"Списано: {results}")
+
+# unwatch() в цикле повторов при WatchError
+def safe_increment(key: str) -> int:
+    with r.pipeline() as pipe:
+        for _ in range(10):
+            try:
+                pipe.watch(key)
+                val = int(pipe.get(key) or 0)
+                pipe.multi()
+                pipe.set(key, val + 1)
+                pipe.execute()
+                return val + 1
+            except redis.WatchError:
+                # watch() автоматически сбрасывается — явный unwatch не нужен
+                # но можно вызвать для ясности
+                continue
+        pipe.unwatch()
+        raise RuntimeError("Не удалось выполнить после 10 попыток")`,
+    },
+    {
+        name: "redis.client.Pipeline.load_external_plugins(plugins)",
+        description:
+            "Загружает внешние плагины (расширения) в pipeline. Каждый плагин — объект с методом register(), который вызывается с pipeline в качестве аргумента и добавляет к нему новые методы или изменяет поведение существующих. Используется для расширения функциональности Pipeline без наследования — например, для добавления поддержки кастомных структур данных, метрик или трассировки.",
+        syntax: `pipe.load_external_plugins(plugins)`,
+        arguments: [
+            {
+                name: "plugins",
+                description: "Список объектов-плагинов. Каждый должен реализовывать метод register(pipe), получающий экземпляр Pipeline.",
+            },
+        ],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# Плагин: добавляет метод set_with_ttl(key, value, ttl) к pipeline
+class TtlPlugin:
+    def register(self, pipe):
+        def set_with_ttl(key: str, value: str, ttl: int):
+            pipe.set(key, value)
+            pipe.expire(key, ttl)
+        pipe.set_with_ttl = set_with_ttl
+
+# Плагин: трассировка — логирует количество команд при execute
+class TracingPlugin:
+    def register(self, pipe):
+        original_execute = pipe.execute
+        def traced_execute(*args, **kwargs):
+            print(f"[TRACE] Выполняем {len(pipe)} команд в pipeline")
+            result = original_execute(*args, **kwargs)
+            print(f"[TRACE] Выполнено, результатов: {len(result)}")
+            return result
+        pipe.execute = traced_execute
+
+with r.pipeline() as pipe:
+    pipe.load_external_plugins([TtlPlugin(), TracingPlugin()])
+
+    # Теперь доступен метод set_with_ttl из плагина
+    pipe.set_with_ttl("session:xyz", "user:99", 3600)
+    pipe.set_with_ttl("cache:page", "<html>...</html>", 300)
+    pipe.get("session:xyz")
+    results = pipe.execute()
+    # [TRACE] Выполняем 5 команд в pipeline
+    # [TRACE] Выполнено, результатов: 5`,
+    },
+    {
+        name: "redis.client.Pipeline.set_response_callback(command, callback)",
+        description:
+            "Регистрирует функцию обратного вызова для обработки ответа Redis на указанную команду. Позволяет переопределить стандартное преобразование ответа — например, десериализовать JSON, преобразовать числа в Decimal, добавить постобработку. Callback получает сырой ответ Redis и должен вернуть преобразованное значение. Влияет только на данный экземпляр Pipeline.",
+        syntax: `pipe.set_response_callback(command, callback)`,
+        arguments: [
+            {
+                name: "command",
+                description: "Имя команды Redis в верхнем регистре, например 'GET', 'HGETALL', 'LRANGE'. Определяет, для ответов на какую команду применяется callback.",
+            },
+            {
+                name: "callback",
+                description: "Callable(response, **kwargs) → преобразованное значение. Получает сырой ответ Redis (байты или None) и должен вернуть итоговое значение.",
+            },
+        ],
+        example: `import redis
+import json
+from decimal import Decimal
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# Пример 1: десериализация JSON при GET
+def json_callback(response, **kwargs):
+    if response is None:
+        return None
+    try:
+        return json.loads(response)
+    except (json.JSONDecodeError, TypeError):
+        return response
+
+with r.pipeline() as pipe:
+    pipe.set_response_callback("GET", json_callback)
+
+    r.set("config", json.dumps({"max_retries": 3, "timeout": 30}))
+    pipe.get("config")
+    pipe.get("config")
+    results = pipe.execute()
+    print(results[0])  # {"max_retries": 3, "timeout": 30} — уже dict
+
+# Пример 2: преобразование балансов в Decimal
+def decimal_callback(response, **kwargs):
+    return Decimal(response) if response is not None else Decimal(0)
+
+with r.pipeline() as pipe:
+    pipe.set_response_callback("GET", decimal_callback)
+    r.set("price", "19.99")
+    pipe.get("price")
+    results = pipe.execute()
+    price = results[0]
+    print(type(price), price)   # <class 'decimal.Decimal'> 19.99
+    print(price * 2)            # 39.98 — точная арифметика`,
+    },
+    {
+        name: "redis.client.Pipeline.parse_response(connection, command_name, **options)",
+        description:
+            "Читает и разбирает ответ Redis для одной команды из соединения. Вызывается внутри execute() для каждой команды в буфере. Применяет зарегистрированный response_callback для данной команды. Не предназначен для прямого вызова пользователями — используется внутри redis-py при реализации кастомных клиентов или тестировании.",
+        syntax: `pipe.parse_response(connection, command_name, **options)`,
+        arguments: [
+            {
+                name: "connection",
+                description: "Объект redis.Connection, из которого читается ответ.",
+            },
+            {
+                name: "command_name",
+                description: "Имя команды Redis в верхнем регистре (например, 'GET', 'SET'). Используется для выбора нужного response_callback.",
+            },
+            {
+                name: "**options",
+                description: "Дополнительные параметры, передаваемые в response_callback вместе с ответом.",
+            },
+        ],
+        example: `import redis
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# parse_response вызывается внутри execute() — для понимания механизма:
+# 1. execute() отправляет все команды из буфера одним пакетом
+# 2. Затем вызывает parse_response() для каждого ответа в порядке команд
+
+# Переопределение parse_response для логирования (паттерн наследования)
+class DebugPipeline(redis.client.Pipeline):
+    def parse_response(self, connection, command_name, **options):
+        response = super().parse_response(connection, command_name, **options)
+        print(f"[DEBUG] {command_name} → {response!r}")
+        return response
+
+# Создание DebugPipeline через кастомный клиент
+class DebugRedis(redis.Redis):
+    def pipeline(self, transaction=True, shard_hint=None):
+        return DebugPipeline(
+            self.connection_pool,
+            self.response_callbacks,
+            transaction,
+            shard_hint,
+        )
+
+debug_r = DebugRedis(host="localhost", port=6379, db=0, decode_responses=True)
+with debug_r.pipeline() as pipe:
+    pipe.set("debug_key", "hello")
+    pipe.get("debug_key")
+    pipe.delete("debug_key")
+    pipe.execute()
+# [DEBUG] SET → True
+# [DEBUG] GET → 'hello'
+# [DEBUG] DELETE → 1`,
+    },
+    // ─── redis.sentinel.SentinelConnectionPool ────────────────────────────────
+    {
+        name: "redis.sentinel.SentinelConnectionPool.__init__(service_name, sentinel_manager, **kwargs)",
+        description:
+            "Инициализирует пул соединений для работы с Redis через Sentinel. В отличие от обычного ConnectionPool, не хранит фиксированный адрес сервера — перед каждым соединением запрашивает актуальный адрес мастера или реплики у Sentinel. Создаётся автоматически методами master_for() и slave_for(). Параметр is_master=True/False определяет, к кому подключаться: к мастеру или к реплике.",
+        syntax: `from redis.sentinel import SentinelConnectionPool
+
+pool = SentinelConnectionPool(
+    service_name,
+    sentinel_manager,
+    **kwargs,
+)`,
+        arguments: [
+            {
+                name: "service_name",
+                description: "Имя сервиса Redis в конфигурации Sentinel (тот же service_name, что в master_for() / slave_for()). Например: 'mymaster'.",
+            },
+            {
+                name: "sentinel_manager",
+                description: "Экземпляр redis.sentinel.Sentinel, через который пул запрашивает адрес мастера или реплики при установке соединения.",
+            },
+            {
+                name: "**kwargs",
+                description: "Параметры пула и соединения: is_master=True/False (мастер или реплика), max_connections, password, db, socket_timeout, decode_responses, ssl и т.д.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel, SentinelConnectionPool
+import redis
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379), ("sentinel2.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    password="redis-secret",
+    decode_responses=True,
+)
+
+# Автоматическое создание через master_for() / slave_for() (предпочтительно):
+master = sentinel.master_for("mymaster", db=0)
+slave  = sentinel.slave_for("mymaster",  db=0)
+
+# Ручное создание SentinelConnectionPool (нестандартный сценарий):
+master_pool = SentinelConnectionPool(
+    "mymaster",
+    sentinel,
+    is_master=True,       # Подключаться к мастеру
+    max_connections=50,
+    db=0,
+    decode_responses=True,
+    password="redis-secret",
+    socket_timeout=1.0,
+)
+master_client = redis.Redis(connection_pool=master_pool)
+
+slave_pool = SentinelConnectionPool(
+    "mymaster",
+    sentinel,
+    is_master=False,      # Подключаться к реплике (round-robin)
+    max_connections=100,  # Реплики обычно держат больше read-соединений
+    db=0,
+    decode_responses=True,
+)
+slave_client = redis.Redis(connection_pool=slave_pool)
+
+master_client.set("demo", "value")
+print(slave_client.get("demo"))  # "value"`,
+    },
+    {
+        name: "redis.sentinel.SentinelConnectionPool.reset()",
+        description:
+            "Сбрасывает состояние пула: принудительно переопределяет мастер/реплику при следующем запросе соединения. Устанавливает внутренние флаги так, что следующий вызов get_connection() снова обратится к Sentinel за актуальным адресом. Вызывается автоматически при обнаружении ошибок соединения (ConnectionError, ReadOnlyError). Может быть вызван вручную для принудительного обновления после известного failover.",
+        syntax: `pool.reset()`,
+        arguments: [],
+        example: `from redis.sentinel import Sentinel, SentinelConnectionPool
+import redis
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    decode_responses=True,
+)
+
+master = sentinel.master_for("mymaster", db=0)
+pool = master.connection_pool  # SentinelConnectionPool
+
+# Автоматический вызов reset() при ошибках соединения:
+# При ConnectionError или ReadOnlyError пул сам вызывает reset()
+# и при следующей операции переопределит адрес мастера
+
+# Ручной вызов: форсировать переопределение адреса
+# (например, после ручного переключения мастера в тестах)
+pool.reset()
+print("Пул сброшен — следующий get_connection() опросит Sentinel")
+
+# Паттерн: принудительный failover + reset в тестах
+def simulate_failover_and_reconnect(sentinel_client, service: str):
+    sentinel_client.execute_command("SENTINEL", "failover", service)
+    import time
+    time.sleep(2)  # Ждём завершения failover
+
+    master_client = sentinel_client.master_for(service)
+    master_client.connection_pool.reset()  # Принудительно опросить Sentinel
+    new_master = sentinel_client.discover_master(service)
+    print(f"Новый мастер после failover: {new_master}")`,
+    },
+    {
+        name: "redis.sentinel.SentinelConnectionPool.get_connection(command_name, *args, **kwargs)",
+        description:
+            "Получает соединение из пула. В отличие от обычного ConnectionPool, перед выдачей соединения проверяет актуальность адреса мастера/реплики через Sentinel. Если сохранённый адрес устарел (после failover) — обновляет его и создаёт соединение с новым хостом. При ReadOnlyError (запись на реплику) автоматически вызывает reset() и повторяет поиск мастера.",
+        syntax: `connection = pool.get_connection(command_name, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "command_name",
+                description: "Имя команды Redis, для которой запрашивается соединение. Используется для определения маршрутизации в кластерных конфигурациях.",
+            },
+            {
+                name: "*args, **kwargs",
+                description: "Дополнительные аргументы команды и параметры соединения. Обычно не передаются явно.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel
+import redis
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    decode_responses=True,
+    password="redis-secret",
+)
+
+master = sentinel.master_for("mymaster", db=0)
+pool = master.connection_pool  # SentinelConnectionPool
+
+# get_connection() вызывается автоматически при каждой операции Redis
+master.set("key", "value")  # Внутри: pool.get_connection("SET")
+
+# Ручное получение и возврат соединения (низкоуровневое использование):
+conn = pool.get_connection("GET")
+try:
+    conn.send_command("GET", "key")
+    response = conn.read_response()
+    print(response)  # "value"
+finally:
+    pool.release(conn)  # Обязательно вернуть соединение в пул
+
+# При failover:
+# 1. get_connection() → пробует старый адрес → ConnectionError
+# 2. Вызывает reset() → опрашивает Sentinel → получает новый адрес
+# 3. Возвращает соединение к новому мастеру — прозрачно для приложения`,
+    },
+    {
+        name: "redis.sentinel.SentinelConnectionPool.make_connection()",
+        description:
+            "Создаёт новое соединение с текущим мастером или репликой. Перед созданием запрашивает актуальный адрес у Sentinel: для мастера вызывает discover_master(), для реплики — discover_slaves(). Затем создаёт объект Connection с полученным хостом и портом. Вызывается из get_connection() когда в пуле нет свободных соединений.",
+        syntax: `connection = pool.make_connection()`,
+        arguments: [],
+        example: `from redis.sentinel import Sentinel
+import redis
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    decode_responses=True,
+)
+
+master = sentinel.master_for("mymaster", db=0)
+pool = master.connection_pool
+
+# make_connection() вызывается автоматически при нехватке соединений в пуле.
+# Ручной вызов для диагностики:
+conn = pool.make_connection()
+print(f"Новое соединение → {conn.host}:{conn.port}")  # 192.168.1.10:6379
+
+# Метод полезен при создании кастомного подкласса пула:
+class LoggingSentinelPool(type(pool)):
+    def make_connection(self):
+        conn = super().make_connection()
+        print(f"[POOL] Создано соединение: {conn.host}:{conn.port} "
+              f"(всего в пуле: {len(self._created_connections)})")
+        return conn
+
+# Применение кастомного пула:
+from redis.sentinel import SentinelConnectionPool
+logging_pool = LoggingSentinelPool(
+    "mymaster", sentinel, is_master=True,
+    max_connections=20, decode_responses=True,
+)
+r = redis.Redis(connection_pool=logging_pool)
+r.ping()
+# [POOL] Создано соединение: 192.168.1.10:6379 (всего в пуле: 1)`,
+    },
+    {
+        name: "redis.sentinel.SentinelConnectionPool.release(connection)",
+        description:
+            "Возвращает соединение обратно в пул после использования. Проверяет, соответствует ли хост/порт соединения текущему мастеру/реплике: если после failover адрес изменился — соединение со старым адресом закрывается, а не возвращается в пул. Вызывается автоматически клиентом Redis после каждой команды. Ручной вызов нужен только при низкоуровневой работе с соединениями.",
+        syntax: `pool.release(connection)`,
+        arguments: [
+            {
+                name: "connection",
+                description: "Объект redis.Connection для возврата в пул. Должен быть получен через get_connection() того же пула.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel
+import redis
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    decode_responses=True,
+)
+
+master = sentinel.master_for("mymaster", db=0)
+pool = master.connection_pool
+
+# Автоматический release() при каждой команде (стандартное использование)
+master.set("auto", "release")  # conn = get_connection() ... release(conn)
+
+# Низкоуровневое использование с явным release():
+conn = pool.get_connection("PING")
+try:
+    conn.send_command("PING")
+    response = conn.read_response()
+    print(response)  # True
+finally:
+    pool.release(conn)  # Возвращаем в пул (или закрываем при несоответствии адреса)
+
+# Поведение при failover во время работы:
+# 1. get_connection() → возвращает conn к старому мастеру 192.168.1.10:6379
+# 2. Failover → новый мастер 192.168.1.11:6379
+# 3. release(conn) → адрес conn (192.168.1.10) != текущий мастер (192.168.1.11)
+# 4. Пул закрывает conn вместо возврата — утечки соединений не происходит`,
+    },
+    {
+        name: "redis.sentinel.SentinelConnectionPool.disconnect(in_use=True)",
+        description:
+            "Закрывает все соединения в пуле. Если in_use=True (по умолчанию) — закрывает также соединения, находящиеся в активном использовании. Если in_use=False — закрывает только свободные соединения в пуле. Используется для принудительного переподключения всех клиентов после изменения конфигурации или для освобождения ресурсов при завершении работы.",
+        syntax: `pool.disconnect(in_use=True)`,
+        arguments: [
+            {
+                name: "in_use",
+                description: "Если True (по умолчанию) — закрывает все соединения, включая активные. Если False — только свободные соединения в пуле.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel
+import redis
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    decode_responses=True,
+)
+
+master = sentinel.master_for("mymaster", db=0, max_connections=10)
+pool = master.connection_pool
+
+# Прогреваем пул
+for i in range(5):
+    master.set(f"warmup:{i}", i)
+
+# Закрыть все свободные соединения (активные не трогать)
+pool.disconnect(in_use=False)
+print("Свободные соединения закрыты")
+
+# Закрыть все соединения (включая активные)
+pool.disconnect(in_use=True)
+print("Все соединения закрыты")
+
+# Пул продолжает работать — при следующей операции создадутся новые соединения
+master.ping()  # Создаёт новое соединение через make_connection()
+
+# Паттерн: принудительное переподключение после смены пароля Redis
+def reconnect_all(sentinel_client, service: str):
+    m = sentinel_client.master_for(service)
+    m.connection_pool.disconnect(in_use=True)
+    m.connection_pool.reset()
+    m.ping()  # Проверяем новое соединение
+    print(f"Переподключение к {service} выполнено")`,
+    },
+    {
+        name: "redis.sentinel.SentinelConnectionPool.get_encoder()",
+        description:
+            "Возвращает объект энкодера (Encoder), используемого пулом для сериализации команд Redis и десериализации ответов. Энкодер отвечает за преобразование Python-объектов в байты для отправки в Redis и обратно. Настраивается параметрами encoding, encoding_errors и decode_responses пула.",
+        syntax: `encoder = pool.get_encoder()`,
+        arguments: [],
+        example: `from redis.sentinel import Sentinel, SentinelConnectionPool
+import redis
+
+# Пул с явной настройкой кодировки
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    decode_responses=True,   # Декодировать ответы в str
+    encoding="utf-8",
+    encoding_errors="strict",
+)
+
+master = sentinel.master_for("mymaster", db=0)
+pool = master.connection_pool
+
+# Получить энкодер
+encoder = pool.get_encoder()
+print(type(encoder))  # <class 'redis.connection.Encoder'>
+
+# Энкодер используется внутри Connection при отправке/получении данных:
+# encoder.encode("Привет") → b"Привет" (bytes для отправки в Redis)
+# encoder.decode(b"hello")  → "hello" (str если decode_responses=True)
+
+# Кастомный энкодер через подкласс (нестандартный сценарий):
+class JsonEncoder(redis.connection.Encoder):
+    def encode(self, value):
+        import json
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, ensure_ascii=False).encode(self.encoding)
+        return super().encode(value)
+
+# Использование get_encoder() для проверки настроек пула:
+print(encoder.decode_responses)  # True
+print(encoder.encoding)          # utf-8`,
+    },
+    {
+        name: "redis.sentinel.SentinelConnectionPool.ownership_takes_connection()",
+        description:
+            "Возвращает True, если пул передаёт владение соединением при его выдаче через get_connection() — то есть соединение считается занятым до явного вызова release(). В SentinelConnectionPool всегда возвращает True, что означает: каждое выданное соединение должно быть явно возвращено в пул через release(). Используется внутри клиента Redis для управления жизненным циклом соединений.",
+        syntax: `pool.ownership_takes_connection()`,
+        arguments: [],
+        example: `from redis.sentinel import Sentinel, SentinelConnectionPool
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    decode_responses=True,
+)
+
+master = sentinel.master_for("mymaster", db=0)
+pool = master.connection_pool
+
+# SentinelConnectionPool всегда возвращает True
+print(pool.ownership_takes_connection())  # True
+
+# Это означает: клиент Redis вызовет release() после каждой команды
+# Поведение в клиенте Redis (упрощённо):
+#
+# conn = pool.get_connection("SET")
+# try:
+#     conn.send_command("SET", "key", "value")
+#     response = conn.read_response()
+# finally:
+#     if pool.ownership_takes_connection():  # True → всегда release
+#         pool.release(conn)
+
+# Сравнение с BlockingConnectionPool:
+import redis
+blocking_pool = redis.BlockingConnectionPool(max_connections=5)
+print(blocking_pool.ownership_takes_connection())  # False — пул сам управляет
+
+# Практическое значение: при низкоуровневой работе с соединениями
+# обязательно вызывать release() в блоке finally
+conn = pool.get_connection("PING")
+try:
+    conn.send_command("PING")
+    print(conn.read_response())  # True
+finally:
+    pool.release(conn)  # Обязательно, т.к. ownership_takes_connection() == True`,
+    },
+    {
+        name: "redis.sentinel.SentinelConnectionPool.connection_kwargs",
+        description:
+            "Словарь-атрибут с параметрами соединения пула: host, port, db, password, socket_timeout, decode_responses, encoding, ssl и другие. В SentinelConnectionPool host и port динамически обновляются при каждом обращении к Sentinel (в отличие от обычного ConnectionPool, где они фиксированы). Полезен для отладки текущих параметров соединения и проверки к какому хосту сейчас подключается пул.",
+        syntax: `pool.connection_kwargs`,
+        arguments: [],
+        example: `from redis.sentinel import Sentinel
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    password="redis-secret",
+    decode_responses=True,
+    db=2,
+    socket_timeout=1.0,
+    socket_connect_timeout=0.5,
+)
+
+master = sentinel.master_for("mymaster")
+pool = master.connection_pool
+
+# Инспекция параметров пула
+kwargs = pool.connection_kwargs
+print(kwargs.get("db"))               # 2
+print(kwargs.get("decode_responses")) # True
+print(kwargs.get("socket_timeout"))   # 1.0
+print(kwargs.get("password"))         # redis-secret
+
+# host и port динамически обновляются Sentinel-ом
+# До первого запроса могут быть None или начальным значением
+print(kwargs.get("host"))  # 192.168.1.10 (после первого discover_master)
+print(kwargs.get("port"))  # 6379
+
+# Полезно для логирования конфигурации при старте приложения
+def log_pool_config(pool):
+    safe_kwargs = {
+        k: ("***" if k == "password" else v)
+        for k, v in pool.connection_kwargs.items()
+    }
+    print(f"Pool config: {safe_kwargs}")
+
+log_pool_config(pool)
+# Pool config: {'host': '192.168.1.10', 'port': 6379, 'db': 2,
+#               'password': '***', 'decode_responses': True, ...}`,
+    },
+    // ─── redis.sentinel.Sentinel ──────────────────────────────────────────────
+    {
+        name: "redis.sentinel.Sentinel.__init__(sentinels, min_other_sentinels=0, sentinel_kwargs=None, force_master_ip=None, **connection_kwargs)",
+        description:
+            "Инициализирует клиент Redis Sentinel — систему высокой доступности, которая автоматически отслеживает состояние мастера и реплик, выполняет failover и предоставляет актуальные адреса для подключения. Sentinel-клиент подключается к одному или нескольким sentinel-процессам и через них получает адрес текущего мастера или реплик для заданного имени сервиса.",
+        syntax: `from redis.sentinel import Sentinel
+
+sentinel = Sentinel(
+    sentinels,
+    min_other_sentinels=0,
+    sentinel_kwargs=None,
+    force_master_ip=None,
+    **connection_kwargs,
+)`,
+        arguments: [
+            {
+                name: "sentinels",
+                description: "Список кортежей (host, port) адресов sentinel-процессов. Например: [('sentinel1', 26379), ('sentinel2', 26379), ('sentinel3', 26379)]. Клиент опрашивает их по порядку.",
+            },
+            {
+                name: "min_other_sentinels",
+                description: "Минимальное число других sentinel-процессов, которые должны знать о мастере, чтобы он считался валидным. Защита от split-brain. По умолчанию 0.",
+            },
+            {
+                name: "sentinel_kwargs",
+                description: "Словарь параметров соединения для подключения к самим sentinel-процессам (отдельно от параметров для Redis-нод). Например: {'password': 'sentinel-pass', 'socket_timeout': 0.1}.",
+            },
+            {
+                name: "force_master_ip",
+                description: "Принудительно использовать указанный IP вместо того, что возвращает sentinel. Полезно при работе за NAT или в Docker-сетях, где sentinel возвращает внутренний IP.",
+            },
+            {
+                name: "**connection_kwargs",
+                description: "Параметры соединения для Redis-нод (мастер и реплики): password, db, socket_timeout, decode_responses, ssl и т.д.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel
+import redis
+
+# Базовая конфигурация: три sentinel-процесса
+sentinel = Sentinel(
+    sentinels=[
+        ("sentinel1.example.com", 26379),
+        ("sentinel2.example.com", 26379),
+        ("sentinel3.example.com", 26379),
+    ],
+    min_other_sentinels=1,     # Мастер валиден если ≥1 другой sentinel знает о нём
+    sentinel_kwargs={
+        "password": "sentinel-secret",  # Пароль для sentinel-процессов
+        "socket_timeout": 0.2,
+    },
+    # Параметры для Redis-нод:
+    password="redis-secret",
+    db=0,
+    decode_responses=True,
+    socket_timeout=1.0,
+    socket_connect_timeout=1.0,
+)
+
+# Клиент для записи (всегда мастер)
+master = sentinel.master_for("mymaster")
+master.set("key", "value")
+
+# Клиент для чтения (реплика)
+slave = sentinel.slave_for("mymaster")
+value = slave.get("key")
+print(value)  # "value"`,
+    },
+    {
+        name: "redis.sentinel.Sentinel.check_master_state(master, state)",
+        description:
+            "Проверяет, что sentinel-процесс признаёт указанный мастер валидным в данном состоянии. Используется внутри discover_master() при опросе sentinel-процессов. Метод проверяет: не находится ли мастер в состоянии s_down (subjectively down) или o_down (objectively down), и соответствует ли число подтверждающих sentinel-процессов требованию min_other_sentinels. Напрямую пользователями вызывается редко.",
+        syntax: `sentinel.check_master_state(master, state)`,
+        arguments: [
+            {
+                name: "master",
+                description: "Словарь с информацией о мастере, возвращённый командой SENTINEL master <service_name>. Содержит поля: ip, port, flags, num-other-sentinels и др.",
+            },
+            {
+                name: "state",
+                description: "Строка ожидаемого состояния. Обычно 'master' — проверяет что нода является мастером и не помечена как недоступная.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel
+
+sentinel = Sentinel(
+    [("localhost", 26379)],
+    socket_timeout=0.1,
+)
+
+# Внутренний механизм discover_master() использует check_master_state():
+# 1. Подключается к каждому sentinel из списка
+# 2. Выполняет SENTINEL master <service_name>
+# 3. Вызывает check_master_state(master_info, "master")
+# 4. Возвращает (ip, port) первого валидного мастера
+
+# Пример того, что проверяет метод:
+master_info = {
+    "ip": "192.168.1.10",
+    "port": "6379",
+    "flags": "master",               # Не "s_down", не "o_down", не "disconnected"
+    "num-other-sentinels": "2",      # >= min_other_sentinels
+}
+
+# Прямой вызов (для отладки / кастомного мониторинга):
+is_valid = sentinel.check_master_state(master_info, "master")
+print(is_valid)  # True — мастер валиден
+
+# Пример невалидного состояния (o_down — объективно недоступен):
+down_master = {
+    "ip": "192.168.1.10",
+    "port": "6379",
+    "flags": "master,o_down",
+    "num-other-sentinels": "2",
+}
+print(sentinel.check_master_state(down_master, "master"))  # False`,
+    },
+    {
+        name: "redis.sentinel.Sentinel.discover_master(service_name)",
+        description:
+            "Опрашивает все sentinel-процессы по порядку и возвращает кортеж (host, port) текущего мастера для заданного имени сервиса. Если ни один sentinel не возвращает валидного мастера — выбрасывает MasterNotFoundError. Используется внутри SentinelConnectionPool при каждом подключении к мастеру. Также полезен для ручной проверки текущего мастера.",
+        syntax: `host, port = sentinel.discover_master(service_name)`,
+        arguments: [
+            {
+                name: "service_name",
+                description: "Имя сервиса Redis, заданное в конфигурации sentinel (параметр sentinel monitor <name>). Например: 'mymaster', 'cache', 'session-store'.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel, MasterNotFoundError
+
+sentinel = Sentinel(
+    [
+        ("sentinel1.example.com", 26379),
+        ("sentinel2.example.com", 26379),
+        ("sentinel3.example.com", 26379),
+    ],
+    socket_timeout=0.5,
+    decode_responses=True,
+)
+
+# Определяем текущий мастер
+try:
+    host, port = sentinel.discover_master("mymaster")
+    print(f"Текущий мастер: {host}:{port}")
+    # Текущий мастер: 192.168.1.10:6379
+except MasterNotFoundError as e:
+    print(f"Мастер недоступен: {e}")
+
+# Мониторинг: периодическая проверка мастера
+import time
+
+def monitor_master(sentinel_client, service: str, interval: int = 5):
+    last_master = None
+    while True:
+        try:
+            current = sentinel_client.discover_master(service)
+            if current != last_master:
+                print(f"[FAILOVER] Мастер изменился: {last_master} → {current}")
+                last_master = current
+        except MasterNotFoundError:
+            print("[ALERT] Мастер недоступен!")
+        time.sleep(interval)
+
+# monitor_master(sentinel, "mymaster")`,
+    },
+    {
+        name: "redis.sentinel.Sentinel.discover_slaves(service_name)",
+        description:
+            "Опрашивает sentinel-процессы и возвращает список кортежей [(host, port), ...] всех доступных реплик (slave/replica) для заданного сервиса. Исключает реплики, помеченные как недоступные (s_down, o_down, disconnected). Если доступных реплик нет — возвращает пустой список. Используется внутри SentinelConnectionPool для балансировки чтения.",
+        syntax: `slaves = sentinel.discover_slaves(service_name)`,
+        arguments: [
+            {
+                name: "service_name",
+                description: "Имя сервиса Redis в конфигурации sentinel. Тот же service_name, что используется в master_for() и slave_for().",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379), ("sentinel2.example.com", 26379)],
+    socket_timeout=0.5,
+    decode_responses=True,
+)
+
+# Получить список всех доступных реплик
+slaves = sentinel.discover_slaves("mymaster")
+print(slaves)
+# [('192.168.1.11', 6379), ('192.168.1.12', 6379)]
+
+if not slaves:
+    print("Реплики недоступны — все чтения пойдут на мастер")
+
+# Использование для мониторинга топологии кластера
+def print_topology(sentinel_client, service: str):
+    try:
+        master = sentinel_client.discover_master(service)
+        print(f"Мастер:   {master[0]}:{master[1]}")
+    except Exception as e:
+        print(f"Мастер недоступен: {e}")
+
+    replicas = sentinel_client.discover_slaves(service)
+    if replicas:
+        for host, port in replicas:
+            print(f"Реплика:  {host}:{port}")
+    else:
+        print("Реплики:  нет доступных")
+
+print_topology(sentinel, "mymaster")
+# Мастер:   192.168.1.10:6379
+# Реплика:  192.168.1.11:6379
+# Реплика:  192.168.1.12:6379`,
+    },
+    {
+        name: "redis.sentinel.Sentinel.execute_command(*args, **kwargs)",
+        description:
+            "Выполняет произвольную команду непосредственно на одном из sentinel-процессов (не на Redis-ноде). Позволяет отправлять любые sentinel-специфичные команды: SENTINEL masters, SENTINEL slaves, SENTINEL reset, SENTINEL failover и другие. Полезен для администрирования и мониторинга кластера sentinel через Python.",
+        syntax: `result = sentinel.execute_command(*args, **kwargs)`,
+        arguments: [
+            {
+                name: "*args",
+                description: "Команда и её аргументы. Например: 'SENTINEL', 'masters' или 'SENTINEL', 'failover', 'mymaster'.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры соединения, передаваемые при выполнении команды.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"password": "sentinel-secret"},
+    socket_timeout=0.5,
+    decode_responses=True,
+)
+
+# Список всех отслеживаемых мастеров
+masters = sentinel.execute_command("SENTINEL", "masters")
+for m in masters:
+    print(f"Сервис: {m['name']}, мастер: {m['ip']}:{m['port']}, статус: {m['flags']}")
+
+# Список реплик конкретного сервиса
+slaves = sentinel.execute_command("SENTINEL", "slaves", "mymaster")
+for s in slaves:
+    print(f"Реплика: {s['ip']}:{s['port']}, отставание: {s.get('slave-repl-offset')}")
+
+# Информация о конкретном мастере
+info = sentinel.execute_command("SENTINEL", "master", "mymaster")
+print(f"Кворум: {info.get('quorum')}, эпоха: {info.get('config-epoch')}")
+
+# Принудительный failover (перевод реплики в мастера)
+# Использовать осторожно — только при обслуживании!
+# result = sentinel.execute_command("SENTINEL", "failover", "mymaster")
+
+# Сброс состояния sentinel для сервиса (после ручного изменения топологии)
+# sentinel.execute_command("SENTINEL", "reset", "mymaster")`,
+    },
+    {
+        name: "redis.sentinel.Sentinel.master_for(service_name, redis_class=Redis, connection_pool_class=SentinelConnectionPool, **kwargs)",
+        description:
+            "Создаёт и возвращает клиент Redis, всегда подключённый к текущему мастеру указанного сервиса. SentinelConnectionPool автоматически переопределяет мастер при failover: при следующей операции после смены мастера пул обновит адрес через sentinel. Клиент предназначен для операций записи. При недоступности мастера выбрасывает MasterNotFoundError.",
+        syntax: `master = sentinel.master_for(
+    service_name,
+    redis_class=Redis,
+    connection_pool_class=SentinelConnectionPool,
+    **kwargs,
+)`,
+        arguments: [
+            {
+                name: "service_name",
+                description: "Имя сервиса Redis в конфигурации sentinel (sentinel monitor <name>). Например: 'mymaster'.",
+            },
+            {
+                name: "redis_class",
+                description: "Класс клиента Redis. По умолчанию redis.Redis. Можно передать StrictRedis или кастомный подкласс.",
+            },
+            {
+                name: "connection_pool_class",
+                description: "Класс пула соединений. По умолчанию SentinelConnectionPool — автоматически перенаправляет к актуальному мастеру. Не заменяйте без необходимости.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры соединения: db, socket_timeout, decode_responses, ssl и т.д. Переопределяют connection_kwargs из конструктора Sentinel.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel, MasterNotFoundError
+import time
+
+sentinel = Sentinel(
+    [
+        ("sentinel1.example.com", 26379),
+        ("sentinel2.example.com", 26379),
+        ("sentinel3.example.com", 26379),
+    ],
+    min_other_sentinels=1,
+    sentinel_kwargs={"socket_timeout": 0.2},
+    password="redis-secret",
+    decode_responses=True,
+    socket_timeout=1.0,
+)
+
+# Клиент для записи — всегда указывает на мастера
+master = sentinel.master_for("mymaster", db=0)
+
+# Операции записи
+master.set("user:1:name", "Алексей")
+master.hset("user:1", mapping={"email": "alex@example.com", "role": "admin"})
+master.expire("user:1", 3600)
+
+# Устойчивая запись с повтором при failover
+def resilient_set(client, key: str, value: str, retries: int = 3):
+    for attempt in range(retries):
+        try:
+            return client.set(key, value)
+        except (MasterNotFoundError, ConnectionError) as e:
+            if attempt == retries - 1:
+                raise
+            print(f"Попытка {attempt + 1}: {e}, повтор через 1с...")
+            time.sleep(1)
+
+resilient_set(master, "status", "active")`,
+    },
+    {
+        name: "redis.sentinel.Sentinel.slave_for(service_name, redis_class=Redis, connection_pool_class=SentinelConnectionPool, **kwargs)",
+        description:
+            "Создаёт и возвращает клиент Redis, подключающийся к одной из доступных реплик (slave/replica) указанного сервиса. SentinelConnectionPool балансирует соединения между репликами по round-robin. Если реплики недоступны — автоматически переключается на мастер. Предназначен для операций чтения: разгружает мастер и масштабирует пропускную способность для read-heavy нагрузки.",
+        syntax: `slave = sentinel.slave_for(
+    service_name,
+    redis_class=Redis,
+    connection_pool_class=SentinelConnectionPool,
+    **kwargs,
+)`,
+        arguments: [
+            {
+                name: "service_name",
+                description: "Имя сервиса Redis в конфигурации sentinel. Тот же service_name, что в master_for().",
+            },
+            {
+                name: "redis_class",
+                description: "Класс клиента Redis. По умолчанию redis.Redis.",
+            },
+            {
+                name: "connection_pool_class",
+                description: "Класс пула соединений для реплик. По умолчанию SentinelConnectionPool с round-robin балансировкой между доступными репликами.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры соединения: db, socket_timeout, decode_responses, ssl и т.д.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel
+
+sentinel = Sentinel(
+    [
+        ("sentinel1.example.com", 26379),
+        ("sentinel2.example.com", 26379),
+        ("sentinel3.example.com", 26379),
+    ],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    password="redis-secret",
+    decode_responses=True,
+    socket_timeout=1.0,
+)
+
+# Клиент для записи (мастер)
+master = sentinel.master_for("mymaster", db=0)
+
+# Клиент для чтения (реплика — round-robin балансировка)
+slave = sentinel.slave_for("mymaster", db=0)
+
+# Паттерн разделения чтения и записи
+def save_user(user_id: int, data: dict):
+    master.hset(f"user:{user_id}", mapping=data)  # Запись → мастер
+
+def get_user(user_id: int) -> dict:
+    return slave.hgetall(f"user:{user_id}")        # Чтение → реплика
+
+def get_users_bulk(user_ids: list) -> list:
+    with slave.pipeline(transaction=False) as pipe:
+        for uid in user_ids:
+            pipe.hgetall(f"user:{uid}")
+        return pipe.execute()                      # Пакетное чтение → реплика
+
+save_user(1, {"name": "Алексей", "email": "alex@example.com"})
+user = get_user(1)
+print(user)  # {"name": "Алексей", "email": "alex@example.com"}
+
+users = get_users_bulk([1, 2, 3])
+print(users)`,
+    },
+    // ─── redis.cluster.RedisCluster ───────────────────────────────────────────
+    {
+        name: "redis.cluster.RedisCluster(host, port, startup_nodes, cluster_error_retry_attempts, retry, require_full_coverage, reinitialize_steps, read_from_replicas, **kwargs)",
+        description:
+            "Клиент Redis Cluster — автоматически распределяет команды по нодам согласно слот-карте (16384 хэш-слота). При инициализации подключается к одной или нескольким стартовым нодам и получает полную топологию кластера через CLUSTER SLOTS / CLUSTER SHARDS. Каждый ключ хэшируется по алгоритму CRC16 и направляется к ответственной ноде. При MOVED / ASK перенаправляет запрос автоматически. Поддерживает хэш-теги {} для принудительного размещения ключей на одной ноде.",
+        syntax: `from redis.cluster import RedisCluster
+
+rc = RedisCluster(
+    host="cluster-node1.example.com",
+    port=6379,
+    # или через список нод:
+    startup_nodes=[ClusterNode("node1", 6379), ClusterNode("node2", 6380)],
+    cluster_error_retry_attempts=3,
+    read_from_replicas=False,
+    **kwargs,
+)`,
+        arguments: [
+            {
+                name: "host",
+                description: "Хост одной из нод кластера для начального подключения и получения топологии. Используется вместе с port. Взаимоисключающе со startup_nodes.",
+            },
+            {
+                name: "port",
+                description: "Порт стартовой ноды. По умолчанию 6379.",
+            },
+            {
+                name: "startup_nodes",
+                description: "Список объектов ClusterNode для начального подключения. Клиент опросит их по порядку для получения полной топологии кластера. Взаимоисключающе с host/port.",
+            },
+            {
+                name: "cluster_error_retry_attempts",
+                description: "Число повторных попыток при ошибках кластера (MOVED, ASK, ClusterDownError). По умолчанию 3.",
+            },
+            {
+                name: "retry",
+                description: "Объект Retry для настройки стратегии повторов (backoff, число попыток). None — использует значение cluster_error_retry_attempts.",
+            },
+            {
+                name: "require_full_coverage",
+                description: "Если True — выбрасывает исключение если не все 16384 слота покрыты. Если False (по умолчанию) — работает даже при частичном покрытии.",
+            },
+            {
+                name: "reinitialize_steps",
+                description: "Число MOVED-перенаправлений до принудительной переинициализации слот-карты. По умолчанию 10.",
+            },
+            {
+                name: "read_from_replicas",
+                description: "Если True — команды чтения (GET, HGET и т.д.) направляются к репликам по round-robin. Снижает нагрузку на мастеров. По умолчанию False.",
+            },
+            {
+                name: "**kwargs",
+                description: "Параметры соединения: password, db, decode_responses, socket_timeout, ssl, ssl_certfile, ssl_keyfile, ssl_ca_certs и т.д.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster, ClusterNode
+
+# Вариант 1: через host/port одной ноды
+rc = RedisCluster(
+    host="cluster-node1.example.com",
+    port=6379,
+    password="redis-secret",
+    decode_responses=True,
+    socket_timeout=1.0,
+    read_from_replicas=True,
+)
+
+# Вариант 2: через список стартовых нод
+startup_nodes = [
+    ClusterNode("node1.example.com", 6379),
+    ClusterNode("node2.example.com", 6380),
+    ClusterNode("node3.example.com", 6381),
+]
+rc = RedisCluster(
+    startup_nodes=startup_nodes,
+    password="redis-secret",
+    decode_responses=True,
+    cluster_error_retry_attempts=5,
+    reinitialize_steps=5,
+)
+
+# Команды автоматически маршрутизируются к нужной ноде по CRC16
+rc.set("user:1:name", "Алексей")   # → нода с нужным слотом
+rc.set("user:2:name", "Мария")     # → другая нода
+
+# Хэш-тег {}: оба ключа попадут на одну ноду (слот вычисляется по "user")
+rc.set("{user}:1:name", "Алексей")
+rc.set("{user}:2:name", "Мария")
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.from_url(url, **kwargs)",
+        description:
+            "Создаёт экземпляр RedisCluster из URL-строки. Поддерживает схемы redis:// (TCP), rediss:// (TLS) и unix://. Из URL извлекаются host, port, password, db и другие параметры. Дополнительные параметры кластера передаются через **kwargs.",
+        syntax: `rc = RedisCluster.from_url(url, **kwargs)`,
+        arguments: [
+            {
+                name: "url",
+                description: "URL строка. Формат: redis://[:password@]host[:port][/db] или rediss://... для TLS. Например: 'redis://:secret@cluster.example.com:6379/0'.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры RedisCluster: decode_responses, read_from_replicas, cluster_error_retry_attempts, ssl_ca_certs и т.д.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster
+
+# TCP без пароля
+rc = RedisCluster.from_url(
+    "redis://cluster.example.com:6379/0",
+    decode_responses=True,
+    read_from_replicas=True,
+)
+
+# TCP с паролем
+rc = RedisCluster.from_url(
+    "redis://:redis-secret@cluster.example.com:6379",
+    decode_responses=True,
+    cluster_error_retry_attempts=5,
+)
+
+# TLS (rediss://)
+rc = RedisCluster.from_url(
+    "rediss://:redis-secret@cluster.example.com:6380",
+    decode_responses=True,
+    ssl_ca_certs="/etc/redis/certs/ca.crt",
+    ssl_certfile="/etc/redis/certs/client.crt",
+    ssl_keyfile="/etc/redis/certs/client.key",
+)
+
+# Использование URL из переменной окружения
+import os
+rc = RedisCluster.from_url(
+    os.environ["REDIS_CLUSTER_URL"],
+    decode_responses=True,
+    socket_timeout=1.0,
+    socket_connect_timeout=0.5,
+)
+
+rc.set("key", "value")
+print(rc.get("key"))  # "value"
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.on_connect(connection)",
+        description:
+            "Колбэк, вызываемый при установке нового соединения с нодой кластера. Выполняет кластерно-специфичную инициализацию соединения: отправляет CLUSTER MYID для идентификации ноды, AUTH при наличии пароля и SELECT для выбора БД. Переопределяется для добавления кастомной логики инициализации соединения — например, установки CLIENT SETNAME.",
+        syntax: `rc.on_connect(connection)`,
+        arguments: [
+            {
+                name: "connection",
+                description: "Объект redis.Connection, только что установивший TCP/TLS-соединение с нодой кластера.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster, ClusterNode
+
+# Переопределение on_connect() для кастомной инициализации
+class LabeledRedisCluster(RedisCluster):
+    APP_NAME = "myapp-v2"
+
+    def on_connect(self, connection):
+        # Стандартная инициализация кластерного соединения
+        super().on_connect(connection)
+        # Дополнительно: устанавливаем имя клиента для мониторинга
+        connection.send_command("CLIENT", "SETNAME", self.APP_NAME)
+        connection.read_response()
+
+rc = LabeledRedisCluster(
+    host="cluster.example.com",
+    port=6379,
+    decode_responses=True,
+)
+
+rc.set("key", "value")
+# В redis-cli: CLIENT LIST → ... name=myapp-v2 ...
+
+# on_connect() также используется для проверки режима кластера:
+# если нода не в кластерном режиме — RedisCluster выбросит исключение
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.get_node(node_name=None, host=None, port=None)",
+        description:
+            "Возвращает объект ClusterNode по имени, хосту или хосту+порту. node_name имеет формат 'host:port'. Если нода не найдена — возвращает None. Полезен для получения объекта конкретной ноды перед выполнением команды напрямую на ней через node.redis_connection или client.execute_command(..., target_nodes=[node]).",
+        syntax: `node = rc.get_node(node_name=None, host=None, port=None)`,
+        arguments: [
+            {
+                name: "node_name",
+                description: "Имя ноды в формате 'host:port'. Например: '192.168.1.10:6379'. Приоритет над host/port.",
+            },
+            {
+                name: "host",
+                description: "IP-адрес или hostname ноды.",
+            },
+            {
+                name: "port",
+                description: "Порт ноды. Используется вместе с host.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster, ClusterNode
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+
+# Поиск ноды по имени
+node = rc.get_node(node_name="192.168.1.10:6379")
+if node:
+    print(f"Нода: {node.name}, роль: {node.server_type}")
+    # Нода: 192.168.1.10:6379, роль: primary
+
+# Поиск по хосту и порту
+node = rc.get_node(host="192.168.1.11", port=6380)
+if node:
+    print(f"Нода найдена: {node.name}")
+
+# Выполнение команды на конкретной ноде (например, INFO или DEBUG)
+node = rc.get_node(host="192.168.1.10", port=6379)
+if node:
+    info = rc.execute_command("INFO", "replication", target_nodes=[node])
+    print(info)
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.get_primaries()",
+        description:
+            "Возвращает список всех первичных (master/primary) нод кластера в виде объектов ClusterNode. В стандартном кластере Redis из 6 нод (3 мастера + 3 реплики) вернёт 3 объекта. Полезен для выполнения команд на всех мастерах: сбора статистики, FLUSHDB, прогрева кэша или кастомной балансировки.",
+        syntax: `primaries = rc.get_primaries()`,
+        arguments: [],
+        example: `from redis.cluster import RedisCluster
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+
+primaries = rc.get_primaries()
+print(f"Мастеров в кластере: {len(primaries)}")
+
+for node in primaries:
+    print(f"  Мастер: {node.name} (слоты: {node.slots})")
+
+# Сбор статистики со всех мастеров
+total_keys = 0
+for node in rc.get_primaries():
+    info = rc.execute_command("DBSIZE", target_nodes=[node])
+    print(f"  {node.name}: {info} ключей")
+    total_keys += info
+print(f"Всего ключей в кластере: {total_keys}")
+
+# FLUSHDB на всех мастерах (осторожно в продакшене!)
+# for node in rc.get_primaries():
+#     rc.execute_command("FLUSHDB", target_nodes=[node])
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.get_replicas()",
+        description:
+            "Возвращает список всех реплик (slave/replica) кластера в виде объектов ClusterNode. В кластере из 6 нод (3 мастера + 3 реплики) вернёт 3 объекта. Используется для мониторинга репликации, сбора read-only статистики с реплик или проверки отставания репликации (replication lag).",
+        syntax: `replicas = rc.get_replicas()`,
+        arguments: [],
+        example: `from redis.cluster import RedisCluster
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+
+replicas = rc.get_replicas()
+print(f"Реплик в кластере: {len(replicas)}")
+
+for node in replicas:
+    print(f"  Реплика: {node.name}")
+
+# Проверка отставания репликации на всех репликах
+for node in rc.get_replicas():
+    info = rc.execute_command("INFO", "replication", target_nodes=[node])
+    # Парсим master_repl_offset и slave_repl_offset
+    lines = info.split("\r\n") if isinstance(info, str) else []
+    lag_info = {
+        line.split(":")[0]: line.split(":")[1]
+        for line in lines if ":" in line
+    }
+    slave_offset  = int(lag_info.get("slave_repl_offset", 0))
+    master_offset = int(lag_info.get("master_repl_offset", 0))
+    lag = master_offset - slave_offset
+    print(f"  {node.name}: отставание = {lag} байт")
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.get_random_node()",
+        description:
+            "Возвращает случайный объект ClusterNode из всех нод кластера (мастера и реплики). Используется для равномерного распределения служебных команд по нодам кластера или для получения произвольной ноды при мониторинге.",
+        syntax: `node = rc.get_random_node()`,
+        arguments: [],
+        example: `from redis.cluster import RedisCluster
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+
+# Получить случайную ноду
+node = rc.get_random_node()
+print(f"Случайная нода: {node.name}, роль: {node.server_type}")
+
+# Выполнение команды PING на случайной ноде
+result = rc.execute_command("PING", target_nodes=[node])
+print(result)  # True
+
+# Паттерн: сбор случайной выборки статистики для мониторинга
+import random
+
+def sample_cluster_info(rc, sample_size=2) -> list[dict]:
+    all_nodes = rc.get_primaries() + rc.get_replicas()
+    sampled = random.sample(all_nodes, min(sample_size, len(all_nodes)))
+    results = []
+    for node in sampled:
+        info = rc.execute_command("INFO", "server", target_nodes=[node])
+        results.append({"node": node.name, "info": info})
+    return results
+
+stats = sample_cluster_info(rc, sample_size=2)
+for s in stats:
+    print(f"Статистика от {s['node']}: {len(s['info'])} байт")
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.get_node_from_key(key, read=False)",
+        description:
+            "Возвращает объект ClusterNode, ответственный за данный ключ. Вычисляет хэш-слот ключа (CRC16 от ключа или от содержимого {} если есть хэш-тег) и возвращает соответствующую ноду. При read=True возвращает реплику если read_from_replicas=True, иначе мастера. Полезен для отладки распределения ключей и понимания топологии.",
+        syntax: `node = rc.get_node_from_key(key, read=False)`,
+        arguments: [
+            {
+                name: "key",
+                description: "Ключ Redis, для которого нужно найти ответственную ноду. Хэш-тег {} в ключе учитывается при вычислении слота.",
+            },
+            {
+                name: "read",
+                description: "Если True — возвращает реплику (при read_from_replicas=True). Если False (по умолчанию) — всегда возвращает мастера.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster
+from redis.cluster import get_node_name  # hash slot util
+
+rc = RedisCluster(
+    host="cluster.example.com",
+    port=6379,
+    decode_responses=True,
+    read_from_replicas=True,
+)
+
+# Определяем, на какой ноде хранится ключ
+node = rc.get_node_from_key("user:1:name")
+print(f"Ключ 'user:1:name' → нода {node.name} (слот {node.slots})")
+
+# Хэш-тег: оба ключа на одной ноде (слот по "user")
+node1 = rc.get_node_from_key("{user}:1:name")
+node2 = rc.get_node_from_key("{user}:2:email")
+print(f"{{user}}:1 → {node1.name}")
+print(f"{{user}}:2 → {node2.name}")
+print(f"Одна нода: {node1.name == node2.name}")  # True
+
+# read=True: получить ноду для чтения (может быть реплика)
+read_node = rc.get_node_from_key("session:abc", read=True)
+write_node = rc.get_node_from_key("session:abc", read=False)
+print(f"Чтение → {read_node.name}, запись → {write_node.name}")
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.get_default_node()",
+        description:
+            "Возвращает ноду по умолчанию — используется для команд, не привязанных к конкретному ключу (например, CLUSTER INFO, DBSIZE без указания target_nodes, PING). По умолчанию это первая стартовая нода кластера. Можно изменить через set_default_node().",
+        syntax: `node = rc.get_default_node()`,
+        arguments: [],
+        example: `from redis.cluster import RedisCluster, ClusterNode
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+
+# Получить текущую ноду по умолчанию
+default = rc.get_default_node()
+print(f"Нода по умолчанию: {default.name}")
+
+# Команды без указания ключа идут на default_node
+cluster_info = rc.execute_command("CLUSTER", "INFO")
+# CLUSTER INFO → отправлено на default_node
+
+# Проверка типа ноды
+if default.server_type == "primary":
+    print("Default нода — мастер")
+
+# Изменение ноды по умолчанию через set_default_node
+new_default = rc.get_node(host="192.168.1.12", port=6382)
+if new_default:
+    rc.set_default_node(new_default)
+    print(f"Новая нода по умолчанию: {rc.get_default_node().name}")
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.set_default_node(node)",
+        description:
+            "Устанавливает ноду по умолчанию для команд, не привязанных к конкретному ключу. Принимает объект ClusterNode. Если node равен None или не является экземпляром ClusterNode — выбрасывает DataError. Полезно для направления служебных команд (CLUSTER INFO, PING, DEBUG) на конкретную ноду.",
+        syntax: `rc.set_default_node(node)`,
+        arguments: [
+            {
+                name: "node",
+                description: "Объект ClusterNode для установки в качестве ноды по умолчанию. Должен быть получен через get_node(), get_primaries() или get_random_node().",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+
+print(f"До: {rc.get_default_node().name}")
+
+# Переключить default на конкретного мастера
+primaries = rc.get_primaries()
+target_primary = primaries[-1]  # Последний мастер в списке
+rc.set_default_node(target_primary)
+print(f"После: {rc.get_default_node().name}")
+
+# Теперь CLUSTER INFO пойдёт на target_primary
+cluster_info = rc.execute_command("CLUSTER", "INFO")
+
+# Паттерн: балансировка служебных команд по мастерам
+import itertools
+
+primary_cycle = itertools.cycle(rc.get_primaries())
+
+def exec_on_next_primary(rc, *cmd):
+    node = next(primary_cycle)
+    return rc.execute_command(*cmd, target_nodes=[node])
+
+for _ in range(6):
+    result = exec_on_next_primary(rc, "PING")
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.monitor()",
+        description:
+            "Возвращает объект Monitor для перехвата всех команд, поступающих на ноду по умолчанию кластера. Отправляет команду MONITOR на default_node и читает поток команд в реальном времени. В кластерном режиме MONITOR работает на одной ноде одновременно — для мониторинга всего кластера нужно запустить Monitor на каждом мастере отдельно.",
+        syntax: `with rc.monitor() as m:
+    for cmd in m.listen():
+        ...`,
+        arguments: [],
+        example: `from redis.cluster import RedisCluster
+import threading
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+
+# Мониторинг одной ноды (default_node)
+def monitor_node(rc, node, duration=5):
+    rc.set_default_node(node)
+    with rc.monitor() as m:
+        import time
+        end = time.monotonic() + duration
+        for cmd in m.listen():
+            if time.monotonic() > end:
+                break
+            print(f"[{node.name}] {cmd['command']} {cmd.get('args', '')}")
+
+# Мониторинг всех мастеров параллельно
+threads = []
+for primary in rc.get_primaries():
+    # Для мониторинга всего кластера создаём отдельный клиент на каждую ноду
+    node_rc = RedisCluster(
+        host=primary.host, port=primary.port, decode_responses=True
+    )
+    t = threading.Thread(
+        target=monitor_node,
+        args=(node_rc, node_rc.get_default_node(), 3),
+        daemon=True,
+    )
+    threads.append((t, node_rc))
+    t.start()
+
+for t, node_rc in threads:
+    t.join()
+    node_rc.close()
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.pubsub(**kwargs)",
+        description:
+            "Создаёт объект ClusterPubSub для работы с Pub/Sub в Redis Cluster. В кластерном режиме канал привязывается к конкретному слоту и, соответственно, к конкретной ноде. ClusterPubSub автоматически определяет нужную ноду для подписки. Поддерживает subscribe, psubscribe (паттерн-подписка), publish, unsubscribe.",
+        syntax: `pubsub = rc.pubsub(**kwargs)`,
+        arguments: [
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры ClusterPubSub: ignore_subscribe_messages=True/False (скрывать системные сообщения о подписке), node (конкретная нода для подписки).",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster
+import threading
+import time
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+
+# Подписчик
+def subscriber():
+    ps = rc.pubsub(ignore_subscribe_messages=True)
+    ps.subscribe("notifications")  # Канал привязывается к нужной ноде автоматически
+
+    for message in ps.listen():
+        if message["type"] == "message":
+            print(f"Получено: {message['data']}")
+        time.sleep(0.01)  # Небольшая пауза
+
+sub_thread = threading.Thread(target=subscriber, daemon=True)
+sub_thread.start()
+time.sleep(0.5)  # Дать время на подписку
+
+# Публикатор — publish маршрутизируется к ноде канала автоматически
+for i in range(5):
+    rc.publish("notifications", f"Сообщение {i}")
+    time.sleep(0.1)
+
+# Паттерн-подписка (все каналы вида "event:*")
+ps2 = rc.pubsub(ignore_subscribe_messages=True)
+ps2.psubscribe("event:*")
+rc.publish("event:login",  "user:42")
+rc.publish("event:logout", "user:43")
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.pipeline(transaction=None, shard_hint=None)",
+        description:
+            "Создаёт объект ClusterPipeline для пакетной отправки команд в кластере. В отличие от обычного Pipeline, ClusterPipeline группирует команды по нодам и отправляет каждой ноде её пакет одновременно. Транзакции (MULTI/EXEC) в кластере поддерживаются только если все ключи находятся на одной ноде (используйте хэш-теги {}). transaction=True с ключами на разных нодах выбросит исключение.",
+        syntax: `with rc.pipeline() as pipe:
+    pipe.set("key1", "val1")
+    pipe.get("key2")
+    results = pipe.execute()`,
+        arguments: [
+            {
+                name: "transaction",
+                description: "None или False — пакетный режим без транзакций (рекомендуется для кластера). True — MULTI/EXEC только если все ключи на одной ноде.",
+            },
+            {
+                name: "shard_hint",
+                description: "Не используется в кластерном режиме. Оставьте None.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+
+# Нетранзакционный pipeline — ключи на любых нодах
+with rc.pipeline() as pipe:
+    pipe.set("user:1:name", "Алексей")
+    pipe.set("user:2:name", "Мария")
+    pipe.get("user:1:name")
+    pipe.incr("visits:total")
+    results = pipe.execute()
+    # results = [True, True, "Алексей", 1]
+    # Команды сгруппированы по нодам и отправлены параллельно
+    print(results)
+
+# Транзакционный pipeline — только при хэш-теге (все ключи на одной ноде)
+with rc.pipeline() as pipe:
+    # {order:42} → все ключи на одном слоте
+    pipe.set("{order:42}:status",  "processing")
+    pipe.set("{order:42}:updated", "2026-06-15")
+    pipe.incr("{order:42}:version")
+    results = pipe.execute()
+    print(results)  # [True, True, 1]
+
+# Массовая загрузка через pipeline
+with rc.pipeline() as pipe:
+    for i in range(1000):
+        pipe.set(f"{{batch}}:item:{i}", f"value:{i}")
+    pipe.execute()
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.lock(name, timeout, sleep, blocking, blocking_timeout, lock_class, thread_local, raise_on_release_error)",
+        description:
+            "Создаёт распределённую блокировку (lock) на базе Redis Cluster. Реализует паттерн SET NX PX (атомарный SET с флагом NX и TTL). В кластере блокировка привязана к конкретному слоту по имени ключа — для надёжности используйте хэш-тег {} чтобы явно управлять слотом. Возвращает объект Lock с методами acquire(), release() и контекстным менеджером.",
+        syntax: `lock = rc.lock(
+    name,
+    timeout=None,
+    sleep=0.1,
+    blocking=True,
+    blocking_timeout=None,
+    lock_class=None,
+    thread_local=True,
+    raise_on_release_error=True,
+)`,
+        arguments: [
+            {
+                name: "name",
+                description: "Имя ключа блокировки в Redis. Рекомендуется использовать хэш-тег: 'lock:{resource_name}'.",
+            },
+            {
+                name: "timeout",
+                description: "TTL блокировки в секундах. None — блокировка без автоматического истечения (опасно: блокировка останется при сбое). Рекомендуется всегда задавать.",
+            },
+            {
+                name: "sleep",
+                description: "Интервал (секунды) между повторными попытками acquire() при blocking=True. По умолчанию 0.1.",
+            },
+            {
+                name: "blocking",
+                description: "Если True (по умолчанию) — acquire() ожидает освобождения блокировки. Если False — немедленно возвращает False если блокировка занята.",
+            },
+            {
+                name: "blocking_timeout",
+                description: "Максимальное время ожидания (секунды) при blocking=True. None — ждать бесконечно.",
+            },
+            {
+                name: "thread_local",
+                description: "Если True (по умолчанию) — токен блокировки хранится в thread-local storage. False — токен общий для всех потоков.",
+            },
+            {
+                name: "raise_on_release_error",
+                description: "Если True (по умолчанию) — release() выбрасывает LockNotOwnedError если блокировка уже освобождена или принадлежит другому процессу.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster
+from redis.exceptions import LockNotOwnedError
+import time
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+
+# Базовое использование через контекстный менеджер
+with rc.lock("lock:{inventory}", timeout=30, blocking_timeout=5) as lock:
+    # Критическая секция: не более одного процесса одновременно
+    current = int(rc.get("inventory:item_42") or 0)
+    if current > 0:
+        rc.decr("inventory:item_42")
+        print("Товар зарезервирован")
+
+# Неблокирующий вариант
+lock = rc.lock("lock:{payment}", timeout=10, blocking=False)
+acquired = lock.acquire()
+if acquired:
+    try:
+        print("Блокировка получена — обработка платежа")
+        time.sleep(2)
+    finally:
+        lock.release()
+else:
+    print("Платёж уже обрабатывается другим процессом")
+
+# Проверка продления (extend TTL если задача ещё выполняется)
+lock = rc.lock("lock:{long_job}", timeout=60)
+lock.acquire()
+try:
+    for i in range(10):
+        time.sleep(5)
+        lock.extend(60)  # Продлить TTL ещё на 60 секунд
+        print(f"Шаг {i+1} выполнен, TTL продлён")
+finally:
+    lock.release()
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.execute_command(*args, **kwargs)",
+        description:
+            "Выполняет произвольную команду Redis в контексте кластера. Если команда содержит ключ — автоматически маршрутизирует к нужной ноде по слоту. Через параметр target_nodes можно явно указать ноду или группу нод: ALL_NODES, ALL_PRIMARIES, RANDOM, DEFAULT_NODE или список ClusterNode. При MOVED / ASK автоматически повторяет на нужной ноде.",
+        syntax: `result = rc.execute_command(*args, **kwargs)
+# С явным указанием нод:
+result = rc.execute_command(*args, target_nodes=ALL_PRIMARIES)`,
+        arguments: [
+            {
+                name: "*args",
+                description: "Команда Redis и её аргументы. Например: 'SET', 'key', 'value' или 'CLUSTER', 'INFO'.",
+            },
+            {
+                name: "target_nodes",
+                description: "Явное указание нод: RedisCluster.ALL_NODES (все ноды), ALL_PRIMARIES (все мастера), RANDOM (случайная нода), DEFAULT_NODE (нода по умолчанию) или список ClusterNode.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+
+# Команда с ключом — автоматическая маршрутизация по слоту
+rc.execute_command("SET", "user:1", "Алексей")
+value = rc.execute_command("GET", "user:1")
+print(value)  # "Алексей"
+
+# На всех мастерах: DBSIZE для подсчёта общего числа ключей
+sizes = rc.execute_command("DBSIZE", target_nodes=RedisCluster.ALL_PRIMARIES)
+total = sum(sizes.values()) if isinstance(sizes, dict) else sizes
+print(f"Всего ключей: {total}")
+
+# На всех нодах: PING для проверки доступности
+pings = rc.execute_command("PING", target_nodes=RedisCluster.ALL_NODES)
+print(f"Ответили: {sum(1 for v in pings.values() if v)}/{len(pings)} нод")
+
+# CLUSTER INFO — на дефолтной ноде
+info = rc.execute_command("CLUSTER", "INFO", target_nodes=RedisCluster.DEFAULT_NODE)
+print(info[:100])
+
+# На конкретной ноде
+node = rc.get_node(host="192.168.1.10", port=6379)
+mem_info = rc.execute_command("MEMORY", "USAGE", "user:1", target_nodes=[node])
+print(f"Память: {mem_info} байт")
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.RedisCluster.close()",
+        description:
+            "Закрывает все соединения со всеми нодами кластера и освобождает ресурсы. Завершает работу всех ConnectionPool в клиенте: закрывает активные и свободные соединения с каждой нодой. После close() клиент непригоден для использования. Вызывайте явно при завершении работы или используйте контекстный менеджер (with RedisCluster(...) as rc).",
+        syntax: `rc.close()`,
+        arguments: [],
+        example: `from redis.cluster import RedisCluster
+
+# Паттерн 1: явный close() через try/finally
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+try:
+    rc.set("key", "value")
+    print(rc.get("key"))  # "value"
+finally:
+    rc.close()  # Все соединения со всеми нодами закрыты
+
+# Паттерн 2: контекстный менеджер (with) — close() вызывается автоматически
+with RedisCluster(
+    host="cluster.example.com",
+    port=6379,
+    decode_responses=True,
+) as rc:
+    rc.set("counter", 0)
+    for i in range(100):
+        rc.incr("counter")
+    print(rc.get("counter"))  # "100"
+# close() вызван автоматически при выходе из with
+
+# Паттерн 3: atexit для долгоживущего процесса
+import atexit
+
+rc = RedisCluster(host="cluster.example.com", port=6379, decode_responses=True)
+atexit.register(rc.close)
+
+# Приложение работает, rc используется...
+rc.set("app:started", "true")`,
+    },
+    // ─── redis.cluster.ClusterConnectionPool ─────────────────────────────────
+    {
+        name: "redis.cluster.ClusterConnectionPool(startup_nodes, init_slot_cache, connection_class, max_connections, max_connections_per_node, reinitialize_steps, skip_full_coverage_check, nodemanager_follow_cluster, readonly_mode, **connection_kwargs)",
+        description:
+            "Пул соединений для Redis Cluster. Управляет соединениями к каждой ноде кластера отдельно: хранит по одному пулу на ноду и маршрутизирует команды по хэш-слотам. Получает топологию кластера через ClusterNodesManager, обновляет слот-карту при MOVED-перенаправлениях. Создаётся автоматически клиентом RedisCluster — ручное создание требуется только при нестандартных конфигурациях.",
+        syntax: `from redis.cluster import ClusterConnectionPool, ClusterNode
+
+pool = ClusterConnectionPool(
+    startup_nodes=[ClusterNode("node1", 6379)],
+    max_connections=50,
+    readonly_mode=False,
+    **connection_kwargs,
+)`,
+        arguments: [
+            {
+                name: "startup_nodes",
+                description: "Список объектов ClusterNode для начального подключения и получения топологии. Клиент опросит их для построения слот-карты.",
+            },
+            {
+                name: "init_slot_cache",
+                description: "Если True (по умолчанию) — при инициализации немедленно загружает слот-карту от стартовых нод. Если False — слот-карта загружается при первом запросе.",
+            },
+            {
+                name: "connection_class",
+                description: "Класс соединения для нод кластера. По умолчанию ClusterConnection. Можно заменить на SSLClusterConnection или кастомный подкласс.",
+            },
+            {
+                name: "max_connections",
+                description: "Максимальное число соединений на весь кластер (при max_connections_per_node=False) или на одну ноду (при max_connections_per_node=True).",
+            },
+            {
+                name: "max_connections_per_node",
+                description: "Если True — max_connections применяется к каждой ноде отдельно. Если False (по умолчанию) — ограничение на весь кластер.",
+            },
+            {
+                name: "reinitialize_steps",
+                description: "Число MOVED-перенаправлений до принудительной переинициализации слот-карты. По умолчанию 10.",
+            },
+            {
+                name: "skip_full_coverage_check",
+                description: "Если True — не проверяет покрытие всех 16384 слотов при инициализации. Ускоряет старт при большом кластере.",
+            },
+            {
+                name: "nodemanager_follow_cluster",
+                description: "Если True — при переинициализации опрашивает не только стартовые ноды, но и все известные ноды кластера. Полезно при динамическом добавлении нод.",
+            },
+            {
+                name: "readonly_mode",
+                description: "Если True — отправляет READONLY всем соединениям с репликами, позволяя читать с них напрямую. Используется при read_from_replicas=True.",
+            },
+            {
+                name: "**connection_kwargs",
+                description: "Параметры соединения для нод кластера: password, db, decode_responses, socket_timeout, ssl и т.д.",
+            },
+        ],
+        example: `from redis.cluster import ClusterConnectionPool, ClusterNode, RedisCluster
+import redis
+
+startup_nodes = [
+    ClusterNode("node1.example.com", 6379),
+    ClusterNode("node2.example.com", 6380),
+    ClusterNode("node3.example.com", 6381),
+]
+
+# Ручное создание пула (нестандартный сценарий):
+pool = ClusterConnectionPool(
+    startup_nodes=startup_nodes,
+    max_connections=100,
+    max_connections_per_node=True,  # 100 соединений на каждую ноду
+    reinitialize_steps=5,
+    readonly_mode=False,
+    password="redis-secret",
+    decode_responses=True,
+    socket_timeout=1.0,
+    socket_connect_timeout=0.5,
+)
+
+rc = RedisCluster(connection_pool=pool)
+rc.set("key", "value")
+print(rc.get("key"))  # "value"
+
+# Проверка состояния пула
+print(f"Нод в кластере: {len(pool.nodes.nodes)}")
+print(f"Инициализирован: {pool.nodes.initialized}")
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.ClusterConnectionPool.get_connection(command_name, *args, **kwargs)",
+        description:
+            "Получает соединение с нодой кластера для выполнения команды. Определяет целевую ноду: для команд с ключом — вычисляет хэш-слот и ищет ответственную ноду; для команд без ключа — использует default_node. При MOVED / ASK обновляет слот-карту и направляет к нужной ноде. Вызывается автоматически при каждой команде.",
+        syntax: `connection = pool.get_connection(command_name, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "command_name",
+                description: "Имя команды Redis в верхнем регистре: 'GET', 'SET', 'HSET' и т.д. Используется для определения маршрутизации.",
+            },
+            {
+                name: "*args",
+                description: "Аргументы команды. Первый аргумент после имени команды обычно является ключом, по которому вычисляется хэш-слот.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры: target_nodes для явного указания нод, node для прямого указания конкретной ноды.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster, ClusterNode
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+pool = rc.connection_pool
+
+# get_connection() вызывается автоматически при каждой команде
+rc.set("user:1", "Алексей")  # pool.get_connection("SET", "user:1", "Алексей")
+rc.get("user:1")              # pool.get_connection("GET", "user:1")
+
+# Ручное получение соединения для низкоуровневой работы:
+node = rc.get_node(host="192.168.1.10", port=6379)
+conn = pool.get_connection("GET", node=node)
+try:
+    conn.send_command("PING")
+    print(conn.read_response())   # True
+    conn.send_command("DBSIZE")
+    print(conn.read_response())   # Число ключей на ноде
+finally:
+    pool.release(conn)
+
+# При MOVED перенаправлении (происходит автоматически):
+# 1. get_connection("SET", "key") → нода A (слот 100)
+# 2. Redis отвечает MOVED 100 nodeB:6380
+# 3. pool обновляет слот-карту
+# 4. повторяет на ноде B
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.ClusterConnectionPool.make_connection(node=None)",
+        description:
+            "Создаёт новое соединение с указанной нодой кластера. Использует connection_class пула (по умолчанию ClusterConnection) и параметры из connection_kwargs. Вызывается из get_connection() когда в пуле нет свободных соединений для данной ноды. При node=None — создаёт соединение с default_node.",
+        syntax: `connection = pool.make_connection(node=None)`,
+        arguments: [
+            {
+                name: "node",
+                description: "Объект ClusterNode для которого создаётся соединение. Если None — используется нода по умолчанию пула.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster, ClusterNode
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+pool = rc.connection_pool
+
+# make_connection() вызывается автоматически при нехватке соединений.
+# Ручной вызов для диагностики:
+node = rc.get_primaries()[0]
+conn = pool.make_connection(node=node)
+print(f"Создано соединение: {conn.host}:{conn.port}")
+
+try:
+    conn.send_command("PING")
+    print(conn.read_response())  # True
+finally:
+    pool.release(conn)
+
+# Переопределение для логирования создания соединений:
+from redis.cluster import ClusterConnectionPool as BasePool
+
+class InstrumentedPool(BasePool):
+    def make_connection(self, node=None):
+        conn = super().make_connection(node)
+        print(f"[POOL] Новое соединение → {conn.host}:{conn.port} "
+              f"(создано: {len(self._created_connections_per_node.get(node.name, []))})")
+        return conn
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.ClusterConnectionPool.release(connection)",
+        description:
+            "Возвращает соединение обратно в пул после использования. Пул определяет, к какой ноде принадлежит соединение (по host:port), и возвращает его в соответствующий под-пул ноды. Если нода была удалена из кластера с момента выдачи соединения — оно закрывается. Вызывается автоматически клиентом после каждой команды.",
+        syntax: `pool.release(connection)`,
+        arguments: [
+            {
+                name: "connection",
+                description: "Объект соединения (ClusterConnection или подкласс), полученный через get_connection() того же пула.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+pool = rc.connection_pool
+
+# Автоматический release() при каждой команде:
+rc.set("key", "value")  # get_connection() → команда → release()
+rc.get("key")           # get_connection() → команда → release()
+
+# Низкоуровневое использование с явным release():
+node = rc.get_primaries()[0]
+conn = pool.get_connection("SET", node=node)
+try:
+    conn.send_command("SET", "manual_key", "manual_value")
+    response = conn.read_response()
+    print(f"SET: {response}")  # True
+    conn.send_command("GET", "manual_key")
+    value = conn.read_response()
+    print(f"GET: {value}")     # "manual_value"
+finally:
+    pool.release(conn)         # Возврат в пул ноды
+
+# Поведение при перебалансировке кластера:
+# Если нода была удалена из кластера после get_connection(),
+# release() закроет соединение вместо возврата в пул —
+# утечки ресурсов не происходит
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.ClusterConnectionPool.disconnect()",
+        description:
+            "Закрывает все соединения пула — как свободные, так и активные — для всех нод кластера. В отличие от SentinelConnectionPool.disconnect(), в кластерной версии нет параметра in_use. После disconnect() пул продолжает работать: при следующем запросе создаются новые соединения. Используется для принудительного переподключения всех нод или освобождения ресурсов.",
+        syntax: `pool.disconnect()`,
+        arguments: [],
+        example: `from redis.cluster import RedisCluster
+
+rc = RedisCluster(
+    host="cluster.example.com",
+    port=6379,
+    decode_responses=True,
+    max_connections=50,
+)
+pool = rc.connection_pool
+
+# Прогреваем пул
+for i in range(20):
+    rc.set(f"warmup:{i}", i)
+
+# Принудительное закрытие всех соединений со всеми нодами
+pool.disconnect()
+print("Все соединения закрыты")
+
+# Пул продолжает работать — новые соединения создаются автоматически
+rc.ping()  # Новое соединение к default_node
+rc.set("after_disconnect", "ok")
+print(rc.get("after_disconnect"))  # "ok"
+
+# Паттерн: переподключение после изменения конфигурации сети
+def reconnect_cluster(rc):
+    pool = rc.connection_pool
+    pool.disconnect()        # Закрыть все старые соединения
+    pool.reset()             # Переинициализировать слот-карту
+    rc.ping()                # Проверить новое соединение
+    print("Кластер переподключён")
+
+reconnect_cluster(rc)
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.ClusterConnectionPool.reset()",
+        description:
+            "Переинициализирует слот-карту кластера: заново опрашивает стартовые (или все известные при nodemanager_follow_cluster=True) ноды и перестраивает таблицу соответствия слот→нода. Вызывается автоматически при обнаружении MOVED-ошибок (после reinitialize_steps перенаправлений). Вручную вызывается после добавления/удаления нод или failover.",
+        syntax: `pool.reset()`,
+        arguments: [],
+        example: `from redis.cluster import RedisCluster
+
+rc = RedisCluster(
+    host="cluster.example.com",
+    port=6379,
+    decode_responses=True,
+    reinitialize_steps=5,
+)
+pool = rc.connection_pool
+
+# Просмотр текущей слот-карты (до reset)
+slots_before = len(pool.nodes.slots)
+print(f"Слотов в карте: {slots_before}")  # 16384
+
+# Ручной reset() — переинициализация топологии
+pool.reset()
+print("Слот-карта переинициализирована")
+
+slots_after = len(pool.nodes.slots)
+print(f"Слотов после reset: {slots_after}")  # 16384
+
+# Паттерн: обработка ошибок кластера с принудительным reset()
+from redis.exceptions import ClusterDownError
+import time
+
+def safe_cluster_op(rc, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            return rc.set("health_check", "ok")
+        except ClusterDownError:
+            print(f"Кластер недоступен, попытка {attempt + 1}/{max_retries}")
+            time.sleep(2 ** attempt)  # Экспоненциальный backoff
+            rc.connection_pool.reset()  # Переинициализируем топологию
+    raise RuntimeError("Кластер недоступен после всех попыток")
+
+safe_cluster_op(rc)
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.ClusterConnectionPool.get_node_by_slot(slot)",
+        description:
+            "Возвращает объект ClusterNode, ответственный за указанный хэш-слот (0–16383). Смотрит в слот-карту пула и возвращает мастера или реплику в зависимости от readonly_mode. Используется внутри get_connection() и напрямую — для диагностики распределения слотов.",
+        syntax: `node = pool.get_node_by_slot(slot)`,
+        arguments: [
+            {
+                name: "slot",
+                description: "Номер хэш-слота от 0 до 16383. Хэш-слот ключа вычисляется как CRC16(key) % 16384.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster
+from redis.cluster import hash_slot  # CRC16 утилита
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+pool = rc.connection_pool
+
+# Вычислить слот и найти ноду вручную
+key = "user:1:profile"
+slot = hash_slot(key)  # CRC16("user:1:profile") % 16384
+print(f"Ключ '{key}' → слот {slot}")
+
+node = pool.get_node_by_slot(slot)
+print(f"Слот {slot} → нода {node.name} ({node.server_type})")
+
+# Диагностика: какие слоты на какой ноде
+from collections import defaultdict
+
+slot_distribution = defaultdict(list)
+for slot_num in range(0, 16384, 100):  # Каждый 100-й слот
+    n = pool.get_node_by_slot(slot_num)
+    if n:
+        slot_distribution[n.name].append(slot_num)
+
+for node_name, slots in slot_distribution.items():
+    print(f"  {node_name}: {len(slots) * 100} слотов (примерно)")
+
+# Хэш-тег: оба ключа → один слот → одна нода
+slot1 = hash_slot("{order}:1:status")
+slot2 = hash_slot("{order}:2:amount")
+print(f"Слот {{order}}:1 = {slot1}, {{order}}:2 = {slot2}")
+print(f"Равны: {slot1 == slot2}")  # True
+
+rc.close()`,
+    },
+    {
+        name: "redis.cluster.ClusterConnectionPool.get_node_by_key(key)",
+        description:
+            "Возвращает объект ClusterNode, ответственный за данный ключ. Вычисляет хэш-слот ключа (с учётом хэш-тега {}), затем вызывает get_node_by_slot(). Удобная обёртка: не нужно вручную вычислять хэш-слот. Используется для диагностики, логирования и направления служебных команд к ноде конкретного ключа.",
+        syntax: `node = pool.get_node_by_key(key)`,
+        arguments: [
+            {
+                name: "key",
+                description: "Строка ключа Redis. Если в ключе есть хэш-тег {}, слот вычисляется только по содержимому скобок.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster
+
+rc = RedisCluster(
+    host="cluster.example.com", port=6379, decode_responses=True
+)
+pool = rc.connection_pool
+
+# Найти ноду для конкретного ключа
+node = pool.get_node_by_key("user:42:profile")
+print(f"'user:42:profile' → {node.name} ({node.server_type})")
+
+# Хэш-тег: слот по содержимому {}
+node_a = pool.get_node_by_key("{cart}:user:1")
+node_b = pool.get_node_by_key("{cart}:user:2")
+node_c = pool.get_node_by_key("{cart}:total")
+print(f"Все на одной ноде: {node_a.name == node_b.name == node_c.name}")  # True
+
+# Паттерн: выполнить OBJECT ENCODING для конкретного ключа на его ноде
+def get_encoding(rc, key: str) -> str:
+    node = rc.connection_pool.get_node_by_key(key)
+    result = rc.execute_command("OBJECT", "ENCODING", key, target_nodes=[node])
+    return result
+
+rc.set("counter", 42)
+print(get_encoding(rc, "counter"))  # "int"
+
+rc.set("name", "Алексей Иванов Петрович")
+print(get_encoding(rc, "name"))     # "embstr" или "raw"
+
+# Проверка: ключи с хэш-тегом на одной ноде — можно использовать в pipeline
+keys = ["{session}:user:1", "{session}:user:2", "{session}:expires"]
+nodes = {pool.get_node_by_key(k).name for k in keys}
+print(f"Уникальных нод: {len(nodes)}")  # 1 — можно в транзакционном pipeline
+
+rc.close()`,
+    },
+    // ─── redis.sentinel.SentinelManagedConnection ─────────────────────────────
+    {
+        name: "redis.sentinel.SentinelManagedConnection.__init__(*args, **kwargs)",
+        description:
+            "Инициализирует управляемое TCP-соединение для Redis Sentinel. Расширяет стандартный класс Connection: хранит ссылку на SentinelConnectionPool и перед каждым подключением запрашивает у него актуальный адрес мастера или реплики. Создаётся автоматически пулом SentinelConnectionPool — напрямую не инстанцируется. Все параметры (host, port, db, password, socket_timeout и т.д.) передаются от пула и динамически обновляются при failover.",
+        syntax: `# Не создаётся напрямую — управляется SentinelConnectionPool
+# Пул использует этот класс как connection_class по умолчанию:
+pool = SentinelConnectionPool("mymaster", sentinel, is_master=True)
+# pool.connection_class == SentinelManagedConnection`,
+        arguments: [
+            {
+                name: "*args",
+                description: "Позиционные аргументы, передаваемые в родительский Connection.__init__(). Включают host, port, db и другие параметры соединения.",
+            },
+            {
+                name: "**kwargs",
+                description: "Именованные параметры соединения: password, socket_timeout, socket_connect_timeout, decode_responses, encoding и т.д. Также передаётся connection_pool — ссылка на SentinelConnectionPool для динамического обновления адреса.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel, SentinelConnectionPool, SentinelManagedConnection
+import redis
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    decode_responses=True,
+    password="redis-secret",
+)
+
+# SentinelManagedConnection используется автоматически
+master = sentinel.master_for("mymaster", db=0)
+pool = master.connection_pool
+
+# Проверяем, что пул использует SentinelManagedConnection
+print(pool.connection_class)
+# <class 'redis.sentinel.SentinelManagedConnection'>
+
+# Получение соединения из пула (тип — SentinelManagedConnection)
+conn = pool.get_connection("PING")
+print(type(conn))    # <class 'redis.sentinel.SentinelManagedConnection'>
+print(conn.host)     # 192.168.1.10  ← динамически от Sentinel
+print(conn.port)     # 6379
+pool.release(conn)
+
+# Кастомный подкласс с дополнительным логированием:
+class TracedConnection(SentinelManagedConnection):
+    def connect(self):
+        print(f"[CONN] Подключение к {self.host}:{self.port}")
+        super().connect()
+
+traced_pool = SentinelConnectionPool(
+    "mymaster", sentinel,
+    is_master=True,
+    connection_class=TracedConnection,
+    decode_responses=True,
+)
+traced_client = redis.Redis(connection_pool=traced_pool)
+traced_client.ping()
+# [CONN] Подключение к 192.168.1.10:6379`,
+    },
+    {
+        name: "redis.sentinel.SentinelManagedConnection.connect()",
+        description:
+            "Устанавливает TCP-соединение с Redis. Перед подключением запрашивает у SentinelConnectionPool актуальный адрес: вызывает pool.get_master_address() или pool.get_slave_address() и обновляет self.host / self.port. Затем вызывает родительский Connection.connect() для TCP-хендшейка, аутентификации и выбора базы данных. При смене мастера после failover следующий вызов connect() подключится к новому адресу.",
+        syntax: `connection.connect()`,
+        arguments: [],
+        example: `from redis.sentinel import Sentinel
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    decode_responses=True,
+)
+
+master = sentinel.master_for("mymaster", db=0)
+pool = master.connection_pool
+
+# connect() вызывается автоматически при первом использовании соединения
+master.ping()  # Внутри: conn.connect() → TCP к текущему мастеру
+
+# Ручная демонстрация:
+conn = pool.get_connection("GET")
+# При get_connection() connect() уже вызван, соединение активно
+print(conn.is_connected())  # True
+print(f"Подключено к {conn.host}:{conn.port}")
+
+pool.release(conn)
+
+# Поведение при failover:
+# До failover:  connect() → 192.168.1.10:6379
+# После failover sentinel перевёл 192.168.1.11 в мастера
+# Следующий connect():
+#   pool.get_master_address() → ("192.168.1.11", 6379)
+#   self.host = "192.168.1.11"
+#   TCP-соединение к новому мастеру — прозрачно для приложения`,
+    },
+    {
+        name: "redis.sentinel.SentinelManagedConnection.connect_check_health(check_health=True, retry_socket_connect=False)",
+        description:
+            "Устанавливает соединение и проверяет его работоспособность (health check). Вызывает connect(), а затем при check_health=True отправляет PING для проверки живости соединения. Если PING не проходит и retry_socket_connect=True — повторяет попытку подключения. Используется внутри пула для валидации соединений перед их выдачей клиенту.",
+        syntax: `connection.connect_check_health(
+    check_health=True,
+    retry_socket_connect=False,
+)`,
+        arguments: [
+            {
+                name: "check_health",
+                description: "Если True (по умолчанию) — после connect() отправляет PING для проверки работоспособности соединения. Если False — только устанавливает TCP-соединение без проверки.",
+            },
+            {
+                name: "retry_socket_connect",
+                description: "Если True — при неудачном health check повторяет попытку TCP-подключения. Если False (по умолчанию) — ошибка health check сразу выбрасывает исключение.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel, SentinelManagedConnection
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    decode_responses=True,
+)
+
+master = sentinel.master_for("mymaster", db=0)
+pool = master.connection_pool
+
+# connect_check_health() вызывается пулом автоматически при
+# проверке соединений перед выдачей. Ручной вызов для диагностики:
+conn = pool.make_connection()  # Создать новое соединение
+
+try:
+    # Подключиться и проверить PING
+    conn.connect_check_health(check_health=True, retry_socket_connect=True)
+    print("Соединение установлено и проверено (PING)")
+except Exception as e:
+    print(f"Ошибка проверки соединения: {e}")
+finally:
+    pool.release(conn)
+
+# Кастомный подкласс с расширенным health check:
+class DeepHealthConnection(SentinelManagedConnection):
+    def connect_check_health(self, check_health=True, retry_socket_connect=False):
+        super().connect_check_health(check_health, retry_socket_connect)
+        if check_health:
+            # Дополнительная проверка: роль ноды
+            role_info = self.read_response()
+            if role_info and role_info[0] != "master":
+                raise ConnectionError(f"Ожидался мастер, получено: {role_info[0]}")`,
+    },
+    {
+        name: "redis.sentinel.SentinelManagedConnection.read_response(disconnect_on_error=True)",
+        description:
+            "Читает и возвращает ответ Redis с сервера. Расширяет родительский Connection.read_response(): при обнаружении ReadOnlyError (попытка записи на реплику, которая стала мастером) вызывает pool.reset() для принудительного обновления адреса мастера. Это обеспечивает автоматическое восстановление после failover: следующая операция прозрачно переключится на нового мастера.",
+        syntax: `response = connection.read_response(disconnect_on_error=True)`,
+        arguments: [
+            {
+                name: "disconnect_on_error",
+                description: "Если True (по умолчанию) — при ошибке чтения разрывает соединение и помечает его как неработоспособное. Если False — при ошибке соединение не закрывается.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel
+
+sentinel = Sentinel(
+    [("sentinel1.example.com", 26379)],
+    sentinel_kwargs={"socket_timeout": 0.2},
+    decode_responses=True,
+)
+
+master = sentinel.master_for("mymaster", db=0)
+
+# read_response() вызывается автоматически при каждой команде
+result = master.set("key", "value")  # Внутри: conn.read_response()
+print(result)  # True
+
+# Ключевое поведение при failover:
+# Сценарий: во время выполнения команды SET произошёл failover,
+# и нода стала репликой
+#
+# 1. conn.send_command("SET", "key", "value") → отправлено старому мастеру
+# 2. Failover → нода переходит в режим реплики
+# 3. conn.read_response() → получает READONLY ошибку от Redis
+# 4. Обнаруживает ReadOnlyError → вызывает self.connection_pool.reset()
+# 5. Выбрасывает ReadOnlyError
+# 6. Клиент redis-py перехватывает → повторяет команду
+# 7. Новый get_connection() → Sentinel возвращает адрес нового мастера
+# 8. SET успешно выполнен на новом мастере
+
+# disconnect_on_error=False используется при чтении SUBSCRIBE-ответов,
+# где ошибки не должны закрывать pubsub-соединение
+slave = sentinel.slave_for("mymaster", db=0)
+slave.get("key")  # read_response(disconnect_on_error=True) по умолчанию`,
+    },
+    // ─── redis.sentinel.SentinelManagedSSLConnection ──────────────────────────
+    {
+        name: "redis.sentinel.SentinelManagedSSLConnection.__init__(*args, **kwargs)",
+        description:
+            "Инициализирует управляемое SSL/TLS-соединение для Redis Sentinel. Наследует от SentinelManagedConnection и добавляет поддержку TLS: оборачивает TCP-сокет в SSLContext после установки соединения. Используется когда Redis-серверы и Sentinel-процессы требуют зашифрованного соединения. Создаётся автоматически пулом при передаче ssl=True или ssl_certfile и других SSL-параметров.",
+        syntax: `# Активируется автоматически при ssl=True:
+sentinel = Sentinel(
+    sentinels,
+    sentinel_kwargs={"ssl": True, ...},
+    ssl=True,
+    ssl_certfile="client.crt",
+    ssl_keyfile="client.key",
+    ssl_ca_certs="ca.crt",
+)`,
+        arguments: [
+            {
+                name: "*args",
+                description: "Позиционные аргументы, передаваемые в SentinelManagedConnection.__init__(). Включают параметры соединения от пула.",
+            },
+            {
+                name: "**kwargs",
+                description: "SSL-параметры: ssl=True, ssl_certfile (клиентский сертификат), ssl_keyfile (приватный ключ), ssl_ca_certs (CA-сертификат для проверки сервера), ssl_check_hostname=True/False, ssl_cert_reqs ('required'/'optional'/'none').",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel
+import ssl
+
+# Sentinel с TLS для Redis и Sentinel-процессов
+sentinel = Sentinel(
+    sentinels=[
+        ("sentinel1.example.com", 26380),  # TLS-порт sentinel
+        ("sentinel2.example.com", 26380),
+    ],
+    sentinel_kwargs={
+        "ssl": True,
+        "ssl_ca_certs": "/etc/redis/certs/ca.crt",
+        "ssl_certfile": "/etc/redis/certs/sentinel-client.crt",
+        "ssl_keyfile": "/etc/redis/certs/sentinel-client.key",
+        "ssl_check_hostname": True,
+        "socket_timeout": 0.5,
+    },
+    # TLS для Redis-нод (мастер и реплики)
+    ssl=True,
+    ssl_ca_certs="/etc/redis/certs/ca.crt",
+    ssl_certfile="/etc/redis/certs/client.crt",
+    ssl_keyfile="/etc/redis/certs/client.key",
+    ssl_check_hostname=True,
+    decode_responses=True,
+    password="redis-secret",
+)
+
+# master_for() автоматически создаст SentinelConnectionPool
+# с connection_class=SentinelManagedSSLConnection
+master = sentinel.master_for("mymaster", db=0)
+slave  = sentinel.slave_for("mymaster",  db=0)
+
+from redis.sentinel import SentinelManagedSSLConnection
+print(master.connection_pool.connection_class)
+# <class 'redis.sentinel.SentinelManagedSSLConnection'>
+
+master.set("secure_key", "encrypted_value")
+print(slave.get("secure_key"))  # "encrypted_value"`,
+    },
+    {
+        name: "redis.sentinel.SentinelManagedSSLConnection.connect()",
+        description:
+            "Устанавливает TLS-соединение с Redis-сервером. Сначала запрашивает актуальный адрес мастера/реплики у SentinelConnectionPool (как в SentinelManagedConnection.connect()), затем устанавливает TCP-соединение и оборачивает сокет в SSL через SSLContext с указанными сертификатами. Верификация сервера выполняется согласно ssl_cert_reqs и ssl_ca_certs.",
+        syntax: `connection.connect()`,
+        arguments: [],
+        example: `from redis.sentinel import Sentinel
+
+sentinel = Sentinel(
+    sentinels=[("sentinel1.example.com", 26380)],
+    sentinel_kwargs={
+        "ssl": True,
+        "ssl_ca_certs": "/etc/redis/certs/ca.crt",
+        "socket_timeout": 0.5,
+    },
+    ssl=True,
+    ssl_ca_certs="/etc/redis/certs/ca.crt",
+    ssl_certfile="/etc/redis/certs/client.crt",
+    ssl_keyfile="/etc/redis/certs/client.key",
+    ssl_cert_reqs="required",
+    ssl_check_hostname=True,
+    decode_responses=True,
+    password="redis-secret",
+)
+
+master = sentinel.master_for("mymaster", db=0)
+
+# connect() вызывается автоматически — TLS прозрачен для приложения
+master.ping()
+
+# Для отладки: проверить TLS-параметры через пул соединений
+pool = master.connection_pool
+print(pool.connection_kwargs.get("ssl"))           # True
+print(pool.connection_kwargs.get("ssl_ca_certs"))  # /etc/redis/certs/ca.crt
+
+# Последовательность внутри connect():
+# 1. pool.get_master_address() → ("192.168.1.10", 6379)
+# 2. self.host = "192.168.1.10", self.port = 6379
+# 3. TCP-сокет → sock = socket.create_connection(...)
+# 4. ssl_ctx.wrap_socket(sock, server_hostname=self.host)
+# 5. AUTH redis-secret
+# 6. SELECT 0
+# Соединение готово к использованию`,
+    },
+    {
+        name: "redis.sentinel.SentinelManagedSSLConnection.connect_check_health(check_health=True, retry_socket_connect=False)",
+        description:
+            "Устанавливает TLS-соединение и проверяет его работоспособность. Аналог SentinelManagedConnection.connect_check_health() с полным TLS-рукопожатием: после TCP-соединения выполняет SSL handshake, затем при check_health=True отправляет PING. При retry_socket_connect=True повторяет всю цепочку (TCP + TLS + PING) при неудаче.",
+        syntax: `connection.connect_check_health(
+    check_health=True,
+    retry_socket_connect=False,
+)`,
+        arguments: [
+            {
+                name: "check_health",
+                description: "Если True (по умолчанию) — после TLS-рукопожатия отправляет PING. Если False — только TCP + TLS без проверки.",
+            },
+            {
+                name: "retry_socket_connect",
+                description: "Если True — при неудачном health check повторяет TCP + TLS + PING. Если False — ошибка выбрасывается немедленно.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel, SentinelManagedSSLConnection
+
+sentinel = Sentinel(
+    sentinels=[
+        ("sentinel1.example.com", 26380),
+        ("sentinel2.example.com", 26380),
+    ],
+    sentinel_kwargs={
+        "ssl": True,
+        "ssl_ca_certs": "/etc/redis/certs/ca.crt",
+        "socket_timeout": 0.5,
+    },
+    ssl=True,
+    ssl_ca_certs="/etc/redis/certs/ca.crt",
+    ssl_certfile="/etc/redis/certs/client.crt",
+    ssl_keyfile="/etc/redis/certs/client.key",
+    decode_responses=True,
+)
+
+master = sentinel.master_for("mymaster", db=0)
+pool = master.connection_pool
+
+# Ручная проверка TLS-соединения:
+conn = pool.make_connection()
+try:
+    conn.connect_check_health(
+        check_health=True,
+        retry_socket_connect=True,  # Повтор при неудаче TLS handshake
+    )
+    print(f"TLS-соединение активно: {conn.host}:{conn.port}")
+    print(f"SSL: {conn._sock.version()}")  # TLSv1.3
+except Exception as e:
+    print(f"Ошибка TLS: {e}")
+finally:
+    pool.release(conn)`,
+    },
+    {
+        name: "redis.sentinel.SentinelManagedSSLConnection.read_response(disconnect_on_error=True)",
+        description:
+            "Читает ответ Redis через TLS-соединение. Наследует логику SentinelManagedConnection.read_response(): при ReadOnlyError вызывает pool.reset() для переключения на нового мастера. При ошибках TLS-уровня (SSLError, SSLEOFError) разрывает соединение и выбрасывает исключение, позволяя пулу создать новое TLS-соединение к актуальному мастеру.",
+        syntax: `response = connection.read_response(disconnect_on_error=True)`,
+        arguments: [
+            {
+                name: "disconnect_on_error",
+                description: "Если True (по умолчанию) — при ошибке чтения (включая SSLError) разрывает TLS-соединение. Если False — при ошибке соединение не закрывается.",
+            },
+        ],
+        example: `from redis.sentinel import Sentinel
+import redis
+
+sentinel = Sentinel(
+    sentinels=[("sentinel1.example.com", 26380)],
+    sentinel_kwargs={
+        "ssl": True,
+        "ssl_ca_certs": "/etc/redis/certs/ca.crt",
+        "socket_timeout": 0.5,
+    },
+    ssl=True,
+    ssl_ca_certs="/etc/redis/certs/ca.crt",
+    ssl_certfile="/etc/redis/certs/client.crt",
+    ssl_keyfile="/etc/redis/certs/client.key",
+    decode_responses=True,
+    password="redis-secret",
+)
+
+master = sentinel.master_for("mymaster", db=0)
+
+# read_response() вызывается автоматически — TLS прозрачен
+result = master.set("tls_key", "secure_value")
+print(result)  # True
+
+value = master.get("tls_key")
+print(value)   # "secure_value"
+
+# Устойчивый клиент с обработкой TLS-ошибок:
+import time
+
+def resilient_get(client, key: str, retries: int = 3) -> str | None:
+    for attempt in range(retries):
+        try:
+            return client.get(key)
+        except (redis.exceptions.ConnectionError,
+                redis.exceptions.ReadOnlyError) as e:
+            if attempt == retries - 1:
+                raise
+            # pool.reset() уже вызван в read_response() при ReadOnlyError
+            print(f"Попытка {attempt + 1}: {e}, повтор через 0.5с...")
+            time.sleep(0.5)
+    return None
+
+value = resilient_get(master, "tls_key")
+print(value)  // "secure_value"`,
+    },
+    // ─── redis.cluster.ClusterConnection ─────────────────────────────────────
+    {
+        name: "redis.cluster.ClusterConnection(host, port, db, password, socket_timeout, socket_connect_timeout, socket_keepalive, socket_keepalive_options, socket_type, retry_on_timeout, encoding, encoding_errors, decode_responses, parser_class, socket_read_size, health_check_interval, client_name, lib_name, lib_version, retry, redis_connect_callbacks, protocol, read_only)",
+        description:
+            "TCP-соединение для ноды Redis Cluster. Расширяет стандартный Connection кластерно-специфичной логикой: при установке соединения отправляет READONLY если read_only=True (для реплик), выполняет аутентификацию AUTH и выбор БД SELECT. Создаётся автоматически ClusterConnectionPool — напрямую не инстанцируется. Параметр read_only=True используется для соединений с репликами при read_from_replicas=True.",
+        syntax: `# Не создаётся напрямую — управляется ClusterConnectionPool.
+# Пул использует этот класс как connection_class по умолчанию.
+# Для SSL используйте SSLClusterConnection.`,
+        arguments: [
+            {
+                name: "host / port",
+                description: "Адрес ноды кластера. Устанавливаются динамически пулом из слот-карты.",
+            },
+            {
+                name: "db",
+                description: "Номер базы данных. В Redis Cluster всегда должен быть 0 — кластер не поддерживает несколько БД.",
+            },
+            {
+                name: "password",
+                description: "Пароль для AUTH. Единый для всех нод кластера.",
+            },
+            {
+                name: "socket_timeout",
+                description: "Таймаут чтения/записи в секундах. None — без ограничения.",
+            },
+            {
+                name: "socket_connect_timeout",
+                description: "Таймаут установки TCP-соединения в секундах. None — использует socket_timeout.",
+            },
+            {
+                name: "socket_keepalive",
+                description: "Включить TCP keepalive. Полезно для обнаружения зависших соединений в кластере.",
+            },
+            {
+                name: "health_check_interval",
+                description: "Интервал (секунды) между автоматическими PING для проверки живости. 0 — отключено.",
+            },
+            {
+                name: "retry_on_timeout",
+                description: "Если True — при TimeoutError автоматически повторяет команду.",
+            },
+            {
+                name: "read_only",
+                description: "Если True — отправляет READONLY при подключении. Используется для соединений с репликами.",
+            },
+            {
+                name: "retry",
+                description: "Объект Retry с настройкой стратегии повторов (backoff, число попыток).",
+            },
+            {
+                name: "redis_connect_callbacks",
+                description: "Список callable(connection) — вызываются после установки соединения для кастомной инициализации.",
+            },
+            {
+                name: "protocol",
+                description: "Версия протокола Redis: 2 (RESP2) или 3 (RESP3). None — используется RESP2.",
+            },
+        ],
+        example: `from redis.cluster import RedisCluster, ClusterConnectionPool, ClusterConnection
+
+# ClusterConnection используется автоматически через ClusterConnectionPool
+rc = RedisCluster(
+    host="cluster.example.com",
+    port=6379,
+    password="redis-secret",
+    decode_responses=True,
+    socket_timeout=1.0,
+    socket_connect_timeout=0.5,
+    socket_keepalive=True,
+    socket_keepalive_options={},
+    health_check_interval=30,   # PING каждые 30 секунд
+    retry_on_timeout=True,
+    read_from_replicas=True,    # Реплики получают read_only=True
+)
+
+pool = rc.connection_pool
+print(pool.connection_class)   # <class 'redis.cluster.ClusterConnection'>
+
+# Инспекция соединения после команды
+conn = pool.get_connection("GET")
+print(f"Host: {conn.host}:{conn.port}")
+print(f"read_only: {conn.read_only}")        # False для мастера
+print(f"socket_timeout: {conn.socket_timeout}")
+pool.release(conn)
+
+# Кастомный подкласс с логированием колбэков:
+class InstrumentedConnection(ClusterConnection):
+    def on_connect(self):
+        super().on_connect()
+        print(f"[CONN] Подключено: {self.host}:{self.port} read_only={self.read_only}")
+
+rc.close()`,
+    },
+    // ─── redis.asyncio.SSLConnection ─────────────────────────────────────────
+    {
+        name: "redis.asyncio.SSLConnection(ssl_keyfile, ssl_certfile, ssl_cert_reqs, ssl_ca_certs, ssl_check_hostname, ssl_ca_data, ssl_check_ocsp, ssl_validate_ocsp_stapled, ssl_ocsp_context, ssl_ocsp_expected_host, **kwargs)",
+        description:
+            "Асинхронное TLS-соединение с Redis для использования в asyncio-приложениях. Наследует redis.asyncio.Connection и добавляет полный стек TLS: взаимная аутентификация (mTLS), проверка отзыва сертификатов через OCSP и OCSP Stapling. Создаётся автоматически пулом redis.asyncio.ConnectionPool при ssl=True. Все методы — корутины (async/await).",
+        syntax: `import redis.asyncio as aioredis
+
+# Создаётся автоматически при ssl=True:
+client = aioredis.Redis(
+    host="redis.example.com",
+    port=6380,
+    ssl=True,
+    ssl_certfile="client.crt",
+    ssl_keyfile="client.key",
+    ssl_ca_certs="ca.crt",
+)`,
+        arguments: [
+            {
+                name: "ssl_keyfile",
+                description: "Путь к файлу приватного ключа клиента (PEM). Используется для взаимной TLS-аутентификации (mTLS).",
+            },
+            {
+                name: "ssl_certfile",
+                description: "Путь к файлу клиентского сертификата (PEM). Пара к ssl_keyfile для mTLS.",
+            },
+            {
+                name: "ssl_cert_reqs",
+                description: "'required' — сервер должен предоставить сертификат и он будет проверен (рекомендуется). 'optional' — сертификат проверяется если предоставлен. 'none' — без проверки.",
+            },
+            {
+                name: "ssl_ca_certs",
+                description: "Путь к файлу CA-сертификата (или бандлу) для проверки сертификата сервера.",
+            },
+            {
+                name: "ssl_check_hostname",
+                description: "Если True — проверяет совпадение hostname в сертификате сервера с host соединения.",
+            },
+            {
+                name: "ssl_ca_data",
+                description: "CA-сертификат как строка (PEM) или байты (DER) вместо файла. Альтернатива ssl_ca_certs.",
+            },
+            {
+                name: "ssl_check_ocsp",
+                description: "Если True — проверяет статус отзыва сертификата через OCSP-запрос к ответчику.",
+            },
+            {
+                name: "ssl_validate_ocsp_stapled",
+                description: "Если True — проверяет OCSP Stapling (ответ OCSP, прикреплённый к TLS handshake сервером). Быстрее ssl_check_ocsp.",
+            },
+            {
+                name: "ssl_ocsp_context",
+                description: "Кастомный контекст для OCSP-проверки. None — создаётся автоматически.",
+            },
+            {
+                name: "ssl_ocsp_expected_host",
+                description: "Ожидаемое имя хоста в OCSP-ответе. None — используется host соединения.",
+            },
+            {
+                name: "**kwargs",
+                description: "Параметры базового Connection: host, port, db, password, socket_timeout, decode_responses, encoding и т.д.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+# Вариант 1: автоматическое создание SSLConnection через клиент
+async def main():
+    client = aioredis.Redis(
+        host="redis.example.com",
+        port=6380,
+        ssl=True,
+        ssl_certfile="/etc/redis/certs/client.crt",
+        ssl_keyfile="/etc/redis/certs/client.key",
+        ssl_ca_certs="/etc/redis/certs/ca.crt",
+        ssl_cert_reqs="required",
+        ssl_check_hostname=True,
+        decode_responses=True,
+        password="redis-secret",
+    )
+    await client.set("tls_key", "secure_value")
+    value = await client.get("tls_key")
+    print(value)  # "secure_value"
+    await client.aclose()
+
+# Вариант 2: явный ConnectionPool с SSLConnection
+async def with_pool():
+    from redis.asyncio import SSLConnection, ConnectionPool
+    pool = ConnectionPool(
+        connection_class=SSLConnection,
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/redis/certs/ca.crt",
+        ssl_certfile="/etc/redis/certs/client.crt",
+        ssl_keyfile="/etc/redis/certs/client.key",
+        ssl_cert_reqs="required",
+        decode_responses=True,
+        max_connections=20,
+    )
+    client = aioredis.Redis(connection_pool=pool)
+    await client.ping()
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.__init__(ssl_keyfile, ssl_certfile, ssl_cert_reqs, ssl_ca_certs, ssl_check_hostname, ssl_ca_data, ssl_check_ocsp, ssl_validate_ocsp_stapled, ssl_ocsp_context, ssl_ocsp_expected_host, **kwargs)",
+        description:
+            "Инициализирует SSLConnection: сохраняет все TLS-параметры и создаёт ssl.SSLContext с нужными настройками. Вызывает родительский Connection.__init__() для инициализации параметров TCP-соединения. Не устанавливает соединение — подключение происходит при вызове connect().",
+        syntax: `from redis.asyncio import SSLConnection
+
+conn = SSLConnection(
+    host="redis.example.com",
+    port=6380,
+    ssl_ca_certs="/etc/redis/certs/ca.crt",
+    ssl_certfile="/etc/redis/certs/client.crt",
+    ssl_keyfile="/etc/redis/certs/client.key",
+    ssl_cert_reqs="required",
+    decode_responses=True,
+)`,
+        arguments: [
+            {
+                name: "ssl_keyfile / ssl_certfile",
+                description: "Пара ключ/сертификат клиента для mTLS. Оба обязательны при взаимной аутентификации.",
+            },
+            {
+                name: "ssl_cert_reqs",
+                description: "'required' (по умолчанию) — строгая проверка сервера. 'none' — только шифрование без проверки (не для продакшена).",
+            },
+            {
+                name: "ssl_ca_certs",
+                description: "Путь к CA-сертификату для проверки сервера. Взаимоисключающе с ssl_ca_data.",
+            },
+            {
+                name: "ssl_check_hostname",
+                description: "Проверка совпадения CN/SAN в сертификате сервера с host. По умолчанию False.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+async def inspect_connection():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/redis/certs/ca.crt",
+        ssl_cert_reqs="required",
+        ssl_check_hostname=True,
+        password="redis-secret",
+        decode_responses=True,
+        socket_timeout=5.0,
+        socket_connect_timeout=2.0,
+    )
+
+    # Параметры сохранены, но соединение ещё не установлено
+    print(conn.host)              # redis.example.com
+    print(conn.port)              # 6380
+    print(conn.ssl_cert_reqs)     # required
+    print(conn.ssl_check_hostname) # True
+    print(repr(conn))             # SSLConnection<host=redis.example.com,port=6380,...>
+
+    # Явное подключение
+    await conn.connect()
+    print("TLS-соединение установлено")
+
+    await conn.send_command("PING")
+    print(await conn.read_response())  # True
+
+    await conn.disconnect()
+
+asyncio.run(inspect_connection())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.__repr__()",
+        description:
+            "Возвращает строковое представление объекта SSLConnection для отладки. Формат: SSLConnection<host=...,port=...,db=...>. Вызывается автоматически при print(conn), repr(conn) или в интерактивном интерпретаторе.",
+        syntax: `repr(conn)`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+async def main():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        decode_responses=True,
+    )
+
+    # __repr__ удобен для логирования
+    print(repr(conn))
+    # SSLConnection<host=redis.example.com,port=6380,db=0>
+
+    print(str(conn))   # Тот же результат через __str__
+    print(f"Соединение: {conn}")
+
+    # В списке соединений пула — repr помогает идентифицировать
+    connections = [
+        SSLConnection(host="node1.example.com", port=6380, ssl_ca_certs="ca.crt"),
+        SSLConnection(host="node2.example.com", port=6380, ssl_ca_certs="ca.crt"),
+    ]
+    for c in connections:
+        print(repr(c))
+    # SSLConnection<host=node1.example.com,port=6380,db=0>
+    # SSLConnection<host=node2.example.com,port=6380,db=0>
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.__del__()",
+        description:
+            "Деструктор объекта SSLConnection. Вызывается сборщиком мусора при уничтожении объекта. Если соединение всё ещё активно — пытается закрыть сокет. Не полагайтесь на __del__ для закрытия соединений: всегда используйте явный await conn.disconnect() или async with для гарантированного освобождения ресурсов.",
+        syntax: `# Вызывается автоматически GC — не вызывайте напрямую.
+# Для явного закрытия используйте:
+await conn.disconnect()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+async def bad_practice():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+    )
+    await conn.connect()
+    await conn.send_command("SET", "key", "value")
+    await conn.read_response()
+    # НЕПРАВИЛЬНО: надеяться что __del__ закроет соединение
+    # Соединение может остаться открытым до следующей сборки мусора
+
+async def good_practice():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+    )
+    try:
+        await conn.connect()
+        await conn.send_command("SET", "key", "value")
+        result = await conn.read_response()
+        print(result)  # True
+    finally:
+        await conn.disconnect()  # Всегда явно закрывать в finally
+
+# Рекомендуемый способ: использовать ConnectionPool
+# который управляет жизненным циклом соединений автоматически
+
+asyncio.run(good_practice())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.repr_pieces()",
+        description:
+            "Возвращает список кортежей [(имя, значение), ...] с ключевыми параметрами соединения, используемых для построения строки repr(). Базовая реализация включает host, port, db. SSLConnection добавляет ssl=True. Переопределяется в подклассах для включения дополнительных параметров в отладочный вывод.",
+        syntax: `pieces = conn.repr_pieces()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+async def main():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        db=2,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        ssl_cert_reqs="required",
+        decode_responses=True,
+    )
+
+    pieces = conn.repr_pieces()
+    print(pieces)
+    # [('host', 'redis.example.com'), ('port', 6380), ('db', 2), ('ssl', True)]
+
+    # Вручную строим repr из pieces (как это делает __repr__):
+    desc = ",".join(f"{k}={v}" for k, v in pieces)
+    print(f"SSLConnection<{desc}>")
+    # SSLConnection<host=redis.example.com,port=6380,db=2,ssl=True>
+
+    # Переопределение для кастомного repr:
+    class VerboseSSLConnection(SSLConnection):
+        def repr_pieces(self):
+            pieces = super().repr_pieces()
+            pieces.append(("cert_reqs", self.ssl_cert_reqs))
+            pieces.append(("check_hostname", self.ssl_check_hostname))
+            return pieces
+
+    verbose_conn = VerboseSSLConnection(
+        host="redis.example.com", port=6380,
+        ssl_ca_certs="ca.crt", ssl_check_hostname=True
+    )
+    print(repr(verbose_conn))
+    # SSLConnection<host=redis.example.com,...,cert_reqs=required,check_hostname=True>
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.register_connect_callback(callback)",
+        description:
+            "Регистрирует асинхронный колбэк, вызываемый после установки TLS-соединения. Колбэки вызываются из on_connect() в порядке регистрации. Используются для кастомной инициализации соединения: установки CLIENT SETNAME, выбора БД, отправки AUTH с нестандартным механизмом или логирования.",
+        syntax: `conn.register_connect_callback(callback)`,
+        arguments: [
+            {
+                name: "callback",
+                description: "Асинхронная функция async def callback(connection) → None. Получает объект SSLConnection после установки TLS-соединения.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+async def set_client_name(conn: SSLConnection):
+    await conn.send_command("CLIENT", "SETNAME", "myapp-worker")
+    await conn.read_response()
+    print(f"CLIENT SETNAME установлен для {conn.host}:{conn.port}")
+
+async def log_connect(conn: SSLConnection):
+    import socket
+    print(f"[TLS] Подключено: {conn.host}:{conn.port} "
+          f"от {socket.gethostname()}")
+
+async def main():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        decode_responses=True,
+    )
+
+    # Регистрируем колбэки — вызываются в порядке регистрации
+    conn.register_connect_callback(log_connect)
+    conn.register_connect_callback(set_client_name)
+
+    await conn.connect()
+    # [TLS] Подключено: redis.example.com:6380 от my-server
+    # CLIENT SETNAME установлен для redis.example.com:6380
+
+    await conn.send_command("CLIENT", "GETNAME")
+    name = await conn.read_response()
+    print(f"Имя клиента: {name}")  # myapp-worker
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.deregister_connect_callback(callback)",
+        description:
+            "Удаляет ранее зарегистрированный колбэк из списка колбэков соединения. Принимает тот же объект callable, который был передан в register_connect_callback(). Если колбэк не найден — поведение зависит от реализации (обычно ValueError или молчаливое игнорирование).",
+        syntax: `conn.deregister_connect_callback(callback)`,
+        arguments: [
+            {
+                name: "callback",
+                description: "Тот же callable-объект, который был передан в register_connect_callback(). Идентификация по ссылке (is), а не по значению.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+async def debug_callback(conn: SSLConnection):
+    print(f"[DEBUG] Подключено: {conn.host}:{conn.port}")
+
+async def production_callback(conn: SSLConnection):
+    await conn.send_command("CLIENT", "SETNAME", "prod-worker")
+    await conn.read_response()
+
+async def main():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        decode_responses=True,
+    )
+
+    # Регистрируем оба колбэка
+    conn.register_connect_callback(debug_callback)
+    conn.register_connect_callback(production_callback)
+
+    # Первое подключение — оба колбэка активны
+    await conn.connect()
+    await conn.disconnect()
+
+    # Снимаем debug-колбэк (например, переходим в production-режим)
+    conn.deregister_connect_callback(debug_callback)
+
+    # Повторное подключение — только production_callback
+    await conn.connect()
+    # debug_callback НЕ вызывается
+    # production_callback: CLIENT SETNAME prod-worker
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.set_parser(parser_class)",
+        description:
+            "Устанавливает класс парсера для разбора ответов Redis (RESP-протокол). По умолчанию используется DefaultParser. Можно заменить на HiredisParser (C-расширение, значительно быстрее) или кастомный парсер для RESP3. Вызывается при инициализации соединения — замена парсера на активном соединении не рекомендуется.",
+        syntax: `conn.set_parser(parser_class)`,
+        arguments: [
+            {
+                name: "parser_class",
+                description: "Класс парсера: redis.connection.DefaultParser (чистый Python) или redis.connection.HiredisParser (C, быстрее). Должен реализовывать интерфейс BaseParser.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+async def main():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        decode_responses=True,
+    )
+
+    # Установка парсера до подключения
+    try:
+        from redis.connection import HiredisParser
+        conn.set_parser(HiredisParser)
+        print("Используется HiredisParser (C-расширение)")
+    except ImportError:
+        from redis.connection import DefaultParser
+        conn.set_parser(DefaultParser)
+        print("Используется DefaultParser (Python)")
+
+    await conn.connect()
+
+    # Тест производительности парсера
+    import time
+    await conn.send_command("SET", "bench", "x" * 1000)
+    await conn.read_response()
+
+    start = time.monotonic()
+    for _ in range(1000):
+        await conn.send_command("GET", "bench")
+        await conn.read_response()
+    elapsed = (time.monotonic() - start) * 1000
+    print(f"1000 GET: {elapsed:.1f} мс")
+
+    await conn.disconnect()
+
+# Через клиент (предпочтительный способ):
+import redis.asyncio as aioredis
+client = aioredis.Redis(
+    host="redis.example.com", port=6380, ssl=True,
+    ssl_ca_certs="/etc/certs/ca.crt",
+)
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.connect()",
+        description:
+            "Устанавливает асинхронное TLS-соединение с Redis. Последовательность: создаёт TCP-соединение через asyncio, оборачивает сокет в SSLContext с указанными сертификатами, выполняет TLS handshake, затем вызывает on_connect() для аутентификации AUTH и выбора БД SELECT. При ошибке TLS handshake выбрасывает ssl.SSLError. Идемпотентна: повторный вызов на уже подключённом соединении — no-op.",
+        syntax: `await conn.connect()`,
+        arguments: [],
+        example: `import asyncio
+import ssl
+from redis.asyncio import SSLConnection
+
+async def main():
+    # Вариант 1: стандартное TLS с проверкой CA
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        ssl_cert_reqs="required",
+        ssl_check_hostname=True,
+        password="redis-secret",
+        decode_responses=True,
+        socket_connect_timeout=3.0,
+    )
+
+    await conn.connect()  # TCP + TLS handshake + AUTH + SELECT
+    print("Подключено")
+
+    await conn.send_command("PING")
+    print(await conn.read_response())  # True
+
+    await conn.disconnect()
+
+    # Вариант 2: mTLS (взаимная аутентификация)
+    mtls_conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        ssl_certfile="/etc/certs/client.crt",   # Клиентский сертификат
+        ssl_keyfile="/etc/certs/client.key",    # Приватный ключ клиента
+        ssl_cert_reqs="required",
+        decode_responses=True,
+    )
+    await mtls_conn.connect()
+    print(f"mTLS: {mtls_conn._sock.version()}")  # TLSv1.3
+    await mtls_conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.connect_check_health(check_health=True, retry_socket_connect=False)",
+        description:
+            "Устанавливает TLS-соединение и проверяет его работоспособность через PING. Полная цепочка: TCP + TLS handshake + on_connect() + PING. При check_health=False — только подключение без PING. При retry_socket_connect=True — повторяет всю цепочку при неудаче. Вызывается пулом при выдаче соединения клиенту.",
+        syntax: `await conn.connect_check_health(check_health=True, retry_socket_connect=False)`,
+        arguments: [
+            {
+                name: "check_health",
+                description: "Если True (по умолчанию) — после TLS-подключения отправляет PING для проверки живости соединения.",
+            },
+            {
+                name: "retry_socket_connect",
+                description: "Если True — при неудачном health check повторяет TCP + TLS + PING. Если False — немедленно выбрасывает исключение.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+async def main():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        ssl_cert_reqs="required",
+        decode_responses=True,
+    )
+
+    # Подключение + PING health check
+    try:
+        await conn.connect_check_health(
+            check_health=True,
+            retry_socket_connect=True,  # Повтор при неудаче TLS
+        )
+        print("TLS-соединение установлено и проверено (PING)")
+    except Exception as e:
+        print(f"Ошибка соединения: {e}")
+
+    await conn.send_command("SET", "health_key", "ok")
+    print(await conn.read_response())  # True
+
+    await conn.disconnect()
+
+    # Без health check (только подключение):
+    conn2 = SSLConnection(
+        host="redis.example.com", port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+    )
+    await conn2.connect_check_health(check_health=False)
+    print("Подключено без PING")
+    await conn2.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.on_connect()",
+        description:
+            "Асинхронный колбэк инициализации соединения, вызываемый из connect() после установки TLS. Выполняет: AUTH (если задан пароль), SELECT (если db != 0), CLIENT SETNAME (если задан client_name), CLIENT NO-TOUCH и др. Также вызывает все зарегистрированные redis_connect_callbacks. Переопределяется для кастомной инициализации соединения.",
+        syntax: `await conn.on_connect()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+# Переопределение on_connect() для кастомной инициализации
+class AppSSLConnection(SSLConnection):
+    async def on_connect(self):
+        # Стандартная инициализация: AUTH + SELECT + CLIENT SETNAME
+        await super().on_connect()
+
+        # Кастомная инициализация после стандартной:
+        # 1. Установка таймаута на уровне Redis
+        await self.send_command("CONFIG", "SET", "lua-time-limit", "5000")
+        await self.read_response()
+
+        # 2. Включение tracking для client-side caching (RESP3)
+        # await self.send_command("CLIENT", "TRACKING", "on")
+        # await self.read_response()
+
+        import socket
+        print(f"[INIT] Соединение инициализировано: {self.host}:{self.port}, "
+              f"хост={socket.gethostname()}")
+
+async def main():
+    conn = AppSSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        password="redis-secret",
+        db=0,
+        client_name="myapp",
+        decode_responses=True,
+    )
+    await conn.connect()
+    # on_connect() вызван: AUTH → SELECT 0 → CLIENT SETNAME myapp → кастом
+    # [INIT] Соединение инициализировано: redis.example.com:6380, хост=my-server
+
+    await conn.send_command("PING")
+    print(await conn.read_response())  # True
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.disconnect()",
+        description:
+            "Асинхронно закрывает TLS-соединение: выполняет TLS shutdown (отправляет close_notify), закрывает asyncio StreamWriter, освобождает ресурсы. После disconnect() соединение можно использовать повторно — следующий вызов connect() установит новое TLS-соединение. Безопасно вызывать на уже закрытом соединении — no-op.",
+        syntax: `await conn.disconnect()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+async def main():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        decode_responses=True,
+    )
+
+    # Цикл: подключение → работа → отключение → повторное подключение
+    for attempt in range(3):
+        await conn.connect()
+        print(f"Итерация {attempt + 1}: подключено")
+
+        await conn.send_command("INCR", "reconnect_count")
+        count = await conn.read_response()
+        print(f"Счётчик: {count}")
+
+        await conn.disconnect()
+        print(f"Итерация {attempt + 1}: отключено")
+
+    # Повторный disconnect() — безопасно (no-op)
+    await conn.disconnect()  # Не выбрасывает исключение
+
+    # Правильный паттерн: try/finally
+    await conn.connect()
+    try:
+        await conn.send_command("SET", "safe", "value")
+        await conn.read_response()
+    finally:
+        await conn.disconnect()  # Гарантированное закрытие TLS
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.check_health()",
+        description:
+            "Проверяет живость TLS-соединения отправкой PING. Используется пулом перед выдачей соединения клиенту при health_check_interval > 0. Если PING не отвечает или соединение разорвано — выбрасывает ConnectionError, что сигнализирует пулу о необходимости создать новое соединение. Вызывается автоматически — ручной вызов редко нужен.",
+        syntax: `await conn.check_health()`,
+        arguments: [],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import SSLConnection
+from redis.exceptions import ConnectionError as RedisConnectionError
+
+async def main():
+    # health_check_interval=30: пул проверяет PING каждые 30 секунд
+    client = aioredis.Redis(
+        host="redis.example.com",
+        port=6380,
+        ssl=True,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        decode_responses=True,
+        health_check_interval=30,  # check_health() каждые 30 с
+    )
+    await client.ping()
+
+    # Ручная проверка соединения (диагностика):
+    pool = client.connection_pool
+    conn = await pool.get_connection("PING")
+    try:
+        await conn.check_health()
+        print("Соединение живо (PING успешен)")
+    except RedisConnectionError as e:
+        print(f"Соединение мертво: {e}")
+        # Пул создаст новое соединение при следующем запросе
+    finally:
+        await pool.release(conn)
+
+    # Мониторинг пула: проверка всех соединений
+    async def check_pool_health(pool):
+        healthy = 0
+        for conn in pool._available_connections:
+            try:
+                await conn.check_health()
+                healthy += 1
+            except RedisConnectionError:
+                pass
+        print(f"Живых соединений: {healthy}")
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.send_packed_command(command, check_health=True)",
+        description:
+            "Отправляет предварительно сериализованную (упакованную) команду Redis через TLS-соединение. Принимает байты в формате RESP — результат packing команды. Если check_health=True и соединение не установлено — автоматически вызывает connect(). Более низкоуровневый метод, чем send_command(): используется когда команда уже сериализована.",
+        syntax: `await conn.send_packed_command(command, check_health=True)`,
+        arguments: [
+            {
+                name: "command",
+                description: "Байтовая строка команды в формате RESP (Redis Serialization Protocol). Например: b'*1\r\n$4\r\nPING\r\n'.",
+            },
+            {
+                name: "check_health",
+                description: "Если True (по умолчанию) — проверяет установлено ли соединение и вызывает connect() при необходимости. Если False — предполагает активное соединение.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+from redis.connection import pack_command  # Утилита сериализации RESP
+
+async def main():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        decode_responses=True,
+    )
+    await conn.connect()
+
+    # Пример 1: отправка вручную сформированного RESP-пакета
+    # PING в RESP: *1\r\n$4\r\nPING\r\n
+    ping_cmd = b"*1\r\n$4\r\nPING\r\n"
+    await conn.send_packed_command(ping_cmd)
+    print(await conn.read_response())  # True
+
+    # Пример 2: использование pack_command для сериализации
+    set_cmd = pack_command("SET", "ssl_key", "ssl_value")
+    await conn.send_packed_command(set_cmd, check_health=False)
+    print(await conn.read_response())  # True
+
+    get_cmd = pack_command("GET", "ssl_key")
+    await conn.send_packed_command(get_cmd)
+    print(await conn.read_response())  # "ssl_value"
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.send_command(*args, **kwargs)",
+        description:
+            "Сериализует и асинхронно отправляет команду Redis через TLS-соединение. Принимает команду и аргументы как Python-объекты, автоматически кодирует их в формат RESP и вызывает send_packed_command(). Основной метод для отправки команд при низкоуровневой работе с соединением. Для высокоуровневой работы используйте методы клиента redis.asyncio.Redis.",
+        syntax: `await conn.send_command(*args, **kwargs)`,
+        arguments: [
+            {
+                name: "*args",
+                description: "Команда Redis и её аргументы как Python-объекты. Например: 'SET', 'key', 'value' или 'HSET', 'hash', 'field', 'value'.",
+            },
+            {
+                name: "**kwargs",
+                description: "check_health=True/False — проверять ли живость соединения перед отправкой.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+async def main():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        decode_responses=True,
+        password="redis-secret",
+    )
+    await conn.connect()
+
+    # Одиночные команды
+    await conn.send_command("SET", "name", "Алексей")
+    print(await conn.read_response())    # True
+
+    await conn.send_command("GET", "name")
+    print(await conn.read_response())    # "Алексей"
+
+    await conn.send_command("HSET", "user:1", "name", "Мария", "age", "30")
+    print(await conn.read_response())    # 2
+
+    await conn.send_command("HGETALL", "user:1")
+    print(await conn.read_response())    # {"name": "Мария", "age": "30"}
+
+    # Пакетная отправка (pipeline-стиль без ожидания ответов):
+    await conn.send_command("MULTI")
+    await conn.read_response()           # "OK"
+
+    await conn.send_command("INCR", "counter")
+    await conn.send_command("INCR", "counter")
+    await conn.send_command("EXEC")
+
+    await conn.read_response()           # "QUEUED"
+    await conn.read_response()           # "QUEUED"
+    results = await conn.read_response() # [1, 2]
+    print(results)
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.can_read(timeout=0)",
+        description:
+            "Асинхронно проверяет, есть ли данные для чтения в TLS-буфере без блокировки. При timeout=0 — немедленная проверка. При timeout > 0 — ожидает до timeout секунд появления данных. Возвращает True если данные доступны, False если буфер пуст. Используется для проверки незапрошенных сообщений (push-уведомлений) или в Pub/Sub-клиентах.",
+        syntax: `has_data = await conn.can_read(timeout=0)`,
+        arguments: [
+            {
+                name: "timeout",
+                description: "Время ожидания в секундах. 0 — немедленная проверка (non-blocking). > 0 — ждать появления данных до timeout секунд.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+
+async def main():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        decode_responses=True,
+    )
+    await conn.connect()
+
+    # Нет данных после подключения
+    has_data = await conn.can_read(timeout=0)
+    print(f"Данные есть: {has_data}")  # False
+
+    # Отправка команды — ответ появится в буфере
+    await conn.send_command("PING")
+
+    # Ждём ответ до 1 секунды
+    has_data = await conn.can_read(timeout=1.0)
+    print(f"Ответ получен: {has_data}")  # True
+
+    if has_data:
+        print(await conn.read_response())  # True
+
+    # Паттерн: non-blocking чтение незапрошенных сообщений
+    # (push-уведомления в RESP3 или Pub/Sub сообщения)
+    async def drain_incoming(conn, max_msgs=10):
+        messages = []
+        for _ in range(max_msgs):
+            if await conn.can_read(timeout=0):
+                msg = await conn.read_response()
+                messages.append(msg)
+            else:
+                break
+        return messages
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.SSLConnection.read_response(disconnect_on_error=True)",
+        description:
+            "Асинхронно читает и возвращает один ответ Redis из TLS-соединения. Парсит RESP-протокол (Simple String, Integer, Bulk String, Array, Error) через установленный parser_class. При ошибке ответа Redis (тип '-') выбрасывает ResponseError. При disconnect_on_error=True и ошибке сети — разрывает соединение. При ReadOnlyError — дополнительно вызывает pool.reset() если соединение управляется пулом.",
+        syntax: `response = await conn.read_response(disconnect_on_error=True)`,
+        arguments: [
+            {
+                name: "disconnect_on_error",
+                description: "Если True (по умолчанию) — при сетевой ошибке разрывает TLS-соединение. Если False — при ошибке соединение не закрывается (используется в Pub/Sub).",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import SSLConnection
+from redis.exceptions import ResponseError, ReadOnlyError
+
+async def main():
+    conn = SSLConnection(
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        decode_responses=True,
+    )
+    await conn.connect()
+
+    # Чтение различных типов ответов Redis
+    await conn.send_command("SET", "str_key", "hello")
+    print(await conn.read_response())        # True (OK → bool)
+
+    await conn.send_command("GET", "str_key")
+    print(await conn.read_response())        # "hello"
+
+    await conn.send_command("INCR", "counter")
+    print(await conn.read_response())        # 1 (int)
+
+    await conn.send_command("MGET", "str_key", "counter", "missing")
+    print(await conn.read_response())        # ["hello", "1", None]
+
+    # Обработка ошибки от Redis
+    await conn.send_command("INCR", "str_key")  # Ошибка: INCR на строке
+    try:
+        await conn.read_response()
+    except ResponseError as e:
+        print(f"Redis ошибка: {e}")
+        # ERR value is not an integer or out of range
+
+    # disconnect_on_error=False — для Pub/Sub
+    # Сообщения Pub/Sub читаются в цикле без разрыва при ошибке
+    # await conn.read_response(disconnect_on_error=False)
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    // ─── redis.asyncio.Connection ─────────────────────────────────────────────
+    {
+        name: "redis.asyncio.Connection(host, port, db, password, socket_timeout, socket_connect_timeout, socket_keepalive, socket_keepalive_options, socket_type, retry_on_timeout, encoding, encoding_errors, decode_responses, parser_class, socket_read_size, health_check_interval, client_name, lib_name, lib_version, retry, redis_connect_callbacks, protocol)",
+        description:
+            "Базовый класс асинхронного TCP-соединения с Redis. Управляет одним физическим соединением: установка, чтение/запись команд по RESP-протоколу, аутентификация, выбор БД, health check. Все методы — корутины (async/await). Является родительским классом для redis.asyncio.SSLConnection, UnixDomainSocketConnection и других специализированных соединений. Создаётся автоматически redis.asyncio.ConnectionPool — прямое использование нужно только при нестандартных сценариях.",
+        syntax: `import redis.asyncio as aioredis
+
+# Стандартный способ — через клиент (создаёт Connection автоматически):
+client = aioredis.Redis(
+    host="localhost",
+    port=6379,
+    db=0,
+    decode_responses=True,
+)
+
+# Явное создание (нестандартный сценарий):
+from redis.asyncio import Connection
+conn = Connection(host="localhost", port=6379, decode_responses=True)`,
+        arguments: [
+            {
+                name: "host / port",
+                description: "Адрес Redis-сервера. По умолчанию 'localhost' и 6379.",
+            },
+            {
+                name: "db",
+                description: "Номер базы данных (0–15). После подключения выполняется SELECT db. По умолчанию 0.",
+            },
+            {
+                name: "password",
+                description: "Пароль для аутентификации AUTH. None — без аутентификации.",
+            },
+            {
+                name: "socket_timeout",
+                description: "Таймаут чтения/записи в секундах. None — без ограничения. Применяется как к чтению, так и к записи через asyncio.",
+            },
+            {
+                name: "socket_connect_timeout",
+                description: "Таймаут установки TCP-соединения в секундах. None — использует socket_timeout. Не влияет на время чтения/записи.",
+            },
+            {
+                name: "socket_keepalive",
+                description: "Включить TCP keepalive. Позволяет обнаруживать разорванные соединения без активных команд.",
+            },
+            {
+                name: "socket_keepalive_options",
+                description: "Словарь опций TCP keepalive: TCP_KEEPIDLE, TCP_KEEPINTVL, TCP_KEEPCNT. Платформозависимо.",
+            },
+            {
+                name: "retry_on_timeout",
+                description: "Если True — при TimeoutError автоматически повторяет команду один раз. Если False (по умолчанию) — выбрасывает TimeoutError.",
+            },
+            {
+                name: "encoding / encoding_errors",
+                description: "Кодировка строк (по умолчанию 'utf-8') и политика ошибок кодирования ('strict', 'ignore', 'replace').",
+            },
+            {
+                name: "decode_responses",
+                description: "Если True — все ответы Redis автоматически декодируются в str. Если False (по умолчанию) — возвращаются bytes.",
+            },
+            {
+                name: "parser_class",
+                description: "Класс парсера RESP-протокола. DefaultParser (Python) или HiredisParser (C, быстрее). По умолчанию DefaultParser.",
+            },
+            {
+                name: "health_check_interval",
+                description: "Интервал автоматических PING в секундах. 0 — отключено. При > 0 проверяет соединение перед каждой командой, если прошло больше health_check_interval секунд.",
+            },
+            {
+                name: "client_name",
+                description: "Имя клиента для CLIENT SETNAME. Отображается в CLIENT LIST и мониторинге.",
+            },
+            {
+                name: "retry",
+                description: "Объект Retry с настройкой стратегии повторов: число попыток и backoff-стратегия.",
+            },
+            {
+                name: "redis_connect_callbacks",
+                description: "Список async callable(connection) — вызываются в on_connect() после стандартной инициализации.",
+            },
+            {
+                name: "protocol",
+                description: "Версия RESP-протокола: 2 (по умолчанию) или 3 (RESP3 — поддерживает новые типы данных и push-уведомления).",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import Connection, ConnectionPool
+
+async def main():
+    # Стандартный сценарий: клиент сам создаёт Connection
+    client = aioredis.Redis(
+        host="localhost",
+        port=6379,
+        db=0,
+        decode_responses=True,
+        socket_timeout=5.0,
+        socket_connect_timeout=2.0,
+        socket_keepalive=True,
+        socket_keepalive_options={},
+        health_check_interval=30,
+        client_name="myapp",
+        retry_on_timeout=True,
+        max_connections=20,
+    )
+    await client.ping()
+    await client.set("greeting", "Привет")
+    print(await client.get("greeting"))  # "Привет"
+    await client.aclose()
+
+    # Явное создание и использование Connection:
+    conn = Connection(
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+        client_name="direct-conn",
+        health_check_interval=60,
+    )
+    await conn.connect()
+    await conn.send_command("SET", "direct", "value")
+    print(await conn.read_response())   # True
+    await conn.send_command("GET", "direct")
+    print(await conn.read_response())   # "value"
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.__init__(host, port, db, password, socket_timeout, socket_connect_timeout, socket_keepalive, socket_keepalive_options, socket_type, retry_on_timeout, encoding, encoding_errors, decode_responses, parser_class, socket_read_size, health_check_interval, client_name, lib_name, lib_version, retry, redis_connect_callbacks, protocol)",
+        description:
+            "Инициализирует объект Connection: сохраняет все параметры как атрибуты, создаёт парсер через parser_class, инициализирует внутренние буферы. Не устанавливает TCP-соединение — подключение происходит при первом вызове connect(). Безопасно создавать множество объектов Connection без накладных расходов на сетевые ресурсы.",
+        syntax: `from redis.asyncio import Connection
+
+conn = Connection(
+    host="localhost",
+    port=6379,
+    db=0,
+    decode_responses=True,
+    socket_timeout=5.0,
+    client_name="worker-1",
+)`,
+        arguments: [
+            {
+                name: "host / port / db",
+                description: "Адрес и база данных Redis. Сохраняются как conn.host, conn.port, conn.db.",
+            },
+            {
+                name: "socket_timeout",
+                description: "Таймаут операций чтения/записи. Применяется как asyncio-таймаут через asyncio.wait_for().",
+            },
+            {
+                name: "decode_responses",
+                description: "Сохраняется как conn.decode_responses. Влияет на поведение read_response() — декодировать bytes в str или нет.",
+            },
+            {
+                name: "parser_class",
+                description: "Класс парсера, экземпляр которого создаётся при __init__. Доступен как conn._parser.",
+            },
+            {
+                name: "redis_connect_callbacks",
+                description: "Список async-колбэков. Копируется во внутренний список conn._connect_callbacks. Дополняется через register_connect_callback().",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import Connection
+
+async def main():
+    conn = Connection(
+        host="localhost",
+        port=6379,
+        db=1,                        # База данных 1
+        decode_responses=True,
+        socket_timeout=3.0,
+        socket_connect_timeout=1.0,
+        socket_keepalive=True,
+        health_check_interval=30,
+        client_name="analytics-worker",
+        retry_on_timeout=False,
+        encoding="utf-8",
+        encoding_errors="strict",
+    )
+
+    # Параметры доступны как атрибуты сразу после __init__
+    print(conn.host)                 # localhost
+    print(conn.port)                 # 6379
+    print(conn.db)                   # 1
+    print(conn.decode_responses)     # True
+    print(conn.socket_timeout)       # 3.0
+    print(conn.client_name)          # analytics-worker
+    print(repr(conn))
+    # Connection<host=localhost,port=6379,db=1>
+
+    # TCP не установлен — накладные расходы минимальны
+    # Соединение создаётся при connect()
+    await conn.connect()
+    print("Подключено")
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.__repr__()",
+        description:
+            "Возвращает строковое представление объекта Connection для отладки. Формат: Connection<host=...,port=...,db=...>. Строится из repr_pieces(). Используется при print(conn), repr(conn), логировании, и при выводе в интерактивном интерпретаторе.",
+        syntax: `repr(conn)`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import Connection
+
+async def main():
+    connections = [
+        Connection(host="redis-1.example.com", port=6379, db=0),
+        Connection(host="redis-2.example.com", port=6380, db=1),
+        Connection(host="redis-3.example.com", port=6381, db=2),
+    ]
+
+    for conn in connections:
+        print(repr(conn))
+    # Connection<host=redis-1.example.com,port=6379,db=0>
+    # Connection<host=redis-2.example.com,port=6380,db=1>
+    # Connection<host=redis-3.example.com,port=6381,db=2>
+
+    # Используется в f-строках и логировании
+    conn = Connection(host="localhost", port=6379)
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+    logger = logging.getLogger(__name__)
+    logger.debug("Создано соединение: %s", repr(conn))
+
+    # Сравнение объектов по repr (для отладки пула):
+    pool_connections = [Connection(host="localhost", port=6379) for _ in range(5)]
+    for i, c in enumerate(pool_connections):
+        print(f"[{i}] {c}")  # __str__ == __repr__ для Connection
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.__del__()",
+        description:
+            "Деструктор Connection — вызывается сборщиком мусора при уничтожении объекта. Пытается закрыть asyncio StreamWriter если соединение было активно. Не полагайтесь на __del__: в asyncio деструктор не может корректно выполнить async-операции (close_notify для TLS, FIN-пакет). Всегда явно вызывайте await conn.disconnect() в блоке finally или через контекстный менеджер пула.",
+        syntax: `# Не вызывайте напрямую. Используйте:
+await conn.disconnect()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import Connection
+
+async def bad_practice():
+    conn = Connection(host="localhost", port=6379, decode_responses=True)
+    await conn.connect()
+    await conn.send_command("SET", "key", "value")
+    await conn.read_response()
+    # conn уходит из области видимости — __del__ вызовется когда-нибудь
+    # Проблема: asyncio-сокет может не закрыться корректно
+
+async def good_practice():
+    conn = Connection(host="localhost", port=6379, decode_responses=True)
+    await conn.connect()
+    try:
+        await conn.send_command("SET", "key", "value")
+        result = await conn.read_response()
+        print(result)  # True
+        await conn.send_command("GET", "key")
+        print(await conn.read_response())  # "value"
+    finally:
+        await conn.disconnect()  # Гарантированное закрытие
+
+# Ещё лучше: использовать ConnectionPool и клиент,
+# которые сами управляют жизненным циклом соединений
+
+asyncio.run(good_practice())`,
+    },
+    {
+        name: "redis.asyncio.Connection.repr_pieces()",
+        description:
+            "Возвращает список кортежей [(имя, значение), ...], из которых строится repr(). Базовая реализация возвращает [('host', ...), ('port', ...), ('db', ...)]. Метод переопределяется в SSLConnection (добавляет ('ssl', True)) и кастомных подклассах. Используется напрямую для диагностики или построения кастомных описаний соединений.",
+        syntax: `pieces = conn.repr_pieces()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import Connection
+
+async def main():
+    conn = Connection(
+        host="redis.example.com",
+        port=6379,
+        db=3,
+        decode_responses=True,
+    )
+
+    pieces = conn.repr_pieces()
+    print(pieces)
+    # [('host', 'redis.example.com'), ('port', 6379), ('db', 3)]
+
+    # Ручное построение repr:
+    desc = ",".join(f"{k}={v}" for k, v in pieces)
+    print(f"Connection<{desc}>")
+    # Connection<host=redis.example.com,port=6379,db=3>
+
+    # Переопределение для включения дополнительных полей:
+    class TaggedConnection(Connection):
+        def __init__(self, tag: str, **kwargs):
+            super().__init__(**kwargs)
+            self.tag = tag
+
+        def repr_pieces(self):
+            pieces = super().repr_pieces()
+            pieces.append(("tag", self.tag))
+            pieces.append(("timeout", self.socket_timeout))
+            return pieces
+
+    tagged = TaggedConnection(
+        tag="analytics", host="localhost", port=6379, socket_timeout=2.0
+    )
+    print(repr(tagged))
+    # Connection<host=localhost,port=6379,db=0,tag=analytics,timeout=2.0>
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.register_connect_callback(callback)",
+        description:
+            "Регистрирует асинхронный колбэк, вызываемый из on_connect() после стандартной инициализации (AUTH, SELECT, CLIENT SETNAME). Колбэки вызываются в порядке регистрации. Используются для кастомной инициализации соединения: установки параметров клиента, логирования, отправки дополнительных команд.",
+        syntax: `conn.register_connect_callback(callback)`,
+        arguments: [
+            {
+                name: "callback",
+                description: "async def callback(connection) → None. Получает объект Connection после завершения стандартной инициализации.",
+            },
+        ],
+        example: `import asyncio
+import socket
+from redis.asyncio import Connection
+
+async def log_connection(conn: Connection):
+    """Логирует факт подключения."""
+    print(f"[CONN] {conn.host}:{conn.port}/db={conn.db} "
+          f"от {socket.gethostname()}")
+
+async def set_app_info(conn: Connection):
+    """Устанавливает имя и версию приложения."""
+    await conn.send_command("CLIENT", "SETNAME", "myapp-v2")
+    await conn.read_response()
+
+async def enable_resp3(conn: Connection):
+    """Включает RESP3 для поддержки новых типов данных."""
+    await conn.send_command("HELLO", "3")
+    await conn.read_response()
+
+async def main():
+    conn = Connection(
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+    )
+
+    # Регистрация нескольких колбэков
+    conn.register_connect_callback(log_connection)
+    conn.register_connect_callback(set_app_info)
+
+    await conn.connect()
+    # [CONN] localhost:6379/db=0 от my-server
+    # CLIENT SETNAME myapp-v2 → OK
+
+    await conn.send_command("CLIENT", "GETNAME")
+    print(await conn.read_response())  # "myapp-v2"
+
+    # Колбэки при переподключении тоже вызываются
+    await conn.disconnect()
+    await conn.connect()  # log_connection + set_app_info снова
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.deregister_connect_callback(callback)",
+        description:
+            "Удаляет ранее зарегистрированный колбэк из внутреннего списка. Идентификация колбэка — по ссылке (is), а не по значению. Если колбэк не найден — обычно выбрасывает ValueError. Используется для отключения временных колбэков (например, debug-логирования) без пересоздания объекта Connection.",
+        syntax: `conn.deregister_connect_callback(callback)`,
+        arguments: [
+            {
+                name: "callback",
+                description: "Тот же callable-объект, переданный ранее в register_connect_callback(). Должна быть та же ссылка.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import Connection
+
+call_count = 0
+
+async def debug_callback(conn: Connection):
+    global call_count
+    call_count += 1
+    print(f"[DEBUG #{call_count}] Подключено: {conn.host}:{conn.port}")
+
+async def permanent_callback(conn: Connection):
+    await conn.send_command("CLIENT", "SETNAME", "worker")
+    await conn.read_response()
+
+async def main():
+    conn = Connection(host="localhost", port=6379, decode_responses=True)
+
+    conn.register_connect_callback(debug_callback)
+    conn.register_connect_callback(permanent_callback)
+
+    # Первое подключение — оба колбэка
+    await conn.connect()   # [DEBUG #1] Подключено: localhost:6379
+    await conn.disconnect()
+
+    # Переподключение — оба колбэка
+    await conn.connect()   # [DEBUG #2] Подключено: localhost:6379
+    await conn.disconnect()
+
+    # Снимаем debug-колбэк
+    conn.deregister_connect_callback(debug_callback)
+
+    # Третье подключение — только permanent_callback
+    await conn.connect()   # Лог НЕ выводится
+    await conn.disconnect()
+
+    print(f"Всего debug-вызовов: {call_count}")  # 2
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.set_parser(parser_class)",
+        description:
+            "Устанавливает класс парсера RESP-ответов. Если соединение уже активно — пересоздаёт парсер на лету. По умолчанию DefaultParser (чистый Python). HiredisParser (C-расширение, пакет hiredis) в несколько раз быстрее при большом числе операций. Автоматически выбирается при установке пакета hiredis в окружении.",
+        syntax: `conn.set_parser(parser_class)`,
+        arguments: [
+            {
+                name: "parser_class",
+                description: "redis.connection.DefaultParser или redis.connection.HiredisParser. Должен реализовывать интерфейс BaseParser с методами read_response() и on_connect().",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import Connection
+
+async def main():
+    conn = Connection(host="localhost", port=6379, decode_responses=True)
+
+    # Выбор парсера до подключения
+    try:
+        from redis.connection import HiredisParser
+        conn.set_parser(HiredisParser)
+        parser_name = "HiredisParser (C)"
+    except ImportError:
+        from redis.connection import DefaultParser
+        conn.set_parser(DefaultParser)
+        parser_name = "DefaultParser (Python)"
+
+    print(f"Используется: {parser_name}")
+
+    await conn.connect()
+
+    # Бенчмарк
+    import time
+    await conn.send_command("SET", "bench", "x" * 512)
+    await conn.read_response()
+
+    start = time.monotonic()
+    for _ in range(10_000):
+        await conn.send_command("GET", "bench")
+        await conn.read_response()
+    ms = (time.monotonic() - start) * 1000
+    print(f"10 000 GET: {ms:.0f} мс ({10_000 / ms * 1000:.0f} ops/sec)")
+    # HiredisParser ≈ в 3–5 раз быстрее DefaultParser
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.connect()",
+        description:
+            "Устанавливает асинхронное TCP-соединение с Redis. Последовательность: asyncio.open_connection() → применяет настройки сокета (keepalive, timeout) → вызывает on_connect() (AUTH, SELECT, CLIENT SETNAME, колбэки). Идемпотентна: вызов на уже подключённом соединении — no-op. При сетевой ошибке выбрасывает ConnectionError.",
+        syntax: `await conn.connect()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import Connection
+from redis.exceptions import ConnectionError as RedisConnectionError
+
+async def main():
+    conn = Connection(
+        host="localhost",
+        port=6379,
+        db=0,
+        decode_responses=True,
+        socket_connect_timeout=2.0,
+        socket_timeout=5.0,
+        client_name="connect-demo",
+    )
+
+    # Подключение: TCP + AUTH (если задан пароль) + SELECT db + CLIENT SETNAME
+    await conn.connect()
+    print("Подключено")
+
+    await conn.send_command("PING")
+    print(await conn.read_response())  # True
+
+    # Идемпотентность: повторный вызов — no-op
+    await conn.connect()  # Ничего не происходит, уже подключено
+    await conn.disconnect()
+
+    # Переподключение после разрыва
+    await conn.connect()  # Новое TCP-соединение
+    await conn.send_command("SET", "after_reconnect", "ok")
+    print(await conn.read_response())  # True
+    await conn.disconnect()
+
+    # Обработка ошибки подключения
+    bad_conn = Connection(host="nonexistent.host", port=6379)
+    try:
+        await bad_conn.connect()
+    except RedisConnectionError as e:
+        print(f"Ошибка: {e}")  # Error connecting to nonexistent.host:6379
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.connect_check_health(check_health=True, retry_socket_connect=False)",
+        description:
+            "Устанавливает соединение и проверяет его работоспособность через PING. Вызывается пулом при выдаче соединения клиенту. При check_health=True отправляет PING после connect() — если Redis не отвечает, соединение закрывается. При retry_socket_connect=True — при неудаче повторяет всю цепочку TCP + on_connect() + PING.",
+        syntax: `await conn.connect_check_health(check_health=True, retry_socket_connect=False)`,
+        arguments: [
+            {
+                name: "check_health",
+                description: "Если True (по умолчанию) — после TCP-подключения отправляет PING и ждёт ответа. Если False — только подключение без проверки.",
+            },
+            {
+                name: "retry_socket_connect",
+                description: "Если True — при неудачном PING разрывает соединение и повторяет connect() + PING. Если False — выбрасывает исключение сразу.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import Connection, ConnectionPool
+
+async def main():
+    conn = Connection(
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+        socket_connect_timeout=2.0,
+    )
+
+    # Подключение с проверкой PING (как делает пул)
+    await conn.connect_check_health(
+        check_health=True,
+        retry_socket_connect=True,   # Повтор при неудаче
+    )
+    print("Соединение установлено и проверено PING")
+
+    await conn.send_command("SET", "health", "ok")
+    print(await conn.read_response())  # True
+    await conn.disconnect()
+
+    # Без PING (только TCP + on_connect):
+    conn2 = Connection(host="localhost", port=6379, decode_responses=True)
+    await conn2.connect_check_health(check_health=False)
+    print("Подключено без PING")
+    await conn2.disconnect()
+
+    # Пул использует connect_check_health() внутри get_connection():
+    pool = ConnectionPool(
+        host="localhost", port=6379,
+        decode_responses=True,
+        health_check_interval=30,   # PING каждые 30 секунд
+    )
+    client_conn = await pool.get_connection("GET")
+    # pool вызвал connect_check_health() за кулисами
+    await pool.release(client_conn)
+    await pool.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.on_connect()",
+        description:
+            "Асинхронный метод инициализации соединения, вызываемый из connect() после установки TCP. Выполняет стандартную последовательность: HELLO (RESP3 если protocol=3), AUTH (если задан password), SELECT (если db != 0), CLIENT SETNAME (если задан client_name), CLIENT NO-TOUCH. Затем вызывает все зарегистрированные колбэки из redis_connect_callbacks. Переопределяется в подклассах.",
+        syntax: `await conn.on_connect()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import Connection
+
+class AppConnection(Connection):
+    """Кастомное соединение с расширенной инициализацией."""
+
+    async def on_connect(self):
+        # 1. Стандартная инициализация базового класса:
+        #    HELLO → AUTH → SELECT → CLIENT SETNAME → колбэки
+        await super().on_connect()
+
+        # 2. Кастомная инициализация:
+        # Устанавливаем максимальное время выполнения Lua-скриптов
+        await self.send_command("CONFIG", "SET", "lua-time-limit", "3000")
+        await self.read_response()
+
+        # Включаем keyspace notifications (если Redis настроен)
+        # await self.send_command("CONFIG", "SET",
+        #     "notify-keyspace-events", "KEA")
+        # await self.read_response()
+
+        import socket, os
+        print(f"[ON_CONNECT] {self.host}:{self.port} | "
+              f"pid={os.getpid()} | host={socket.gethostname()}")
+
+async def main():
+    conn = AppConnection(
+        host="localhost",
+        port=6379,
+        db=0,
+        password=None,
+        client_name="app-worker",
+        decode_responses=True,
+    )
+    await conn.connect()
+    # [ON_CONNECT] localhost:6379 | pid=12345 | host=my-server
+    # (AUTH пропущен — password=None)
+    # (SELECT пропущен — db=0)
+    # CLIENT SETNAME app-worker → OK
+    # CONFIG SET lua-time-limit 3000 → OK
+
+    await conn.send_command("PING")
+    print(await conn.read_response())  # True
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.disconnect()",
+        description:
+            "Асинхронно закрывает TCP-соединение с Redis. Закрывает asyncio StreamWriter (отправляет FIN), освобождает буферы парсера. После disconnect() объект Connection можно использовать повторно — следующий connect() создаст новое TCP-соединение. Безопасно вызывать на уже закрытом соединении — no-op.",
+        syntax: `await conn.disconnect()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import Connection
+
+async def main():
+    conn = Connection(host="localhost", port=6379, decode_responses=True)
+
+    # Паттерн 1: try/finally — гарантированное закрытие
+    await conn.connect()
+    try:
+        await conn.send_command("SET", "key1", "value1")
+        await conn.read_response()
+        await conn.send_command("GET", "key1")
+        print(await conn.read_response())  # "value1"
+    finally:
+        await conn.disconnect()
+
+    # Паттерн 2: переподключение после разрыва
+    for i in range(3):
+        await conn.connect()
+        try:
+            await conn.send_command("INCR", "reconnect_counter")
+            count = await conn.read_response()
+            print(f"Счётчик: {count}")  # 1, 2, 3
+        finally:
+            await conn.disconnect()
+
+    # Идемпотентность: повторный disconnect() безопасен
+    await conn.disconnect()  # no-op — соединение уже закрыто
+    await conn.disconnect()  # no-op — не выбрасывает исключение
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.check_health()",
+        description:
+            "Проверяет живость соединения отправкой PING. Вызывается пулом перед выдачей соединения если с момента последнего использования прошло более health_check_interval секунд. При успехе — no-op. При неудаче — выбрасывает ConnectionError, сигнализируя пулу о необходимости создать новое соединение.",
+        syntax: `await conn.check_health()`,
+        arguments: [],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import Connection, ConnectionPool
+from redis.exceptions import ConnectionError as RedisConnectionError
+
+async def main():
+    # Пул с health check каждые 30 секунд
+    pool = ConnectionPool(
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+        health_check_interval=30,   # check_health() каждые 30 с
+        max_connections=10,
+    )
+    client = aioredis.Redis(connection_pool=pool)
+    await client.ping()
+
+    # Ручная проверка живости соединения
+    conn = await pool.get_connection("PING")
+    try:
+        await conn.check_health()
+        print("Соединение живо")
+    except RedisConnectionError as e:
+        print(f"Соединение мертво: {e}")
+        # Пул создаст новое соединение при следующем запросе
+    finally:
+        await pool.release(conn)
+
+    # Мониторинг всех соединений пула
+    async def pool_health_report(pool: ConnectionPool):
+        alive = 0
+        dead = 0
+        for conn in list(pool._available_connections):
+            try:
+                await conn.check_health()
+                alive += 1
+            except RedisConnectionError:
+                dead += 1
+        print(f"Пул: живых={alive}, мёртвых={dead}")
+        return alive, dead
+
+    await pool_health_report(pool)
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.send_packed_command(command, check_health=True)",
+        description:
+            "Асинхронно отправляет предварительно сериализованную команду в формате RESP. Принимает байты — результат упаковки (packing) команды. При check_health=True автоматически вызывает connect() если соединение не установлено. Более низкоуровневый метод чем send_command() — используется когда команда уже сериализована (например, в Pipeline).",
+        syntax: `await conn.send_packed_command(command, check_health=True)`,
+        arguments: [
+            {
+                name: "command",
+                description: "Байтовая строка или список байтовых строк в формате RESP. Например: b'*1\\r\\n$4\\r\\nPING\\r\\n' для PING.",
+            },
+            {
+                name: "check_health",
+                description: "Если True — проверяет и при необходимости устанавливает соединение. Если False — предполагает что соединение активно.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import Connection
+
+async def main():
+    conn = Connection(host="localhost", port=6379, decode_responses=True)
+    await conn.connect()
+
+    # Пример 1: вручную сформированный RESP-пакет
+    # PING: *1\r\n$4\r\nPING\r\n
+    ping_packet = b"*1\r\n$4\r\nPING\r\n"
+    await conn.send_packed_command(ping_packet)
+    print(await conn.read_response())     # True
+
+    # Пример 2: использование encoder.pack_command()
+    from redis.connection import Encoder
+    enc = Encoder("utf-8", "strict", decode_responses=False)
+    set_packet = enc.pack_command("SET", "packed_key", "packed_value")
+    await conn.send_packed_command(set_packet, check_health=False)
+    print(await conn.read_response())     # True
+
+    get_packet = enc.pack_command("GET", "packed_key")
+    await conn.send_packed_command(get_packet)
+    raw = await conn.read_response()
+    print(raw)                            # b"packed_value"
+
+    # Пример 3: Pipeline пакует сразу несколько команд
+    pipeline_packet = enc.pack_commands([
+        ("SET", "a", "1"),
+        ("SET", "b", "2"),
+        ("MGET", "a", "b"),
+    ])
+    await conn.send_packed_command(pipeline_packet)
+    print(await conn.read_response())   # True
+    print(await conn.read_response())   # True
+    print(await conn.read_response())   # [b"1", b"2"]
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.send_command(*args, **kwargs)",
+        description:
+            "Сериализует команду Redis и её аргументы в формат RESP, затем асинхронно отправляет через TCP. Принимает Python-объекты — строки, числа, bytes. Автоматически вызывает connect() при необходимости (через send_packed_command с check_health=True). Основной метод для отправки команд при низкоуровневой работе с соединением.",
+        syntax: `await conn.send_command(*args, **kwargs)`,
+        arguments: [
+            {
+                name: "*args",
+                description: "Команда Redis и аргументы в виде Python-объектов: строк, чисел, bytes. Например: 'SET', 'key', 'value' или 'ZADD', 'leaderboard', 100, 'player1'.",
+            },
+            {
+                name: "**kwargs",
+                description: "check_health=True/False — проверять ли соединение перед отправкой.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import Connection
+
+async def main():
+    conn = Connection(host="localhost", port=6379, decode_responses=True)
+    await conn.connect()
+
+    # Строки
+    await conn.send_command("SET", "name", "Мария")
+    print(await conn.read_response())       # True
+
+    await conn.send_command("GET", "name")
+    print(await conn.read_response())       # "Мария"
+
+    # Числа
+    await conn.send_command("SET", "counter", 0)
+    await conn.read_response()
+    await conn.send_command("INCRBY", "counter", 10)
+    print(await conn.read_response())       # 10
+
+    # Hash
+    await conn.send_command("HSET", "user:1",
+                            "name", "Алексей",
+                            "age", "30",
+                            "city", "Москва")
+    print(await conn.read_response())       # 3
+
+    await conn.send_command("HGETALL", "user:1")
+    print(await conn.read_response())
+    # {"name": "Алексей", "age": "30", "city": "Москва"}
+
+    # Sorted Set
+    await conn.send_command("ZADD", "scores", 100, "alice", 200, "bob")
+    await conn.read_response()
+
+    await conn.send_command("ZRANGE", "scores", 0, -1, "WITHSCORES")
+    print(await conn.read_response())       # ["alice", "100", "bob", "200"]
+
+    # Pipeline вручную (без ожидания ответов между командами):
+    for key in ["a", "b", "c"]:
+        await conn.send_command("SET", key, key * 3)
+    for _ in range(3):
+        await conn.read_response()          # True, True, True
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.can_read(timeout=0)",
+        description:
+            "Асинхронно проверяет наличие данных в буфере TCP-соединения без блокировки. При timeout=0 — немедленная проверка через asyncio. При timeout > 0 — ожидает до timeout секунд. Возвращает True если есть данные для read_response(), False если буфер пуст. Используется для обнаружения незапрошенных сообщений: push-уведомлений RESP3, Pub/Sub-сообщений.",
+        syntax: `has_data = await conn.can_read(timeout=0)`,
+        arguments: [
+            {
+                name: "timeout",
+                description: "Время ожидания в секундах. 0 — немедленная non-blocking проверка. > 0 — ждать до timeout секунд появления данных.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import Connection
+
+async def main():
+    conn = Connection(host="localhost", port=6379, decode_responses=True)
+    await conn.connect()
+
+    # Буфер пуст сразу после подключения
+    print(await conn.can_read(timeout=0))   # False
+
+    # После отправки команды — ответ появится в буфере
+    await conn.send_command("PING")
+    print(await conn.can_read(timeout=1.0)) # True (ждём до 1 сек)
+    print(await conn.read_response())       # True
+
+    # Non-blocking drain: читаем все накопившиеся ответы
+    for cmd in ["SET k1 v1", "SET k2 v2", "SET k3 v3"]:
+        parts = cmd.split()
+        await conn.send_command(*parts)
+
+    received = []
+    while await conn.can_read(timeout=0.1):
+        received.append(await conn.read_response())
+    print(f"Получено ответов: {len(received)}")   # 3
+
+    # Pub/Sub без официального PubSub-клиента:
+    await conn.send_command("SUBSCRIBE", "notifications")
+    await conn.read_response()  # ["subscribe", "notifications", 1]
+
+    # Периодическая проверка входящих сообщений
+    async def poll_messages(conn, duration=2.0):
+        import time
+        end = time.monotonic() + duration
+        while time.monotonic() < end:
+            if await conn.can_read(timeout=0.1):
+                msg = await conn.read_response(disconnect_on_error=False)
+                print(f"Сообщение: {msg}")
+            await asyncio.sleep(0)
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Connection.read_response(disconnect_on_error=True)",
+        description:
+            "Асинхронно читает один ответ Redis из TCP-буфера. Парсит RESP согласно типу ответа: Simple String (+OK → 'OK'), Integer (:5 → 5), Bulk String ($-1 → None), Array (*3 → list), Error (-ERR → ResponseError). При disconnect_on_error=True и сетевой ошибке разрывает соединение. Для RESP3 поддерживает дополнительные типы: Map, Set, Double, BigNumber, Blob Error.",
+        syntax: `response = await conn.read_response(disconnect_on_error=True)`,
+        arguments: [
+            {
+                name: "disconnect_on_error",
+                description: "Если True (по умолчанию) — при сетевой ошибке вызывает disconnect(). Если False — соединение остаётся открытым при ошибке (используется в Pub/Sub-цикле).",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import Connection
+from redis.exceptions import ResponseError
+
+async def main():
+    conn = Connection(host="localhost", port=6379, decode_responses=True)
+    await conn.connect()
+
+    # Simple String → str
+    await conn.send_command("SET", "key", "value")
+    print(await conn.read_response())            # True (OK конвертируется в True)
+
+    # Bulk String → str (decode_responses=True)
+    await conn.send_command("GET", "key")
+    print(await conn.read_response())            # "value"
+
+    # Null Bulk String → None
+    await conn.send_command("GET", "missing_key")
+    print(await conn.read_response())            # None
+
+    # Integer → int
+    await conn.send_command("INCR", "counter")
+    print(await conn.read_response())            # 1
+
+    # Array → list
+    await conn.send_command("MGET", "key", "counter", "missing_key")
+    print(await conn.read_response())            # ["value", "1", None]
+
+    # Hash → dict (decode_responses=True + RESP2)
+    await conn.send_command("HSET", "h", "a", "1", "b", "2")
+    await conn.read_response()
+    await conn.send_command("HGETALL", "h")
+    print(await conn.read_response())            # {"a": "1", "b": "2"}
+
+    # Error → ResponseError
+    await conn.send_command("LPUSH", "key", "item")  # key — строка, не список
+    try:
+        await conn.read_response()
+    except ResponseError as e:
+        print(f"Ошибка: {e}")
+        # WRONGTYPE Operation against a key holding the wrong kind of value
+
+    # disconnect_on_error=False — для Pub/Sub цикла:
+    # Сообщения приходят без явного запроса, при ошибке не рвём соединение
+    # msg = await conn.read_response(disconnect_on_error=False)
+
+    await conn.disconnect()
+
+asyncio.run(main())`,
+    },
+    // ─── redis.asyncio.BlockingConnectionPool ─────────────────────────────────
+    {
+        name: "redis.asyncio.BlockingConnectionPool(max_connections=None, timeout=None, connection_class=Connection, **connection_kwargs)",
+        description:
+            "Асинхронный пул соединений с блокирующим ожиданием. В отличие от стандартного ConnectionPool, при достижении max_connections не выбрасывает ConnectionError, а блокирует корутину на timeout секунд до освобождения соединения. Использует asyncio.Queue как семафор: слот в очереди — право на соединение. Идеален для высоконагруженных приложений, где важно не терять запросы, а ставить их в очередь.",
+        syntax: `import redis.asyncio as aioredis
+from redis.asyncio import BlockingConnectionPool
+
+pool = BlockingConnectionPool(
+    host="localhost",
+    port=6379,
+    max_connections=10,
+    timeout=20,
+    decode_responses=True,
+)
+client = aioredis.Redis(connection_pool=pool)`,
+        arguments: [
+            {
+                name: "max_connections",
+                description: "Максимальное число соединений в пуле. При достижении лимита новые запросы блокируются до timeout. None — по умолчанию 50.",
+            },
+            {
+                name: "timeout",
+                description: "Время ожидания освобождения соединения в секундах. По истечении выбрасывает ConnectionError. None — ждать бесконечно.",
+            },
+            {
+                name: "connection_class",
+                description: "Класс соединения. По умолчанию redis.asyncio.Connection. Можно заменить на SSLConnection или кастомный подкласс.",
+            },
+            {
+                name: "**connection_kwargs",
+                description: "Параметры соединения: host, port, db, password, decode_responses, socket_timeout и т.д. Передаются в каждое создаваемое соединение.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import BlockingConnectionPool
+
+async def main():
+    pool = BlockingConnectionPool(
+        host="localhost",
+        port=6379,
+        db=0,
+        max_connections=5,    # Максимум 5 одновременных соединений
+        timeout=10,           # Ждать не более 10 секунд
+        decode_responses=True,
+        socket_timeout=5.0,
+        socket_keepalive=True,
+        client_name="blocking-demo",
+    )
+    client = aioredis.Redis(connection_pool=pool)
+
+    # Демонстрация блокировки: 10 корутин, пул на 5
+    async def worker(n: int):
+        # Если все 5 слотов заняты — ждёт до 10 сек
+        value = await client.get(f"key:{n}")
+        await client.set(f"result:{n}", f"done-{n}")
+        return value
+
+    results = await asyncio.gather(*[worker(i) for i in range(10)])
+    print(f"Выполнено: {len(results)} задач")
+    print(f"Макс. соединений: {pool.max_connections}")
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.BlockingConnectionPool.__init__(max_connections=None, timeout=None, connection_class=Connection, **connection_kwargs)",
+        description:
+            "Инициализирует BlockingConnectionPool: создаёт asyncio.Queue размером max_connections, заполняет её None-слотами (каждый None — свободный слот для создания нового соединения), инициализирует словарь _connections для хранения активных Connection-объектов. Вызывается автоматически — ручной вызов __init__ нужен только при наследовании.",
+        syntax: `from redis.asyncio import BlockingConnectionPool
+
+pool = BlockingConnectionPool(
+    max_connections=10,
+    timeout=20,
+    host="localhost",
+    port=6379,
+    decode_responses=True,
+)`,
+        arguments: [
+            {
+                name: "max_connections",
+                description: "Размер очереди asyncio.Queue = число слотов. При max_connections=10 пул создаёт Queue(10) и кладёт в неё 10 значений None.",
+            },
+            {
+                name: "timeout",
+                description: "Передаётся в asyncio.wait_for() при ожидании слота из Queue. None — asyncio.Queue.get() без таймаута.",
+            },
+            {
+                name: "connection_class",
+                description: "Сохраняется как self.connection_class. Используется в make_connection() для создания новых соединений.",
+            },
+            {
+                name: "**connection_kwargs",
+                description: "Сохраняются как self.connection_kwargs. Передаются в connection_class(**connection_kwargs) при создании каждого соединения.",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import BlockingConnectionPool, SSLConnection
+
+async def main():
+    # Базовое использование
+    pool = BlockingConnectionPool(
+        max_connections=20,
+        timeout=15,
+        host="redis.example.com",
+        port=6379,
+        decode_responses=True,
+        password="redis-secret",
+        socket_timeout=3.0,
+    )
+
+    # Внутреннее состояние после __init__:
+    print(f"Макс. соединений: {pool.max_connections}")   # 20
+    print(f"Таймаут: {pool.timeout}")                    # 15
+    print(f"Класс: {pool.connection_class.__name__}")    # Connection
+    print(f"kwargs: host={pool.connection_kwargs['host']}")
+
+    # C SSL:
+    ssl_pool = BlockingConnectionPool(
+        max_connections=10,
+        timeout=5,
+        connection_class=SSLConnection,
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        ssl_cert_reqs="required",
+        decode_responses=True,
+    )
+    print(f"SSL класс: {ssl_pool.connection_class.__name__}")  # SSLConnection
+
+    await pool.aclose()
+    await ssl_pool.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.BlockingConnectionPool.reset()",
+        description:
+            "Сбрасывает состояние пула: закрывает все существующие соединения, очищает внутренние структуры (_connections, pid), и пересоздаёт asyncio.Queue с max_connections слотами. Полезно при fork() процесса (пул автоматически сбрасывается при смене PID) или для принудительного переподключения всех соединений.",
+        syntax: `await pool.reset()`,
+        arguments: [],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import BlockingConnectionPool
+
+async def main():
+    pool = BlockingConnectionPool(
+        max_connections=5,
+        timeout=10,
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+    )
+    client = aioredis.Redis(connection_pool=pool)
+
+    # Прогреваем пул
+    for i in range(5):
+        await client.set(f"warmup:{i}", i)
+
+    # Сброс пула
+    await pool.reset()
+    print("Пул сброшен — все соединения закрыты")
+
+    # После reset() пул полностью работоспособен
+    await client.ping()
+    await client.set("after_reset", "ok")
+    print(await client.get("after_reset"))  # "ok"
+
+    # Паттерн: reset после fork() (например, в multiprocessing)
+    import os
+    pid_before = os.getpid()
+    # В дочернем процессе пул вызывает reset() автоматически
+    # если обнаруживает смену PID (pool._fork_lock)
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.BlockingConnectionPool.get_connection(command_name, *args, **kwargs)",
+        description:
+            "Асинхронно получает соединение из пула. Ждёт слот из asyncio.Queue (блокируется до timeout секунд). Если слот содержит None — создаёт новое соединение через make_connection(). Если содержит Connection — возвращает существующее. При health_check_interval > 0 вызывает connect_check_health() перед возвратом. По истечении timeout выбрасывает ConnectionError.",
+        syntax: `connection = await pool.get_connection(command_name, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "command_name",
+                description: "Имя команды Redis ('GET', 'SET' и т.д.). Используется для выбора соединения в специализированных пулах (PubSub, кластер). В BlockingConnectionPool не влияет на выбор.",
+            },
+            {
+                name: "*args / **kwargs",
+                description: "Аргументы команды. Передаются для совместимости с интерфейсом базового класса ConnectionPool.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import BlockingConnectionPool
+from redis.exceptions import ConnectionError as RedisConnectionError
+
+async def main():
+    pool = BlockingConnectionPool(
+        max_connections=3,
+        timeout=5,       # Ждать до 5 секунд
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+    )
+    client = aioredis.Redis(connection_pool=pool)
+
+    # get_connection() вызывается автоматически при каждой команде клиента
+    await client.set("key", "value")   # pool.get_connection("SET") за кулисами
+
+    # Ручное получение соединения:
+    conn = await pool.get_connection("GET")
+    try:
+        await conn.send_command("GET", "key")
+        print(await conn.read_response())   # "value"
+    finally:
+        await pool.release(conn)            # Возврат слота в Queue
+
+    # Демонстрация блокировки:
+    async def hold_connection(pool, duration):
+        conn = await pool.get_connection("GET")
+        await asyncio.sleep(duration)   # Держим соединение
+        await pool.release(conn)
+
+    async def try_get(pool):
+        try:
+            conn = await pool.get_connection("GET")  # Ждёт до 5 сек
+            await pool.release(conn)
+            print("Соединение получено")
+        except RedisConnectionError:
+            print("Таймаут ожидания соединения")
+
+    # Занимаем все 3 слота на 2 секунды
+    holders = [hold_connection(pool, 2) for _ in range(3)]
+    await asyncio.gather(*holders, try_get(pool))
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.BlockingConnectionPool.make_connection()",
+        description:
+            "Создаёт новый объект соединения (connection_class(**connection_kwargs)). Вызывается из get_connection() когда из Queue извлечён None-слот (означает пустой слот — нужно создать новое соединение). Не устанавливает TCP-соединение — только инстанцирует объект. Реальное подключение происходит при последующем вызове connect() или connect_check_health().",
+        syntax: `connection = await pool.make_connection()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import BlockingConnectionPool, Connection
+
+async def main():
+    pool = BlockingConnectionPool(
+        max_connections=5,
+        timeout=10,
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+        client_name="make-conn-demo",
+    )
+
+    # make_connection() создаёт объект без TCP-соединения
+    conn = await pool.make_connection()
+    print(type(conn))               # <class 'redis.asyncio.connection.Connection'>
+    print(conn.host)                # localhost
+    print(conn.port)                # 6379
+    print(conn.client_name)         # make-conn-demo
+
+    # TCP ещё не установлен — нужен явный connect()
+    await conn.connect()            # Теперь TCP + AUTH + SELECT
+    await conn.send_command("PING")
+    print(await conn.read_response())  # True
+    await conn.disconnect()
+
+    # Кастомный подкласс пула с переопределением make_connection:
+    class LoggedPool(BlockingConnectionPool):
+        _conn_count = 0
+
+        async def make_connection(self):
+            conn = await super().make_connection()
+            LoggedPool._conn_count += 1
+            print(f"[POOL] Создано соединение #{LoggedPool._conn_count}: "
+                  f"{conn.host}:{conn.port}")
+            return conn
+
+    logged_pool = LoggedPool(
+        max_connections=3, timeout=5,
+        host="localhost", port=6379, decode_responses=True
+    )
+    import redis.asyncio as aioredis
+    client = aioredis.Redis(connection_pool=logged_pool)
+    for _ in range(3):
+        await client.ping()   # [POOL] Создано соединение #1 / #2 / #3
+
+    await client.aclose()
+    await pool.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.BlockingConnectionPool.release(connection)",
+        description:
+            "Возвращает соединение в пул после использования: кладёт объект Connection обратно в asyncio.Queue, освобождая слот для ожидающих корутин. Вызывается автоматически клиентом после каждой команды. При ручном использовании обязательно вызывать release() в блоке finally во избежание утечки слотов.",
+        syntax: `await pool.release(connection)`,
+        arguments: [
+            {
+                name: "connection",
+                description: "Объект Connection, полученный ранее через get_connection() этого же пула.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import BlockingConnectionPool
+
+async def main():
+    pool = BlockingConnectionPool(
+        max_connections=3,
+        timeout=5,
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+    )
+    client = aioredis.Redis(connection_pool=pool)
+
+    # Автоматический release() при каждой команде клиента:
+    await client.set("auto", "release")  # get_connection → команда → release()
+    await client.get("auto")             # get_connection → команда → release()
+
+    # Ручное управление: ОБЯЗАТЕЛЬНО release() в finally
+    conn = await pool.get_connection("SET")
+    try:
+        await conn.send_command("SET", "manual", "value")
+        await conn.read_response()
+        await conn.send_command("GET", "manual")
+        print(await conn.read_response())   # "value"
+    finally:
+        await pool.release(conn)   # Слот возвращён в Queue
+
+    # Без release() — слот никогда не освобождается:
+    # корутины зависнут после достижения max_connections!
+    # Безопасный паттерн для нескольких команд:
+    async def atomic_ops(pool, key: str, value: str):
+        conn = await pool.get_connection("SET")
+        try:
+            await conn.send_command("MULTI")
+            await conn.read_response()
+            await conn.send_command("SET", key, value)
+            await conn.send_command("EXPIRE", key, 3600)
+            await conn.send_command("EXEC")
+            await conn.read_response()  # QUEUED
+            await conn.read_response()  # QUEUED
+            return await conn.read_response()  # [True, True]
+        finally:
+            await pool.release(conn)
+
+    print(await atomic_ops(pool, "ttl_key", "ttl_value"))  # [True, True]
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.BlockingConnectionPool.disconnect(in_use=True)",
+        description:
+            "Асинхронно закрывает соединения пула. При in_use=True (по умолчанию) — закрывает и свободные соединения в Queue, и активные (выданные клиентам). При in_use=False — только свободные в Queue. После disconnect() пул продолжает работать: при следующем get_connection() новые соединения создаются автоматически.",
+        syntax: `await pool.disconnect(in_use=True)`,
+        arguments: [
+            {
+                name: "in_use",
+                description: "Если True (по умолчанию) — закрывает также соединения, выданные клиентам в данный момент. Если False — только свободные в очереди.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import BlockingConnectionPool
+
+async def main():
+    pool = BlockingConnectionPool(
+        max_connections=5,
+        timeout=10,
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+    )
+    client = aioredis.Redis(connection_pool=pool)
+
+    # Прогреваем пул
+    for i in range(5):
+        await client.set(f"key:{i}", i)
+
+    # Закрыть только свободные соединения (выданные — продолжают работу)
+    await pool.disconnect(in_use=False)
+    print("Свободные соединения закрыты")
+
+    # Закрыть ВСЕ соединения (включая активные)
+    await pool.disconnect(in_use=True)
+    print("Все соединения закрыты")
+
+    # Пул восстанавливается автоматически
+    await client.ping()
+    print(await client.set("after_disconnect", "ok"))  # True
+    print(await client.get("after_disconnect"))        # "ok"
+
+    # Паттерн: принудительное переподключение при смене конфигурации
+    async def reconnect_pool(pool):
+        await pool.disconnect(in_use=True)
+        await pool.reset()
+        print("Пул переподключён")
+
+    await reconnect_pool(pool)
+    await client.ping()
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.BlockingConnectionPool.get_encoder()",
+        description:
+            "Возвращает объект Encoder, настроенный по параметрам пула (encoding, encoding_errors, decode_responses). Encoder используется для сериализации аргументов команд в байты перед отправкой. Вызывается клиентом Redis при инициализации для получения общего кодировщика. Позволяет единообразно обрабатывать строки, числа и bytes.",
+        syntax: `encoder = pool.get_encoder()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import BlockingConnectionPool
+from redis.connection import Encoder
+
+async def main():
+    pool = BlockingConnectionPool(
+        max_connections=5,
+        timeout=10,
+        host="localhost",
+        port=6379,
+        encoding="utf-8",
+        encoding_errors="strict",
+        decode_responses=True,
+    )
+
+    encoder = pool.get_encoder()
+    print(type(encoder))               # <class 'redis.connection.Encoder'>
+    print(encoder.encoding)            # utf-8
+    print(encoder.encoding_errors)     # strict
+    print(encoder.decode_responses)    # True
+
+    # Encoder кодирует значения перед отправкой в Redis:
+    print(encoder.encode("Привет"))    # b'\xd0\x9f\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82'
+    print(encoder.encode(42))          # b'42'
+    print(encoder.encode(3.14))        # b'3.14'
+    print(encoder.encode(b"bytes"))    # b'bytes' (passthrough)
+
+    # Decode при decode_responses=True:
+    print(encoder.decode(b"hello"))    # "hello"
+    print(encoder.decode(b"\xd0\x9f\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82"))
+    # "Привет"
+
+    # Кастомный encoder через подкласс пула:
+    class Base64Pool(BlockingConnectionPool):
+        def get_encoder(self):
+            enc = super().get_encoder()
+            # Можно расширить логику кодирования
+            return enc
+
+    await pool.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.BlockingConnectionPool.ownership_takes_connection()",
+        description:
+            "Метод-предикат: возвращает True, если при передаче владения пулом (например, при клонировании клиента или передаче пула в другой контекст) соединение остаётся за оригинальным пулом. В BlockingConnectionPool всегда возвращает True — это означает, что соединение принадлежит пулу и управляется им через Queue. Используется внутренне для корректного управления жизненным циклом.",
+        syntax: `result = pool.ownership_takes_connection()`,
+        arguments: [],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import BlockingConnectionPool, ConnectionPool
+
+async def main():
+    blocking_pool = BlockingConnectionPool(
+        max_connections=5,
+        timeout=10,
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+    )
+    regular_pool = ConnectionPool(
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+    )
+
+    # BlockingConnectionPool: ownership_takes_connection() == True
+    print(blocking_pool.ownership_takes_connection())   # True
+    # ConnectionPool: False (владение передаётся при get_connection)
+    print(regular_pool.ownership_takes_connection())    # False
+
+    # Практический смысл: при клонировании клиента
+    client = aioredis.Redis(connection_pool=blocking_pool)
+
+    # Когда ownership_takes_connection() == True:
+    # пул сам решает, когда создавать/закрывать соединения
+    # и клиент не должен "отбирать" владение соединением
+    await client.set("ownership_demo", "ok")
+    print(await client.get("ownership_demo"))  # "ok"
+
+    await client.aclose()
+    await regular_pool.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.BlockingConnectionPool.connection_kwargs",
+        description:
+            "Атрибут-словарь: параметры соединений, создаваемых пулом. Содержит все **connection_kwargs переданные при инициализации, плюс автоматически добавляемые pool-специфичные ключи (например, retry, db, password). Используется в make_connection() для создания каждого нового соединения. Можно читать для диагностики; изменять напрямую не рекомендуется — создайте новый пул.",
+        syntax: `params = pool.connection_kwargs`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import BlockingConnectionPool
+
+async def main():
+    pool = BlockingConnectionPool(
+        max_connections=10,
+        timeout=15,
+        host="redis.example.com",
+        port=6379,
+        db=2,
+        password="secret",
+        decode_responses=True,
+        socket_timeout=3.0,
+        client_name="myapp",
+        encoding="utf-8",
+    )
+
+    # Просмотр параметров пула
+    kwargs = pool.connection_kwargs
+    print(f"host: {kwargs['host']}")             # redis.example.com
+    print(f"port: {kwargs['port']}")             # 6379
+    print(f"db: {kwargs['db']}")                 # 2
+    print(f"decode_responses: {kwargs['decode_responses']}")  # True
+    print(f"socket_timeout: {kwargs['socket_timeout']}")      # 3.0
+    print(f"client_name: {kwargs['client_name']}")            # myapp
+
+    # Диагностика: сравнение двух пулов
+    pool2 = BlockingConnectionPool(
+        max_connections=5, timeout=5,
+        host="redis-replica.example.com",
+        port=6379, decode_responses=True,
+    )
+
+    def diff_pools(p1, p2):
+        k1, k2 = p1.connection_kwargs, p2.connection_kwargs
+        diffs = {k: (k1.get(k), k2.get(k))
+                 for k in set(k1) | set(k2)
+                 if k1.get(k) != k2.get(k)}
+        for key, (v1, v2) in diffs.items():
+            print(f"  {key}: {v1!r} → {v2!r}")
+
+    print("Различия пулов:")
+    diff_pools(pool, pool2)
+
+    await pool.aclose()
+    await pool2.aclose()
+
+asyncio.run(main())`,
+    },
+    // ─── redis.asyncio.ConnectionPool ─────────────────────────────────────────
+    {
+        name: "redis.asyncio.ConnectionPool(connection_class=Connection, max_connections=None, **connection_kwargs)",
+        description:
+            "Стандартный асинхронный пул соединений Redis. Хранит список свободных (_available_connections) и активных (_in_use_connections) соединений. В отличие от BlockingConnectionPool, при достижении max_connections немедленно выбрасывает ConnectionError — не блокирует и не ставит запросы в очередь. Создаётся автоматически клиентом redis.asyncio.Redis если не передан явный пул. Рекомендуется для приложений, где лучше немедленно получить ошибку, чем ждать в очереди.",
+        syntax: `import redis.asyncio as aioredis
+from redis.asyncio import ConnectionPool
+
+# Через параметры:
+pool = ConnectionPool(
+    host="localhost",
+    port=6379,
+    max_connections=20,
+    decode_responses=True,
+)
+client = aioredis.Redis(connection_pool=pool)
+
+# Через URL:
+pool = ConnectionPool.from_url(
+    "redis://localhost:6379/0",
+    max_connections=20,
+    decode_responses=True,
+)`,
+        arguments: [
+            {
+                name: "connection_class",
+                description: "Класс соединения. По умолчанию redis.asyncio.Connection. Заменяется на SSLConnection при ssl=True, UnixDomainSocketConnection при unix_socket_path.",
+            },
+            {
+                name: "max_connections",
+                description: "Максимальное число одновременных соединений. При превышении — немедленный ConnectionError. None — без ограничения.",
+            },
+            {
+                name: "**connection_kwargs",
+                description: "Параметры соединения: host, port, db, password, decode_responses, socket_timeout, socket_keepalive, health_check_interval, client_name и т.д.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import ConnectionPool
+from redis.exceptions import ConnectionError as RedisConnectionError
+
+async def main():
+    pool = ConnectionPool(
+        host="localhost",
+        port=6379,
+        db=0,
+        max_connections=10,
+        decode_responses=True,
+        socket_timeout=5.0,
+        socket_connect_timeout=2.0,
+        socket_keepalive=True,
+        health_check_interval=30,
+        client_name="myapp",
+    )
+    client = aioredis.Redis(connection_pool=pool)
+
+    await client.set("pool_demo", "ok")
+    print(await client.get("pool_demo"))  # "ok"
+
+    # При max_connections=10 и 11-м одновременном запросе:
+    # ConnectionError: Too many connections — немедленно, без ожидания
+    # (в отличие от BlockingConnectionPool, который бы ждал)
+
+    # Статистика пула
+    print(f"Создано соединений: {len(pool._available_connections) + len(pool._in_use_connections)}")
+
+    # Через URL (удобно для конфигурации):
+    pool2 = ConnectionPool.from_url(
+        "redis://:password@redis.example.com:6379/1",
+        max_connections=20,
+        decode_responses=True,
+        socket_timeout=3.0,
+    )
+    client2 = aioredis.Redis(connection_pool=pool2)
+    await client2.ping()
+
+    await client.aclose()
+    await client2.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.ConnectionPool.__init__(connection_class=Connection, max_connections=None, **connection_kwargs)",
+        description:
+            "Инициализирует ConnectionPool: сохраняет connection_class и connection_kwargs, инициализирует внутренние списки _available_connections (свободные) и _in_use_connections (активные), устанавливает asyncio.Lock для потокобезопасного доступа. Не создаёт ни одного соединения при инициализации — соединения создаются лениво при первом get_connection().",
+        syntax: `from redis.asyncio import ConnectionPool
+
+pool = ConnectionPool(
+    host="localhost",
+    port=6379,
+    db=0,
+    max_connections=20,
+    decode_responses=True,
+)`,
+        arguments: [
+            {
+                name: "connection_class",
+                description: "Сохраняется как pool.connection_class. Используется в make_connection() для инстанцирования.",
+            },
+            {
+                name: "max_connections",
+                description: "Сохраняется как pool.max_connections. None — sys.maxsize (фактически без ограничения).",
+            },
+            {
+                name: "**connection_kwargs",
+                description: "Сохраняются как pool.connection_kwargs. Передаются в connection_class(**kwargs) при каждом make_connection().",
+            },
+        ],
+        example: `import asyncio
+from redis.asyncio import ConnectionPool, SSLConnection
+
+async def main():
+    # Обычный пул
+    pool = ConnectionPool(
+        host="localhost",
+        port=6379,
+        db=3,
+        max_connections=50,
+        decode_responses=True,
+        socket_timeout=5.0,
+        socket_connect_timeout=2.0,
+        health_check_interval=60,
+        client_name="analytics",
+        retry_on_timeout=True,
+    )
+
+    # Внутреннее состояние сразу после __init__:
+    print(f"connection_class: {pool.connection_class.__name__}")  # Connection
+    print(f"max_connections: {pool.max_connections}")             # 50
+    print(f"Свободных: {len(pool._available_connections)}")       # 0 (лениво)
+    print(f"Активных: {len(pool._in_use_connections)}")           # 0
+
+    # SSL пул:
+    ssl_pool = ConnectionPool(
+        connection_class=SSLConnection,
+        max_connections=10,
+        host="redis.example.com",
+        port=6380,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        ssl_certfile="/etc/certs/client.crt",
+        ssl_keyfile="/etc/certs/client.key",
+        decode_responses=True,
+    )
+    print(f"SSL class: {ssl_pool.connection_class.__name__}")  # SSLConnection
+
+    await pool.aclose()
+    await ssl_pool.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.ConnectionPool.reset()",
+        description:
+            "Сбрасывает состояние пула: закрывает все существующие соединения (свободные и активные), очищает внутренние списки, запоминает текущий PID. Вызывается автоматически при первом использовании пула после fork() (смена PID). При ручном вызове — принудительное переподключение всех соединений. После reset() пул полностью работоспособен — новые соединения создаются лениво.",
+        syntax: `await pool.reset()`,
+        arguments: [],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import ConnectionPool
+
+async def main():
+    pool = ConnectionPool(
+        host="localhost",
+        port=6379,
+        max_connections=10,
+        decode_responses=True,
+    )
+    client = aioredis.Redis(connection_pool=pool)
+
+    # Прогреваем пул: создаём несколько соединений
+    await asyncio.gather(*[client.ping() for _ in range(5)])
+    print(f"Соединений до reset: {len(pool._available_connections)}")
+
+    # Принудительный сброс
+    await pool.reset()
+    print(f"Соединений после reset: {len(pool._available_connections)}")  # 0
+
+    # Пул продолжает работать — соединения создаются заново
+    await client.ping()
+    await client.set("after_reset", "ok")
+    print(await client.get("after_reset"))  # "ok"
+
+    # После fork() reset() вызывается автоматически:
+    # Без reset() дочерний процесс унаследовал бы файловые дескрипторы
+    # родительского процесса, что приводит к гонкам и повреждению данных.
+    # ConnectionPool сравнивает os.getpid() при каждом get_connection().
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.ConnectionPool.get_connection(command_name, *args, **kwargs)",
+        description:
+            "Асинхронно получает соединение из пула. Берёт из _available_connections если есть, иначе создаёт через make_connection(). Если создано max_connections соединений и все активны — немедленно выбрасывает ConnectionError (в отличие от BlockingConnectionPool, который бы ждал). При health_check_interval > 0 вызывает connect_check_health() перед возвратом. Вызывается автоматически при каждой команде клиента.",
+        syntax: `connection = await pool.get_connection(command_name, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "command_name",
+                description: "Имя команды Redis. В стандартном ConnectionPool не влияет на выбор соединения — используется для совместимости с интерфейсом пула.",
+            },
+            {
+                name: "*args / **kwargs",
+                description: "Аргументы команды. В ConnectionPool не используются — нужны для совместимости с кластерным пулом.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import ConnectionPool
+from redis.exceptions import ConnectionError as RedisConnectionError
+
+async def main():
+    pool = ConnectionPool(
+        host="localhost",
+        port=6379,
+        max_connections=3,   # Маленький лимит для демонстрации
+        decode_responses=True,
+    )
+    client = aioredis.Redis(connection_pool=pool)
+
+    # Автоматический get_connection() при каждой команде
+    await client.set("key", "value")   # get_connection("SET") за кулисами
+
+    # Ручное получение соединения для низкоуровневой работы:
+    conn = await pool.get_connection("GET")
+    try:
+        await conn.send_command("MGET", "key", "key2")
+        print(await conn.read_response())  # ["value", None]
+    finally:
+        await pool.release(conn)   # Обязательно!
+
+    # Демонстрация ConnectionError при превышении лимита:
+    connections = []
+    try:
+        for i in range(4):  # 4-е соединение при лимите 3 → ошибка
+            conn = await pool.get_connection("GET")
+            connections.append(conn)
+    except RedisConnectionError as e:
+        print(f"Превышен лимит: {e}")
+        # Too many connections
+    finally:
+        for c in connections:
+            await pool.release(c)
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.ConnectionPool.make_connection()",
+        description:
+            "Создаёт новый объект соединения через connection_class(**connection_kwargs). Вызывается из get_connection() когда в _available_connections нет свободных и не достигнут лимит max_connections. Только инстанцирует объект — TCP-соединение не устанавливается. Проверяет счётчик _created_connections против max_connections и выбрасывает ConnectionError при превышении.",
+        syntax: `connection = await pool.make_connection()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import ConnectionPool, Connection
+
+async def main():
+    pool = ConnectionPool(
+        host="localhost",
+        port=6379,
+        max_connections=5,
+        decode_responses=True,
+        client_name="make-conn-demo",
+    )
+
+    # make_connection() создаёт объект без TCP
+    conn = await pool.make_connection()
+    print(type(conn).__name__)      # Connection
+    print(conn.host)                # localhost
+    print(conn.port)                # 6379
+    print(conn.client_name)         # make-conn-demo
+    # TCP ещё не открыт:
+    print(conn._sock)               # None (нет сокета)
+
+    # Подключаем явно
+    await conn.connect()
+    await conn.send_command("PING")
+    print(await conn.read_response())  # True
+    await conn.disconnect()
+
+    # Переопределение для инструментации:
+    class TrackedPool(ConnectionPool):
+        _created = 0
+
+        async def make_connection(self):
+            conn = await super().make_connection()
+            TrackedPool._created += 1
+            print(f"[POOL] #{TrackedPool._created} создано: "
+                  f"{conn.host}:{conn.port}")
+            return conn
+
+    import redis.asyncio as aioredis
+    tracked = TrackedPool(
+        host="localhost", port=6379,
+        max_connections=3, decode_responses=True,
+    )
+    c = aioredis.Redis(connection_pool=tracked)
+    await asyncio.gather(c.ping(), c.ping(), c.ping())
+    # [POOL] #1 создано: localhost:6379
+    # [POOL] #2 создано: localhost:6379  (параллельные запросы)
+
+    await c.aclose()
+    await pool.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.ConnectionPool.release(connection)",
+        description:
+            "Возвращает соединение в пул: перемещает его из _in_use_connections в _available_connections. Если соединение разорвано или принадлежит другому пулу — закрывает его вместо возврата. Вызывается автоматически клиентом после каждой команды. При ручном использовании — обязательный вызов в блоке finally во избежание исчерпания пула.",
+        syntax: `await pool.release(connection)`,
+        arguments: [
+            {
+                name: "connection",
+                description: "Объект Connection, полученный через get_connection() этого же пула. Передача соединения из другого пула — безопасна (будет закрыто).",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import ConnectionPool
+
+async def main():
+    pool = ConnectionPool(
+        host="localhost",
+        port=6379,
+        max_connections=5,
+        decode_responses=True,
+    )
+    client = aioredis.Redis(connection_pool=pool)
+
+    # Автоматический release() при каждой команде:
+    await client.set("key", "val")   # get → выполнить → release автоматически
+    await client.get("key")          # get → выполнить → release автоматически
+
+    # Ручная работа: ОБЯЗАТЕЛЬНО release() в finally
+    conn = await pool.get_connection("SET")
+    print(f"Активных до: {len(pool._in_use_connections)}")    # 1
+    try:
+        await conn.send_command("SET", "manual", "value")
+        await conn.read_response()
+        await conn.send_command("TTL", "manual")
+        print(await conn.read_response())  # -1
+    finally:
+        await pool.release(conn)
+    print(f"Активных после: {len(pool._in_use_connections)")  # 0
+
+    # Паттерн пакетных операций через одно соединение:
+    async def batch_set(pool, items: dict):
+        conn = await pool.get_connection("SET")
+        try:
+            for key, val in items.items():
+                await conn.send_command("SET", key, val)
+            results = [await conn.read_response() for _ in items]
+            return results
+        finally:
+            await pool.release(conn)
+
+    results = await batch_set(pool, {"a": "1", "b": "2", "c": "3"})
+    print(results)  # [True, True, True]
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.ConnectionPool.disconnect(in_use=True)",
+        description:
+            "Асинхронно закрывает соединения пула. При in_use=True (по умолчанию) — закрывает все: свободные (_available_connections) и активные (_in_use_connections). При in_use=False — только свободные. Соединения не удаляются из внутренних структур — пул продолжает работать, создавая новые соединения при следующем get_connection().",
+        syntax: `await pool.disconnect(in_use=True)`,
+        arguments: [
+            {
+                name: "in_use",
+                description: "Если True (по умолчанию) — закрывает также соединения, выданные клиентам. Если False — только свободные в _available_connections.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import ConnectionPool
+
+async def main():
+    pool = ConnectionPool(
+        host="localhost",
+        port=6379,
+        max_connections=10,
+        decode_responses=True,
+    )
+    client = aioredis.Redis(connection_pool=pool)
+
+    # Создаём несколько соединений
+    await asyncio.gather(*[client.ping() for _ in range(5)])
+    total = len(pool._available_connections) + len(pool._in_use_connections)
+    print(f"Соединений в пуле: {total}")
+
+    # Закрываем только свободные (активные продолжают работу)
+    await pool.disconnect(in_use=False)
+    print("Свободные закрыты")
+
+    # Закрываем все соединения
+    await pool.disconnect(in_use=True)
+    print("Все соединения закрыты")
+
+    # Пул автоматически восстанавливается
+    await client.ping()
+    await client.set("after_disconnect", "ok")
+    print(await client.get("after_disconnect"))  # "ok"
+
+    # Паттерн: принудительное переподключение при смене хоста Redis
+    async def force_reconnect(pool):
+        await pool.disconnect(in_use=True)
+        # Следующий get_connection() создаст новые соединения
+
+    await force_reconnect(pool)
+    await client.ping()  # Новое соединение
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.ConnectionPool.get_encoder()",
+        description:
+            "Возвращает объект Encoder, настроенный по параметрам пула (encoding, encoding_errors, decode_responses из connection_kwargs). Encoder отвечает за кодирование аргументов команд в байты (encode) и декодирование ответов из байт в строки (decode). Вызывается клиентом Redis при инициализации. Используется напрямую для диагностики настроек кодирования пула.",
+        syntax: `encoder = pool.get_encoder()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import ConnectionPool
+
+async def main():
+    pool = ConnectionPool(
+        host="localhost",
+        port=6379,
+        encoding="utf-8",
+        encoding_errors="strict",
+        decode_responses=True,
+    )
+
+    encoder = pool.get_encoder()
+    print(encoder.encoding)           # utf-8
+    print(encoder.encoding_errors)    # strict
+    print(encoder.decode_responses)   # True
+
+    # Кодирование Python → bytes (перед отправкой в Redis)
+    print(encoder.encode("Привет"))   # b'\xd0\x9f\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82'
+    print(encoder.encode(100))        # b'100'
+    print(encoder.encode(3.14))       # b'3.14'
+    print(encoder.encode(b"raw"))     # b'raw'  (passthrough)
+    print(encoder.encode(True))       # b'1'
+    print(encoder.encode(None))       # ошибка — None не кодируется
+
+    # Декодирование bytes → str (из ответа Redis)
+    print(encoder.decode(b"hello"))   # "hello"
+    print(encoder.decode(b"\xd0\x9f\xd1\x80\xd0\xb8\xd0\xb2\xd0\xb5\xd1\x82"))
+    # "Привет"
+
+    # decode_responses=False: decode() возвращает bytes как есть
+    pool_bytes = ConnectionPool(
+        host="localhost", port=6379, decode_responses=False
+    )
+    enc_bytes = pool_bytes.get_encoder()
+    print(enc_bytes.decode(b"hello"))  # b"hello" (без декодирования)
+
+    await pool.aclose()
+    await pool_bytes.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.ConnectionPool.ownership_takes_connection()",
+        description:
+            "Метод-предикат, определяющий модель владения соединением. Возвращает False для стандартного ConnectionPool: соединение «принадлежит» запрашивающей корутине на время операции, а пул лишь предоставляет и принимает обратно. Возвращает True в BlockingConnectionPool (пул всегда контролирует соединение через Queue). Используется внутренне при передаче пула между клиентами.",
+        syntax: `result = pool.ownership_takes_connection()`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import ConnectionPool, BlockingConnectionPool
+
+async def main():
+    regular_pool = ConnectionPool(
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+    )
+    blocking_pool = BlockingConnectionPool(
+        max_connections=5,
+        timeout=10,
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+    )
+
+    # ConnectionPool: False — корутина берёт соединение во временное владение
+    print(regular_pool.ownership_takes_connection())   # False
+
+    # BlockingConnectionPool: True — пул контролирует соединение через Queue
+    print(blocking_pool.ownership_takes_connection())  # True
+
+    # Практический смысл при наследовании:
+    # Если ownership_takes_connection() == False:
+    #   - get_connection() немедленно выдаёт соединение или ConnectionError
+    #   - release() возвращает в _available_connections
+    # Если True:
+    #   - get_connection() блокируется до timeout
+    #   - release() возвращает слот в asyncio.Queue
+
+    # Используется в redis-py для корректного клонирования клиента:
+    import redis.asyncio as aioredis
+    client = aioredis.Redis(connection_pool=regular_pool)
+
+    # При client.copy() или передаче пула — ownership_takes_connection()
+    # определяет нужно ли передавать владение или создавать новый пул
+    await client.ping()
+
+    await client.aclose()
+    await blocking_pool.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.ConnectionPool.connection_kwargs",
+        description:
+            "Атрибут-словарь с параметрами, передаваемыми в каждое новое соединение пула. Содержит все **connection_kwargs из конструктора плюс автоматически нормализованные поля. Используется в make_connection() при создании Connection(**connection_kwargs). Удобен для диагностики конфигурации пула и сравнения нескольких пулов.",
+        syntax: `params = pool.connection_kwargs`,
+        arguments: [],
+        example: `import asyncio
+from redis.asyncio import ConnectionPool
+
+async def main():
+    pool = ConnectionPool(
+        host="redis.example.com",
+        port=6379,
+        db=2,
+        password="secret",
+        decode_responses=True,
+        socket_timeout=3.0,
+        socket_connect_timeout=1.0,
+        socket_keepalive=True,
+        health_check_interval=30,
+        client_name="api-server",
+        max_connections=25,
+    )
+
+    kwargs = pool.connection_kwargs
+    print(f"host:               {kwargs['host']}")              # redis.example.com
+    print(f"port:               {kwargs['port']}")              # 6379
+    print(f"db:                 {kwargs['db']}")                # 2
+    print(f"decode_responses:   {kwargs['decode_responses']}") # True
+    print(f"socket_timeout:     {kwargs['socket_timeout']}")   # 3.0
+    print(f"client_name:        {kwargs['client_name']}")      # api-server
+    print(f"health_check_interval: {kwargs['health_check_interval']}")  # 30
+
+    # Утилита: диагностика конфигурации пула
+    def pool_info(pool: ConnectionPool) -> dict:
+        kw = pool.connection_kwargs
+        return {
+            "endpoint":    f"{kw['host']}:{kw['port']}/db={kw['db']}",
+            "max_conn":    pool.max_connections,
+            "timeout":     kw.get("socket_timeout"),
+            "decode":      kw.get("decode_responses", False),
+            "client":      kw.get("client_name"),
+            "health_chk":  kw.get("health_check_interval", 0),
+        }
+
+    info = pool_info(pool)
+    for key, val in info.items():
+        print(f"  {key}: {val}")
+
+    # Создание производного пула с другой БД:
+    replica_kwargs = dict(pool.connection_kwargs)
+    replica_kwargs["db"] = 0
+    replica_pool = ConnectionPool(**replica_kwargs, max_connections=10)
+    print(f"Реплика: db={replica_pool.connection_kwargs['db']}")  # 0
+
+    await pool.aclose()
+    await replica_pool.aclose()
+
+asyncio.run(main())`,
+    },
+    // ─── redis.asyncio.Redis ──────────────────────────────────────────────────
+    {
+        name: "redis.asyncio.Redis(host, port, db, password, socket_timeout, socket_connect_timeout, socket_keepalive, socket_keepalive_options, connection_pool, charset, errors, decode_responses, retry_on_timeout, ssl, ssl_keyfile, ssl_certfile, ssl_cert_reqs, ssl_ca_certs, ssl_ca_data, ssl_check_hostname, max_connections, single_connection_client, health_check_interval, client_name, lib_name, lib_version, retry, redis_connect_callbacks, encoder_class, protocol)",
+        description:
+            "Основной асинхронный клиент Redis для использования с asyncio. Предоставляет полный набор команд Redis как корутины (async/await). Автоматически создаёт ConnectionPool при отсутствии явного пула. При ssl=True создаёт SSLConnection вместо Connection. При single_connection_client=True — использует одно постоянное соединение вместо пула (полезно для транзакций и Pub/Sub).",
+        syntax: `import redis.asyncio as aioredis
+
+# Стандартный клиент
+client = aioredis.Redis(
+    host="localhost",
+    port=6379,
+    db=0,
+    decode_responses=True,
+)
+
+# Через URL
+client = aioredis.from_url(
+    "redis://localhost:6379/0",
+    decode_responses=True,
+)
+
+# async with (рекомендуется)
+async with aioredis.Redis(host="localhost", decode_responses=True) as client:
+    await client.set("key", "value")`,
+        arguments: [
+            {
+                name: "host / port / db",
+                description: "Адрес и база данных Redis. По умолчанию 'localhost', 6379, 0.",
+            },
+            {
+                name: "password",
+                description: "Пароль для AUTH. None — без аутентификации.",
+            },
+            {
+                name: "socket_timeout",
+                description: "Таймаут чтения/записи в секундах. None — без ограничения.",
+            },
+            {
+                name: "socket_connect_timeout",
+                description: "Таймаут установки TCP-соединения. None — использует socket_timeout.",
+            },
+            {
+                name: "socket_keepalive",
+                description: "Включить TCP keepalive для обнаружения разорванных соединений.",
+            },
+            {
+                name: "connection_pool",
+                description: "Явный пул соединений (ConnectionPool или BlockingConnectionPool). None — создаётся автоматически.",
+            },
+            {
+                name: "decode_responses",
+                description: "Если True — декодирует все ответы Redis из bytes в str. По умолчанию False.",
+            },
+            {
+                name: "ssl",
+                description: "Если True — использует TLS/SSL соединение. Автоматически переключает connection_class на SSLConnection.",
+            },
+            {
+                name: "ssl_keyfile / ssl_certfile",
+                description: "Файлы приватного ключа и сертификата клиента для mTLS-аутентификации.",
+            },
+            {
+                name: "ssl_ca_certs",
+                description: "Путь к CA-сертификату для проверки сертификата сервера.",
+            },
+            {
+                name: "max_connections",
+                description: "Максимальный размер автоматически создаваемого пула. None — без ограничения.",
+            },
+            {
+                name: "single_connection_client",
+                description: "Если True — использует одно постоянное соединение вместо пула. Обязательно для WATCH/MULTI/EXEC транзакций и некоторых Pub/Sub сценариев.",
+            },
+            {
+                name: "health_check_interval",
+                description: "Интервал PING в секундах для проверки живости. 0 — отключено.",
+            },
+            {
+                name: "retry",
+                description: "Объект Retry: число попыток и backoff-стратегия при ошибках.",
+            },
+            {
+                name: "protocol",
+                description: "Версия RESP-протокола: 2 (по умолчанию) или 3 (RESP3 — карты, множества, push-уведомления).",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import ConnectionPool, BlockingConnectionPool
+
+async def main():
+    # Вариант 1: простой клиент
+    client = aioredis.Redis(
+        host="localhost",
+        port=6379,
+        db=0,
+        decode_responses=True,
+        socket_timeout=5.0,
+        socket_connect_timeout=2.0,
+        socket_keepalive=True,
+        health_check_interval=30,
+        max_connections=20,
+        client_name="myapp",
+        retry_on_timeout=True,
+    )
+    await client.set("hello", "мир")
+    print(await client.get("hello"))   # "мир"
+    await client.aclose()
+
+    # Вариант 2: SSL/TLS
+    tls_client = aioredis.Redis(
+        host="redis.example.com",
+        port=6380,
+        ssl=True,
+        ssl_ca_certs="/etc/certs/ca.crt",
+        ssl_certfile="/etc/certs/client.crt",
+        ssl_keyfile="/etc/certs/client.key",
+        ssl_cert_reqs="required",
+        decode_responses=True,
+    )
+
+    # Вариант 3: явный BlockingConnectionPool
+    pool = BlockingConnectionPool(
+        max_connections=10, timeout=20,
+        host="localhost", port=6379, decode_responses=True,
+    )
+    client3 = aioredis.Redis(connection_pool=pool)
+    await client3.ping()
+    await client3.aclose()
+
+    # Вариант 4: async with (рекомендуется)
+    async with aioredis.Redis(host="localhost", decode_responses=True) as rc:
+        await rc.set("ctx", "manager")
+        print(await rc.get("ctx"))     # "manager"
+    # rc.aclose() вызван автоматически
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.__init__(host, port, db, password, socket_timeout, socket_connect_timeout, socket_keepalive, socket_keepalive_options, connection_pool, charset, errors, decode_responses, retry_on_timeout, ssl, ssl_keyfile, ssl_certfile, ssl_cert_reqs, ssl_ca_certs, ssl_ca_data, ssl_check_hostname, max_connections, single_connection_client, health_check_interval, client_name, lib_name, lib_version, retry, redis_connect_callbacks, encoder_class, protocol)",
+        description:
+            "Инициализирует клиент Redis: если connection_pool передан явно — использует его; иначе создаёт ConnectionPool с нужным connection_class (Connection, SSLConnection, UnixDomainSocketConnection) на основе параметров ssl и unix_socket_path. При single_connection_client=True — оборачивает пул в SingleConnectionClient. Настраивает response_callbacks для автоматического преобразования ответов Redis в Python-типы.",
+        syntax: `import redis.asyncio as aioredis
+
+client = aioredis.Redis(
+    host="localhost",
+    port=6379,
+    db=0,
+    decode_responses=True,
+)`,
+        arguments: [
+            {
+                name: "connection_pool",
+                description: "Готовый пул соединений. Если передан — все параметры соединения (host, port, ssl...) игнорируются.",
+            },
+            {
+                name: "single_connection_client",
+                description: "Если True — все команды выполняются через одно постоянное TCP-соединение. Нужно для WATCH+MULTI+EXEC (оптимистичные блокировки).",
+            },
+            {
+                name: "encoder_class",
+                description: "Класс кодировщика. По умолчанию Encoder. Переопределяется для нестандартной сериализации (msgpack, protobuf и т.д.).",
+            },
+            {
+                name: "charset / errors",
+                description: "Устаревшие псевдонимы для encoding / encoding_errors. Сохранены для обратной совместимости.",
+            },
+            {
+                name: "redis_connect_callbacks",
+                description: "Список async callable(connection) — добавляются в ConnectionPool и вызываются при каждом новом соединении.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio import ConnectionPool
+
+async def main():
+    # Вариант 1: автоматический пул
+    client = aioredis.Redis(
+        host="localhost",
+        port=6379,
+        db=2,
+        decode_responses=True,
+        max_connections=15,
+        health_check_interval=60,
+        client_name="worker",
+    )
+    # Внутреннее состояние:
+    print(type(client.connection_pool).__name__)  # ConnectionPool
+    print(client.connection_pool.max_connections) # 15
+
+    # Вариант 2: явный пул (все параметры соединения берутся из пула)
+    pool = ConnectionPool(
+        host="localhost", port=6379, db=3,
+        max_connections=50, decode_responses=True,
+    )
+    client2 = aioredis.Redis(connection_pool=pool)
+    await client2.ping()
+
+    # Вариант 3: single_connection_client для WATCH/MULTI/EXEC
+    single = aioredis.Redis(
+        host="localhost", decode_responses=True,
+        single_connection_client=True,
+    )
+    async with single.pipeline(transaction=True) as pipe:
+        await pipe.watch("balance")
+        balance = int(await pipe.get("balance") or 0)
+        pipe.multi()
+        pipe.set("balance", balance + 100)
+        await pipe.execute()
+
+    await client.aclose()
+    await client2.aclose()
+    await single.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.__aenter__()",
+        description:
+            "Поддержка протокола асинхронного контекстного менеджера (async with). При входе в блок async with возвращает сам объект Redis (self). Не устанавливает соединение при входе — подключение происходит лениво при первой команде. Использование async with гарантирует вызов aclose() при выходе из блока даже при исключениях.",
+        syntax: `async with aioredis.Redis(...) as client:
+    await client.set("key", "value")`,
+        arguments: [],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    # Рекомендуемый паттерн: async with гарантирует закрытие
+    async with aioredis.Redis(
+        host="localhost",
+        port=6379,
+        decode_responses=True,
+        max_connections=10,
+    ) as client:
+        # __aenter__ вернул client (self)
+        await client.set("user:1:name", "Алексей")
+        await client.set("user:1:age", "30")
+        await client.hset("user:1", mapping={"city": "Москва", "role": "admin"})
+
+        name = await client.get("user:1:name")
+        print(f"Имя: {name}")   # "Алексей"
+
+        pipe = client.pipeline()
+        pipe.get("user:1:name")
+        pipe.get("user:1:age")
+        pipe.hgetall("user:1")
+        results = await pipe.execute()
+        print(results)
+        # ["Алексей", "30", {"city": "Москва", "role": "admin"}]
+
+    # Здесь __aexit__ уже вызван — пул закрыт
+    # Повторное использование client невозможно
+
+    # Несколько клиентов через async with:
+    async with (
+        aioredis.Redis(host="localhost", db=0, decode_responses=True) as primary,
+        aioredis.Redis(host="localhost", db=1, decode_responses=True) as cache,
+    ):
+        await primary.set("source", "original")
+        await cache.set("cached", await primary.get("source"))
+        print(await cache.get("cached"))   # "original"
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.__aexit__(exc_type, exc_val, exc_tb)",
+        description:
+            "Завершает работу контекстного менеджера: вызывает await self.aclose(), который закрывает пул соединений (если пул создан клиентом, а не передан извне). Принимает информацию об исключении для совместимости с протоколом, но не подавляет исключения — они распространяются дальше. Вызывается автоматически при выходе из блока async with.",
+        syntax: `# Вызывается автоматически при выходе из async with:
+async with aioredis.Redis(...) as client:
+    ...
+# __aexit__ вызван здесь`,
+        arguments: [
+            {
+                name: "exc_type",
+                description: "Тип исключения (класс) если оно возникло в блоке async with, иначе None.",
+            },
+            {
+                name: "exc_val",
+                description: "Объект исключения если оно возникло, иначе None.",
+            },
+            {
+                name: "exc_tb",
+                description: "Traceback исключения если оно возникло, иначе None. __aexit__ возвращает None (не подавляет исключение).",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.exceptions import ResponseError
+
+async def main():
+    # __aexit__ вызывается даже при исключении
+    try:
+        async with aioredis.Redis(host="localhost", decode_responses=True) as client:
+            await client.set("key", "value")
+            # Симулируем ошибку
+            await client.incr("key")   # ResponseError: не целое число
+    except ResponseError as e:
+        print(f"Ошибка: {e}")
+        # __aexit__ вызван, aclose() выполнен несмотря на исключение
+
+    # Разница: aclose() вызывается только если пул создан клиентом
+    from redis.asyncio import ConnectionPool
+
+    shared_pool = ConnectionPool(
+        host="localhost", decode_responses=True, max_connections=20
+    )
+    async with aioredis.Redis(connection_pool=shared_pool) as client:
+        await client.set("shared", "pool")
+    # __aexit__ вызван, но shared_pool НЕ закрыт —
+    # пул создан снаружи, клиент не владеет им
+
+    # Проверяем, что пул жив:
+    client2 = aioredis.Redis(connection_pool=shared_pool)
+    print(await client2.get("shared"))   # "pool"
+    await client2.aclose()
+    await shared_pool.aclose()           # Закрываем пул вручную
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.__await__()",
+        description:
+            "Делает объект Redis awaitable — позволяет использовать `await aioredis.Redis(...)` для создания клиента. Возвращает awaitable, который при await возвращает SingleConnectionClient с установленным соединением. Используется когда нужно гарантировать наличие активного соединения сразу после создания клиента, а не ждать первой команды.",
+        syntax: `client = await aioredis.Redis(host="localhost", decode_responses=True)`,
+        arguments: [],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    # Без await: клиент создан, соединение будет при первой команде (лениво)
+    lazy_client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # С await: клиент создан И соединение уже установлено (eager)
+    eager_client = await aioredis.Redis(host="localhost", decode_responses=True)
+
+    # eager_client — это SingleConnectionClient с активным соединением
+    print(type(eager_client).__name__)  # SingleConnectionClient
+
+    # Применение: когда важно установить соединение немедленно
+    # (например, при старте сервиса — убедиться что Redis доступен)
+    async def connect_with_timeout():
+        try:
+            client = await asyncio.wait_for(
+                aioredis.Redis(host="localhost", decode_responses=True),
+                timeout=2.0,
+            )
+            print("Соединение установлено")
+            return client
+        except asyncio.TimeoutError:
+            print("Redis недоступен — таймаут 2 сек")
+            return None
+
+    client = await connect_with_timeout()
+    if client:
+        await client.set("eager", "connected")
+        print(await client.get("eager"))  # "connected"
+        await client.aclose()
+
+    await lazy_client.aclose()
+    await eager_client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.from_url(url, **kwargs)",
+        description:
+            "Класс-метод: создаёт Redis-клиент из URL-строки. Парсит хост, порт, пароль, номер БД и тип соединения из URL. Поддерживаемые схемы: redis:// (TCP), rediss:// (TLS), unix:// (Unix domain socket). Дополнительные параметры из **kwargs переопределяют значения из URL.",
+        syntax: `client = aioredis.Redis.from_url(url, **kwargs)
+# или сокращённо:
+client = aioredis.from_url(url, **kwargs)`,
+        arguments: [
+            {
+                name: "url",
+                description: "URL подключения. Форматы: 'redis://[[user]:password@]host[:port][/db]', 'rediss://...' (TLS), 'unix://[:password@]/path/to/socket.sock[?db=N]'.",
+            },
+            {
+                name: "**kwargs",
+                description: "Любые параметры конструктора Redis: decode_responses, max_connections, socket_timeout и т.д. Переопределяют значения из URL.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+import os
+
+async def main():
+    # Стандартный TCP
+    client1 = aioredis.from_url("redis://localhost:6379/0", decode_responses=True)
+    await client1.set("url_demo", "ok")
+    print(await client1.get("url_demo"))  # "ok"
+
+    # С паролем и БД
+    client2 = aioredis.from_url(
+        "redis://:mysecret@redis.example.com:6379/2",
+        decode_responses=True,
+        socket_timeout=5.0,
+        max_connections=20,
+    )
+
+    # TLS (rediss://)
+    client3 = aioredis.from_url(
+        "rediss://redis.example.com:6380/0",
+        ssl_ca_certs="/etc/certs/ca.crt",
+        ssl_certfile="/etc/certs/client.crt",
+        ssl_keyfile="/etc/certs/client.key",
+        decode_responses=True,
+    )
+
+    # Unix domain socket
+    client4 = aioredis.from_url(
+        "unix:///var/run/redis/redis.sock?db=0",
+        decode_responses=True,
+    )
+
+    # Из переменной окружения (типичный продакшен-паттерн):
+    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    client5 = aioredis.from_url(
+        redis_url,
+        decode_responses=True,
+        max_connections=50,
+        health_check_interval=30,
+        client_name="prod-worker",
+    )
+    await client5.ping()
+
+    await client1.aclose()
+    await client5.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.set_response_callback(command, callback)",
+        description:
+            "Регистрирует кастомный callback для преобразования ответов конкретной команды Redis. Переопределяет встроенный response_callback для команды. Callback вызывается автоматически после чтения RESP-ответа: callback(response, **options) → Python-объект. Изменения применяются только к данному экземпляру клиента.",
+        syntax: `client.set_response_callback(command, callback)`,
+        arguments: [
+            {
+                name: "command",
+                description: "Имя команды Redis в верхнем регистре: 'GET', 'HGETALL', 'SMEMBERS' и т.д.",
+            },
+            {
+                name: "callback",
+                description: "Функция (sync или async) вида callback(response, **kwargs) → Python-объект. Принимает сырой ответ Redis и опциональные именованные аргументы.",
+            },
+        ],
+        example: `import asyncio
+import json
+from datetime import datetime
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", port=6379, decode_responses=True)
+
+    # Пример 1: GET → автоматически парсит JSON
+    def json_get_callback(response, **kwargs):
+        if response is None:
+            return None
+        try:
+            return json.loads(response)
+        except (json.JSONDecodeError, TypeError):
+            return response
+
+    client.set_response_callback("GET", json_get_callback)
+
+    await client.set("config", json.dumps({"timeout": 30, "retries": 3}))
+    config = await client.get("config")
+    print(config)           # {"timeout": 30, "retries": 3} — уже dict!
+    print(config["timeout"])  # 30
+
+    # Пример 2: TIME → tuple (секунды, микросекунды) → datetime
+    def time_to_datetime(response, **kwargs):
+        seconds, microseconds = response
+        ts = int(seconds) + int(microseconds) / 1_000_000
+        return datetime.fromtimestamp(ts)
+
+    client.set_response_callback("TIME", time_to_datetime)
+    server_time = await client.time()
+    print(f"Время сервера: {server_time}")  # datetime объект
+
+    # Пример 3: HGETALL → объект с атрибутами вместо dict
+    from types import SimpleNamespace
+    def hgetall_to_ns(response, **kwargs):
+        return SimpleNamespace(**response) if response else None
+
+    client.set_response_callback("HGETALL", hgetall_to_ns)
+    await client.hset("user:1", mapping={"name": "Мария", "age": "28"})
+    user = await client.hgetall("user:1")
+    print(user.name)   # "Мария"
+    print(user.age)    # "28"
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.load_external_plugins(plugins)",
+        description:
+            "Загружает внешние плагины, расширяющие функциональность клиента Redis. Каждый плагин — класс с методами, которые добавляются к клиенту через mixin-механизм. Используется для подключения сторонних расширений: кастомных команд, middleware, дополнительных type-specific методов.",
+        syntax: `client.load_external_plugins(plugins)`,
+        arguments: [
+            {
+                name: "plugins",
+                description: "Список классов-плагинов. Каждый класс может определять методы, которые становятся доступны на клиенте, или переопределять response_callbacks.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+# Плагин 1: кастомные команды для работы с JSON-структурами
+class JsonPlugin:
+    """Добавляет методы jset/jget для автоматической JSON-сериализации."""
+
+    async def jset(self, key: str, value, ex=None):
+        import json
+        return await self.set(key, json.dumps(value, ensure_ascii=False), ex=ex)
+
+    async def jget(self, key: str):
+        import json
+        raw = await self.get(key)
+        return json.loads(raw) if raw is not None else None
+
+# Плагин 2: метрики
+class MetricsPlugin:
+    """Считает число выполненных команд."""
+    _cmd_count = 0
+
+    async def execute_command(self, *args, **options):
+        MetricsPlugin._cmd_count += 1
+        return await super().execute_command(*args, **options)
+
+    def get_metrics(self):
+        return {"commands_executed": MetricsPlugin._cmd_count}
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+    client.load_external_plugins([JsonPlugin, MetricsPlugin])
+
+    # Методы плагинов доступны напрямую
+    await client.jset("profile", {"name": "Алексей", "score": 42})
+    profile = await client.jget("profile")
+    print(profile)          # {"name": "Алексей", "score": 42}
+    print(profile["score"]) # 42
+
+    await client.set("plain", "value")
+    metrics = client.get_metrics()
+    print(f"Команд выполнено: {metrics['commands_executed']}")  # 3
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.pipeline(transaction=True, shard_hint=None)",
+        description:
+            "Создаёт асинхронный Pipeline для пакетной отправки команд. Команды накапливаются без отправки в Redis, затем выполняются одним TCP-пакетом через execute(). При transaction=True оборачивает команды в MULTI/EXEC (транзакция: атомарность, но без гарантий изоляции WATCH). При transaction=False — просто pipelining без транзакции. Возвращает список ответов в порядке команд.",
+        syntax: `async with client.pipeline(transaction=True) as pipe:
+    pipe.set("key1", "val1")
+    pipe.set("key2", "val2")
+    results = await pipe.execute()`,
+        arguments: [
+            {
+                name: "transaction",
+                description: "Если True (по умолчанию) — оборачивает в MULTI/EXEC. Если False — чистый pipelining (быстрее, без атомарности).",
+            },
+            {
+                name: "shard_hint",
+                description: "Хинт для кластерных пулов: все команды пайплайна направляются к шарду с этим ключом. Для стандартного клиента — игнорируется.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # Паттерн 1: транзакционный pipeline (MULTI/EXEC)
+    async with client.pipeline(transaction=True) as pipe:
+        pipe.set("balance", 1000)
+        pipe.incrby("balance", 500)
+        pipe.get("balance")
+        results = await pipe.execute()
+    print(results)  # [True, 1500, "1500"]
+
+    # Паттерн 2: чистый pipelining (без MULTI/EXEC, быстрее)
+    async with client.pipeline(transaction=False) as pipe:
+        for i in range(100):
+            pipe.set(f"bulk:{i}", f"value_{i}")
+        results = await pipe.execute()
+    print(f"Записано: {sum(results)} ключей")  # 100
+
+    # Паттерн 3: WATCH + MULTI/EXEC (оптимистичная блокировка)
+    async def transfer(client, from_key: str, to_key: str, amount: int):
+        async with client.pipeline() as pipe:
+            while True:
+                try:
+                    await pipe.watch(from_key, to_key)
+                    balance = int(await pipe.get(from_key) or 0)
+                    if balance < amount:
+                        raise ValueError("Недостаточно средств")
+                    pipe.multi()
+                    pipe.decrby(from_key, amount)
+                    pipe.incrby(to_key, amount)
+                    return await pipe.execute()  # None если WATCH сработал
+                except aioredis.WatchError:
+                    continue   # Кто-то изменил ключи — повтор
+
+    await client.set("account_a", 1000)
+    await client.set("account_b", 0)
+    result = await transfer(client, "account_a", "account_b", 300)
+    print(result)                               # [700, 300]
+    print(await client.get("account_a"))        # "700"
+    print(await client.get("account_b"))        # "300"
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.transaction(func, *args, **kwargs)",
+        description:
+            "Выполняет функцию в контексте WATCH/MULTI/EXEC транзакции с автоматическим повтором при WatchError. Создаёт Pipeline, вызывает func(pipe, *args), выполняет execute(). При WatchError (изменение наблюдаемых ключей) автоматически повторяет транзакцию. Параметр watches задаёт ключи для WATCH. Упрощает паттерн оптимистичной блокировки — не нужно вручную реализовывать цикл повторов.",
+        syntax: `result = await client.transaction(func, *watches, **kwargs)`,
+        arguments: [
+            {
+                name: "func",
+                description: "async def func(pipe, *args) — функция транзакции. Получает объект Pipeline после WATCH. Вызывает pipe.multi() и добавляет команды.",
+            },
+            {
+                name: "*args",
+                description: "Ключи для WATCH — Redis отследит их изменение. Если ключ изменён между WATCH и EXEC — выбрасывается WatchError и транзакция повторяется.",
+            },
+            {
+                name: "value_from_callable",
+                description: "Если True — transaction() возвращает результат func() вместо результата execute(). По умолчанию False.",
+            },
+            {
+                name: "watch_delay",
+                description: "Задержка (секунды) между повторными попытками при WatchError. По умолчанию None (без задержки).",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # Пример 1: безопасное инкрементирование с WATCH
+    async def safe_increment(pipe):
+        current = int(await pipe.get("counter") or 0)
+        pipe.multi()              # Начало транзакционного блока
+        pipe.set("counter", current + 1)
+
+    await client.set("counter", 0)
+    await client.transaction(safe_increment, "counter")
+    print(await client.get("counter"))   # "1"
+
+    # Пример 2: перевод средств с оптимистичной блокировкой
+    await client.set("alice", 1000)
+    await client.set("bob", 500)
+
+    async def transfer(pipe):
+        alice = int(await pipe.get("alice") or 0)
+        bob = int(await pipe.get("bob") or 0)
+        if alice < 200:
+            raise ValueError("Недостаточно средств")
+        pipe.multi()
+        pipe.decrby("alice", 200)
+        pipe.incrby("bob", 200)
+
+    # WatchError обрабатывается автоматически — повтор без явного цикла
+    await client.transaction(transfer, "alice", "bob")
+    print(await client.get("alice"))   # "800"
+    print(await client.get("bob"))     # "700"
+
+    # Пример 3: value_from_callable=True — получить результат func
+    async def compute(pipe):
+        val = await pipe.get("counter")
+        pipe.multi()
+        pipe.incr("counter")
+        return int(val or 0)  # Возвращаем текущее значение
+
+    current_val = await client.transaction(
+        compute, "counter", value_from_callable=True
+    )
+    print(f"Значение до инкремента: {current_val}")   # 1
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
 ];
