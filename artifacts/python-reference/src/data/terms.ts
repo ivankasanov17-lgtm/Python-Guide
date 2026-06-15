@@ -59802,4 +59802,195 @@ r.publish("chat:general", "Привет!")
 import time; time.sleep(0.1)
 pubsub.close()`,
   },
+  {
+    name: "redis.client.PubSub.get_message",
+    description:
+      "Проверяет входящие сообщения из подписок без блокировки потока. Если сообщений нет — возвращает None немедленно. При ignore_subscribe_messages=True пропускает служебные подтверждения подписки (тип 'subscribe'/'unsubscribe') и возвращает только пользовательские данные. Используется в собственных event loop'ах, когда нужен неблокирующий опрос очереди сообщений.",
+    syntax: "PubSub.get_message(ignore_subscribe_messages=False, timeout=0.0)",
+    arguments: [
+      {
+        name: "ignore_subscribe_messages",
+        description:
+          "Если True — служебные сообщения о подписке/отписке (тип 'subscribe', 'unsubscribe', 'psubscribe', 'punsubscribe') игнорируются и метод возвращает None для них. По умолчанию False.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах. 0.0 — немедленный возврат (non-blocking). Положительное значение — блокирует до появления сообщения или истечения таймаута.",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+p = r.pubsub()
+p.subscribe("notifications")
+
+while True:
+    # Неблокирующий опрос — не зависает если сообщений нет
+    msg = p.get_message(ignore_subscribe_messages=True, timeout=0.1)
+    if msg:
+        print(f"Получено: {msg['data']}")
+    # Здесь можно выполнять другую работу между проверками`,
+  },
+  {
+    name: "redis.client.PubSub.ping",
+    description:
+      "Отправляет PING-команду через активное pub/sub соединение для проверки его работоспособности. В отличие от обычного r.ping(), этот метод работает внутри pub/sub-контекста и поддерживает опциональное произвольное сообщение. Сервер отвечает PONG (или PONG с сообщением), что подтверждает живость соединения. Полезно для keep-alive в долгоживущих подписках.",
+    syntax: "PubSub.ping(message=None)",
+    arguments: [
+      {
+        name: "message",
+        description:
+          "Опциональное произвольное сообщение (bytes или str), которое Redis вернёт обратно в PONG-ответе. Если None — отправляется простой PING без тела.",
+      },
+    ],
+    example: `import redis
+import time
+
+r = redis.Redis()
+p = r.pubsub()
+p.subscribe("events")
+
+# Периодический ping для поддержания соединения живым
+while True:
+    p.ping(message=b"keepalive")
+    msg = p.get_message(timeout=1.0)
+    # msg["type"] == "pong" при получении ответа
+    time.sleep(30)`,
+  },
+  {
+    name: "redis.client.PubSub.run_in_thread",
+    description:
+      "Запускает фоновый поток, который непрерывно вызывает get_message() и передаёт полученные сообщения зарегистрированным обработчикам (handlers). Возвращает объект PubSubWorkerThread, у которого есть метод stop() для остановки. Обработчики регистрируются через subscribe(channel=handler_fn). Это наиболее удобный способ асинхронной обработки сообщений без написания собственного цикла.",
+    syntax: "PubSub.run_in_thread(sleep_time=0.0, daemon=False, exception_handler=None)",
+    arguments: [
+      {
+        name: "sleep_time",
+        description:
+          "Время паузы в секундах между итерациями опроса сообщений. 0.0 — опрос без пауз (максимальная скорость, высокая загрузка CPU). Небольшое значение (0.01–0.1) снижает нагрузку.",
+      },
+      {
+        name: "daemon",
+        description:
+          "Если True — поток будет daemon-потоком и завершится автоматически при выходе основного процесса. False — процесс не завершится пока поток жив.",
+      },
+      {
+        name: "exception_handler",
+        description:
+          "Callable(ex, pubsub, thread) — функция для обработки исключений в потоке. Если None — исключение логируется и поток останавливается.",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+p = r.pubsub()
+
+def handle_order(message):
+    data = message["data"].decode()
+    print(f"Новый заказ: {data}")
+
+def handle_error(ex, pubsub, thread):
+    print(f"Ошибка: {ex}")
+    thread.stop()
+
+# Подписка с handler-функцией напрямую
+p.subscribe(**{"orders": handle_order})
+
+thread = p.run_in_thread(
+    sleep_time=0.01,
+    daemon=True,
+    exception_handler=handle_error,
+)
+
+# Основной поток свободен для другой работы
+input("Нажмите Enter для остановки...\\n")
+thread.stop()`,
+  },
+  {
+    name: "redis.client.PubSub.handle_message",
+    description:
+      "Низкоуровневый метод, обрабатывающий одно сырое сообщение из Redis и вызывающий соответствующий зарегистрированный handler. Обычно вызывается внутри get_message() или run_in_thread() — напрямую используется редко. Позволяет вручную передать уже полученный response для обработки, что полезно при написании кастомных event loop'ов или тестировании handler'ов без реального соединения.",
+    syntax: "PubSub.handle_message(response, ignore_subscribe_messages=False)",
+    arguments: [
+      {
+        name: "response",
+        description:
+          "Сырой ответ от Redis — список вида [type, channel, data]. Например: ['message', b'orders', b'order-99']. Обычно получен через parse_response() или напрямую из сокета.",
+      },
+      {
+        name: "ignore_subscribe_messages",
+        description:
+          "Если True — сообщения типов 'subscribe'/'unsubscribe' не передаются в handler и возвращается None. Аналогично параметру get_message().",
+      },
+    ],
+    example: `import redis
+
+r = redis.Redis()
+p = r.pubsub()
+
+received = []
+
+def on_message(msg):
+    received.append(msg["data"])
+
+p.subscribe(**{"test-channel": on_message})
+
+# Эмулируем сырой ответ Redis (полезно в тестах)
+raw_response = ["message", b"test-channel", b"hello-world"]
+result = p.handle_message(raw_response, ignore_subscribe_messages=True)
+# on_message будет вызван, received == [b"hello-world"]`,
+  },
+  {
+    name: "redis.client.PubSub.channels",
+    description:
+      "Словарь (dict) активных подписок на каналы (не паттерны). Ключи — имена каналов в bytes, значения — зарегистрированный handler (callable) или None если handler не задан. Позволяет узнать на какие каналы объект в данный момент подписан, а также проверить наличие конкретного handler'а. Изменяется автоматически при вызове subscribe() и unsubscribe().",
+    syntax: "PubSub.channels",
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis()
+p = r.pubsub()
+
+def on_orders(msg):
+    print(msg["data"])
+
+p.subscribe("notifications")
+p.subscribe(**{"orders": on_orders})
+
+print(p.channels)
+# {b'notifications': None, b'orders': <function on_orders>}
+
+# Проверка активной подписки
+if b"orders" in p.channels:
+    print("Подписка на orders активна")
+
+# Перебор всех каналов
+for channel, handler in p.channels.items():
+    print(f"{channel.decode()}: {'с handler' if handler else 'без handler'}")`,
+  },
+  {
+    name: "redis.client.PubSub.patterns",
+    description:
+      "Словарь (dict) активных подписок на паттерны (glob-шаблоны), созданных через psubscribe(). Ключи — паттерны в bytes (например b'order:*'), значения — handler или None. Паттерны позволяют подписаться на группу каналов по шаблону: 'order:*' получает сообщения из 'order:1', 'order:99' и т.д. Не пересекается с channels — это отдельный словарь только для pattern-подписок.",
+    syntax: "PubSub.patterns",
+    arguments: [],
+    example: `import redis
+
+r = redis.Redis()
+p = r.pubsub()
+
+def on_any_order(msg):
+    # msg["channel"] содержит реальный канал, msg["pattern"] — совпавший паттерн
+    print(f"Канал: {msg['channel']}, данные: {msg['data']}")
+
+# Подписка по паттерну — охватывает order:1, order:42, order:new и т.д.
+p.psubscribe(**{"order:*": on_any_order})
+p.psubscribe("logs:*")  # без handler
+
+print(p.patterns)
+# {b'order:*': <function on_any_order>, b'logs:*': None}
+
+print(p.channels)
+# {} — patterns и channels хранятся раздельно`,
+  },
 ];
