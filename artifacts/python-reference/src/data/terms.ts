@@ -66802,4 +66802,842 @@ async def main():
 
 asyncio.run(main())`,
     },
+     // ─── redis.asyncio.Redis ──────────────────────────────────────────────────
+    {
+        name: "redis.asyncio.Redis.lock(name, timeout=None, sleep=0.1, blocking=True, blocking_timeout=None, lock_class=None, thread_local=True)",
+        description:
+            "Создаёт распределённый замок (distributed lock) на базе Redis. Возвращает объект Lock (по умолчанию — redis.asyncio.lock.Lock, реализация алгоритма SET NX + PX). Замок используется как асинхронный контекстный менеджер (async with). Гарантирует, что в один момент времени только один процесс/воркер удерживает замок по ключу name. timeout — автоматическое истечение замка в Redis (TTL), защита от дедлока при аварийном завершении держателя. blocking_timeout — максимальное ожидание при попытке захватить уже занятый замок.",
+        syntax: `lock = redis_client.lock(
+    name,
+    timeout=None,
+    sleep=0.1,
+    blocking=True,
+    blocking_timeout=None,
+    lock_class=None,
+    thread_local=True,
+)
+
+async with lock:
+    # критическая секция
+    ...
+
+# или явно:
+await lock.acquire()
+try:
+    ...
+finally:
+    await lock.release()`,
+        arguments: [
+            {
+                name: "name",
+                description: "Ключ замка в Redis. Уникален для каждого защищаемого ресурса. Все процессы, использующие один и тот же name, конкурируют за один замок.",
+            },
+            {
+                name: "timeout",
+                description: "TTL замка в секундах (float). None — замок не истекает автоматически (опасно при аварии держателя). Рекомендуется всегда задавать.",
+            },
+            {
+                name: "sleep",
+                description: "Интервал опроса в секундах (float) при ожидании освобождения занятого замка. По умолчанию 0.1.",
+            },
+            {
+                name: "blocking",
+                description: "True (по умолчанию) — ждать освобождения замка. False — немедленно вернуть False если замок занят.",
+            },
+            {
+                name: "blocking_timeout",
+                description: "Максимальное суммарное время ожидания в секундах (float). None — ждать бесконечно. При превышении бросает LockNotOwnedError.",
+            },
+            {
+                name: "lock_class",
+                description: "Альтернативный класс замка. None — используется стандартная реализация redis.asyncio.lock.Lock.",
+            },
+            {
+                name: "thread_local",
+                description: "True (по умолчанию) — токен замка хранится в thread-local хранилище, что предотвращает освобождение замка из другого потока. False — токен хранится в атрибуте объекта.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", port=6379, decode_responses=True)
+
+    # Базовое использование: эксклюзивная обработка задачи
+    async with client.lock("job:invoice:generate", timeout=30):
+        print("Генерирую счёт — только один процесс")
+        await asyncio.sleep(1)
+
+    # Неблокирующая попытка
+    lock = client.lock("resource:heavy", timeout=10, blocking=False)
+    acquired = await lock.acquire()
+    if acquired:
+        try:
+            print("Захвачено — выполняю")
+        finally:
+            await lock.release()
+    else:
+        print("Ресурс занят — пропускаем")
+
+    # С ограничением времени ожидания
+    try:
+        async with client.lock("queue:worker", timeout=5, blocking_timeout=2):
+            print("Обрабатываю очередь")
+    except aioredis.exceptions.LockError:
+        print("Не удалось захватить замок за 2 секунды")
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.pubsub(**kwargs)",
+        description:
+            "Создаёт объект PubSub — клиент для работы с механизмом публикации/подписки Redis. Возвращает redis.asyncio.client.PubSub, который управляет отдельным соединением, выделенным под подписки. Через объект PubSub можно подписываться на каналы (subscribe/psubscribe), читать сообщения (get_message, listen) и отписываться. PubSub-соединение нельзя использовать для обычных команд Redis — только для pub/sub операций. Необходимо явно закрывать через aclose().",
+        syntax: `pubsub = redis_client.pubsub(**kwargs)
+
+await pubsub.subscribe("channel1", "channel2")
+await pubsub.psubscribe("events.*")
+
+# Чтение сообщений
+async for message in pubsub.listen():
+    ...
+
+# или поллинг
+message = await pubsub.get_message(ignore_subscribe_messages=True)`,
+        arguments: [
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры, передаваемые в конструктор PubSub. Например: ignore_subscribe_messages=True — скрывать служебные сообщения о подписке/отписке.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def subscriber():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+    pubsub = client.pubsub(ignore_subscribe_messages=True)
+
+    await pubsub.subscribe("notifications", "alerts")
+    await pubsub.psubscribe("user.*")   # Паттерн-подписка
+
+    print("Слушаю каналы...")
+
+    # Чтение потоком
+    async for message in pubsub.listen():
+        channel = message["channel"]
+        data    = message["data"]
+        kind    = message["type"]   # "message" | "pmessage"
+        print(f"[{kind}] {channel}: {data}")
+
+        if data == "STOP":
+            break
+
+    await pubsub.unsubscribe()
+    await pubsub.aclose()
+    await client.aclose()
+
+async def publisher():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+    await asyncio.sleep(0.5)
+    await client.publish("notifications", "Привет!")
+    await client.publish("user.123", "Новое сообщение")
+    await client.publish("notifications", "STOP")
+    await client.aclose()
+
+async def main():
+    await asyncio.gather(subscriber(), publisher())
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.monitor()",
+        description:
+            "Создаёт объект Monitor — клиент для команды Redis MONITOR, которая переводит соединение в режим реального времени: Redis начинает отправлять все команды, выполняемые на сервере, в это соединение. Используется исключительно для отладки и профилирования — в production нагрузка от MONITOR значительна (дублирование всех команд). Monitor возвращает объект-менеджер контекста; внутри блока доступен метод listen() для асинхронного чтения команд.",
+        syntax: `async with redis_client.monitor() as monitor:
+    async for command in monitor.listen():
+        print(command)`,
+        arguments: [],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def run_monitor():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    async with client.monitor() as monitor:
+        # Каждая команда возвращается как словарь:
+        # {"time": float, "db": int, "client_address": str,
+        #  "client_name": str, "command": str}
+        count = 0
+        async for command in monitor.listen():
+            print(
+                f"[{command['time']:.3f}] "
+                f"db={command['db']} "
+                f"{command['command']}"
+            )
+            count += 1
+            if count >= 10:   # Останавливаемся после 10 команд
+                break
+
+    await client.aclose()
+
+async def generate_traffic():
+    """Генерируем команды для наблюдения."""
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+    await asyncio.sleep(0.3)
+    for i in range(5):
+        await client.set(f"key:{i}", i)
+        await client.get(f"key:{i}")
+    await client.aclose()
+
+async def main():
+    await asyncio.gather(run_monitor(), generate_traffic())
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.client()",
+        description:
+            "Создаёт объект клиентского инспектора (redis.asyncio.client.Redis), позволяющего выполнять команды группы CLIENT: CLIENT LIST, CLIENT INFO, CLIENT SETNAME, CLIENT GETNAME, CLIENT KILL и т.д. Используется для управления клиентскими соединениями на стороне сервера — просмотра активных соединений, их именования, принудительного разрыва. Не путать с созданием нового клиента — это вспомогательный объект-фасад над командами CLIENT.*.",
+        syntax: `client_obj = redis_client.client()`,
+        arguments: [],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # Именование текущего соединения (для диагностики в CLIENT LIST)
+    await r.client_setname("api-worker-1")
+
+    name = await r.client_getname()
+    print(f"Имя соединения: {name}")   # api-worker-1
+
+    # Список всех клиентских соединений
+    clients = await r.client_list()
+    for c in clients:
+        print(f"id={c['id']} name={c['name']} cmd={c['cmd']}")
+
+    # Информация о текущем соединении
+    info = await r.client_info()
+    print(f"Текущий клиент: id={info['id']}, addr={info['addr']}")
+
+    # CLIENT NO-EVICT — защита соединения от выселения при нехватке памяти
+    await r.client_no_evict("on")
+
+    # Принудительное закрытие клиента по ID
+    # await r.client_kill_filter(id=some_id)
+
+    await r.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.close()",
+        description:
+            "Закрывает клиентское соединение с Redis и освобождает все ресурсы пула. Является псевдонимом метода aclose() в redis-py 4.x+. После вызова клиент нельзя использовать. При использовании connection pool закрывает все соединения в пуле. Рекомендуется вызывать в блоке finally или использовать async with для автоматического закрытия. В контексте FastAPI/aiohttp вызывается в обработчике события shutdown.",
+        syntax: `await redis_client.close()
+# или эквивалентно:
+await redis_client.aclose()`,
+        arguments: [],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+# Явное закрытие через try/finally
+async def explicit_close():
+    client = aioredis.Redis(host="localhost")
+    try:
+        await client.set("key", "value")
+        result = await client.get("key")
+        print(result)
+    finally:
+        await client.close()   # Всегда закрываем
+
+# Через контекстный менеджер (рекомендуется)
+async def context_manager():
+    async with aioredis.Redis(host="localhost") as client:
+        await client.set("key", "value")
+    # close() вызван автоматически
+
+# Интеграция с FastAPI
+from contextlib import asynccontextmanager
+
+redis_client: aioredis.Redis | None = None
+
+@asynccontextmanager
+async def lifespan(app):
+    global redis_client
+    redis_client = aioredis.Redis(host="localhost", decode_responses=True)
+    yield
+    await redis_client.close()   # При остановке приложения
+
+async def main():
+    await explicit_close()
+    await context_manager()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.initialize()",
+        description:
+            "Выполняет асинхронную инициализацию клиента: устанавливает соединение с Redis и производит необходимую начальную настройку (AUTH, SELECT db и т.д.). В большинстве случаев вызывается автоматически при первой операции или при входе в async with. Явный вызов необходим при использовании клиента вне контекстного менеджера в ситуациях, когда нужно убедиться в доступности соединения до начала работы — например, при старте приложения для проверки конфигурации.",
+        syntax: `await redis_client.initialize()`,
+        arguments: [],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    # Явная инициализация — гарантирует готовность соединения до работы
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    try:
+        await client.initialize()
+        print("Соединение установлено")
+
+        # Пинг для проверки
+        pong = await client.ping()
+        print(f"ping: {pong}")   # True
+
+        await client.set("startup_check", "ok")
+    finally:
+        await client.close()
+
+    # Разница: без initialize() соединение создаётся лениво
+    # при первой реальной команде. initialize() форсирует немедленное
+    # подключение — удобно для fail-fast при старте.
+
+    # С пулом соединений
+    pool = aioredis.ConnectionPool.from_url(
+        "redis://localhost:6379/0",
+        max_connections=10,
+    )
+    client2 = aioredis.Redis(connection_pool=pool)
+    await client2.initialize()
+    await client2.ping()
+    await client2.close()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.execute_command(*args, **options)",
+        description:
+            "Низкоуровневый метод — отправляет произвольную команду Redis напрямую и возвращает ответ сервера. Используется для вызова команд, не реализованных в redis-py явно, или для кастомных RESP-команд. args — команда и её аргументы (например, 'SET', 'key', 'value'). options могут содержать ключ keys (список ключей для кластерной маршрутизации) и другие параметры парсинга ответа. Ответ возвращается в сыром виде (bytes/int/list) — парсинг лежит на вызывающей стороне.",
+        syntax: `result = await redis_client.execute_command(*args, **options)`,
+        arguments: [
+            {
+                name: "*args",
+                description: "Команда Redis и её аргументы. Первый элемент — имя команды (str), остальные — аргументы. Например: 'SET', 'mykey', 'myvalue', 'EX', 60.",
+            },
+            {
+                name: "**options",
+                description: "Дополнительные опции: keys — список ключей для кластерной маршрутизации; остальные передаются в parse_response().",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # Обычные команды через execute_command (эквивалент высокоуровневых методов)
+    await client.execute_command("SET", "user:1", "Alice", "EX", 60)
+    val = await client.execute_command("GET", "user:1")
+    print(val)   # Alice
+
+    # Команды, ещё не добавленные в redis-py
+    # (например, гипотетическая новая команда)
+    # result = await client.execute_command("NEWCMD", "arg1", "arg2")
+
+    # LMPOP — многоключевой pop (Redis 7.0+)
+    await client.rpush("list:a", "v1", "v2")
+    result = await client.execute_command(
+        "LMPOP", 1, "list:a", "LEFT", "COUNT", 2
+    )
+    print(result)   # ['list:a', ['v1', 'v2']]
+
+    # Кластерная маршрутизация через keys=
+    await client.execute_command(
+        "SET", "cluster:key", "val",
+        keys=["cluster:key"],   # Подсказка для кластера
+    )
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.parse_response(connection, command_name, **options)",
+        description:
+            "Читает и разбирает ответ Redis-сервера для указанной команды command_name. Вызывается автоматически внутри execute_command() после отправки команды. Переопределяется в подклассах для кастомной обработки ответов — например, для десериализации JSON, распаковки бинарных протоколов или нормализации формата. connection — объект соединения, из которого читается ответ. Напрямую используется при написании собственных расширений клиента Redis.",
+        syntax: `result = await redis_client.parse_response(
+    connection,
+    command_name,
+    **options,
+)`,
+        arguments: [
+            {
+                name: "connection",
+                description: "Объект соединения (redis.asyncio.connection.Connection), из которого читается ответ сервера.",
+            },
+            {
+                name: "command_name",
+                description: "Имя команды Redis (str), для которой выполняется парсинг. Используется для выбора нужного парсера из RESPONSE_CALLBACKS.",
+            },
+            {
+                name: "**options",
+                description: "Дополнительные параметры, передаваемые в callback-парсер конкретной команды.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+from redis.asyncio.client import Redis
+
+# Кастомный клиент с переопределённым parse_response
+class JsonRedis(Redis):
+    """Redis-клиент, автоматически десериализующий JSON-значения."""
+
+    async def parse_response(self, connection, command_name, **options):
+        import json
+        result = await super().parse_response(connection, command_name, **options)
+
+        # Пытаемся десериализовать строковые ответы как JSON
+        if isinstance(result, str):
+            try:
+                return json.loads(result)
+            except (json.JSONDecodeError, TypeError):
+                return result
+        return result
+
+async def main():
+    client = JsonRedis(host="localhost", decode_responses=True)
+
+    import json
+    data = {"user": "Alice", "score": 42}
+    await client.set("user:1", json.dumps(data))
+
+    # parse_response автоматически десериализует
+    result = await client.get("user:1")
+    print(type(result))   # dict
+    print(result["user"]) # Alice
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.acl_cat(category=None, **kwargs)",
+        description:
+            "Возвращает список категорий ACL или команд внутри указанной категории. Без аргументов возвращает все доступные категории ACL (список строк: 'read', 'write', 'string', 'hash' и т.д.). При передаче category — возвращает список команд, входящих в эту категорию. Используется для построения ACL-правил: можно разрешить/запретить всю категорию через +@category / -@category вместо перечисления отдельных команд.",
+        syntax: `# Все категории
+categories = await redis_client.acl_cat()
+
+# Команды в конкретной категории
+commands = await redis_client.acl_cat(category="string")`,
+        arguments: [
+            {
+                name: "category",
+                description: "Имя категории ACL (str). None (по умолчанию) — вернуть список всех категорий. При указании — вернуть команды внутри категории.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры выполнения команды (передаются в execute_command).",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # Все категории ACL
+    categories = await client.acl_cat()
+    print("Категории:", sorted(categories))
+    # ['bitmap', 'connection', 'dangerous', 'geo', 'hash',
+    #  'hyperloglog', 'keyspace', 'list', 'pubsub', 'read',
+    #  'scripting', 'set', 'sortedset', 'stream', 'string',
+    #  'transaction', 'write', ...]
+
+    # Команды категории "string"
+    string_cmds = await client.acl_cat("string")
+    print("String-команды:", sorted(string_cmds))
+    # ['append', 'decr', 'decrby', 'get', 'getdel', 'getex',
+    #  'getrange', 'getset', 'incr', 'incrby', 'incrbyfloat',
+    #  'lcs', 'mget', 'mset', 'msetnx', 'psetex', 'set', ...]
+
+    # Проверить, есть ли нужная команда в категории
+    read_cmds = await client.acl_cat("read")
+    print("GET в read?", "get" in read_cmds)   # True
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.acl_deluser(*username, **kwargs)",
+        description:
+            "Удаляет одного или нескольких пользователей из ACL Redis. Все активные соединения удалённых пользователей немедленно разрываются. Возвращает количество фактически удалённых пользователей (пользователи, которых не существовало, не учитываются). Нельзя удалить встроенного пользователя default — это вызовет ошибку. Требует привилегий администратора (команда ACL DELUSER).",
+        syntax: `count = await redis_client.acl_deluser(*username, **kwargs)`,
+        arguments: [
+            {
+                name: "*username",
+                description: "Один или несколько имён пользователей (str) для удаления. Принимает любое количество аргументов.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры выполнения команды.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # Создаём тестовых пользователей
+    await client.acl_setuser("reader", enabled=True, passwords=["+secret1"],
+                              commands=["+get"], keys=["*"])
+    await client.acl_setuser("writer", enabled=True, passwords=["+secret2"],
+                              commands=["+set", "+del"], keys=["*"])
+    await client.acl_setuser("temp",   enabled=True, passwords=["+secret3"],
+                              commands=["+ping"])
+
+    # Список до удаления
+    users_before = await client.acl_list()
+    print(f"Пользователей до: {len(users_before)}")
+
+    # Удаляем одного пользователя
+    deleted = await client.acl_deluser("temp")
+    print(f"Удалено: {deleted}")   # 1
+
+    # Удаляем нескольких за один вызов
+    deleted_many = await client.acl_deluser("reader", "writer", "nonexistent")
+    print(f"Удалено: {deleted_many}")   # 2 (nonexistent не считается)
+
+    # Попытка удалить default — ошибка
+    try:
+        await client.acl_deluser("default")
+    except aioredis.ResponseError as e:
+        print(f"Ошибка: {e}")
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.acl_dryrun(username, command, *args, **kwargs)",
+        description:
+            "Симулирует выполнение команды command от имени пользователя username, не выполняя её фактически. Проверяет, разрешена ли команда с заданными аргументами согласно ACL пользователя. Возвращает None если команда разрешена, или строку с описанием нарушения ACL. Добавлена в Redis 7.0. Незаменима для тестирования ACL-правил перед применением в production.",
+        syntax: `result = await redis_client.acl_dryrun(username, command, *args, **kwargs)`,
+        arguments: [
+            {
+                name: "username",
+                description: "Имя пользователя (str), от имени которого симулируется выполнение команды.",
+            },
+            {
+                name: "command",
+                description: "Имя команды Redis для проверки (str). Например: 'GET', 'SET', 'DEL'.",
+            },
+            {
+                name: "*args",
+                description: "Аргументы команды (ключи, значения), необходимые для точной проверки ключевых паттернов в ACL.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры выполнения.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # Создаём пользователя с ограниченными правами
+    await client.acl_setuser(
+        "limited",
+        enabled=True,
+        passwords=["+mypassword"],
+        commands=["+get", "+set"],
+        keys=["user:*"],          # Только ключи с префиксом user:
+    )
+
+    # Проверяем разрешённую команду
+    result = await client.acl_dryrun("limited", "GET", "user:123")
+    print(result)   # None — команда разрешена
+
+    # Проверяем запрещённый ключ
+    result = await client.acl_dryrun("limited", "GET", "admin:secret")
+    print(result)   # Строка с ошибкой ACL
+
+    # Проверяем запрещённую команду
+    result = await client.acl_dryrun("limited", "DEL", "user:123")
+    print(result)   # Строка: This user has no permissions to run the 'del' command
+
+    # Утилита для батч-проверки правил
+    async def check_acl(user: str, checks: list[tuple]):
+        for cmd, *args in checks:
+            r = await client.acl_dryrun(user, cmd, *args)
+            status = "OK" if r is None else f"DENY: {r}"
+            print(f"  {cmd} {' '.join(args)}: {status}")
+
+    await check_acl("limited", [
+        ("GET", "user:1"),
+        ("SET", "user:2", "val"),
+        ("DEL", "user:3"),
+        ("GET", "session:abc"),
+    ])
+
+    await client.acl_deluser("limited")
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.acl_genpass(bits=None, **kwargs)",
+        description:
+            "Генерирует случайный пароль (токен) с помощью встроенного генератора псевдослучайных чисел Redis. По умолчанию возвращает 64-символьную шестнадцатеричную строку (256 бит). bits задаёт количество бит энтропии (от 1 до 4096) — результат округляется до ближайшего кратного 4 (т.к. каждый hex-символ = 4 бита). Позволяет генерировать криптографически безопасные пароли прямо на стороне Redis без дополнительных зависимостей.",
+        syntax: `password = await redis_client.acl_genpass(bits=None, **kwargs)`,
+        arguments: [
+            {
+                name: "bits",
+                description: "Количество бит энтропии (int, от 1 до 4096). None (по умолчанию) — 256 бит (64 hex-символа). Результат: строка из bits/4 шестнадцатеричных символов.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры выполнения команды.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # Пароль по умолчанию: 256 бит = 64 hex-символа
+    password = await client.acl_genpass()
+    print(f"Пароль ({len(password)} символов): {password}")
+    # Пароль (64 символа): a3f8b2e1c7d4...
+
+    # Короткий токен: 128 бит = 32 hex-символа
+    token_128 = await client.acl_genpass(128)
+    print(f"Токен 128 бит: {token_128}")   # 32 символа
+
+    # Минимальный токен: 4 бита = 1 hex-символ
+    tiny = await client.acl_genpass(4)
+    print(f"4 бита: {tiny}")   # 1 hex-символ
+
+    # Применение: создание пользователя с генерированным паролем
+    new_password = await client.acl_genpass(256)
+    await client.acl_setuser(
+        "api-service",
+        enabled=True,
+        passwords=[f"+{new_password}"],
+        commands=["+get", "+set", "+del"],
+        keys=["app:*"],
+    )
+    print(f"Пользователь создан, пароль: {new_password}")
+
+    await client.acl_deluser("api-service")
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.acl_getuser(username, **kwargs)",
+        description:
+            "Возвращает полное описание ACL-пользователя username в виде словаря. Содержит поля: flags (список флагов: 'on'/'off', 'nopass', 'allkeys', 'allchannels', 'allcommands'), passwords (список хешей паролей), commands (разрешённые/запрещённые команды), keys (паттерны разрешённых ключей), channels (паттерны разрешённых pub/sub каналов), selectors (список дополнительных правил-селекторов). Возвращает None если пользователь не существует.",
+        syntax: `user_info = await redis_client.acl_getuser(username, **kwargs)`,
+        arguments: [
+            {
+                name: "username",
+                description: "Имя пользователя (str), информацию о котором нужно получить.",
+            },
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры выполнения команды.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # Создаём пользователя для инспекции
+    await client.acl_setuser(
+        "inspector",
+        enabled=True,
+        passwords=["+mypass123"],
+        commands=["+get", "+set", "-del"],
+        keys=["data:*", "cache:*"],
+        channels=["notifications"],
+    )
+
+    info = await client.acl_getuser("inspector")
+    print("Флаги:  ", info["flags"])
+    # ['on']
+
+    print("Команды:", info["commands"])
+    # '+@all -@dangerous +get +set -del' (зависит от версии Redis)
+
+    print("Ключи:  ", info["keys"])
+    # ['data:*', 'cache:*']
+
+    print("Каналы: ", info["channels"])
+    # ['notifications']
+
+    # Несуществующий пользователь
+    missing = await client.acl_getuser("ghost")
+    print(f"ghost: {missing}")   # None
+
+    # Инспекция пользователя default
+    default_info = await client.acl_getuser("default")
+    print("default flags:", default_info["flags"])
+
+    await client.acl_deluser("inspector")
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.acl_help(**kwargs)",
+        description:
+            "Возвращает справочную информацию по синтаксису ACL-правил Redis в виде списка строк. Эквивалент команды ACL HELP. Полезен при изучении доступных директив ACL непосредственно через клиент, без обращения к документации — особенно актуально при работе с разными версиями Redis, где набор возможностей может отличаться.",
+        syntax: `help_lines = await redis_client.acl_help(**kwargs)`,
+        arguments: [
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры выполнения команды.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    help_text = await client.acl_help()
+    for line in help_text:
+        print(line)
+
+    # Вывод (Redis 7.x):
+    # ACL <subcommand> [<arg> [value] [opt] ...]. subcommands are:
+    # CAT [<category>]
+    #     List all commands that belong to <category>, or all command
+    #     categories when no category is specified.
+    # DELUSER <username> [<username> ...]
+    #     Delete a list of users.
+    # DRYRUN <username> <command> [<arg> ...]
+    #     Return whether the user can execute the given command ...
+    # GENPASS [<bits>]
+    #     Generate a random password. ...
+    # GETUSER <username>
+    #     Get the user's details.
+    # LIST
+    #     Show users details in config file format.
+    # LOAD
+    #     Reload users from the ACL file.
+    # LOG [<count> | RESET]
+    #     List latest events in the ACL Log.
+    # ...
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.acl_list(**kwargs)",
+        description:
+            "Возвращает список строк, описывающих всех пользователей ACL в формате конфигурационного файла Redis (аналогично содержимому aclfile). Каждая строка имеет вид: user <name> <flags> <passwords> <commands> <keys>. Позволяет получить полный снимок состояния ACL для аудита, резервного копирования или сравнения конфигураций. Для программного разбора отдельного пользователя удобнее использовать acl_getuser().",
+        syntax: `acl_entries = await redis_client.acl_list(**kwargs)`,
+        arguments: [
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры выполнения команды.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # Создаём пользователей для примера
+    await client.acl_setuser("reader", enabled=True, passwords=["+pass1"],
+                              commands=["+get", "+mget"], keys=["*"])
+    await client.acl_setuser("writer", enabled=True, passwords=["+pass2"],
+                              commands=["+set", "+del"], keys=["app:*"])
+
+    acl = await client.acl_list()
+    print(f"Всего пользователей: {len(acl)}")
+
+    for entry in acl:
+        print(entry)
+    # user default on nopass ~* &* +@all
+    # user reader on #<sha256> ~* &* -@all +get +mget
+    # user writer on #<sha256> ~app:* &* -@all +set +del
+
+    # Фильтрация: только активные пользователи (флаг 'on')
+    active = [e for e in acl if " on " in e]
+    print(f"Активных: {len(active)}")
+
+    # Сравнение снимков ACL
+    snapshot1 = set(await client.acl_list())
+    await client.acl_setuser("temp", enabled=False)
+    snapshot2 = set(await client.acl_list())
+    added = snapshot2 - snapshot1
+    print(f"Добавлено: {added}")
+
+    await client.acl_deluser("reader", "writer", "temp")
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
+    {
+        name: "redis.asyncio.Redis.acl_load(**kwargs)",
+        description:
+            "Перезагружает ACL-правила из файла, заданного параметром aclfile в конфигурации Redis. Возвращает True при успехе. Если aclfile не настроен — бросает ResponseError. Если файл содержит синтаксические ошибки — Redis сообщит об ошибках и не применит изменения (текущие ACL останутся неизменными). Используется для «горячего» применения изменений в ACL-файле без перезапуска Redis. После редактирования файла вне Redis необходимо вызвать acl_load() для вступления изменений в силу.",
+        syntax: `result = await redis_client.acl_load(**kwargs)`,
+        arguments: [
+            {
+                name: "**kwargs",
+                description: "Дополнительные параметры выполнения команды.",
+            },
+        ],
+        example: `import asyncio
+import redis.asyncio as aioredis
+
+async def main():
+    client = aioredis.Redis(host="localhost", decode_responses=True)
+
+    # Проверяем, настроен ли aclfile
+    config = await client.config_get("aclfile")
+    acl_file_path = config.get("aclfile", "")
+
+    if not acl_file_path:
+        print("aclfile не настроен — acl_load() недоступен")
+        print("Добавьте в redis.conf: aclfile /etc/redis/users.acl")
+        await client.aclose()
+        return
+
+    print(f"ACL файл: {acl_file_path}")
+
+    # Вносим изменения в файл вне Redis...
+    # (редактирование /etc/redis/users.acl внешним инструментом)
+
+    # Применяем изменения без перезапуска Redis
+    try:
+        result = await client.acl_load()
+        print(f"ACL перезагружен: {result}")   # True
+    except aioredis.ResponseError as e:
+        # Синтаксическая ошибка в файле — текущие ACL не изменились
+        print(f"Ошибка в ACL-файле: {e}")
+
+    # Связанная команда: сохранить текущий ACL в файл
+    # await client.acl_save()
+
+    await client.aclose()
+
+asyncio.run(main())`,
+    },
 ];
