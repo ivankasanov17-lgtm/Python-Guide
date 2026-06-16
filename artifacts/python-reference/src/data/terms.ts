@@ -67640,4 +67640,3783 @@ async def main():
 
 asyncio.run(main())`,
     },
+    {
+    name: "redis.asyncio.Redis.acl_log",
+    description: "Возвращает журнал событий безопасности ACL: неудачные попытки авторизации и нарушения правил доступа. Каждая запись содержит причину отказа, имя пользователя, клиентский адрес и команду. Полезен для аудита и отладки политик ACL.",
+    syntax: "await redis.acl_log(count=None, **kwargs)",
+    arguments: [
+      {
+        name: "count",
+        description: "Максимальное число возвращаемых записей журнала. Если None — возвращаются все. Передайте 0 (RESET), чтобы очистить журнал."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Получить последние 10 событий ACL
+    entries = await r.acl_log(count=10)
+    for entry in entries:
+        print(entry["reason"], entry["username"], entry["object"])
+
+    # Сбросить журнал
+    await r.acl_log(count=0)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.acl_save",
+    description: "Сохраняет текущие ACL-правила из памяти в файл, указанный директивой aclfile в конфигурации Redis. Аналог команды ACL SAVE. Вызывайте после изменения правил через acl_setuser, чтобы они пережили перезапуск сервера.",
+    syntax: "await redis.acl_save(**kwargs)",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Создаём нового пользователя
+    await r.acl_setuser("bot", enabled=True, passwords=["+secret"], commands=["+get", "+set"])
+
+    # Сохраняем ACL на диск
+    result = await r.acl_save()
+    print(result)  # True
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.acl_setuser",
+    description: "Создаёт нового или изменяет существующего пользователя в системе ACL Redis. Позволяет задать пароли, разрешённые команды, ключи и каналы, а также включить или отключить учётную запись. Изменения вступают в силу немедленно.",
+    syntax: "await redis.acl_setuser(username, rules=None, **kwargs)",
+    arguments: [
+      {
+        name: "username",
+        description: "Имя пользователя ACL, которого нужно создать или изменить."
+      },
+      {
+        name: "rules",
+        description: "Список строк с ACL-правилами в нативном формате Redis, например [\"+get\", \"~cache:*\", \"on\", \">password\"]. Если None — используются именованные kwargs (enabled, passwords, commands, keys, channels)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Создать пользователя с ограниченным доступом
+    await r.acl_setuser(
+        "reader",
+        enabled=True,
+        passwords=["+readonly_pass"],
+        commands=["+get", "+mget", "+keys"],
+        keys=["data:*"],
+    )
+
+    # Отключить пользователя
+    await r.acl_setuser("reader", enabled=False)
+
+    # Удалить (сбросить) пользователя
+    await r.acl_setuser("reader", reset=True)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.acl_users",
+    description: "Возвращает список имён всех пользователей, определённых в системе ACL Redis. Соответствует команде ACL USERS. Используйте для аудита учётных записей или перед массовым обновлением прав.",
+    syntax: "await redis.acl_users(**kwargs)",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    users = await r.acl_users()
+    print(users)  # [b'default', b'reader', b'bot']
+
+    for username in users:
+        info = await r.acl_getuser(username)
+        print(username, info["enabled"])
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.acl_whoami",
+    description: "Возвращает имя пользователя, от имени которого выполнено текущее подключение. Соответствует команде ACL WHOAMI. Удобен для проверки, под каким ACL-пользователем работает клиент, особенно в средах с несколькими учётными записями.",
+    syntax: "await redis.acl_whoami(**kwargs)",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    # Подключение под пользователем по умолчанию
+    r = aioredis.Redis()
+    print(await r.acl_whoami())  # b'default'
+
+    # Подключение под конкретным пользователем
+    r2 = aioredis.Redis(username="reader", password="readonly_pass")
+    print(await r2.acl_whoami())  # b'reader'
+
+    await r.aclose()
+    await r2.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.append",
+    description: "Добавляет строку value в конец существующего значения ключа key. Если ключ не существует — создаёт его. Возвращает итоговую длину значения в байтах. Работает со строками и бинарными данными.",
+    syntax: "await redis.append(key, value)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ, к значению которого нужно дописать строку."
+      },
+      {
+        name: "value",
+        description: "Строка или байты, которые добавляются в конец текущего значения ключа."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Создаём ключ через append
+    length = await r.append("log", "2024-01-01 start\\n")
+    print(length)  # 18
+
+    # Дописываем строку
+    length = await r.append("log", "2024-01-01 end\\n")
+    print(length)  # 33
+
+    print(await r.get("log"))
+    # '2024-01-01 start\\n2024-01-01 end\\n'
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.asking",
+    description: "Отправляет команду ASKING в кластере Redis. Используется клиентом при перенаправлении ASK для указания, что следующая команда должна быть выполнена на целевом узле, даже если слот ещё не перемещён полностью. В обычном коде не нужна — её автоматически вставляет кластерный клиент.",
+    syntax: "await redis.asking()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+# asking() используется внутри кластерного клиента автоматически.
+# Ручной вызов нужен только при низкоуровневой работе с кластером.
+async def manual_ask_redirect(node_client, key):
+    await node_client.asking()
+    value = await node_client.get(key)
+    return value`
+  },
+  {
+    name: "redis.asyncio.Redis.auth",
+    description: "Аутентифицирует клиента на сервере Redis с помощью пароля, а при использовании ACL — также имени пользователя. Обычно вызывается автоматически при подключении, если переданы параметры password/username. Явный вызов нужен при смене учётных данных на уже открытом соединении.",
+    syntax: "await redis.auth(password, username=None)",
+    arguments: [
+      {
+        name: "password",
+        description: "Пароль для аутентификации. При ACL соответствует паролю конкретного пользователя."
+      },
+      {
+        name: "username",
+        description: "Имя пользователя ACL. Если None — используется пользователь default (поведение Redis до версии 6)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    # Обычно достаточно передать credentials при создании клиента
+    r = aioredis.Redis(host="localhost", password="secret")
+
+    # Явная аутентификация на уже открытом соединении (ACL)
+    await r.auth(password="new_pass", username="app_user")
+    print(await r.ping())  # True
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.bgrewriteaof",
+    description: "Запускает асинхронную перезапись AOF-файла (Append Only File) в фоновом режиме. Redis создаёт дочерний процесс, который записывает минимальный набор команд для восстановления текущего состояния данных. Полезно для сжатия разросшегося AOF-файла без остановки сервера.",
+    syntax: "await redis.bgrewriteaof()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Запустить перезапись AOF в фоне
+    result = await r.bgrewriteaof()
+    print(result)  # b'Background append only file rewriting started'
+
+    # Проверить прогресс через INFO persistence
+    info = await r.info("persistence")
+    print(info["aof_rewrite_in_progress"])  # 1 — идёт перезапись
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.bgsave",
+    description: "Запускает асинхронное сохранение снимка базы данных (RDB) в фоновом режиме. Redis создаёт дочерний процесс для записи дампа на диск. С параметром schedule=True команда ставит сохранение в очередь, если в данный момент уже выполняется BGSAVE или BGREWRITEAOF.",
+    syntax: "await redis.bgsave(schedule=False)",
+    arguments: [
+      {
+        name: "schedule",
+        description: "Если True — использует флаг SCHEDULE: сохранение будет запущено после завершения текущей фоновой операции, а не вернёт ошибку."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+import asyncio
+
+async def main():
+    r = aioredis.Redis()
+
+    # Немедленный запуск (вернёт ошибку, если уже идёт BGSAVE)
+    result = await r.bgsave()
+    print(result)  # b'Background saving started'
+
+    # Запуск с планированием — безопаснее
+    await asyncio.sleep(0.1)
+    await r.bgsave(schedule=True)
+
+    # Ждём завершения через INFO
+    info = await r.info("persistence")
+    print(info["rdb_bgsave_in_progress"])  # 0 — завершено
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.bitcount",
+    description: "Подсчитывает количество установленных битов (единиц) в строковом значении ключа. Можно ограничить диапазон байтов (или битов при mode='BIT') с помощью start и end. Применяется в счётчиках активности, битовых масках присутствия и HyperLogLog-подобных структурах.",
+    syntax: "await redis.bitcount(key, start=None, end=None, mode=None)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ, в чьём значении подсчитываются установленные биты."
+      },
+      {
+        name: "start",
+        description: "Начало диапазона (включительно). По умолчанию — байтовый индекс; отрицательные значения отсчитываются от конца."
+      },
+      {
+        name: "end",
+        description: "Конец диапазона (включительно). По умолчанию — байтовый индекс."
+      },
+      {
+        name: "mode",
+        description: "Режим интерпретации диапазона: 'BYTE' (по умолчанию) или 'BIT' (индексы битов, Redis >= 7.0)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Записываем байты 0xCA = 11001010 и 0xFF = 11111111
+    await r.set("bits", b"\\xca\\xff")
+
+    # Все биты (3 единицы в 0xCA + 8 в 0xFF = 11)
+    print(await r.bitcount("bits"))  # 11
+
+    # Только первый байт
+    print(await r.bitcount("bits", 0, 0))  # 3
+
+    # По битовому диапазону (Redis 7+)
+    print(await r.bitcount("bits", 0, 3, mode="BIT"))  # 2
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.bitfield",
+    description: "Создаёт объект-конструктор для составной команды BITFIELD, позволяющей читать, записывать и выполнять арифметику над целыми числами произвольного размера, хранящимися в строке по битовым смещениям. Команды накапливаются через цепочку методов .get(), .set(), .incrby() и выполняются одним вызовом .execute().",
+    syntax: "redis.bitfield(key, default_overflow=None)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ, в котором хранятся битовые поля."
+      },
+      {
+        name: "default_overflow",
+        description: "Поведение при переполнении по умолчанию для всех операций: 'WRAP' (по кругу), 'SAT' (насыщение), 'FAIL' (вернуть None). Можно переопределить для каждой операции отдельно."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    bf = r.bitfield("counters", default_overflow="SAT")
+
+    # Инкрементируем u8-счётчик на смещении 0 и читаем i16 на смещении 8
+    result = await (
+        bf
+        .incrby("u8", 0, 1)
+        .get("u8", 0)
+        .set("i16", 8, -500)
+        .execute()
+    )
+    print(result)  # [1, 1, 0]
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.bitop",
+    description: "Выполняет побитовую операцию между одним или несколькими ключами и сохраняет результат в destkey. Поддерживаемые операции: AND, OR, XOR, NOT (только один источник). Возвращает длину результирующей строки в байтах. Если ключи разной длины, короткие дополняются нулевыми байтами.",
+    syntax: "await redis.bitop(operation, destkey, *keys)",
+    arguments: [
+      {
+        name: "operation",
+        description: "Побитовая операция: 'AND', 'OR', 'XOR' или 'NOT' (только один ключ-источник)."
+      },
+      {
+        name: "destkey",
+        description: "Ключ, в который записывается результат операции."
+      },
+      {
+        name: "*keys",
+        description: "Один или несколько ключей-источников. Для NOT допускается ровно один ключ."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Битовые маски активных пользователей за два дня
+    await r.set("active:2024-01-01", b"\\xf0")  # 11110000
+    await r.set("active:2024-01-02", b"\\x0f")  # 00001111
+
+    # Пользователи активные оба дня (AND)
+    await r.bitop("AND", "active:both", "active:2024-01-01", "active:2024-01-02")
+    print(await r.get("active:both"))  # b'\\x00'
+
+    # Пользователи активные хотя бы один день (OR)
+    await r.bitop("OR", "active:any", "active:2024-01-01", "active:2024-01-02")
+    print(await r.get("active:any"))   # b'\\xff'
+
+    # Инверсия маски (NOT)
+    await r.bitop("NOT", "active:none", "active:both")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.bitpos",
+    description: "Возвращает позицию первого бита со значением bit (0 или 1) в строковом значении ключа. Поиск можно ограничить диапазоном start/end в байтах или битах (mode='BIT', Redis >= 7.0). Если bit=1 и значение равно нулю, возвращает -1. Применяется в разреженных битовых масках и поиске свободных слотов.",
+    syntax: "await redis.bitpos(key, bit, start=None, end=None, mode=None)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ, в чьём значении ищется бит."
+      },
+      {
+        name: "bit",
+        description: "Искомое значение бита: 0 или 1."
+      },
+      {
+        name: "start",
+        description: "Начало диапазона поиска (включительно). Байтовый или битовый индекс в зависимости от mode."
+      },
+      {
+        name: "end",
+        description: "Конец диапазона поиска (включительно). Отрицательные значения отсчитываются от конца строки."
+      },
+      {
+        name: "mode",
+        description: "Режим индексации диапазона: 'BYTE' (по умолчанию) или 'BIT' (Redis >= 7.0)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # 0b11111110 = 0xFE
+    await r.set("mask", b"\\xfe\\xff")
+
+    # Позиция первого нулевого бита
+    print(await r.bitpos("mask", 0))   # 7
+
+    # Позиция первой единицы
+    print(await r.bitpos("mask", 1))   # 0
+
+    # Поиск нуля только в первом байте
+    print(await r.bitpos("mask", 0, 0, 0))  # 7
+
+    # Поиск по диапазону битов (Redis 7+)
+    print(await r.bitpos("mask", 0, 4, 7, mode="BIT"))  # 7
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.blmove",
+    description: "Блокирующий вариант lmove. Атомарно перемещает элемент из конца/начала списка src в начало/конец списка dst. Если src пуст — ждёт появления элемента до timeout секунд. Возвращает перемещённый элемент или None по истечении таймаута. Идиоматичен для надёжных очередей.",
+    syntax: "await redis.blmove(src, dst, srcout='RIGHT', dstin='LEFT', timeout=0.0)",
+    arguments: [
+      {
+        name: "src",
+        description: "Ключ исходного списка, из которого извлекается элемент."
+      },
+      {
+        name: "dst",
+        description: "Ключ целевого списка, в который вставляется элемент."
+      },
+      {
+        name: "srcout",
+        description: "Откуда брать элемент из src: 'LEFT' (голова) или 'RIGHT' (хвост). По умолчанию 'RIGHT'."
+      },
+      {
+        name: "dstin",
+        description: "Куда вставлять элемент в dst: 'LEFT' (голова) или 'RIGHT' (хвост). По умолчанию 'LEFT'."
+      },
+      {
+        name: "timeout",
+        description: "Максимальное время ожидания в секундах. 0 — ждать бесконечно."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+import asyncio
+
+async def producer(r):
+    await asyncio.sleep(0.5)
+    await r.rpush("jobs", "task-1")
+
+async def consumer(r):
+    # Блокируется, пока в jobs не появится элемент
+    item = await r.blmove("jobs", "processing", srcout="LEFT", dstin="RIGHT", timeout=5.0)
+    print(item)  # b'task-1'
+
+async def main():
+    r = aioredis.Redis()
+    await asyncio.gather(consumer(r), producer(r))
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.blpop",
+    description: "Блокирующий вариант lpop. Извлекает и возвращает первый элемент из головы первого непустого списка в keys. Если все списки пусты — блокирует соединение до timeout секунд. Возвращает кортеж (имя_ключа, значение) или None при таймауте. Незаменим для очередей задач без активного опроса.",
+    syntax: "await redis.blpop(keys, timeout=0)",
+    arguments: [
+      {
+        name: "keys",
+        description: "Строка или список ключей списков. Redis проверяет их слева направо и возвращает элемент из первого непустого."
+      },
+      {
+        name: "timeout",
+        description: "Максимальное время ожидания в секундах. 0 — ждать бесконечно. Тип float поддерживается с Redis 6.0."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+import asyncio
+
+async def worker(r):
+    while True:
+        result = await r.blpop(["high_prio", "low_prio"], timeout=10)
+        if result is None:
+            print("Таймаут, нет задач")
+            break
+        queue, task = result
+        print(f"[{queue.decode()}] обрабатываем: {task.decode()}")
+
+async def main():
+    r = aioredis.Redis()
+    await r.rpush("low_prio", "task-A")
+    await r.rpush("high_prio", "task-B")
+    await worker(r)
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.brpop",
+    description: "Блокирующий вариант rpop. Извлекает и возвращает последний элемент (хвост) из первого непустого списка в keys. Если все списки пусты — ждёт до timeout секунд. Возвращает кортеж (имя_ключа, значение) или None при таймауте. Используется как stack-операция или для LIFO-очередей.",
+    syntax: "await redis.brpop(keys, timeout=0)",
+    arguments: [
+      {
+        name: "keys",
+        description: "Строка или список ключей. Redis проверяет их слева направо и извлекает хвост первого непустого."
+      },
+      {
+        name: "timeout",
+        description: "Максимальное время ожидания в секундах. 0 — ждать бесконечно."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+import asyncio
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.rpush("stack", "first", "second", "third")
+
+    # LIFO: забираем последний добавленный элемент
+    key, value = await r.brpop("stack", timeout=1)
+    print(value)  # 'third'
+
+    # Ожидание с таймаутом на пустом ключе
+    result = await r.brpop("empty_queue", timeout=0.1)
+    print(result)  # None
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.brpoplpush",
+    description: "Устаревший (deprecated с Redis 6.2) блокирующий вариант rpoplpush. Атомарно извлекает хвост списка src и помещает его в голову dst. Если src пуст — ждёт до timeout секунд. Рекомендуется заменить на blmove(src, dst, 'RIGHT', 'LEFT'). Используется для паттерна «reliable queue».",
+    syntax: "await redis.brpoplpush(src, dst, timeout=0)",
+    arguments: [
+      {
+        name: "src",
+        description: "Ключ исходного списка. Элемент извлекается из хвоста."
+      },
+      {
+        name: "dst",
+        description: "Ключ целевого списка. Элемент помещается в голову."
+      },
+      {
+        name: "timeout",
+        description: "Максимальное время ожидания в секундах. 0 — ждать бесконечно."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.rpush("tasks", "job-1", "job-2")
+
+    # Переместить job-2 из tasks в processing (надёжная очередь)
+    item = await r.brpoplpush("tasks", "processing", timeout=2)
+    print(item)  # 'job-2'
+
+    # После обработки удаляем из processing
+    await r.lrem("processing", 1, item)
+
+    # Современная альтернатива:
+    # await r.blmove("tasks", "processing", "RIGHT", "LEFT", timeout=2)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.bzpopmax",
+    description: "Блокирующий вариант zpopmax. Извлекает элемент с наибольшим score из первого непустого отсортированного множества в keys. Если все множества пусты — ждёт до timeout секунд. Возвращает кортеж (имя_ключа, элемент, score) или None при таймауте. Применяется в приоритетных очередях.",
+    syntax: "await redis.bzpopmax(keys, timeout=0)",
+    arguments: [
+      {
+        name: "keys",
+        description: "Строка или список ключей отсортированных множеств для опроса."
+      },
+      {
+        name: "timeout",
+        description: "Максимальное время ожидания в секундах. 0 — ждать бесконечно. Поддерживается тип float (Redis 6.0+)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.zadd("prio_queue", {"low": 1, "medium": 5, "urgent": 10})
+
+    # Забрать задачу с наивысшим приоритетом
+    result = await r.bzpopmax("prio_queue", timeout=2)
+    if result:
+        key, task, score = result
+        print(f"{task} (score={score})")  # urgent (score=10.0)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.bzpopmin",
+    description: "Блокирующий вариант zpopmin. Извлекает элемент с наименьшим score из первого непустого отсортированного множества в keys. Если все множества пусты — ждёт до timeout секунд. Возвращает кортеж (имя_ключа, элемент, score) или None при таймауте. Используется в FIFO-очередях с весами.",
+    syntax: "await redis.bzpopmin(keys, timeout=0)",
+    arguments: [
+      {
+        name: "keys",
+        description: "Строка или список ключей отсортированных множеств для опроса."
+      },
+      {
+        name: "timeout",
+        description: "Максимальное время ожидания в секундах. 0 — ждать бесконечно."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+import time
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Score = timestamp, FIFO по времени добавления
+    now = time.time()
+    await r.zadd("scheduled", {"job-A": now, "job-B": now + 1, "job-C": now + 2})
+
+    # Забрать самую раннюю задачу
+    result = await r.bzpopmin("scheduled", timeout=1)
+    if result:
+        key, task, score = result
+        print(task)  # 'job-A'
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_getname",
+    description: "Возвращает имя текущего соединения, заданное командой CLIENT SETNAME. Если имя не установлено, возвращает None. Имя отображается в выводе CLIENT LIST и полезно для идентификации соединений при профилировании и отладке.",
+    syntax: "await redis.client_getname()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Имя не установлено
+    print(await r.client_getname())  # None
+
+    # Устанавливаем имя соединения
+    await r.client_setname("worker-1")
+    print(await r.client_getname())  # 'worker-1'
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_getredir",
+    description: "Возвращает ID клиента, которому перенаправляются инвалидационные сообщения при использовании клиентского кэширования (CLIENT TRACKING). Возвращает -1, если перенаправление не настроено. Актуально при реализации серверного кэширования Redis 6+ в режиме broadcasting.",
+    syntax: "await redis.client_getredir()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Без активного tracking
+    print(await r.client_getredir())  # -1
+
+    # Включаем tracking с перенаправлением на себя
+    my_id = await r.client_id()
+    await r.client_tracking_on(bcast=True, redirect=my_id)
+    print(await r.client_getredir())  # my_id
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_id",
+    description: "Возвращает уникальный числовой ID текущего клиентского соединения на сервере Redis. ID монотонно возрастает и уникален в пределах жизни сервера. Используется при CLIENT KILL, CLIENT TRACKING REDIRECT и CLIENT UNPAUSE для адресации конкретного соединения.",
+    syntax: "await redis.client_id()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    client_id = await r.client_id()
+    print(client_id)  # например, 42
+
+    # Применение: включить tracking с redirect на себя
+    await r.client_tracking_on(redirect=client_id, bcast=True)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_info",
+    description: "Возвращает словарь с подробной информацией о текущем соединении: ID, имя, адрес, флаги, используемые команды, время простоя и другие метрики. Аналог строки из CLIENT LIST, но только для текущего клиента. Полезен для самодиагностики соединения.",
+    syntax: "await redis.client_info()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.client_setname("my-app")
+    info = await r.client_info()
+
+    print(info["id"])    # числовой ID
+    print(info["name"])  # 'my-app'
+    print(info["addr"])  # '127.0.0.1:PORT'
+    print(info["cmd"])   # последняя выполненная команда
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_kill",
+    description: "Принудительно закрывает клиентское соединение по IP-адресу и порту в формате addr:port. Аналог CLIENT KILL addr:port. Для более гибкой фильтрации используйте client_kill_filter. Возвращает True при успехе.",
+    syntax: "await redis.client_kill(address)",
+    arguments: [
+      {
+        name: "address",
+        description: "Адрес клиента для завершения в формате 'ip:port', например '127.0.0.1:12345'."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r_admin = aioredis.Redis(decode_responses=True)
+    r_victim = aioredis.Redis()
+
+    # Получаем адрес соединения жертвы
+    info = await r_victim.client_info()
+    addr = info["addr"]
+
+    # Завершаем соединение
+    result = await r_admin.client_kill(addr)
+    print(result)  # True
+
+    await r_admin.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_kill_filter",
+    description: "Завершает одно или несколько клиентских соединений, удовлетворяющих заданным фильтрам. Более гибкий аналог client_kill: позволяет фильтровать по ID, типу, адресу, пользователю ACL и пропускать текущее соединение. Возвращает количество убитых соединений.",
+    syntax: "await redis.client_kill_filter(_id=None, _type=None, addr=None, laddr=None, skipme=None, user=None)",
+    arguments: [
+      {
+        name: "_id",
+        description: "ID клиента для завершения (CLIENT KILL ID)."
+      },
+      {
+        name: "_type",
+        description: "Тип клиента: 'normal', 'replica', 'pubsub', 'multi'."
+      },
+      {
+        name: "addr",
+        description: "Удалённый адрес клиента в формате ip:port."
+      },
+      {
+        name: "laddr",
+        description: "Локальный адрес (адрес сервера), на который подключён клиент."
+      },
+      {
+        name: "skipme",
+        description: "Если True — текущее соединение не завершается, даже если попадает под фильтр."
+      },
+      {
+        name: "user",
+        description: "ACL-имя пользователя — завершить все соединения данного пользователя."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Завершить все pubsub-соединения, кроме текущего
+    killed = await r.client_kill_filter(_type="pubsub", skipme=True)
+    print(f"Завершено соединений: {killed}")
+
+    # Завершить конкретного пользователя ACL
+    killed = await r.client_kill_filter(user="old_service")
+    print(f"Завершено: {killed}")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_list",
+    description: "Возвращает список словарей с информацией обо всех подключённых клиентах: ID, адрес, имя, флаги, использование памяти, последняя команда и другие метрики. Можно фильтровать по типу (_type) или конкретным ID. Незаменим для мониторинга и аудита соединений.",
+    syntax: "await redis.client_list(_type=None, client_ids=[])",
+    arguments: [
+      {
+        name: "_type",
+        description: "Фильтр по типу клиента: 'normal', 'replica', 'pubsub', 'multi'. Если None — возвращаются все."
+      },
+      {
+        name: "client_ids",
+        description: "Список числовых ID клиентов для фильтрации. Если пуст — возвращаются все (или только соответствующие _type)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Все соединения
+    clients = await r.client_list()
+    for c in clients:
+        print(c["id"], c["addr"], c["cmd"])
+
+    # Только обычные (не pubsub/replica) клиенты
+    normal = await r.client_list(_type="normal")
+    print(f"Normal clients: {len(normal)}")
+
+    # По конкретным ID
+    my_id = await r.client_id()
+    info = await r.client_list(client_ids=[my_id])
+    print(info[0]["name"])
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_no_evict",
+    description: "Включает или отключает защиту текущего соединения от вытеснения при нехватке памяти. Когда on='ON', Redis не закроет это соединение в рамках политики maxmemory-eviction. Полезно для привилегированных административных или мониторинговых подключений, которые должны оставаться активными даже под давлением памяти.",
+    syntax: "await redis.client_no_evict(on)",
+    arguments: [
+      {
+        name: "on",
+        description: "Строка 'ON' для включения защиты от вытеснения или 'OFF' для её отключения."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Защитить это соединение от вытеснения по памяти
+    await r.client_no_evict("ON")
+
+    # Выполняем критичные операции...
+    await r.set("important", "value")
+
+    # Снять защиту
+    await r.client_no_evict("OFF")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_no_touch",
+    description: "Запрещает Redis обновлять LRU/LFU-счётчик последнего обращения для ключей, которые читает данное соединение. Когда on='ON', команды чтения (GET, HGET и т.д.) не влияют на eviction-приоритет ключей. Применяется в сценариях фонового анализа данных, где не хочется искажать частоту использования рабочими ключами.",
+    syntax: "await redis.client_no_touch(on)",
+    arguments: [
+      {
+        name: "on",
+        description: "Строка 'ON' — не обновлять LRU/LFU при чтении. 'OFF' — вернуть стандартное поведение."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.set("hot_key", "data")
+
+    # Читаем ключи без обновления LRU-статистики
+    await r.client_no_touch("ON")
+    value = await r.get("hot_key")  # LRU не сдвигается
+    print(value)  # 'data'
+
+    await r.client_no_touch("OFF")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_pause",
+    description: "Приостанавливает выполнение команд от всех клиентов (или только записей) на заданное число миллисекунд. Используется для выполнения управляющих операций без риска гонки данных: переключение реплики, создание согласованного снимка, плановое обслуживание. Клиенты ждут в очереди и продолжают работу после паузы.",
+    syntax: "await redis.client_pause(timeout)",
+    arguments: [
+      {
+        name: "timeout",
+        description: "Длительность паузы в миллисекундах. Все клиенты будут заблокированы на этот период."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+import asyncio
+
+async def main():
+    r_admin = aioredis.Redis()
+
+    # Приостановить всех клиентов на 2 секунды
+    await r_admin.client_pause(2000)
+
+    # Пока клиенты ждут — делаем согласованный снимок
+    await r_admin.bgsave()
+
+    # Снять паузу досрочно
+    await r_admin.client_unpause()
+
+    await r_admin.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_reply",
+    description: "Управляет тем, отправляет ли сервер ответы на команды текущего соединения. Режим 'OFF' отключает ответы (экономит трафик при массовой записи без контроля результата), 'SKIP' пропускает ответ только на следующую команду, 'ON' возвращает нормальное поведение. Применяется в высокопроизводительных write-intensive сценариях.",
+    syntax: "await redis.client_reply(reply)",
+    arguments: [
+      {
+        name: "reply",
+        description: "Режим ответов: 'ON' (по умолчанию), 'OFF' (отключить все ответы), 'SKIP' (пропустить ответ на следующую команду)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Пропустить ответ только на следующую SET
+    await r.client_reply("SKIP")
+    await r.set("k", "v")  # ответ не придёт
+
+    # Отключить ответы на все команды (fire-and-forget запись)
+    await r.client_reply("OFF")
+    for i in range(1000):
+        await r.set(f"key:{i}", i)  # ответы не ожидаются
+
+    # Вернуть нормальный режим
+    await r.client_reply("ON")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_setinfo",
+    description: "Устанавливает метаданные клиентской библиотеки для текущего соединения: имя и версию клиента. Эти данные отображаются в CLIENT LIST и CLIENT INFO. Позволяет операторам Redis видеть, какие версии библиотек используют соединения — полезно при отладке и управлении зависимостями.",
+    syntax: "await redis.client_setinfo(lib_name=None, lib_version=None)",
+    arguments: [
+      {
+        name: "lib_name",
+        description: "Имя клиентской библиотеки, например 'redis-py' или 'my-app'."
+      },
+      {
+        name: "lib_version",
+        description: "Версия библиотеки, например '5.0.1'."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.client_setinfo(lib_name="my-service", lib_version="2.3.0")
+
+    info = await r.client_info()
+    print(info.get("lib-name"))     # 'my-service'
+    print(info.get("lib-ver"))      # '2.3.0'
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_setname",
+    description: "Назначает имя текущему клиентскому соединению. Имя отображается в CLIENT LIST, CLIENT INFO и client_getname. Допустимы только ASCII-символы без пробелов. Рекомендуется устанавливать осмысленное имя (имя сервиса, роли воркера) для упрощения диагностики и мониторинга.",
+    syntax: "await redis.client_setname(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя соединения — строка из ASCII-символов без пробелов. Пустая строка сбрасывает имя."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+import os
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Назвать соединение по имени сервиса и PID
+    conn_name = f"payment-worker-{os.getpid()}"
+    await r.client_setname(conn_name)
+
+    print(await r.client_getname())  # 'payment-worker-12345'
+
+    # Сброс имени
+    await r.client_setname("")
+    print(await r.client_getname())  # None
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_tracking",
+    description: "Управляет клиентским кэшированием через серверное отслеживание ключей (CLIENT TRACKING). В режиме on=True Redis уведомляет клиента при изменении ключей, которые он читал. Поддерживает broadcast-режим (bcast), фильтрацию по префиксам, opt-in/opt-out для отдельных команд. Основа реализации клиентского кэша с инвалидацией.",
+    syntax: "await redis.client_tracking(on, redirect=None, prefixes=[], bcast=False, optin=False, optout=False, noloop=False)",
+    arguments: [
+      {
+        name: "on",
+        description: "True — включить tracking, False — выключить."
+      },
+      {
+        name: "redirect",
+        description: "ID другого клиента, которому пересылаются инвалидационные сообщения (для RESP2-соединений)."
+      },
+      {
+        name: "prefixes",
+        description: "Список префиксов ключей для фильтрации в broadcast-режиме."
+      },
+      {
+        name: "bcast",
+        description: "Если True — broadcast-режим: уведомления по всем совпадающим префиксам, без таблицы отслеживания."
+      },
+      {
+        name: "optin",
+        description: "Если True — отслеживаются только ключи, явно помеченные CLIENT CACHING yes."
+      },
+      {
+        name: "optout",
+        description: "Если True — отслеживаются все ключи, кроме помеченных CLIENT CACHING no."
+      },
+      {
+        name: "noloop",
+        description: "Если True — не посылать инвалидацию самому себе при собственной записи."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r_data = aioredis.Redis(decode_responses=True)
+    r_inval = aioredis.Redis(decode_responses=True)
+
+    inval_id = await r_inval.client_id()
+
+    # Включить tracking с перенаправлением инвалидаций
+    await r_data.client_tracking(
+        on=True,
+        redirect=inval_id,
+        bcast=True,
+        prefixes=["user:", "order:"],
+        noloop=True,
+    )
+
+    await r_data.get("user:42")   # ключ теперь отслеживается
+
+    # r_inval получит инвалидационное сообщение при изменении user:42
+    await r_data.client_tracking(on=False)
+
+    await r_data.aclose()
+    await r_inval.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_trackinginfo",
+    description: "Возвращает словарь с информацией о текущем состоянии client tracking для данного соединения: включён ли tracking, режим (optin/optout/bcast), список префиксов, количество отслеживаемых ключей и ID клиента для перенаправления. Полезен для диагностики клиентского кэша.",
+    syntax: "await redis.client_trackinginfo()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # До включения tracking
+    info = await r.client_trackinginfo()
+    print(info["flags"])    # ['off']
+    print(info["prefixes"]) # []
+
+    # Включить broadcast-tracking
+    await r.client_tracking(on=True, bcast=True, prefixes=["cache:"])
+    info = await r.client_trackinginfo()
+    print(info["flags"])    # ['on', 'bcast']
+    print(info["prefixes"]) # ['cache:']
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_unblock",
+    description: "Разблокирует клиента, заблокированного командой BLPOP, BRPOP, BZPOPMIN и другими блокирующими командами. С error=True клиент получит ответ об ошибке; без него — пустой ответ (как при таймауте). Используется для принудительного завершения зависших воркеров при плановом останове.",
+    syntax: "await redis.client_unblock(client_id, error=False)",
+    arguments: [
+      {
+        name: "client_id",
+        description: "Числовой ID клиента, который нужно разблокировать (получите через client_id())."
+      },
+      {
+        name: "error",
+        description: "Если True — заблокированному клиенту вернётся ошибка UNBLOCKED вместо пустого ответа."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+import asyncio
+
+async def blocked_worker(r):
+    print("Воркер ждёт задачу...")
+    result = await r.blpop("jobs", timeout=0)  # ждём бесконечно
+    print(f"Результат: {result}")  # None — разблокирован без ошибки
+
+async def supervisor(r_admin, worker_id):
+    await asyncio.sleep(1)
+    # Разблокировать воркер при плановом останове
+    await r_admin.client_unblock(worker_id)
+
+async def main():
+    r_worker = aioredis.Redis()
+    r_admin = aioredis.Redis()
+    worker_id = await r_worker.client_id()
+    await asyncio.gather(blocked_worker(r_worker), supervisor(r_admin, worker_id))
+    await r_worker.aclose()
+    await r_admin.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.client_unpause",
+    description: "Немедленно снимает паузу, установленную командой CLIENT PAUSE, и возобновляет обработку команд от всех заблокированных клиентов. Используется для досрочного завершения плановой паузы после завершения управляющей операции (резервная копия, failover).",
+    syntax: "await redis.client_unpause()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Поставить паузу на 30 секунд
+    await r.client_pause(30000)
+
+    # Выполняем задачу, требующую согласованности
+    await r.bgsave()
+
+    # Досрочно снять паузу
+    await r.client_unpause()
+    print("Клиенты возобновили работу")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.cluster",
+    description: "Универсальный метод для отправки произвольных подкоманд CLUSTER: CLUSTER INFO, CLUSTER NODES, CLUSTER MYID, CLUSTER MEET и других. Возвращает сырой ответ сервера. Используется для управления топологией кластера и получения диагностики напрямую без специализированных методов.",
+    syntax: "await redis.cluster(command, *args, **kwargs)",
+    arguments: [
+      {
+        name: "command",
+        description: "Подкоманда CLUSTER в верхнем регистре, например 'INFO', 'NODES', 'MYID', 'MEET', 'RESET'."
+      },
+      {
+        name: "*args",
+        description: "Дополнительные аргументы подкоманды. Например, для CLUSTER MEET: ip, port."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Общая информация о кластере
+    info = await r.cluster("INFO")
+    print(info["cluster_enabled"])       # 1
+    print(info["cluster_state"])         # 'ok'
+    print(info["cluster_slots_assigned"])  # 16384
+
+    # ID текущего узла
+    myid = await r.cluster("MYID")
+    print(myid)
+
+    # Список узлов кластера
+    nodes = await r.cluster("NODES")
+    print(nodes)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.command",
+    description: "Возвращает список словарей с описанием всех команд Redis, поддерживаемых сервером: имя, арность, флаги (readonly, write, fast и др.), смещения ключей и шаг. Соответствует команде COMMAND. Используется для интроспекции возможностей сервера и построения middleware.",
+    syntax: "await redis.command()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    commands = await r.command()
+
+    # Информация о команде GET
+    get_info = commands.get("get")
+    if get_info:
+        print(get_info["name"])    # 'get'
+        print(get_info["arity"])   # 2
+        print(get_info["flags"])   # ['readonly', 'fast']
+
+    # Сколько команд поддерживает сервер
+    print(f"Всего команд: {len(commands)}")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.command_count",
+    description: "Возвращает общее количество команд, поддерживаемых сервером Redis. Соответствует команде COMMAND COUNT. Полезен для быстрой проверки версии возможностей сервера без загрузки полного списка через command().",
+    syntax: "await redis.command_count()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    count = await r.command_count()
+    print(f"Redis поддерживает {count} команд")
+    # Redis 7.x: ~246 команд
+
+    # Используем для быстрой проверки возможностей сервера
+    if count >= 200:
+        print("Redis 6.0+ — поддерживается ACL и client tracking")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.command_docs",
+    description: "Возвращает документацию по указанным командам Redis: описание, аргументы, флаги, с какой версии доступна команда и ссылки на подкоманды. Соответствует COMMAND DOCS (Redis 7.0+). Если аргументы не переданы — возвращает документацию по всем командам.",
+    syntax: "await redis.command_docs(*commands)",
+    arguments: [
+      {
+        name: "*commands",
+        description: "Имена команд Redis, для которых нужна документация. Например, 'GET', 'SET', 'XADD'. Если не указаны — возвращается документация по всем командам."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    docs = await r.command_docs("SET", "GET")
+
+    set_doc = docs.get("set", {})
+    print(set_doc.get("summary"))   # краткое описание SET
+    print(set_doc.get("since"))     # с какой версии Redis
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.command_getkeys",
+    description: "Возвращает список ключей, которые затрагивает указанная команда с её аргументами. Соответствует COMMAND GETKEYS. Используется для маршрутизации в кластере или проверки того, на какие ключи влияет составная команда (EVAL, XREAD и другие нетривиальные случаи).",
+    syntax: "await redis.command_getkeys(command, *args)",
+    arguments: [
+      {
+        name: "command",
+        description: "Имя команды Redis, для которой нужно определить ключи, например 'MSET', 'EVAL'."
+      },
+      {
+        name: "*args",
+        description: "Аргументы команды в том виде, в котором они были бы переданы серверу."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Какие ключи затрагивает MSET?
+    keys = await r.command_getkeys("MSET", "k1", "v1", "k2", "v2")
+    print(keys)  # ['k1', 'k2']
+
+    # Ключи для EVAL-скрипта
+    keys = await r.command_getkeys("EVAL", "return 1", 2, "key1", "key2", "arg1")
+    print(keys)  # ['key1', 'key2']
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.command_info",
+    description: "Возвращает базовую техническую информацию о конкретных командах Redis: арность, флаги (readonly, write, fast и др.) и смещения ключей. Соответствует COMMAND INFO. В отличие от command_docs, не содержит текстовых описаний — только структурные метаданные.",
+    syntax: "await redis.command_info(*commands)",
+    arguments: [
+      {
+        name: "*commands",
+        description: "Имена команд Redis. Например, 'GET', 'HSET', 'ZADD'. Регистр не важен."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    info = await r.command_info("GET", "SET")
+
+    for cmd_info in info:
+        name, arity, flags, *_ = cmd_info
+        print(f"{name}: arity={arity}, flags={flags}")
+    # get: arity=2, flags=['readonly', 'fast']
+    # set: arity=-3, flags=['write', 'denyoom']
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.command_list",
+    description: "Возвращает список имён всех команд Redis или подмножество, отфильтрованное по модулю, категории ACL или шаблону имени (Redis 7.0+). Соответствует COMMAND LIST. Удобен для аудита доступных команд на сервере и построения middleware.",
+    syntax: "await redis.command_list(filter_by=None, value=None)",
+    arguments: [
+      {
+        name: "filter_by",
+        description: "Тип фильтра: 'MODULE' (по модулю), 'ACLCAT' (по категории ACL), 'PATTERN' (по шаблону имени)."
+      },
+      {
+        name: "value",
+        description: "Значение фильтра: имя модуля, категория ACL (например, 'string', 'hash') или glob-шаблон ('z*')."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Все команды
+    all_cmds = await r.command_list()
+    print(f"Всего команд: {len(all_cmds)}")
+
+    # Только команды категории string
+    string_cmds = await r.command_list(filter_by="ACLCAT", value="string")
+    print(string_cmds)  # ['append', 'decr', 'get', 'set', ...]
+
+    # Команды, начинающиеся с z (sorted set)
+    z_cmds = await r.command_list(filter_by="PATTERN", value="z*")
+    print(z_cmds)  # ['zadd', 'zcard', 'zrange', ...]
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.config_get",
+    description: "Возвращает текущие значения параметров конфигурации Redis, соответствующих glob-шаблону. Соответствует CONFIG GET. Позволяет читать настройки без перезапуска сервера: maxmemory, hz, bind, loglevel и другие.",
+    syntax: "await redis.config_get(parameter='*')",
+    arguments: [
+      {
+        name: "parameter",
+        description: "Glob-шаблон имени параметра(ов). По умолчанию '*' — вернуть все параметры. Например, 'max*' вернёт все параметры, начинающиеся с max."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Текущий лимит памяти
+    cfg = await r.config_get("maxmemory")
+    print(cfg)  # {'maxmemory': '0'}
+
+    # Все параметры, связанные с памятью
+    mem_cfg = await r.config_get("max*")
+    for key, val in mem_cfg.items():
+        print(f"{key}: {val}")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.config_resetstat",
+    description: "Сбрасывает статистические счётчики сервера Redis: количество обработанных команд, hits/misses кэша, количество соединений и другие. Соответствует CONFIG RESETSTAT. Удобен перед началом бенчмарка или после плановых работ, чтобы получить чистую статистику.",
+    syntax: "await redis.config_resetstat()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Статистика до сброса
+    info = await r.info("stats")
+    print(info["total_commands_processed"])
+
+    # Сбрасываем статистику
+    await r.config_resetstat()
+
+    # Счётчики обнуляются
+    info = await r.info("stats")
+    print(info["total_commands_processed"])  # 1 (только CONFIG RESETSTAT)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.config_rewrite",
+    description: "Перезаписывает файл redis.conf на диске, применяя все изменения, сделанные через CONFIG SET в текущей сессии. Соответствует CONFIG REWRITE. Требует, чтобы Redis был запущен с указанием файла конфигурации. Изменения, которых нет в файле, добавляются в конец.",
+    syntax: "await redis.config_rewrite()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Изменяем параметр в памяти
+    await r.config_set("hz", 20)
+
+    # Сохраняем изменения в redis.conf
+    result = await r.config_rewrite()
+    print(result)  # True
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.config_set",
+    description: "Устанавливает один или несколько параметров конфигурации Redis без перезапуска сервера. Соответствует CONFIG SET. С Redis 7.0+ поддерживает передачу нескольких пар parameter=value за один вызов. Изменения вступают в силу немедленно, но не сохраняются в redis.conf — используйте config_rewrite для записи на диск.",
+    syntax: "await redis.config_set(parameter, value=None)",
+    arguments: [
+      {
+        name: "parameter",
+        description: "Имя параметра или словарь {parameter: value} для множественной установки (Redis 7.0+)."
+      },
+      {
+        name: "value",
+        description: "Новое значение параметра. Не указывается, если parameter — словарь."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Установить один параметр
+    await r.config_set("maxmemory-policy", "allkeys-lru")
+
+    # Установить несколько параметров сразу (Redis 7.0+)
+    await r.config_set({"hz": 20, "loglevel": "notice"})
+
+    # Проверить результат
+    cfg = await r.config_get("hz")
+    print(cfg)  # {'hz': '20'}
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.copy",
+    description: "Копирует значение ключа source в ключ destination. По умолчанию не перезаписывает существующий destination — используйте replace=True для замены. Можно скопировать ключ в другую базу данных через параметр db. Возвращает True при успехе, False если destination уже существует и replace=False.",
+    syntax: "await redis.copy(source, destination, db=None, replace=False)",
+    arguments: [
+      {
+        name: "source",
+        description: "Имя исходного ключа, значение которого копируется."
+      },
+      {
+        name: "destination",
+        description: "Имя ключа-назначения, в который записывается копия."
+      },
+      {
+        name: "db",
+        description: "Номер базы данных назначения. Если None — копирование в рамках текущей БД."
+      },
+      {
+        name: "replace",
+        description: "Если True — перезаписать destination, если он существует. По умолчанию False."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.set("original", "hello")
+
+    # Копировать в той же БД
+    ok = await r.copy("original", "backup")
+    print(ok)  # True
+
+    # Повторная копия без replace — не перезапишет
+    ok = await r.copy("original", "backup")
+    print(ok)  # False
+
+    # С заменой
+    ok = await r.copy("original", "backup", replace=True)
+    print(ok)  # True
+
+    # Скопировать в БД №1
+    await r.copy("original", "original", db=1, replace=True)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.dbsize",
+    description: "Возвращает количество ключей в текущей базе данных Redis. Соответствует команде DBSIZE. Операция O(1) — счётчик хранится в памяти. Используется для мониторинга роста БД и оценки нагрузки на память.",
+    syntax: "await redis.dbsize()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    await r.set("a", 1)
+    await r.set("b", 2)
+    await r.set("c", 3)
+
+    size = await r.dbsize()
+    print(f"Ключей в БД: {size}")  # 3
+
+    # Мониторинг через INFO как альтернатива
+    info = await r.info("keyspace")
+    print(info)  # {'db0': {'keys': 3, 'expires': 0, ...}}
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.debug_object",
+    description: "Возвращает низкоуровневую отладочную информацию о ключе: тип внутреннего представления (encoding), serializedlength (размер в RDB), значение LRU-счётчика, refcount. Соответствует DEBUG OBJECT. Полезен при оптимизации памяти и изучении внутренней структуры Redis.",
+    syntax: "await redis.debug_object(key)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ, для которого запрашивается отладочная информация."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.set("counter", 42)
+    info = await r.debug_object("counter")
+
+    # Пример: 'Value at:0x... refcount:1 encoding:int serializedlength:1 lru:...'
+    print(info)
+
+    await r.hset("data", mapping={"a": 1, "b": 2})
+    print(await r.debug_object("data"))
+    # encoding:listpack (при малом количестве полей)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.debug_segfault",
+    description: "Намеренно вызывает segmentation fault в процессе Redis, что приводит к немедленному аварийному завершению сервера. Соответствует DEBUG SEGFAULT. Используется исключительно в тестировании — для проверки механизмов перезапуска, репликации при сбое и persistence. Никогда не вызывайте в production.",
+    syntax: "await redis.debug_segfault()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+# ВНИМАНИЕ: немедленно убивает процесс Redis!
+# Только для тестовых окружений.
+
+async def test_crash_recovery():
+    r = aioredis.Redis()
+    try:
+        await r.debug_segfault()  # Redis упадёт
+    except Exception:
+        pass  # соединение оборвётся
+
+    # Проверяем, что Redis перезапустился (supervisor/systemd)
+    import asyncio
+    await asyncio.sleep(2)
+    r2 = aioredis.Redis()
+    print(await r2.ping())  # True — сервер восстановился
+    await r2.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.decr",
+    description: "Уменьшает целочисленное значение ключа на 1 (или на amount). Если ключ не существует — создаёт его со значением 0 и затем декрементирует. Атомарная операция. Возвращает новое значение. Эквивалентен decrby(name, 1). Используется в счётчиках, лимитах и rate limiting.",
+    syntax: "await redis.decr(name, amount=1)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, значение которого нужно уменьшить."
+      },
+      {
+        name: "amount",
+        description: "Величина декремента. По умолчанию 1."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    await r.set("credits", 10)
+
+    # Уменьшить на 1
+    val = await r.decr("credits")
+    print(val)  # 9
+
+    # Уменьшить на 3
+    val = await r.decr("credits", amount=3)
+    print(val)  # 6
+
+    # Создать ключ и декрементировать (0 - 1 = -1)
+    val = await r.decr("new_counter")
+    print(val)  # -1
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.decrby",
+    description: "Уменьшает целочисленное значение ключа на заданную величину amount. Атомарная операция. Если ключ не существует — создаёт его со значением 0, затем уменьшает. Аналогичен decr, но явно принимает шаг декремента. Отрицательный amount превращается в инкремент.",
+    syntax: "await redis.decrby(name, amount=1)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, целочисленное значение которого нужно уменьшить."
+      },
+      {
+        name: "amount",
+        description: "Величина, на которую уменьшается значение. Отрицательное число увеличивает значение."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    await r.set("tokens", 100)
+
+    # Списать 25 токенов
+    remaining = await r.decrby("tokens", 25)
+    print(remaining)  # 75
+
+    # Отрицательный amount = инкремент
+    remaining = await r.decrby("tokens", -10)
+    print(remaining)  # 85
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.delete",
+    description: "Удаляет один или несколько ключей. Возвращает количество фактически удалённых ключей (несуществующие ключи игнорируются). Соответствует команде DEL. Операция O(N) по числу удаляемых ключей. Для асинхронного удаления больших ключей используйте unlink.",
+    syntax: "await redis.delete(*names)",
+    arguments: [
+      {
+        name: "*names",
+        description: "Один или несколько ключей для удаления. Несуществующие ключи не вызывают ошибку."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    await r.set("a", 1)
+    await r.set("b", 2)
+    await r.set("c", 3)
+
+    # Удалить несколько ключей за раз
+    deleted = await r.delete("a", "b", "nonexistent")
+    print(deleted)  # 2 (nonexistent не считается)
+
+    # Удалить один ключ
+    await r.delete("c")
+
+    print(await r.exists("a", "b", "c"))  # 0
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.dump",
+    description: "Сериализует значение ключа в бинарный формат RDB и возвращает его как байтовую строку. Соответствует DUMP. Полученные данные можно восстановить командой RESTORE на том же или другом сервере. Используется для точечной миграции ключей или резервного копирования отдельных значений.",
+    syntax: "await redis.dump(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, значение которого нужно сериализовать. Возвращает None, если ключ не существует."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r_src = aioredis.Redis(db=0)
+    r_dst = aioredis.Redis(db=1)
+
+    await r_src.set("config", "production")
+
+    # Сериализовать значение
+    serialized = await r_src.dump("config")
+    print(type(serialized))  # <class 'bytes'>
+
+    # Восстановить на другой БД (TTL=0 — без истечения)
+    await r_dst.restore("config", 0, serialized, replace=True)
+    print(await r_dst.get("config"))  # b'production'
+
+    await r_src.aclose()
+    await r_dst.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.echo",
+    description: "Возвращает переданную строку обратно без изменений. Соответствует команде ECHO. Используется для проверки соединения с передачей данных, тестирования кодировки строк и отладки pipeline. В отличие от ping, echo подтверждает корректную передачу конкретного значения.",
+    syntax: "await redis.echo(value)",
+    arguments: [
+      {
+        name: "value",
+        description: "Строка или байты, которые сервер вернёт без изменений."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Проверка соединения с данными
+    response = await r.echo("hello Redis")
+    print(response)  # 'hello Redis'
+
+    # Проверка кодировки Unicode
+    response = await r.echo("Привет, мир!")
+    print(response)  # 'Привет, мир!'
+
+    # В pipeline
+    async with r.pipeline() as pipe:
+        pipe.echo("test-1")
+        pipe.echo("test-2")
+        results = await pipe.execute()
+    print(results)  # ['test-1', 'test-2']
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.eval",
+    description: "Выполняет Lua-скрипт на стороне сервера Redis. Скрипт атомарен — во время его выполнения никакие другие команды не обрабатываются. numkeys указывает, сколько из keys_and_args являются ключами (доступны в Lua как KEYS[]), остальные — аргументами (ARGV[]). Для повторного запуска одного скрипта используйте evalsha.",
+    syntax: "await redis.eval(script, numkeys, *keys_and_args)",
+    arguments: [
+      {
+        name: "script",
+        description: "Строка с Lua-кодом для выполнения на сервере."
+      },
+      {
+        name: "numkeys",
+        description: "Количество ключей в keys_and_args. Эти ключи будут доступны в Lua как KEYS[1], KEYS[2], ..."
+      },
+      {
+        name: "*keys_and_args",
+        description: "Сначала numkeys ключей (KEYS), затем произвольные аргументы (ARGV), доступные в Lua как ARGV[1], ARGV[2], ..."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Атомарный get-and-increment
+    script = """
+local val = redis.call('GET', KEYS[1])
+if val then
+    return redis.call('INCR', KEYS[1])
+else
+    return redis.call('SET', KEYS[1], ARGV[1])
+end
+"""
+    result = await r.eval(script, 1, "counter", "100")
+    print(result)  # 'OK' (первый запуск — SET)
+
+    result = await r.eval(script, 1, "counter", "100")
+    print(result)  # 101 (второй запуск — INCR)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.eval_ro",
+    description: "Выполняет Lua-скрипт в режиме только для чтения (Redis 7.0+). Аналог eval, но скрипт не может выполнять команды записи (SET, DEL и т.д.) — только read-only операции (GET, HGET, LRANGE и др.). Может выполняться на репликах. Используется для безопасного аналитического скриптинга.",
+    syntax: "await redis.eval_ro(script, numkeys, *keys_and_args)",
+    arguments: [
+      {
+        name: "script",
+        description: "Строка с Lua-кодом, содержащим только команды чтения."
+      },
+      {
+        name: "numkeys",
+        description: "Количество ключей в keys_and_args, доступных в Lua как KEYS[]."
+      },
+      {
+        name: "*keys_and_args",
+        description: "Ключи (KEYS[]) и аргументы (ARGV[]) для скрипта."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.set("price", "199")
+    await r.set("discount", "20")
+
+    # Read-only скрипт — безопасно для реплик
+    script = """
+local price = tonumber(redis.call('GET', KEYS[1]))
+local discount = tonumber(redis.call('GET', KEYS[2]))
+return price - discount
+"""
+    result = await r.eval_ro(script, 2, "price", "discount")
+    print(result)  # 179
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.evalsha",
+    description: "Выполняет кэшированный Lua-скрипт по его SHA1-хешу. Скрипт должен быть предварительно загружен через script_load или уже выполнен через eval. Экономит трафик: передаётся 40-байтный хеш вместо тела скрипта. При отсутствии скрипта в кэше выбрасывает NOSCRIPT — поймайте и вызовите eval как fallback.",
+    syntax: "await redis.evalsha(sha, numkeys, *keys_and_args)",
+    arguments: [
+      {
+        name: "sha",
+        description: "SHA1-хеш скрипта, ранее загруженного через script_load или eval."
+      },
+      {
+        name: "numkeys",
+        description: "Количество ключей среди keys_and_args (KEYS[])."
+      },
+      {
+        name: "*keys_and_args",
+        description: "Ключи (KEYS[]) и аргументы (ARGV[]) для скрипта."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+from redis.exceptions import NoScriptError
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    script = "return redis.call('INCR', KEYS[1])"
+
+    # Загрузить скрипт и получить SHA
+    sha = await r.script_load(script)
+
+    # Вызывать по хешу — без передачи тела
+    val = await r.evalsha(sha, 1, "hits")
+    print(val)  # 1
+
+    # Обработка NOSCRIPT при отсутствии скрипта в кэше
+    try:
+        await r.evalsha("nonexistentsha" * 3, 0)
+    except NoScriptError:
+        await r.eval(script, 1, "hits")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.evalsha_ro",
+    description: "Выполняет кэшированный Lua-скрипт только для чтения по SHA1-хешу (Redis 7.0+). Объединяет преимущества evalsha (нет передачи тела) и eval_ro (безопасен для реплик, запрещает запись). Используется для повторяемых аналитических скриптов на read-replica серверах.",
+    syntax: "await redis.evalsha_ro(sha, numkeys, *keys_and_args)",
+    arguments: [
+      {
+        name: "sha",
+        description: "SHA1-хеш ранее загруженного read-only Lua-скрипта."
+      },
+      {
+        name: "numkeys",
+        description: "Количество ключей среди keys_and_args (KEYS[])."
+      },
+      {
+        name: "*keys_and_args",
+        description: "Ключи (KEYS[]) и аргументы (ARGV[]) для скрипта."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    script = "return redis.call('GET', KEYS[1])"
+    sha = await r.script_load(script)
+
+    await r.set("status", "active")
+
+    # Выполнить кэшированный read-only скрипт
+    result = await r.evalsha_ro(sha, 1, "status")
+    print(result)  # 'active'
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.exec",
+    description: "Выполняет все команды, накопленные в транзакции MULTI/EXEC, и возвращает список их результатов. В клиенте redis-py транзакции реализованы через Pipeline с параметром transaction=True — exec() вызывается автоматически при выходе из async with. Явный вызов exec() нужен при ручном управлении pipeline.",
+    syntax: "await redis.exec()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Транзакция через async with (рекомендуется)
+    async with r.pipeline(transaction=True) as pipe:
+        pipe.set("balance", 100)
+        pipe.incr("balance", 50)
+        pipe.get("balance")
+        results = await pipe.execute()
+    print(results)  # [True, 150, '150']
+
+    # Ручное управление транзакцией
+    pipe = r.pipeline(transaction=True)
+    await pipe.set("x", 1)
+    await pipe.set("y", 2)
+    results = await pipe.exec()
+    print(results)  # [True, True]
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.exists",
+    description: "Проверяет существование одного или нескольких ключей. Возвращает количество ключей, которые существуют. Если один ключ передан несколько раз — считается столько раз, сколько он передан. Для проверки одного ключа используйте результат > 0.",
+    syntax: "await redis.exists(*names)",
+    arguments: [
+      {
+        name: "*names",
+        description: "Один или несколько имён ключей для проверки существования."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    await r.set("a", 1)
+    await r.set("b", 2)
+
+    # Проверить один ключ
+    print(await r.exists("a"))           # 1
+    print(await r.exists("missing"))     # 0
+
+    # Проверить несколько ключей
+    print(await r.exists("a", "b", "missing"))  # 2
+
+    # Один ключ дважды считается дважды
+    print(await r.exists("a", "a"))     # 2
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.expire",
+    description: "Устанавливает TTL для ключа в секундах. По истечении времени ключ автоматически удаляется. Флаги NX/XX/GT/LT (Redis 7.0+) позволяют условно применять TTL: только если его нет, только если он есть, только если новый TTL больше/меньше текущего. Возвращает True при успехе.",
+    syntax: "await redis.expire(name, time, nx=False, xx=False, gt=False, lt=False)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, для которого устанавливается TTL."
+      },
+      {
+        name: "time",
+        description: "TTL в секундах. Может быть int или timedelta."
+      },
+      {
+        name: "nx",
+        description: "Установить TTL только если у ключа ещё нет срока истечения."
+      },
+      {
+        name: "xx",
+        description: "Установить TTL только если у ключа уже есть срок истечения."
+      },
+      {
+        name: "gt",
+        description: "Установить TTL только если новый TTL больше текущего."
+      },
+      {
+        name: "lt",
+        description: "Установить TTL только если новый TTL меньше текущего."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+from datetime import timedelta
+
+async def main():
+    r = aioredis.Redis()
+
+    await r.set("session", "token")
+
+    # Установить TTL 60 секунд
+    await r.expire("session", 60)
+
+    # Продлить только если новый TTL больше (Redis 7.0+)
+    await r.expire("session", 3600, gt=True)
+
+    # Установить TTL только если его ещё нет
+    await r.expire("session", 300, nx=True)
+
+    # Проверить остаток
+    print(await r.ttl("session"))  # ~3600
+
+    # С timedelta
+    await r.expire("session", timedelta(hours=1))
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.expireat",
+    description: "Устанавливает абсолютное время истечения ключа в виде Unix-timestamp (секунды) или объекта datetime. Поддерживает те же условные флаги NX/XX/GT/LT, что и expire (Redis 7.0+). Возвращает True при успехе. Удобен для задания точного момента удаления — например, конца суток или даты окончания акции.",
+    syntax: "await redis.expireat(name, when, nx=False, xx=False, gt=False, lt=False)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, для которого задаётся абсолютное время истечения."
+      },
+      {
+        name: "when",
+        description: "Unix-timestamp (int/float) или объект datetime, задающий момент удаления ключа."
+      },
+      {
+        name: "nx",
+        description: "Применить только если TTL ещё не установлен."
+      },
+      {
+        name: "xx",
+        description: "Применить только если TTL уже установлен."
+      },
+      {
+        name: "gt",
+        description: "Применить только если новый момент истечения позже текущего."
+      },
+      {
+        name: "lt",
+        description: "Применить только если новый момент истечения раньше текущего."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+from datetime import datetime, timezone
+
+async def main():
+    r = aioredis.Redis()
+
+    await r.set("promo", "SUMMER2024")
+
+    # Истечёт в конкретный момент времени
+    expiry = datetime(2024, 9, 1, 0, 0, 0, tzinfo=timezone.utc)
+    await r.expireat("promo", expiry)
+
+    # Через Unix-timestamp
+    import time
+    await r.expireat("promo", int(time.time()) + 86400)
+
+    # Только если текущий deadline позже (GT)
+    await r.expireat("promo", expiry, gt=True)
+
+    print(await r.ttl("promo"))
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.expiretime",
+    description: "Возвращает абсолютное время истечения ключа в виде Unix-timestamp (секунды). Соответствует EXPIRETIME (Redis 7.0+). Возвращает -1 если ключ существует, но TTL не установлен; -2 если ключ не существует. Удобен для отображения точного момента удаления без вычитания из текущего времени.",
+    syntax: "await redis.expiretime(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, для которого нужно получить абсолютный timestamp истечения."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+from datetime import datetime, timezone
+
+async def main():
+    r = aioredis.Redis()
+
+    await r.set("token", "abc")
+    await r.expire("token", 3600)
+
+    ts = await r.expiretime("token")
+    expire_dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+    print(f"Истечёт: {expire_dt}")
+
+    # Без TTL
+    await r.set("permanent", "value")
+    print(await r.expiretime("permanent"))  # -1
+
+    # Несуществующий ключ
+    print(await r.expiretime("ghost"))      # -2
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.failover",
+    description: "Инициирует управляемый failover: master добровольно передаёт роль реплике. С параметром to можно выбрать конкретную реплику; force=True форсирует переключение даже если реплика не полностью синхронизирована; timeout ограничивает время ожидания подтверждения (мс). Требует Redis 6.2+ с репликацией.",
+    syntax: "await redis.failover(to=None, force=False, timeout=None)",
+    arguments: [
+      {
+        name: "to",
+        description: "Адрес целевой реплики в формате 'host port'. Если None — Redis выбирает реплику автоматически."
+      },
+      {
+        name: "force",
+        description: "Если True — запустить failover даже при рассинхронизированной реплике."
+      },
+      {
+        name: "timeout",
+        description: "Максимальное время ожидания подтверждения от реплики в миллисекундах."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    # Подключение к текущему master
+    r = aioredis.Redis(host="master-host", port=6379)
+
+    # Плановый failover на конкретную реплику
+    await r.failover(to="replica-host 6379", timeout=5000)
+
+    # Аварийный failover без выбора реплики
+    await r.failover(force=True, timeout=3000)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.flushall",
+    description: "Удаляет все ключи из всех баз данных на сервере. С asynchronous=True (FLUSHALL ASYNC) удаление выполняется в фоновом потоке — команда возвращается немедленно. Используется для полного сброса состояния в тестах или при переинициализации сервера. Необратимо — все данные теряются.",
+    syntax: "await redis.flushall(asynchronous=False)",
+    arguments: [
+      {
+        name: "asynchronous",
+        description: "Если True — фоновое удаление (ASYNC), сервер не блокируется. Если False — синхронная очистка (по умолчанию)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    await r.set("key1", "v1")
+    await r.select(1)
+    await r.set("key2", "v2")
+
+    # Удалить всё из всех БД
+    await r.flushall()
+    print(await r.dbsize())  # 0
+
+    # Асинхронное удаление (не блокирует сервер)
+    await r.flushall(asynchronous=True)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.flushdb",
+    description: "Удаляет все ключи из текущей базы данных. С asynchronous=True выполняется в фоне. В отличие от flushall, затрагивает только текущую логическую БД (SELECT N). Необратимо. Типично используется в тестах для изоляции состояния между тест-кейсами.",
+    syntax: "await redis.flushdb(asynchronous=False)",
+    arguments: [
+      {
+        name: "asynchronous",
+        description: "Если True — фоновое удаление (ASYNC). Если False — синхронная очистка текущей БД."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+import pytest
+
+@pytest.fixture
+async def redis_client():
+    r = aioredis.Redis(db=15)  # тестовая БД
+    yield r
+    await r.flushdb()          # очистить после теста
+    await r.aclose()
+
+async def test_counter(redis_client):
+    await redis_client.set("counter", 0)
+    await redis_client.incr("counter")
+    assert await redis_client.get("counter") == b"1"`
+  },
+  {
+    name: "redis.asyncio.Redis.function_delete",
+    description: "Удаляет библиотеку функций Redis (FUNCTION DELETE, Redis 7.0+) со всеми её функциями с сервера. Соответствует команде FUNCTION DELETE. Операция необратима — все функции библиотеки удаляются. Для восстановления используйте function_load.",
+    syntax: "await redis.function_delete(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя библиотеки функций для удаления (то, которое задавалось при FUNCTION LOAD)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Проверить, что библиотека существует
+    libs = await r.function_list()
+    print([lib["library_name"] for lib in libs])
+
+    # Удалить библиотеку
+    await r.function_delete("mylib")
+
+    # Убедиться, что удалена
+    libs = await r.function_list()
+    print([lib["library_name"] for lib in libs])
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.function_dump",
+    description: "Сериализует все библиотеки функций сервера в бинарный формат RDB и возвращает байтовую строку. Соответствует FUNCTION DUMP (Redis 7.0+). Используется для резервного копирования функций и переноса между серверами в паре с function_restore.",
+    syntax: "await redis.function_dump()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r_src = aioredis.Redis()
+    r_dst = aioredis.Redis(port=6380)
+
+    # Сделать дамп всех функций
+    dump = await r_src.function_dump()
+    print(f"Размер дампа: {len(dump)} байт")
+
+    # Восстановить на другом сервере
+    await r_dst.function_restore(dump)
+
+    await r_src.aclose()
+    await r_dst.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.function_flush",
+    description: "Удаляет все библиотеки функций с сервера Redis (FUNCTION FLUSH, Redis 7.0+). С asynchronous=True выполняется асинхронно. Используется при полном сбросе состояния сервера или переходе на новую версию функций. Необратимо — все библиотеки удаляются.",
+    syntax: "await redis.function_flush(asynchronous=False)",
+    arguments: [
+      {
+        name: "asynchronous",
+        description: "Если True — асинхронное удаление (ASYNC). Если False — синхронное."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Удалить все библиотеки функций
+    await r.function_flush()
+    print(await r.function_list())  # []
+
+    # Асинхронное удаление
+    await r.function_flush(asynchronous=True)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.function_kill",
+    description: "Останавливает выполняющуюся в данный момент Lua-функцию Redis (FUNCTION KILL, Redis 7.0+). Работает только если функция не выполняла команды записи — иначе необходим SHUTDOWN NOSAVE. Используется для прерывания зависших или слишком долгих функций.",
+    syntax: "await redis.function_kill()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+import asyncio
+
+async def main():
+    r_exec = aioredis.Redis()
+    r_ctrl = aioredis.Redis()
+
+    # Запускаем «бесконечную» функцию в фоне
+    async def run_long():
+        try:
+            code = """#!lua name=looper
+redis.register_function('loop', function()
+    local i = 0
+    while true do i = i + 1 end
+end)"""
+            await r_exec.function_load(code, replace=True)
+            await r_exec.fcall("loop", 0)
+        except Exception as e:
+            print(f"Функция прервана: {e}")
+
+    task = asyncio.create_task(run_long())
+    await asyncio.sleep(0.1)
+
+    # Убить выполняющуюся функцию
+    await r_ctrl.function_kill()
+    await task
+
+    await r_exec.aclose()
+    await r_ctrl.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.function_list",
+    description: "Возвращает список библиотек функций, загруженных на сервере Redis (FUNCTION LIST, Redis 7.0+). Каждая запись содержит имя библиотеки, движок (Lua), список зарегистрированных функций с именами и флагами. С withcode=True включается исходный код библиотеки.",
+    syntax: "await redis.function_list(library_name=None, withcode=False)",
+    arguments: [
+      {
+        name: "library_name",
+        description: "Фильтр по имени библиотеки (glob-шаблон). Если None — возвращаются все библиотеки."
+      },
+      {
+        name: "withcode",
+        description: "Если True — включает исходный код каждой библиотеки в ответ."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Список всех библиотек
+    libs = await r.function_list()
+    for lib in libs:
+        print(lib["library_name"], [f["name"] for f in lib["functions"]])
+
+    # С исходным кодом
+    libs = await r.function_list(withcode=True)
+    for lib in libs:
+        print(lib.get("library_code", ""))
+
+    # Фильтр по имени
+    libs = await r.function_list(library_name="mylib")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.function_load",
+    description: "Загружает библиотеку функций на сервер Redis (FUNCTION LOAD, Redis 7.0+). Код должен содержать заголовок с именем библиотеки и движком (#!lua name=libname), а также вызовы redis.register_function(). С replace=True перезаписывает существующую библиотеку. Возвращает имя библиотеки.",
+    syntax: "await redis.function_load(code, replace=False)",
+    arguments: [
+      {
+        name: "code",
+        description: "Исходный код библиотеки с заголовком #!lua name=<libname> и вызовами redis.register_function()."
+      },
+      {
+        name: "replace",
+        description: "Если True — перезаписать существующую библиотеку с тем же именем. По умолчанию False."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Определить библиотеку с двумя функциями
+    code = """#!lua name=mylib
+
+redis.register_function('mget_upper', function(keys, args)
+    local results = {}
+    for _, key in ipairs(keys) do
+        local val = redis.call('GET', key)
+        table.insert(results, val and string.upper(val) or false)
+    end
+    return results
+end)
+
+redis.register_function('set_with_ttl', function(keys, args)
+    redis.call('SET', keys[1], args[1])
+    redis.call('EXPIRE', keys[1], args[2])
+    return 1
+end)
+"""
+    lib_name = await r.function_load(code, replace=True)
+    print(lib_name)  # 'mylib'
+
+    # Вызвать зарегистрированную функцию
+    await r.set("hello", "world")
+    result = await r.fcall("mget_upper", 1, "hello")
+    print(result)  # ['WORLD']
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.function_restore",
+    description: "Восстанавливает библиотеки функций из бинарного дампа, полученного через function_dump (FUNCTION RESTORE, Redis 7.0+). Параметр policy определяет поведение при конфликте имён: 'FLUSH' удаляет все существующие функции перед восстановлением, 'APPEND' добавляет без удаления существующих, 'REPLACE' заменяет совпадающие библиотеки.",
+    syntax: "await redis.function_restore(code, policy='flush')",
+    arguments: [
+      {
+        name: "code",
+        description: "Бинарная строка с дампом функций, полученная из function_dump()."
+      },
+      {
+        name: "policy",
+        description: "Стратегия при конфликте: 'FLUSH' (удалить всё, потом восстановить), 'APPEND' (добавить, не трогая существующие), 'REPLACE' (заменить совпадающие библиотеки)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r_src = aioredis.Redis()
+    r_dst = aioredis.Redis(port=6380)
+
+    # Сделать дамп всех функций источника
+    dump = await r_src.function_dump()
+
+    # Восстановить на целевом сервере, заменяя существующие
+    await r_dst.function_restore(dump, policy="REPLACE")
+
+    # Убедиться, что функции появились
+    libs = await r_dst.function_list(withcode=False)
+    print([lib["library_name"] for lib in libs])
+
+    await r_src.aclose()
+    await r_dst.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.function_stats",
+    description: "Возвращает статистику о выполнении функций Redis (FUNCTION STATS, Redis 7.0+): запущенная в данный момент функция (имя, аргументы, время выполнения), а также сводка по всем загруженным библиотекам и движкам (количество функций, движок). Используется для мониторинга и диагностики.",
+    syntax: "await redis.function_stats()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    stats = await r.function_stats()
+
+    # Текущая выполняющаяся функция (None если нет)
+    running = stats.get("running_script")
+    if running:
+        print(f"Выполняется: {running['name']}, время: {running['duration_ms']} мс")
+    else:
+        print("Нет активных функций")
+
+    # Сводка по движкам
+    engines = stats.get("engines", {})
+    for engine, info in engines.items():
+        print(f"{engine}: библиотек={info['libraries_count']}, функций={info['functions_count']}")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.geoadd",
+    description: "Добавляет одну или несколько геопозиций (longitude, latitude, name) в геопространственный индекс (отсортированное множество). Координаты хранятся как 52-битный geohash в score. Флаги NX/XX/CH контролируют поведение при существующих элементах. Возвращает количество добавленных новых элементов.",
+    syntax: "await redis.geoadd(name, values, nx=False, xx=False, ch=False)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ геопространственного индекса."
+      },
+      {
+        name: "values",
+        description: "Плоский список или список кортежей: [longitude, latitude, member, ...]. Например: [37.62, 55.75, 'Moscow', 30.32, 59.93, 'StPetersburg']."
+      },
+      {
+        name: "nx",
+        description: "Добавлять только новые элементы, не обновлять существующие."
+      },
+      {
+        name: "xx",
+        description: "Обновлять только существующие элементы, не добавлять новые."
+      },
+      {
+        name: "ch",
+        description: "Возвращать количество изменённых элементов (добавленных + обновлённых), а не только добавленных."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Добавить несколько городов
+    added = await r.geoadd("cities", [
+        37.617, 55.756, "Moscow",
+        30.315, 59.939, "StPetersburg",
+        39.720, 47.222, "Rostov",
+    ])
+    print(f"Добавлено: {added}")  # 3
+
+    # Только новые (NX)
+    await r.geoadd("cities", [82.920, 55.030, "Novosibirsk"], nx=True)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.geodist",
+    description: "Вычисляет расстояние между двумя элементами геопространственного индекса. Поддерживаемые единицы: 'm' (метры), 'km' (километры), 'mi' (мили), 'ft' (футы). Возвращает расстояние как float или None если один из элементов не существует.",
+    syntax: "await redis.geodist(name, place1, place2, unit='m')",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ геопространственного индекса."
+      },
+      {
+        name: "place1",
+        description: "Имя первого элемента в индексе."
+      },
+      {
+        name: "place2",
+        description: "Имя второго элемента в индексе."
+      },
+      {
+        name: "unit",
+        description: "Единица измерения расстояния: 'm', 'km', 'mi' или 'ft'. По умолчанию 'm'."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.geoadd("cities", [
+        37.617, 55.756, "Moscow",
+        30.315, 59.939, "StPetersburg",
+    ])
+
+    dist_km = await r.geodist("cities", "Moscow", "StPetersburg", unit="km")
+    print(f"Расстояние: {dist_km:.1f} км")  # ~635.9 км
+
+    dist_m = await r.geodist("cities", "Moscow", "StPetersburg", unit="m")
+    print(f"Расстояние: {dist_m:.0f} м")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.geohash",
+    description: "Возвращает список geohash-строк (base32, 11 символов) для указанных элементов геопространственного индекса. Geohash — стандартное текстовое представление координат, совместимое с внешними сервисами и картографическими библиотеками. Несуществующие элементы возвращают None.",
+    syntax: "await redis.geohash(name, *values)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ геопространственного индекса."
+      },
+      {
+        name: "*values",
+        description: "Имена элементов, для которых нужны geohash-строки."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.geoadd("cities", [37.617, 55.756, "Moscow", 30.315, 59.939, "StPetersburg"])
+
+    hashes = await r.geohash("cities", "Moscow", "StPetersburg", "Unknown")
+    print(hashes)
+    # ['ucfv0j9ma40', 'u8cyw9k8sv0', None]
+
+    # Использование с внешними сервисами
+    moscow_hash = hashes[0]
+    print(f"Geohash Москвы: {moscow_hash}")
+    # Можно вставить на geohash.org или в tile-сервер
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.geopos",
+    description: "Возвращает список координат (longitude, latitude) для указанных элементов геопространственного индекса. Координаты восстанавливаются из geohash с небольшой потерей точности (до ~0.6 мм). Несуществующие элементы возвращают None.",
+    syntax: "await redis.geopos(name, *values)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ геопространственного индекса."
+      },
+      {
+        name: "*values",
+        description: "Имена элементов, для которых нужны координаты."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.geoadd("cities", [37.617, 55.756, "Moscow"])
+
+    positions = await r.geopos("cities", "Moscow", "Missing")
+    print(positions)
+    # [(37.6170010119676, 55.7560003645816), None]
+
+    if positions[0]:
+        lon, lat = positions[0]
+        print(f"Москва: {lon:.4f}, {lat:.4f}")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.georadius",
+    description: "Устаревший (deprecated с Redis 6.2) метод поиска элементов в заданном радиусе от координат (longitude, latitude). Рекомендуется заменить на geosearch. Может возвращать координаты (withcoord), расстояние (withdist) и geohash (withhash). Результаты можно сохранить в другой ключ (store/store_dist).",
+    syntax: "await redis.georadius(name, longitude, latitude, radius, unit='m', withcoord=False, withdist=False, withhash=False, count=None, any=False, sort=None, store=None, store_dist=None)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ геопространственного индекса."
+      },
+      {
+        name: "longitude",
+        description: "Долгота центральной точки поиска."
+      },
+      {
+        name: "latitude",
+        description: "Широта центральной точки поиска."
+      },
+      {
+        name: "radius",
+        description: "Радиус поиска в единицах unit."
+      },
+      {
+        name: "unit",
+        description: "Единица радиуса: 'm', 'km', 'mi', 'ft'."
+      },
+      {
+        name: "withcoord",
+        description: "Включить координаты в ответ."
+      },
+      {
+        name: "withdist",
+        description: "Включить расстояние до каждого элемента в ответ."
+      },
+      {
+        name: "count",
+        description: "Максимальное число возвращаемых результатов."
+      },
+      {
+        name: "sort",
+        description: "Сортировка: 'ASC' (ближние первые) или 'DESC' (дальние первые)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.geoadd("shops", [
+        37.620, 55.753, "shop-center",
+        37.640, 55.760, "shop-east",
+        37.580, 55.740, "shop-west",
+    ])
+
+    # Deprecated: используйте geosearch вместо georadius
+    results = await r.georadius(
+        "shops", 37.617, 55.756, 3, unit="km",
+        withdist=True, sort="ASC", count=5,
+    )
+    for item in results:
+        print(item)  # ['shop-center', 0.23]
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.georadiusbymember",
+    description: "Устаревший (deprecated с Redis 6.2) метод поиска элементов в радиусе от другого элемента индекса. Аналог georadius, но центр задаётся именем существующего члена, а не координатами. Рекомендуется заменить на geosearch с параметром member=.",
+    syntax: "await redis.georadiusbymember(name, member, radius, unit='m', withcoord=False, withdist=False, withhash=False, count=None, any=False, sort=None, store=None, store_dist=None)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ геопространственного индекса."
+      },
+      {
+        name: "member",
+        description: "Имя элемента в индексе, от которого ведётся поиск."
+      },
+      {
+        name: "radius",
+        description: "Радиус поиска в единицах unit."
+      },
+      {
+        name: "unit",
+        description: "Единица радиуса: 'm', 'km', 'mi', 'ft'."
+      },
+      {
+        name: "withdist",
+        description: "Включить расстояние до каждого найденного элемента."
+      },
+      {
+        name: "sort",
+        description: "Сортировка: 'ASC' или 'DESC'."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.geoadd("cities", [
+        37.617, 55.756, "Moscow",
+        30.315, 59.939, "StPetersburg",
+        39.720, 47.222, "Rostov",
+    ])
+
+    # Deprecated: используйте geosearch(member="Moscow", ...)
+    nearby = await r.georadiusbymember(
+        "cities", "Moscow", 700, unit="km",
+        withdist=True, sort="ASC",
+    )
+    for city in nearby:
+        print(city)  # ['Moscow', 0.0], ['StPetersburg', 635.9]
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.geosearch",
+    description: "Современная (Redis 6.2+) замена georadius и georadiusbymember. Ищет элементы внутри круга (radius) или прямоугольника (boxw × boxh) относительно координат (longitude, latitude) или элемента индекса (member). Поддерживает все опции вывода: withcoord, withdist, withhash, count, sort.",
+    syntax: "await redis.geosearch(name, longitude=None, latitude=None, member=None, radius=None, unit='m', boxw=None, boxh=None, boxunit='m', sort=None, count=None, any=False, withcoord=False, withdist=False, withhash=False)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ геопространственного индекса."
+      },
+      {
+        name: "longitude / latitude",
+        description: "Координаты центра поиска. Взаимоисключающие с member."
+      },
+      {
+        name: "member",
+        description: "Имя элемента как центр поиска. Взаимоисключающий с longitude/latitude."
+      },
+      {
+        name: "radius",
+        description: "Радиус круга поиска в единицах unit. Взаимоисключающий с boxw/boxh."
+      },
+      {
+        name: "boxw / boxh",
+        description: "Ширина и высота прямоугольника поиска в единицах boxunit."
+      },
+      {
+        name: "sort",
+        description: "Сортировка результатов: 'ASC' (ближние первые) или 'DESC'."
+      },
+      {
+        name: "count",
+        description: "Максимальное количество возвращаемых результатов."
+      },
+      {
+        name: "withdist",
+        description: "Включить расстояние до каждого найденного элемента."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.geoadd("restaurants", [
+        37.617, 55.756, "bistro-a",
+        37.625, 55.760, "cafe-b",
+        37.700, 55.800, "diner-c",
+    ])
+
+    # Поиск по кругу от координат
+    results = await r.geosearch(
+        "restaurants",
+        longitude=37.617, latitude=55.756,
+        radius=2, unit="km",
+        withdist=True, sort="ASC",
+    )
+    for item in results:
+        print(item)  # ['bistro-a', 0.0], ['cafe-b', 0.8]
+
+    # Поиск по прямоугольнику от элемента
+    results = await r.geosearch(
+        "restaurants",
+        member="bistro-a",
+        boxw=5, boxh=5, boxunit="km",
+        sort="ASC",
+    )
+    print(results)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.geosearchstore",
+    description: "Выполняет geosearch и сохраняет результаты в ключ dest (Redis 6.2+). По умолчанию сохраняет как отсортированное множество со score=geohash; с store_dist=True — со score=расстояние. Удобен для кэширования результатов геопоиска или предвычисления ближайших объектов.",
+    syntax: "await redis.geosearchstore(dest, src, longitude=None, latitude=None, member=None, radius=None, unit='m', boxw=None, boxh=None, boxunit='m', sort=None, count=None, any=False, store_dist=False)",
+    arguments: [
+      {
+        name: "dest",
+        description: "Ключ назначения, куда сохраняются результаты поиска."
+      },
+      {
+        name: "src",
+        description: "Ключ исходного геопространственного индекса."
+      },
+      {
+        name: "longitude / latitude",
+        description: "Координаты центра поиска (альтернатива member)."
+      },
+      {
+        name: "member",
+        description: "Элемент как центр поиска (альтернатива координатам)."
+      },
+      {
+        name: "radius",
+        description: "Радиус поиска (альтернатива box)."
+      },
+      {
+        name: "store_dist",
+        description: "Если True — сохранять score=расстояние вместо geohash."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.geoadd("all_shops", [
+        37.617, 55.756, "shop-1",
+        37.625, 55.760, "shop-2",
+        37.700, 55.800, "shop-3",
+    ])
+
+    # Найти ближайшие к центру и сохранить в nearby_shops
+    count = await r.geosearchstore(
+        "nearby_shops", "all_shops",
+        longitude=37.617, latitude=55.756,
+        radius=5, unit="km",
+        sort="ASC", count=10,
+        store_dist=True,  # score = расстояние в метрах
+    )
+    print(f"Сохранено: {count} магазинов")
+
+    # Теперь можно ZRANGE nearby_shops для получения по расстоянию
+    shops = await r.zrange("nearby_shops", 0, -1, withscores=True)
+    for shop, dist in shops:
+        print(f"{shop}: {dist:.0f} м")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.get",
+    description: "Возвращает строковое значение ключа. Если ключ не существует — возвращает None. Если значение не является строкой — выбрасывает WRONGTYPE. Базовая и самая распространённая команда Redis. С decode_responses=True возвращает str, иначе — bytes.",
+    syntax: "await redis.get(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя ключа, значение которого нужно получить."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.set("username", "alice")
+
+    # Получить существующий ключ
+    value = await r.get("username")
+    print(value)  # 'alice'
+
+    # Несуществующий ключ
+    missing = await r.get("nonexistent")
+    print(missing)  # None
+
+    # Проверка перед использованием
+    if (val := await r.get("config")) is not None:
+        print(f"Конфиг: {val}")
+    else:
+        print("Конфиг не задан")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.getbit",
+    description: "Возвращает значение бита (0 или 1) по указанному смещению offset в строковом значении ключа. Если ключ не существует или offset выходит за пределы длины строки — возвращает 0. Смещение задаётся в битах, считая от MSB первого байта.",
+    syntax: "await redis.getbit(name, offset)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, в строковом значении которого читается бит."
+      },
+      {
+        name: "offset",
+        description: "Позиция бита (начиная с 0). MSB первого байта имеет offset=0."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # 0xFF = 11111111
+    await r.set("flags", b"\\xff\\x00")
+
+    print(await r.getbit("flags", 0))  # 1 (MSB первого байта)
+    print(await r.getbit("flags", 7))  # 1 (LSB первого байта)
+    print(await r.getbit("flags", 8))  # 0 (MSB второго байта = 0x00)
+
+    # Битовый флаг присутствия пользователя
+    await r.setbit("online", 42, 1)  # пользователь 42 онлайн
+    print(await r.getbit("online", 42))  # 1
+    print(await r.getbit("online", 99))  # 0
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.getdel",
+    description: "Атомарно возвращает значение ключа и удаляет его (Redis 6.2+). Соответствует GETDEL. Если ключ не существует — возвращает None. Удобен для реализации одноразовых токенов, кодов подтверждения, pop-семантики для строк. Заменяет связку GET + DEL без риска гонки данных.",
+    syntax: "await redis.getdel(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя ключа для атомарного чтения и удаления."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Одноразовый код подтверждения
+    await r.set("otp:user:42", "819234")
+
+    # Первое использование — код получен и удалён
+    code = await r.getdel("otp:user:42")
+    print(code)  # '819234'
+
+    # Повторная попытка — None
+    code = await r.getdel("otp:user:42")
+    print(code)  # None
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.getex",
+    description: "Возвращает значение ключа и одновременно задаёт или снимает его TTL (Redis 6.2+). Соответствует GETEX. Параметры ex (секунды), px (миллисекунды), exat (Unix-timestamp секунды), pxat (Unix-timestamp миллисекунды) задают новый TTL. persist=True снимает существующий TTL, делая ключ постоянным.",
+    syntax: "await redis.getex(name, ex=None, px=None, exat=None, pxat=None, persist=False)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя ключа."
+      },
+      {
+        name: "ex",
+        description: "Новый TTL в секундах (int или timedelta)."
+      },
+      {
+        name: "px",
+        description: "Новый TTL в миллисекундах."
+      },
+      {
+        name: "exat",
+        description: "Абсолютный Unix-timestamp истечения в секундах."
+      },
+      {
+        name: "pxat",
+        description: "Абсолютный Unix-timestamp истечения в миллисекундах."
+      },
+      {
+        name: "persist",
+        description: "Если True — удаляет существующий TTL, ключ становится постоянным."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.set("session", "data", ex=60)
+
+    # Получить значение и продлить TTL до 3600 секунд
+    value = await r.getex("session", ex=3600)
+    print(value)  # 'data'
+    print(await r.ttl("session"))  # ~3600
+
+    # Получить значение и снять TTL (сделать постоянным)
+    value = await r.getex("session", persist=True)
+    print(await r.ttl("session"))  # -1 (без TTL)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.getrange",
+    description: "Возвращает подстроку значения ключа от байтового индекса start до end включительно. Отрицательные индексы отсчитываются от конца строки: -1 — последний байт. Соответствует GETRANGE. Работает с байтами, а не символами Unicode. Полезен для работы с большими строками без загрузки всего значения.",
+    syntax: "await redis.getrange(key, start, end)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ, из значения которого извлекается подстрока."
+      },
+      {
+        name: "start",
+        description: "Начальный байтовый индекс (включительно). Отрицательные значения — от конца."
+      },
+      {
+        name: "end",
+        description: "Конечный байтовый индекс (включительно). -1 означает последний байт."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.set("greeting", "Hello, Redis!")
+
+    # Первые 5 байт
+    print(await r.getrange("greeting", 0, 4))    # 'Hello'
+
+    # Последние 6 байт
+    print(await r.getrange("greeting", -6, -1))  # 'Redis!'
+
+    # Всё значение
+    print(await r.getrange("greeting", 0, -1))   # 'Hello, Redis!'
+
+    # Частичное обновление через setrange
+    await r.setrange("greeting", 7, "World")
+    print(await r.get("greeting"))               # 'Hello, World!'
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.getset",
+    description: "Атомарно устанавливает новое значение ключа и возвращает его предыдущее значение. Устарел с Redis 6.2 — рекомендуется заменить на set(name, value, get=True). Если ключ не существовал — возвращает None. Полезен для реализации атомарного обмена значений без транзакции.",
+    syntax: "await redis.getset(name, value)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя ключа."
+      },
+      {
+        name: "value",
+        description: "Новое значение, которое будет установлено."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.set("status", "idle")
+
+    # Атомарно переключить и получить предыдущее значение
+    old = await r.getset("status", "busy")
+    print(old)  # 'idle'
+    print(await r.get("status"))  # 'busy'
+
+    # Современная альтернатива (Redis 6.2+):
+    old = await r.set("status", "idle", get=True)
+    print(old)  # 'busy'
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hdel",
+    description: "Удаляет одно или несколько полей из хеша. Возвращает количество фактически удалённых полей (несуществующие поля игнорируются). Если после удаления хеш становится пустым — ключ удаляется автоматически.",
+    syntax: "await redis.hdel(name, *keys)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша."
+      },
+      {
+        name: "*keys",
+        description: "Одно или несколько имён полей для удаления."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.hset("user:1", mapping={"name": "Alice", "age": "30", "city": "Moscow"})
+
+    # Удалить одно поле
+    deleted = await r.hdel("user:1", "city")
+    print(deleted)  # 1
+
+    # Удалить несколько полей
+    deleted = await r.hdel("user:1", "age", "nonexistent")
+    print(deleted)  # 1 (только age существовало)
+
+    print(await r.hgetall("user:1"))  # {'name': 'Alice'}
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hexists",
+    description: "Проверяет, существует ли поле key в хеше name. Возвращает True если поле существует, False если нет или если ключ не существует. Полезен для проверки наличия опциональных атрибутов без загрузки всего хеша.",
+    syntax: "await redis.hexists(name, key)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша."
+      },
+      {
+        name: "key",
+        description: "Имя поля для проверки существования."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.hset("product:1", mapping={"title": "Laptop", "price": "999"})
+
+    print(await r.hexists("product:1", "price"))      # True
+    print(await r.hexists("product:1", "discount"))   # False
+    print(await r.hexists("nonexistent", "field"))    # False
+
+    # Условное добавление поля
+    if not await r.hexists("product:1", "discount"):
+        await r.hset("product:1", "discount", "0")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hget",
+    description: "Возвращает значение поля key из хеша name. Если поле или ключ не существует — возвращает None. Самая распространённая операция чтения из хеша. Для получения нескольких полей за раз используйте hmget, для всех полей — hgetall.",
+    syntax: "await redis.hget(name, key)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша."
+      },
+      {
+        name: "key",
+        description: "Имя поля, значение которого нужно получить."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.hset("config", mapping={"host": "localhost", "port": "5432"})
+
+    host = await r.hget("config", "host")
+    print(host)  # 'localhost'
+
+    missing = await r.hget("config", "password")
+    print(missing)  # None
+
+    # Безопасное чтение с дефолтом
+    port = await r.hget("config", "port") or "3306"
+    print(port)  # '5432'
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hgetall",
+    description: "Возвращает все поля и значения хеша в виде словаря. Если ключ не существует — возвращает пустой словарь. Операция O(N) по числу полей. Для больших хешей используйте hscan_iter для постепенного обхода. С decode_responses=True возвращает dict[str, str].",
+    syntax: "await redis.hgetall(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша, все поля которого нужно получить."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+from dataclasses import dataclass
+
+@dataclass
+class User:
+    name: str
+    email: str
+    age: int
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.hset("user:42", mapping={"name": "Bob", "email": "bob@example.com", "age": "25"})
+
+    data = await r.hgetall("user:42")
+    print(data)  # {'name': 'Bob', 'email': 'bob@example.com', 'age': '25'}
+
+    user = User(name=data["name"], email=data["email"], age=int(data["age"]))
+    print(user)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hincrby",
+    description: "Увеличивает целочисленное значение поля key в хеше name на amount. Если поле не существует — создаётся со значением 0, затем увеличивается. Если хеш не существует — создаётся. Атомарная операция. Возвращает новое значение поля.",
+    syntax: "await redis.hincrby(name, key, amount=1)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша."
+      },
+      {
+        name: "key",
+        description: "Поле хеша, значение которого инкрементируется."
+      },
+      {
+        name: "amount",
+        description: "Величина приращения (целое число, может быть отрицательным)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Счётчики просмотров и лайков статьи
+    await r.hincrby("article:101:stats", "views", 1)
+    await r.hincrby("article:101:stats", "views", 1)
+    await r.hincrby("article:101:stats", "likes", 1)
+
+    views = await r.hget("article:101:stats", "views")
+    print(views)  # b'2'
+
+    # Уменьшение (отрицательный amount)
+    await r.hincrby("article:101:stats", "likes", -1)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hincrbyfloat",
+    description: "Увеличивает числовое значение поля key в хеше name на вещественное число amount. Аналог hincrby, но поддерживает float. Если поле не существует — создаётся с 0.0. Результат хранится в строковом представлении с точностью double. Возвращает новое значение как float.",
+    syntax: "await redis.hincrbyfloat(name, key, amount=1.0)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша."
+      },
+      {
+        name: "key",
+        description: "Поле хеша, значение которого изменяется."
+      },
+      {
+        name: "amount",
+        description: "Вещественное число для прибавления. Может быть отрицательным."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Накопление суммы заказов
+    await r.hset("customer:7", "total_spent", "0.0")
+
+    await r.hincrbyfloat("customer:7", "total_spent", 149.99)
+    await r.hincrbyfloat("customer:7", "total_spent", 299.50)
+
+    total = await r.hget("customer:7", "total_spent")
+    print(total)  # '449.49'
+
+    # Обновить рейтинг с дробным шагом
+    await r.hincrbyfloat("product:5", "rating_sum", 4.7)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hkeys",
+    description: "Возвращает список всех имён полей (ключей) хеша. Если ключ не существует — возвращает пустой список. Операция O(N). Для перебора большого хеша без загрузки всех ключей в память используйте hscan_iter.",
+    syntax: "await redis.hkeys(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша, имена полей которого нужно получить."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.hset("settings", mapping={"theme": "dark", "lang": "ru", "tz": "Europe/Moscow"})
+
+    keys = await r.hkeys("settings")
+    print(keys)  # ['theme', 'lang', 'tz']
+
+    # Проверить наличие нужного поля без загрузки значений
+    required = {"theme", "lang", "tz", "font_size"}
+    missing = required - set(keys)
+    print(f"Отсутствующие поля: {missing}")  # {'font_size'}
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hlen",
+    description: "Возвращает количество полей в хеше. Если ключ не существует — возвращает 0. Операция O(1). Используется для проверки размера хеша перед принятием решения об использовании hgetall (для маленьких) или hscan_iter (для больших).",
+    syntax: "await redis.hlen(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    await r.hset("metadata", mapping={"a": 1, "b": 2, "c": 3})
+
+    size = await r.hlen("metadata")
+    print(size)  # 3
+
+    # Выбрать стратегию чтения в зависимости от размера
+    if size <= 100:
+        data = await r.hgetall("metadata")
+    else:
+        # Для больших хешей — итерируемый сканер
+        async for field, value in r.hscan_iter("metadata"):
+            print(field, value)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hmget",
+    description: "Возвращает значения нескольких полей хеша за один запрос. Результат — список значений в том же порядке, что и keys: несуществующие поля возвращаются как None. Эффективнее нескольких отдельных hget.",
+    syntax: "await redis.hmget(name, keys, *args)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша."
+      },
+      {
+        name: "keys",
+        description: "Список имён полей для чтения. Можно также передать через *args."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.hset("user:1", mapping={"name": "Alice", "email": "alice@example.com", "age": "28"})
+
+    # Получить несколько полей за один запрос
+    values = await r.hmget("user:1", ["name", "email", "phone"])
+    print(values)  # ['Alice', 'alice@example.com', None]
+
+    # Сформировать словарь из результата
+    fields = ["name", "email", "phone"]
+    result = dict(zip(fields, values))
+    print(result)  # {'name': 'Alice', 'email': 'alice@example.com', 'phone': None}
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hmset",
+    description: "Устанавливает несколько полей хеша из словаря mapping за один запрос. Устарел с Redis 4.0 — рекомендуется заменить на hset(name, mapping=...). Перезаписывает существующие поля. Не возвращает значимого результата.",
+    syntax: "await redis.hmset(name, mapping)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша."
+      },
+      {
+        name: "mapping",
+        description: "Словарь {field: value} с полями и значениями для установки."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Устарело — используйте hset с mapping=
+    await r.hmset("session:abc", {
+        "user_id": "42",
+        "role": "admin",
+        "expires": "1735689600",
+    })
+
+    # Современный эквивалент:
+    await r.hset("session:abc", mapping={
+        "user_id": "42",
+        "role": "admin",
+        "expires": "1735689600",
+    })
+
+    print(await r.hgetall("session:abc"))
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hrandfield",
+    description: "Возвращает случайное поле (или несколько) из хеша (Redis 6.2+). С положительным count — уникальные случайные поля; с отрицательным — с повторениями. С withvalues=True возвращает пары поле-значение. Используется для случайных выборок, А/Б тестирования и обхода без порядка.",
+    syntax: "await redis.hrandfield(key, count=None, withvalues=False)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ хеша."
+      },
+      {
+        name: "count",
+        description: "Количество полей. Положительное — уникальные, отрицательное — с возможными повторами. None — одно случайное поле."
+      },
+      {
+        name: "withvalues",
+        description: "Если True — возвращать пары [field, value] вместо только имён полей."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.hset("features", mapping={
+        "dark_mode": "0.5",
+        "new_ui": "0.1",
+        "beta_search": "0.3",
+        "ai_assist": "0.2",
+    })
+
+    # Одно случайное поле
+    field = await r.hrandfield("features")
+    print(field)  # например, 'dark_mode'
+
+    # Два уникальных поля с значениями
+    sample = await r.hrandfield("features", count=2, withvalues=True)
+    print(sample)  # ['new_ui', '0.1', 'beta_search', '0.3']
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hscan",
+    description: "Инкрементально сканирует поля хеша, возвращая курсор и порцию пар field-value. Позволяет итерировать большой хеш без блокировки сервера (в отличие от hgetall). Вызывайте повторно с возвращённым курсором, пока он не станет 0. Для удобного обхода используйте hscan_iter.",
+    syntax: "await redis.hscan(name, cursor=0, match=None, count=None)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша для сканирования."
+      },
+      {
+        name: "cursor",
+        description: "Позиция курсора. Начинайте с 0; продолжайте с курсором из предыдущего ответа."
+      },
+      {
+        name: "match",
+        description: "Glob-шаблон фильтрации имён полей. Например, 'user_*'."
+      },
+      {
+        name: "count",
+        description: "Подсказка Redis о количестве элементов за итерацию (не гарантировано)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Заполнить хеш
+    await r.hset("big_hash", mapping={f"field:{i}": i for i in range(1000)})
+
+    # Ручное сканирование
+    cursor = 0
+    total = 0
+    while True:
+        cursor, data = await r.hscan("big_hash", cursor=cursor, count=100)
+        total += len(data)
+        if cursor == 0:
+            break
+    print(f"Всего полей: {total}")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hscan_iter",
+    description: "Асинхронный генератор для итеративного обхода всех полей хеша без загрузки в память. Внутри использует hscan с автоматическим управлением курсором. Поддерживает фильтрацию по шаблону (match) и подсказку о размере порции (count). Идиоматичен для больших хешей.",
+    syntax: "redis.hscan_iter(name, match=None, count=None)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша для обхода."
+      },
+      {
+        name: "match",
+        description: "Glob-шаблон для фильтрации полей. Например, 'session:*'."
+      },
+      {
+        name: "count",
+        description: "Подсказка о размере порции за одну итерацию HSCAN."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.hset("inventory", mapping={f"item:{i}": i * 10 for i in range(500)})
+
+    # Итерировать все поля без загрузки всего хеша
+    total_value = 0
+    async for field, value in r.hscan_iter("inventory"):
+        total_value += int(value)
+    print(f"Сумма: {total_value}")
+
+    # Только поля, совпадающие с шаблоном
+    async for field, value in r.hscan_iter("inventory", match="item:1*"):
+        print(f"{field}: {value}")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hset",
+    description: "Устанавливает одно или несколько полей хеша. Принимает одно поле через key/value или словарь через mapping (можно комбинировать). Если хеш не существует — создаётся. Возвращает количество добавленных новых полей (обновление существующих не считается).",
+    syntax: "await redis.hset(name, key=None, value=None, mapping=None)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша."
+      },
+      {
+        name: "key",
+        description: "Имя одного поля. Используется совместно с value."
+      },
+      {
+        name: "value",
+        description: "Значение одного поля. Используется совместно с key."
+      },
+      {
+        name: "mapping",
+        description: "Словарь {field: value} для установки нескольких полей за раз."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Одно поле
+    await r.hset("user:1", key="name", value="Alice")
+
+    # Несколько полей через mapping
+    added = await r.hset("user:1", mapping={
+        "email": "alice@example.com",
+        "age": "30",
+        "city": "Moscow",
+    })
+    print(f"Новых полей: {added}")  # 3
+
+    # Комбинированный вызов (key+value + mapping)
+    await r.hset("user:1", key="role", value="admin", mapping={"score": "100"})
+
+    print(await r.hgetall("user:1"))
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hsetnx",
+    description: "Устанавливает поле key в хеше name только если оно ещё не существует (SET if Not eXists). Возвращает True если поле было установлено, False если уже существовало. Атомарная операция. Используется для безопасной инициализации полей без риска перезаписать существующие данные.",
+    syntax: "await redis.hsetnx(name, key, value)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша."
+      },
+      {
+        name: "key",
+        description: "Имя поля, которое нужно установить."
+      },
+      {
+        name: "value",
+        description: "Значение поля (устанавливается только если поле отсутствует)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.hset("user:1", "name", "Alice")
+
+    # Поле 'name' уже есть — не перезаписывается
+    ok = await r.hsetnx("user:1", "name", "Bob")
+    print(ok)  # False
+    print(await r.hget("user:1", "name"))  # 'Alice'
+
+    # Поле 'role' новое — устанавливается
+    ok = await r.hsetnx("user:1", "role", "viewer")
+    print(ok)  # True
+    print(await r.hget("user:1", "role"))  # 'viewer'
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.hvals",
+    description: "Возвращает список всех значений полей хеша. Если ключ не существует — возвращает пустой список. Операция O(N). Порядок значений соответствует внутреннему порядку хеша, но не гарантируется совпадение с порядком hkeys или hgetall. Для больших хешей используйте hscan_iter.",
+    syntax: "await redis.hvals(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хеша, значения полей которого нужно получить."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.hset("scores", mapping={"alice": "95", "bob": "87", "carol": "92"})
+
+    values = await r.hvals("scores")
+    print(values)  # ['95', '87', '92'] (порядок не гарантирован)
+
+    # Найти максимальный балл
+    max_score = max(int(v) for v in values)
+    print(f"Максимум: {max_score}")  # 95
+
+    # Сумма всех значений
+    total = sum(int(v) for v in values)
+    print(f"Сумма: {total}")  # 274
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.incr",
+    description: "Атомарно увеличивает целочисленное значение ключа на 1 (или на amount, если передан). Если ключ не существует — создаётся со значением 0, затем увеличивается. Если значение не является целым числом — выбрасывает ошибку. Возвращает новое значение.",
+    syntax: "await redis.incr(name, amount=1)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя ключа-счётчика."
+      },
+      {
+        name: "amount",
+        description: "Величина приращения. По умолчанию 1."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Счётчик просмотров страницы
+    views = await r.incr("page:home:views")
+    print(views)  # 1
+
+    await r.incr("page:home:views")
+    await r.incr("page:home:views")
+    print(await r.get("page:home:views"))  # b'3'
+
+    # Инкремент на произвольное значение (эквивалент incrby)
+    await r.incr("page:home:views", amount=10)
+    print(await r.get("page:home:views"))  # b'13'
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.incrby",
+    description: "Атомарно увеличивает целочисленное значение ключа на заданное целое число amount. Эквивалентен incr(name, amount=amount). Если ключ не существует — создаётся со значением 0. Поддерживает отрицательные значения для декремента. Возвращает новое значение.",
+    syntax: "await redis.incrby(name, amount=1)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя ключа-счётчика."
+      },
+      {
+        name: "amount",
+        description: "Целое число для прибавления (может быть отрицательным)."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis()
+
+    # Зачисление баллов
+    await r.set("user:7:points", 100)
+    new_val = await r.incrby("user:7:points", 50)
+    print(new_val)  # 150
+
+    # Списание (отрицательный amount)
+    new_val = await r.incrby("user:7:points", -30)
+    print(new_val)  # 120
+
+    # Атомарное ограничение через pipeline
+    async with r.pipeline() as pipe:
+        pipe.incrby("daily_budget", -200)
+        pipe.get("daily_budget")
+        results = await pipe.execute()
+    print(results)  # [-200, b'-200']
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.incrbyfloat",
+    description: "Атомарно увеличивает вещественное значение ключа на float amount. Если ключ не существует — создаётся со значением 0.0. Результат хранится в строковом представлении с точностью double. Поддерживает научную нотацию (например, 1.5e3). Возвращает новое значение как float.",
+    syntax: "await redis.incrbyfloat(name, amount=1.0)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя ключа."
+      },
+      {
+        name: "amount",
+        description: "Вещественное число для прибавления. Может быть отрицательным."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Накопление дробных значений (например, баланс)
+    await r.set("wallet:3", "0.0")
+
+    await r.incrbyfloat("wallet:3", 9.99)
+    await r.incrbyfloat("wallet:3", 14.50)
+    balance = await r.incrbyfloat("wallet:3", -5.25)
+    print(balance)  # 19.24
+
+    # Средняя температура
+    await r.incrbyfloat("temp:sum", 22.5)
+    await r.incrbyfloat("temp:sum", 23.1)
+    print(await r.get("temp:sum"))  # '45.6'
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.info",
+    description: "Возвращает информацию о сервере Redis в виде словаря. Параметр section позволяет запросить конкретный раздел: 'server', 'clients', 'memory', 'stats', 'replication', 'cpu', 'keyspace', 'all', 'everything'. Без параметра возвращает раздел 'default' (основные метрики).",
+    syntax: "await redis.info(section=None)",
+    arguments: [
+      {
+        name: "section",
+        description: "Раздел статистики: 'server', 'clients', 'memory', 'stats', 'replication', 'cpu', 'keyspace', 'all' и др. None — раздел 'default'."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Вся информация по умолчанию
+    info = await r.info()
+    print(f"Redis версия: {info['redis_version']}")
+    print(f"Используемая память: {info['used_memory_human']}")
+    print(f"Подключённых клиентов: {info['connected_clients']}")
+
+    # Только раздел keyspace (базы данных)
+    ks = await r.info("keyspace")
+    for db, stats in ks.items():
+        print(f"{db}: ключей={stats['keys']}, ttl={stats.get('expires', 0)}")
+
+    # Только память
+    mem = await r.info("memory")
+    print(f"RSS памяти: {mem['used_memory_rss_human']}")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.keys",
+    description: "Возвращает список всех ключей, совпадающих с glob-шаблоном pattern. Специальные символы: * (любая последовательность), ? (любой один символ), [abc] (один из символов). ВНИМАНИЕ: блокирует сервер на время выполнения. В продакшене для перебора используйте scan_iter вместо keys.",
+    syntax: "await redis.keys(pattern='*')",
+    arguments: [
+      {
+        name: "pattern",
+        description: "Glob-шаблон для фильтрации ключей. '*' — все ключи, 'user:*' — ключи с префиксом, 'session:??' — с двузначным суффиксом."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.set("user:1", "Alice")
+    await r.set("user:2", "Bob")
+    await r.set("product:1", "Laptop")
+    await r.set("session:abc", "data")
+
+    # Все ключи пользователей
+    user_keys = await r.keys("user:*")
+    print(user_keys)  # ['user:1', 'user:2']
+
+    # Все ключи в базе (не рекомендуется в продакшене)
+    all_keys = await r.keys("*")
+    print(f"Всего ключей: {len(all_keys)}")
+
+    # Замена на scan_iter (безопасно в продакшене):
+    # async for key in r.scan_iter("user:*"): ...
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.lastsave",
+    description: "Возвращает Unix-timestamp (int) последнего успешного сохранения базы данных на диск (RDB snapshot или AOF rewrite). Используется для мониторинга актуальности резервной копии. Команда LASTSAVE в Redis.",
+    syntax: "await redis.lastsave()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+from datetime import datetime
+
+async def main():
+    r = aioredis.Redis()
+
+    ts = await r.lastsave()
+    dt = datetime.fromtimestamp(ts)
+    print(f"Последнее сохранение: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    # Проверить, не устарела ли резервная копия (более 1 часа)
+    now = datetime.now().timestamp()
+    age_hours = (now - ts) / 3600
+    if age_hours > 1:
+        print(f"ВНИМАНИЕ: резервная копия устарела на {age_hours:.1f} ч")
+    else:
+        print("Резервная копия свежая")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.latency_doctor",
+    description: "Возвращает текстовый диагностический отчёт о задержках Redis (аналог команды LATENCY DOCTOR). Анализирует события задержек и даёт рекомендации по устранению проблем. Требует включённого latency monitoring (config set latency-monitor-threshold > 0). Возвращает строку с выводом.",
+    syntax: "await redis.latency_doctor()",
+    arguments: [],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    # Включить мониторинг задержек (порог 100 мс)
+    await r.config_set("latency-monitor-threshold", 100)
+
+    # Получить диагностику
+    report = await r.latency_doctor()
+    print(report)
+    # Пример: "I have a few issues to report. ..."
+    # Или: "I have no issues to report. ..."
+
+    # Просмотр истории событий задержек
+    history = await r.latency_history("command")
+    print(history)
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.latency_graph",
+    description: "Возвращает ASCII-график задержек для указанного события latency в виде строки (LATENCY GRAPH). Позволяет визуально оценить динамику задержек прямо в терминале. Требует включённого latency monitoring. event — имя события (например, 'command', 'fast-command', 'aof-stat').",
+    syntax: "await redis.latency_graph(event)",
+    arguments: [
+      {
+        name: "event",
+        description: "Имя события задержки: 'command', 'fast-command', 'aof-stat' и др. Список доступных событий — через latency_history или latency_latest."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.config_set("latency-monitor-threshold", 50)
+
+    # Получить ASCII-график для события 'command'
+    graph = await r.latency_graph("command")
+    if graph:
+        print(graph)
+        # Вывод: многострочный ASCII-график в терминале
+    else:
+        print("Нет данных для события 'command'")
+
+    await r.aclose()`
+  },
+  {
+    name: "redis.asyncio.Redis.latency_history",
+    description: "Возвращает историю задержек для указанного события в виде списка пар (timestamp, latency_ms). Команда LATENCY HISTORY. Позволяет анализировать временны́е паттерны задержек. Требует включённого latency monitoring. Если данных нет — возвращает пустой список.",
+    syntax: "await redis.latency_history(event)",
+    arguments: [
+      {
+        name: "event",
+        description: "Имя события задержки для получения истории (например, 'command', 'aof-stat')."
+      }
+    ],
+    example: `import redis.asyncio as aioredis
+from datetime import datetime
+
+async def main():
+    r = aioredis.Redis(decode_responses=True)
+
+    await r.config_set("latency-monitor-threshold", 50)
+
+    history = await r.latency_history("command")
+    if not history:
+        print("Нет записей о задержках для 'command'")
+    else:
+        for ts, latency_ms in history:
+            dt = datetime.fromtimestamp(ts)
+            print(f"{dt.strftime('%H:%M:%S')} — {latency_ms} мс")
+
+        max_latency = max(lat for _, lat in history)
+        print(f"Максимальная задержка: {max_latency} мс")
+
+    await r.aclose()`
+  },
 ];
