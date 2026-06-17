@@ -13544,4 +13544,6105 @@ print(log1 is log2)   # True
 
 > Предпочтительный питоничный подход — **модуль**: Python гарантирует, что код модуля выполняется ровно один раз.`,
   },
+  {
+    id: "generators-and-generator-expressions",
+    question:
+      "Что такое генераторы (generators) и выражения-генераторы? Чем они отличаются от обычных функций и списковых включений?",
+    category: "Итераторы, генераторы и управляющие конструкции",
+    difficulty: "middle",
+    answer: `## Что такое генератор?
+
+**Генератор** — это специальная функция, которая вместо \`return\` использует ключевое слово \`yield\`. При вызове она не выполняется сразу, а возвращает **объект-генератор**, реализующий протокол итератора. Код функции выполняется **лениво** — по одному шагу при каждом вызове \`next()\`.
+
+\`\`\`python
+def count_up(start, stop):
+    """Генераторная функция: тело не выполняется при вызове."""
+    print("Начинаем")
+    current = start
+    while current <= stop:
+        yield current        # приостанавливает выполнение и возвращает значение
+        current += 1
+    print("Закончили")
+
+gen = count_up(1, 3)         # объект создан, код ещё не выполнялся
+print(type(gen))             # <class 'generator'>
+
+print(next(gen))             # Начинаем → 1
+print(next(gen))             # 2
+print(next(gen))             # 3
+print(next(gen))             # Закончили → StopIteration
+\`\`\`
+
+---
+
+## Как работает \`yield\` изнутри
+
+При каждом вызове \`next()\` интерпретатор возобновляет выполнение функции с того места, где она остановилась на \`yield\`. Локальные переменные и состояние стека **сохраняются** между вызовами.
+
+\`\`\`python
+def stateful_gen():
+    total = 0
+    for value in [10, 20, 30]:
+        total += value
+        yield total    # возвращаем нарастающую сумму и сохраняем состояние
+
+gen = stateful_gen()
+print(next(gen))  # 10  — total = 10
+print(next(gen))  # 30  — total = 30
+print(next(gen))  # 60  — total = 60
+\`\`\`
+
+---
+
+## Выражения-генераторы (Generator Expressions)
+
+**Выражение-генератор** — компактный синтаксис для создания генератора без объявления функции. Синтаксис идентичен списковому включению, но вместо \`[]\` используются \`()\`.
+
+\`\`\`python
+# Списковое включение: создаёт весь список в памяти сразу
+squares_list = [x ** 2 for x in range(1_000_000)]   # ~8 МБ в памяти
+
+# Выражение-генератор: вычисляет по одному значению по требованию
+squares_gen = (x ** 2 for x in range(1_000_000))    # ~200 байт в памяти!
+
+import sys
+print(sys.getsizeof(squares_list))  # ~8 000 056 байт
+print(sys.getsizeof(squares_gen))   # 208 байт
+\`\`\`
+
+### Генераторные выражения внутри функций
+
+Если выражение-генератор — единственный аргумент функции, скобки можно не удваивать:
+
+\`\`\`python
+numbers = range(1, 101)
+
+# Лишние скобки:
+total = sum((x * x for x in numbers))
+
+# Можно без лишних скобок:
+total = sum(x * x for x in numbers)
+
+# Найти первое чётное число, делящееся на 7
+first = next(x for x in range(1, 1000) if x % 2 == 0 and x % 7 == 0)
+print(first)  # 14
+\`\`\`
+
+---
+
+## Сравнение: функция, список vs. генератор
+
+| Характеристика | Обычная функция | Списковое включение | Генераторная функция / выражение |
+|---|---|---|---|
+| Возвращает | одно значение | список (все элементы) | объект-генератор |
+| Выполнение | сразу | сразу, все элементы | лениво, по требованию |
+| Память | O(1) для результата | O(n) для всех элементов | O(1) — один элемент за раз |
+| Итерация | нет | многократная | однократная (исчерпывается) |
+| Возобновление | нет | нет | да, через \`next()\` |
+
+\`\`\`python
+# Демонстрация однократности генератора
+gen = (x for x in [1, 2, 3])
+print(list(gen))   # [1, 2, 3]
+print(list(gen))   # []  — генератор исчерпан!
+
+lst = [x for x in [1, 2, 3]]
+print(list(lst))   # [1, 2, 3]
+print(list(lst))   # [1, 2, 3]  — список можно итерировать снова
+\`\`\`
+
+---
+
+## Продвинутые возможности: \`yield from\` и двусторонняя связь
+
+### \`yield from\` — делегирование вложенному итерируемому
+
+\`\`\`python
+def flatten(nested):
+    """Разворачивает вложенные списки произвольной глубины."""
+    for item in nested:
+        if isinstance(item, list):
+            yield from flatten(item)   # делегируем рекурсивно
+        else:
+            yield item
+
+data = [1, [2, [3, 4], 5], [6, 7]]
+print(list(flatten(data)))  # [1, 2, 3, 4, 5, 6, 7]
+\`\`\`
+
+### Отправка значений в генератор через \`send()\`
+
+\`\`\`python
+def accumulator():
+    """Генератор-аккумулятор: принимает числа и накапливает сумму."""
+    total = 0
+    while True:
+        value = yield total    # yield возвращает total И получает значение через send()
+        if value is None:
+            break
+        total += value
+
+acc = accumulator()
+next(acc)           # инициализация: выполняется до первого yield → 0
+print(acc.send(10)) # 10
+print(acc.send(20)) # 30
+print(acc.send(5))  # 35
+\`\`\`
+
+---
+
+## Практический пример: ленивое чтение большого файла
+
+\`\`\`python
+def read_large_file(filepath, chunk_size=1024):
+    """Читает файл кусками, не загружая его целиком в память."""
+    with open(filepath, "r", encoding="utf-8") as f:
+        while chunk := f.read(chunk_size):
+            yield chunk
+
+def count_words_in_file(filepath):
+    """Подсчёт слов без загрузки файла в память."""
+    return sum(
+        len(chunk.split())
+        for chunk in read_large_file(filepath)
+    )
+
+# Даже файл в 10 ГБ обрабатывается при использовании ~1 КБ RAM
+\`\`\`
+
+---
+
+## Когда использовать генераторы?
+
+- Работа с **большими или бесконечными** последовательностями
+- **Пайплайны** обработки данных (цепочки генераторов)
+- Когда нужен результат **по одному элементу** (стриминг)
+- Экономия памяти при однократном проходе по данным`,
+  },
+  {
+    id: "try-except-else-finally",
+    question:
+      "Для чего нужен блок try-except-else-finally? За что именно отвечает секция else?",
+    category: "Итераторы, генераторы и управляющие конструкции",
+    difficulty: "junior",
+    answer: `## Полная структура блока обработки исключений
+
+Python предоставляет четыре секции для обработки исключений. Каждая выполняет строго определённую роль:
+
+\`\`\`python
+try:
+    # Код, который может вызвать исключение
+    ...
+except SomeError as e:
+    # Выполняется ТОЛЬКО если в try возникло SomeError
+    ...
+else:
+    # Выполняется ТОЛЬКО если в try НЕ было исключений
+    ...
+finally:
+    # Выполняется ВСЕГДА: и при исключении, и без него
+    ...
+\`\`\`
+
+---
+
+## Секция \`try\`
+
+Содержит код, при выполнении которого **могут** возникнуть исключения. Как только исключение возникает, выполнение прерывается и управление передаётся в соответствующий \`except\`.
+
+\`\`\`python
+try:
+    result = 10 / 0       # ZeroDivisionError
+    print("Это не выполнится")
+except ZeroDivisionError:
+    print("Деление на ноль!")
+\`\`\`
+
+---
+
+## Секция \`except\`
+
+Перехватывает исключения. Можно указать конкретный тип или несколько типов, а также получить объект исключения через \`as\`.
+
+\`\`\`python
+def read_number(text: str) -> float:
+    try:
+        return float(text)
+    except ValueError as e:
+        # Перехватываем только ValueError
+        print(f"Не удалось преобразовать: {e}")
+        return 0.0
+    except (TypeError, AttributeError):
+        # Несколько типов в одном блоке
+        print("Неверный тип аргумента")
+        return 0.0
+    except Exception as e:
+        # Любое другое исключение (широкий перехват — использовать осторожно!)
+        print(f"Неожиданная ошибка: {type(e).__name__}: {e}")
+        raise   # Перебрасываем исключение дальше
+
+print(read_number("3.14"))   # 3.14
+print(read_number("abc"))    # Не удалось преобразовать... → 0.0
+\`\`\`
+
+### Иерархия исключений важна
+
+\`\`\`python
+try:
+    x = int("bad")
+except Exception:
+    print("Поймано Exception")   # Выполнится
+except ValueError:
+    print("Поймано ValueError")  # НЕ выполнится — уже поймано выше!
+
+# Правильный порядок: от частного к общему
+try:
+    x = int("bad")
+except ValueError:
+    print("Поймано ValueError")  # Выполнится
+except Exception:
+    print("Поймано что-то другое")
+\`\`\`
+
+---
+
+## Секция \`else\` — ключевая идея
+
+Секция \`else\` выполняется **только тогда, когда блок \`try\` завершился без исключений**. Это позволяет чётко отделить «код, который может упасть» от «кода, который выполняется при успехе».
+
+### Зачем нужен \`else\`, если можно написать код прямо в \`try\`?
+
+\`\`\`python
+# ПЛОХО: весь код в try — ошибки в "успешном" коде тоже перехватятся
+def process_file_bad(path: str) -> list[str]:
+    try:
+        f = open(path)
+        data = f.readlines()
+        # Ошибка здесь тоже попадёт в except IOError — это нежелательно!
+        result = [line.strip().upper() for line in data]
+        return result
+    except IOError:
+        return []
+
+# ХОРОШО: try только для опасной операции, else — для успешной обработки
+def process_file_good(path: str) -> list[str]:
+    try:
+        f = open(path)          # только открытие может дать IOError
+    except IOError:
+        return []
+    else:
+        # Здесь мы точно знаем, что файл открыт успешно
+        # Ошибки в этом блоке НЕ будут перехвачены except IOError
+        data = f.readlines()
+        f.close()
+        return [line.strip().upper() for line in data]
+\`\`\`
+
+### Ещё один показательный пример
+
+\`\`\`python
+import json
+
+def parse_config(raw: str) -> dict:
+    try:
+        config = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"Невалидный JSON: {e}")
+        return {}
+    else:
+        # Выполняется только если json.loads успешен
+        # Если здесь возникнет KeyError — он НЕ будет поглощён блоком except выше
+        print(f"Конфиг загружен: {len(config)} ключей")
+        return config
+
+parse_config('{"host": "localhost", "port": 5432}')
+# Конфиг загружен: 2 ключей → {'host': 'localhost', 'port': 5432}
+
+parse_config("не json")
+# Невалидный JSON: ... → {}
+\`\`\`
+
+---
+
+## Секция \`finally\`
+
+Выполняется **всегда** — независимо от того, возникло исключение или нет, было оно перехвачено или нет. Используется для **гарантированного освобождения ресурсов**.
+
+\`\`\`python
+def read_file(path: str) -> str:
+    f = None
+    try:
+        f = open(path, "r")
+        return f.read()
+    except FileNotFoundError:
+        print(f"Файл не найден: {path}")
+        return ""
+    finally:
+        # Выполнится в любом случае — даже если функция делает return в try
+        if f is not None:
+            f.close()
+            print("Файл закрыт")
+\`\`\`
+
+### \`finally\` и \`return\` — важная ловушка
+
+\`\`\`python
+def tricky() -> str:
+    try:
+        return "из try"
+    finally:
+        return "из finally"   # ПЕРЕКРЫВАЕТ return из try!
+
+print(tricky())  # "из finally" — finally всегда побеждает
+
+def also_tricky() -> str:
+    try:
+        raise ValueError("ошибка")
+    except ValueError:
+        return "из except"
+    finally:
+        print("finally выполнился")   # выполнится до return
+        # Если здесь НЕТ return — вернётся "из except"
+        # Если здесь ЕСТЬ return — он перекроет "из except"
+
+print(also_tricky())
+# finally выполнился
+# из except
+\`\`\`
+
+---
+
+## Полная картина: порядок выполнения
+
+\`\`\`python
+def demo(raise_error: bool, raise_in_except: bool = False):
+    print("--- старт ---")
+    try:
+        print("try: начало")
+        if raise_error:
+            raise ValueError("тест")
+        print("try: конец (без ошибки)")
+    except ValueError as e:
+        print(f"except: поймали {e}")
+        if raise_in_except:
+            raise RuntimeError("ошибка в except")
+    else:
+        print("else: выполнился (ошибок не было)")
+    finally:
+        print("finally: всегда выполняется")
+    print("--- конец ---")
+
+demo(raise_error=False)
+# try: начало → try: конец → else → finally → конец
+
+demo(raise_error=True)
+# try: начало → except → finally → конец (else НЕ выполнился)
+\`\`\`
+
+---
+
+## Практические рекомендации
+
+| Секция | Назначение | Типичное использование |
+|---|---|---|
+| \`try\` | Код, который может бросить исключение | Открытие файла, сетевой запрос, парсинг |
+| \`except\` | Обработка конкретных ошибок | Логирование, fallback-значение, повтор |
+| \`else\` | Код «при успехе», изолированный от перехвата | Обработка результата, дальнейшая работа |
+| \`finally\` | Гарантированная очистка | Закрытие файлов, соединений, освобождение блокировок |
+
+> **Совет**: вместо ручного \`finally\` для управления ресурсами используйте менеджеры контекста (\`with\`) — они делают то же самое чище и надёжнее.`,
+  },
+  {
+    id: "context-manager",
+    question:
+      "Что такое менеджер контекста (context manager), с каким оператором он используется и какие базовые методы должен реализовать класс, чтобы стать менеджером контекста?",
+    category: "Итераторы, генераторы и управляющие конструкции",
+    difficulty: "middle",
+    answer: `## Что такое менеджер контекста?
+
+**Менеджер контекста** — объект, который управляет жизненным циклом ресурса: гарантирует его корректное получение при входе в блок и **обязательное освобождение** при выходе из него — даже если возникло исключение.
+
+Используется с оператором \`with\`:
+
+\`\`\`python
+with open("file.txt", "r") as f:
+    data = f.read()
+# Файл гарантированно закрыт здесь, даже если read() бросил исключение
+\`\`\`
+
+Этот код эквивалентен:
+
+\`\`\`python
+f = open("file.txt", "r")
+try:
+    data = f.read()
+finally:
+    f.close()
+\`\`\`
+
+---
+
+## Протокол менеджера контекста: \`__enter__\` и \`__exit__\`
+
+Чтобы класс стал менеджером контекста, он должен реализовать два метода:
+
+### \`__enter__(self)\`
+
+Вызывается при **входе** в блок \`with\`. Возвращаемое значение привязывается к переменной после \`as\`.
+
+### \`__exit__(self, exc_type, exc_val, exc_tb)\`
+
+Вызывается при **выходе** из блока \`with\` — всегда, в том числе при исключении.
+
+| Параметр | Значение при успехе | Значение при исключении |
+|---|---|---|
+| \`exc_type\` | \`None\` | Тип исключения (напр. \`ValueError\`) |
+| \`exc_val\` | \`None\` | Объект исключения |
+| \`exc_tb\` | \`None\` | Трассировка стека |
+
+Если \`__exit__\` возвращает **истинное значение** — исключение **подавляется**. Если возвращает \`None\` / \`False\` — исключение распространяется дальше.
+
+\`\`\`python
+class ManagedFile:
+    def __init__(self, path: str, mode: str = "r"):
+        self.path = path
+        self.mode = mode
+        self.file = None
+
+    def __enter__(self):
+        print(f"Открываем {self.path}")
+        self.file = open(self.path, self.mode)
+        return self.file          # это значение попадёт в переменную after as
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        print(f"Закрываем {self.path}")
+        if self.file:
+            self.file.close()
+        if exc_type is not None:
+            print(f"Было исключение: {exc_type.__name__}: {exc_val}")
+        return False              # не подавляем исключения
+
+# Использование
+with ManagedFile("example.txt", "w") as f:
+    f.write("hello")
+# Открываем example.txt → (запись) → Закрываем example.txt
+\`\`\`
+
+---
+
+## Подавление исключений
+
+\`\`\`python
+class SuppressErrors:
+    """Подавляет указанные типы исключений."""
+    def __init__(self, *exceptions):
+        self.exceptions = exceptions
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Возвращаем True — исключение подавляется
+        if exc_type and issubclass(exc_type, self.exceptions):
+            print(f"Подавлено: {exc_type.__name__}: {exc_val}")
+            return True
+        return False  # остальные исключения — пропускаем
+
+with SuppressErrors(ValueError, TypeError):
+    x = int("не число")   # ValueError — будет подавлен
+    print("Это не выполнится")
+
+print("Программа продолжается")
+# Подавлено: ValueError: invalid literal...
+# Программа продолжается
+
+# Аналог из стандартной библиотеки:
+from contextlib import suppress
+with suppress(ValueError):
+    int("не число")
+\`\`\`
+
+---
+
+## Способ 2: \`@contextmanager\` из \`contextlib\`
+
+Вместо класса с \`__enter__\`/\`__exit__\` можно использовать декоратор \`@contextmanager\` и генераторную функцию. Код до \`yield\` — это \`__enter__\`, после \`yield\` — это \`__exit__\`.
+
+\`\`\`python
+from contextlib import contextmanager
+
+@contextmanager
+def timer(label: str):
+    import time
+    start = time.perf_counter()
+    try:
+        yield   # здесь выполняется тело блока with
+    finally:
+        elapsed = time.perf_counter() - start
+        print(f"{label}: {elapsed:.4f} сек")
+
+with timer("Сортировка"):
+    data = sorted(range(1_000_000), reverse=True)
+# Сортировка: 0.0842 сек
+\`\`\`
+
+### Пример с передачей значения через \`yield\`
+
+\`\`\`python
+from contextlib import contextmanager
+import sqlite3
+
+@contextmanager
+def db_transaction(db_path: str):
+    """Менеджер контекста для транзакции SQLite."""
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    try:
+        yield cursor           # передаём курсор в блок with
+        conn.commit()          # фиксируем транзакцию при успехе
+        print("Транзакция зафиксирована")
+    except Exception as e:
+        conn.rollback()        # откатываем при ошибке
+        print(f"Откат транзакции: {e}")
+        raise
+    finally:
+        conn.close()
+
+# Использование
+with db_transaction(":memory:") as cur:
+    cur.execute("CREATE TABLE users (id INTEGER, name TEXT)")
+    cur.execute("INSERT INTO users VALUES (1, 'Alice')")
+# Транзакция зафиксирована
+\`\`\`
+
+---
+
+## Вложенные менеджеры контекста
+
+\`\`\`python
+# Классический синтаксис
+with open("input.txt") as fin:
+    with open("output.txt", "w") as fout:
+        fout.write(fin.read())
+
+# Компактный синтаксис (Python 3.1+)
+with open("input.txt") as fin, open("output.txt", "w") as fout:
+    fout.write(fin.read())
+
+# Динамический список менеджеров (Python 3.10+)
+from contextlib import ExitStack
+
+files = ["a.txt", "b.txt", "c.txt"]
+with ExitStack() as stack:
+    handles = [stack.enter_context(open(f)) for f in files]
+    for h in handles:
+        print(h.read())
+\`\`\`
+
+---
+
+## Практический пример: менеджер блокировки
+
+\`\`\`python
+import threading
+from contextlib import contextmanager
+
+@contextmanager
+def locked(lock: threading.Lock, timeout: float = 5.0):
+    """Захватывает блокировку с таймаутом."""
+    acquired = lock.acquire(timeout=timeout)
+    if not acquired:
+        raise TimeoutError(f"Не удалось захватить блокировку за {timeout}с")
+    try:
+        yield lock
+    finally:
+        lock.release()
+
+_lock = threading.Lock()
+
+def safe_update(data: dict, key: str, value):
+    with locked(_lock):
+        data[key] = value   # защищённое изменение
+
+# Эквивалент с threading.Lock() встроенным менеджером:
+with _lock:
+    pass  # Lock уже реализует __enter__/__exit__
+\`\`\`
+
+---
+
+## Сравнение подходов
+
+| Способ | Когда использовать |
+|---|---|
+| Класс с \`__enter__\`/\`__exit__\` | Сложная логика, состояние, переиспользование, наследование |
+| \`@contextmanager\` | Простая логика, разовый менеджер, читаемость кода |
+| \`contextlib.suppress\` | Подавление конкретных исключений |
+| \`contextlib.ExitStack\` | Динамическое количество ресурсов |`,
+  },
+  {
+    id: "iterator-protocol",
+    question:
+      "Как реализовать собственный итерируемый объект и итератор? Опишите протокол итерации (__iter__ и __next__).",
+    category: "Итераторы, генераторы и управляющие конструкции",
+    difficulty: "middle",
+    answer: `## Протокол итерации в Python
+
+Итерация в Python основана на двух понятиях и двух магических методах:
+
+| Понятие | Метод | Описание |
+|---|---|---|
+| **Итерируемый объект** (Iterable) | \`__iter__()\` | Возвращает итератор |
+| **Итератор** (Iterator) | \`__next__()\` | Возвращает следующий элемент или бросает \`StopIteration\` |
+
+**Итератор** сам является **итерируемым**: его \`__iter__()\` возвращает \`self\`.
+
+\`\`\`python
+# Как работает цикл for под капотом:
+for item in [1, 2, 3]:
+    print(item)
+
+# Полный эквивалент:
+_iterable = [1, 2, 3]
+_iterator = iter(_iterable)       # вызывает _iterable.__iter__()
+while True:
+    try:
+        item = next(_iterator)    # вызывает _iterator.__next__()
+        print(item)
+    except StopIteration:
+        break                     # цикл завершён
+\`\`\`
+
+---
+
+## Вариант 1: Отдельный класс итератора
+
+Классический паттерн: итерируемый объект хранит данные, итератор — состояние обхода. Это позволяет иметь **несколько независимых итераторов** над одним объектом.
+
+\`\`\`python
+class NumberRange:
+    """Итерируемый объект: хранит диапазон чисел."""
+
+    def __init__(self, start: int, stop: int, step: int = 1):
+        self.start = start
+        self.stop = stop
+        self.step = step
+
+    def __iter__(self):
+        # Возвращаем НОВЫЙ итератор при каждом вызове
+        return NumberRangeIterator(self)
+
+    def __len__(self):
+        return max(0, (self.stop - self.start + self.step - 1) // self.step)
+
+
+class NumberRangeIterator:
+    """Итератор: хранит текущую позицию обхода."""
+
+    def __init__(self, number_range: NumberRange):
+        self._range = number_range
+        self._current = number_range.start   # текущая позиция
+
+    def __iter__(self):
+        return self   # итератор сам является итерируемым
+
+    def __next__(self):
+        if self._current >= self._range.stop:
+            raise StopIteration            # сигнал об окончании
+        value = self._current
+        self._current += self._range.step  # продвигаем позицию
+        return value
+
+
+# Использование
+r = NumberRange(1, 10, 2)
+
+print(list(r))           # [1, 3, 5, 7, 9]
+print(list(r))           # [1, 3, 5, 7, 9] — можно итерировать снова!
+
+# Два независимых итератора
+it1 = iter(r)
+it2 = iter(r)
+print(next(it1))  # 1
+print(next(it1))  # 3
+print(next(it2))  # 1  — it2 независим от it1
+
+# Работают все конструкции, ожидающие итерируемое
+print(sum(r))             # 25
+print(5 in r)             # True
+print([x for x in r])    # [1, 3, 5, 7, 9]
+\`\`\`
+
+---
+
+## Вариант 2: Класс-итератор «всё в одном»
+
+Когда отдельный класс избыточен, итерируемый объект и итератор объединяют. Недостаток — нельзя иметь два независимых итератора.
+
+\`\`\`python
+class Fibonacci:
+    """Итератор бесконечной последовательности Фибоначчи."""
+
+    def __init__(self, max_count: int = None):
+        self.max_count = max_count
+        self._a, self._b = 0, 1
+        self._count = 0
+
+    def __iter__(self):
+        return self   # возвращаем себя
+
+    def __next__(self):
+        if self.max_count is not None and self._count >= self.max_count:
+            raise StopIteration
+
+        value = self._a
+        self._a, self._b = self._b, self._a + self._b
+        self._count += 1
+        return value
+
+
+fib = Fibonacci(max_count=8)
+print(list(fib))      # [0, 1, 1, 2, 3, 5, 8, 13]
+
+# Осторожно: итератор исчерпан!
+print(list(fib))      # [] — повторная итерация не работает
+
+# Бесконечный итератор + islice
+from itertools import islice
+infinite_fib = Fibonacci()
+print(list(islice(infinite_fib, 10)))   # [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
+\`\`\`
+
+---
+
+## Протокол итерации и функции \`iter()\`, \`next()\`
+
+\`\`\`python
+# iter() с одним аргументом вызывает __iter__
+my_list = [10, 20, 30]
+it = iter(my_list)          # my_list.__iter__()
+print(next(it))             # 10   — it.__next__()
+print(next(it))             # 20
+print(next(it))             # 30
+print(next(it, "конец"))    # "конец" — default при StopIteration
+
+# iter() с двумя аргументами: вызывает callable до sentinel-значения
+import random
+# Генерируем числа, пока не выпадет 6 (как бросок кубика до шестёрки)
+rolls = list(iter(lambda: random.randint(1, 6), 6))
+print(rolls)   # например [3, 1, 4, 2] — все броски до первой шестёрки
+\`\`\`
+
+---
+
+## Практический пример: итератор по узлам дерева
+
+\`\`\`python
+from __future__ import annotations
+from dataclasses import dataclass, field
+from typing import Iterator
+
+@dataclass
+class TreeNode:
+    value: int
+    children: list[TreeNode] = field(default_factory=list)
+
+    def add_child(self, child: TreeNode) -> TreeNode:
+        self.children.append(child)
+        return self
+
+    def __iter__(self) -> Iterator[int]:
+        """Обход дерева в глубину (DFS) через стек."""
+        return DepthFirstIterator(self)
+
+
+class DepthFirstIterator:
+    def __init__(self, root: TreeNode):
+        self._stack = [root]
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> int:
+        if not self._stack:
+            raise StopIteration
+        node = self._stack.pop()
+        # Добавляем детей в обратном порядке, чтобы левый ребёнок был первым
+        self._stack.extend(reversed(node.children))
+        return node.value
+
+
+# Строим дерево:
+#       1
+#      / \\
+#     2   3
+#    / \\
+#   4   5
+root = TreeNode(1)
+node2 = TreeNode(2)
+node3 = TreeNode(3)
+node2.add_child(TreeNode(4)).add_child(TreeNode(5))
+root.add_child(node2).add_child(node3)
+
+print(list(root))          # [1, 2, 4, 5, 3]  — DFS-порядок
+print(sum(root))           # 15
+print(max(root))           # 5
+\`\`\`
+
+---
+
+## Проверка через \`collections.abc\`
+
+\`\`\`python
+from collections.abc import Iterable, Iterator
+
+class MyIterator:
+    def __iter__(self): return self
+    def __next__(self): raise StopIteration
+
+it = MyIterator()
+print(isinstance(it, Iterator))   # True
+print(isinstance(it, Iterable))   # True — итератор всегда итерируемый
+
+class MyIterable:
+    def __iter__(self): return iter([1, 2, 3])
+
+obj = MyIterable()
+print(isinstance(obj, Iterable))  # True
+print(isinstance(obj, Iterator))  # False — не итератор, только итерируемый
+\`\`\`
+
+---
+
+## Резюме: ключевые правила
+
+1. **Итерируемый объект** реализует \`__iter__()\`, который **каждый раз** возвращает **новый** итератор — это позволяет итерировать объект многократно.
+2. **Итератор** реализует и \`__iter__()\` (возвращает \`self\`), и \`__next__()\` (возвращает следующий элемент или бросает \`StopIteration\`).
+3. Итератор **исчерпывается**: после \`StopIteration\` он уже не возвращает элементы.
+4. Генераторные функции и выражения — это удобный способ создать итератор без явного класса.`,
+  },
+  {
+    id: "memory-reference-counting-basics",
+    question:
+      "Как устроено базовое управление памятью в Python (механизм подсчёта ссылок)?",
+    category: "Внутреннее устройство CPython и управление памятью",
+    difficulty: "junior",
+    answer: `## Основы управления памятью в CPython
+
+В CPython каждый объект в памяти — это C-структура, в которой помимо данных хранится поле **\`ob_refcnt\`** — счётчик ссылок. Это число показывает, сколько мест в программе «знают» об этом объекте. Как только счётчик достигает нуля, память освобождается **немедленно** — без пауз и без участия сборщика мусора.
+
+---
+
+## Как изменяется счётчик
+
+Счётчик **увеличивается** (+1), когда:
+- переменная связывается с объектом: \`a = obj\`
+- объект передаётся в функцию как аргумент
+- объект помещается в контейнер: \`lst.append(obj)\`
+- создаётся новая ссылка: \`b = a\`
+
+Счётчик **уменьшается** (-1), когда:
+- переменная перепривязывается: \`a = что-то_другое\`
+- переменная удаляется: \`del a\`
+- функция завершается (локальные переменные уходят)
+- объект удаляется из контейнера
+
+\`\`\`python
+import sys
+
+a = [1, 2, 3]
+print(sys.getrefcount(a))  # 2: одна ссылка a + одна временная в getrefcount
+
+b = a
+print(sys.getrefcount(a))  # 3: a, b и временная
+
+c = [a, a]                 # два вхождения в список
+print(sys.getrefcount(a))  # 5: a, b, c[0], c[1] + временная
+
+del b
+print(sys.getrefcount(a))  # 4: b ушла
+
+c.clear()
+print(sys.getrefcount(a))  # 2: остались только a и временная
+
+del a                      # счётчик → 0, объект немедленно уничтожается
+\`\`\`
+
+---
+
+## Что происходит при уничтожении объекта
+
+Когда счётчик обнуляется, CPython:
+1. Вызывает метод \`__del__\`, если он определён.
+2. Уменьшает счётчики всех объектов, на которые ссылался уничтоженный.
+3. Возвращает память в пул или операционной системе.
+
+\`\`\`python
+class Resource:
+    def __init__(self, name):
+        self.name = name
+        print(f"[+] {self.name} создан")
+
+    def __del__(self):
+        print(f"[-] {self.name} уничтожен")
+
+r = Resource("файл")   # [+] файл создан
+r = Resource("сокет")  # [-] файл уничтожен (счётчик стал 0)
+                       # [+] сокет создан
+# При завершении скрипта: [-] сокет уничтожен
+\`\`\`
+
+---
+
+## Управление объектами: \`id()\`, \`sys.getrefcount()\`, \`ctypes\`
+
+\`\`\`python
+import sys
+import ctypes
+
+x = "hello"
+addr = id(x)                             # адрес объекта в памяти (int)
+print(sys.getrefcount(x))               # текущий счётчик
+
+# Прямой доступ к ob_refcnt через ctypes (только для понимания!)
+refcount = ctypes.c_long.from_address(addr).value
+print(f"ob_refcnt через ctypes: {refcount}")
+\`\`\`
+
+---
+
+## Уровни управления памятью в CPython
+
+CPython использует **трёхуровневую** систему выделения памяти:
+
+\`\`\`
+┌─────────────────────────────────────┐
+│   Уровень 3: объекты Python         │  PyObject_New(), PyObject_Del()
+├─────────────────────────────────────┤
+│   Уровень 2: PyMem allocator        │  PyMem_Malloc(), PyMem_Free()
+├─────────────────────────────────────┤
+│   Уровень 1: арены / пулы / блоки   │  только для объектов ≤ 512 байт
+├─────────────────────────────────────┤
+│   Уровень 0: malloc / free (ОС)     │  для больших объектов и арен
+└─────────────────────────────────────┘
+\`\`\`
+
+Для небольших объектов (до 512 байт) CPython никогда не идёт напрямую к \`malloc\` — вместо этого он использует собственный **пул-аллокатор** (арены → пулы → блоки), что делает выделение и освобождение памяти на порядок быстрее.
+
+---
+
+## Главное ограничение подсчёта ссылок: циклические ссылки
+
+\`\`\`python
+import gc
+
+gc.disable()        # отключаем дополнительный сборщик, чтобы показать проблему
+
+a = {}
+b = {}
+a["partner"] = b   # a → b
+b["partner"] = a   # b → a (цикл!)
+
+del a
+del b
+# Объекты живы! Счётчики у каждого = 1 (ссылка от партнёра)
+# Память не освобождается без gc.collect()
+
+gc.enable()
+collected = gc.collect()
+print(f"Собрано циклов: {collected}")  # 1 цикл (2 объекта)
+\`\`\`
+
+Именно для решения этой проблемы в CPython существует **циклический сборщик мусора** (\`gc\` модуль), работающий поверх подсчёта ссылок.
+
+---
+
+## Итог: преимущества и ограничения
+
+| Свойство | Подсчёт ссылок |
+|---|---|
+| Освобождение памяти | Немедленное (детерминированное) |
+| Паузы ("stop the world") | Нет для большинства объектов |
+| Потребление памяти | Экономное |
+| Циклические ссылки | Не обрабатываются — нужен gc |
+| Многопоточность | GIL защищает обновление счётчиков |`,
+  },
+  {
+    id: "slots-memory-optimization",
+    question:
+      "Как оптимизировать потребление памяти экземплярами класса с помощью механизма __slots__? Какие ограничения накладывает его использование?",
+    category: "Внутреннее устройство CPython и управление памятью",
+    difficulty: "middle",
+    answer: `## Почему без __slots__ тратится лишняя память
+
+По умолчанию у каждого экземпляра класса есть \`__dict__\` — словарь атрибутов. Словарь гибкий, но тяжёлый: даже пустой \`dict\` занимает ~200 байт, а сам объект ещё ~48 байт.
+
+\`\`\`python
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+import sys
+p = Point(1.0, 2.0)
+print(sys.getsizeof(p))           # ~48 байт (сам объект)
+print(sys.getsizeof(p.__dict__))  # ~232 байт (словарь атрибутов)
+# Итого: ~280 байт на одну точку
+\`\`\`
+
+---
+
+## Как работает __slots__
+
+\`__slots__\` заменяет \`__dict__\` на статические **слоты** — C-поля фиксированного размера прямо в структуре объекта. Никакого словаря, никаких хэш-таблиц.
+
+\`\`\`python
+class PointSlot:
+    __slots__ = ("x", "y")   # объявляем допустимые атрибуты
+
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+ps = PointSlot(1.0, 2.0)
+print(sys.getsizeof(ps))          # ~56 байт (слоты внутри объекта)
+print(hasattr(ps, "__dict__"))    # False — словаря нет!
+
+# Экономия: ~280 → ~56 байт, то есть в 5 раз меньше
+\`\`\`
+
+### Реальная экономия на миллионе объектов
+
+\`\`\`python
+import tracemalloc
+
+tracemalloc.start()
+
+N = 1_000_000
+
+# Без __slots__
+class Particle:
+    def __init__(self, x, y, z):
+        self.x, self.y, self.z = x, y, z
+
+particles = [Particle(i, i, i) for i in range(N)]
+snap1 = tracemalloc.take_snapshot()
+del particles
+
+# С __slots__
+class ParticleSlot:
+    __slots__ = ("x", "y", "z")
+    def __init__(self, x, y, z):
+        self.x, self.y, self.z = x, y, z
+
+particles = [ParticleSlot(i, i, i) for i in range(N)]
+snap2 = tracemalloc.take_snapshot()
+
+# Разница: обычно 200-300 МБ vs 50-70 МБ
+\`\`\`
+
+---
+
+## Ускорение доступа к атрибутам
+
+Слот — это дескриптор с фиксированным смещением (offset) в структуре объекта. Обращение к нему — это прямое чтение по адресу \`object + offset\`, тогда как \`__dict__\` требует вычисления хэша и поиска в таблице.
+
+\`\`\`python
+import timeit
+
+class WithDict:
+    def __init__(self): self.x = 0
+
+class WithSlots:
+    __slots__ = ("x",)
+    def __init__(self): self.x = 0
+
+d = WithDict()
+s = WithSlots()
+
+t_dict  = timeit.timeit(lambda: d.x, number=10_000_000)
+t_slots = timeit.timeit(lambda: s.x, number=10_000_000)
+
+print(f"dict:  {t_dict:.3f}s")    # ~0.35s
+print(f"slots: {t_slots:.3f}s")   # ~0.25s  (≈30% быстрее)
+\`\`\`
+
+---
+
+## Ограничения __slots__
+
+### 1. Нельзя добавлять произвольные атрибуты
+
+\`\`\`python
+class Config:
+    __slots__ = ("host", "port")
+
+c = Config()
+c.host = "localhost"   # OK
+c.port = 5432          # OK
+c.debug = True         # AttributeError: 'Config' object has no attribute 'debug'
+\`\`\`
+
+### 2. Нет __weakref__ по умолчанию
+
+\`\`\`python
+import weakref
+
+class NoWeak:
+    __slots__ = ("x",)
+
+obj = NoWeak()
+ref = weakref.ref(obj)   # TypeError: cannot create weak reference to 'NoWeak' object
+
+# Исправление: добавить __weakref__ явно
+class WithWeak:
+    __slots__ = ("x", "__weakref__")
+
+obj2 = WithWeak()
+ref2 = weakref.ref(obj2)   # OK
+\`\`\`
+
+### 3. Проблемы с pickle без __getstate__/__setstate__
+
+\`\`\`python
+import pickle
+
+class Slotted:
+    __slots__ = ("x", "y")
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+    # Без этих методов pickle не сможет восстановить объект:
+    def __getstate__(self):
+        return {slot: getattr(self, slot) for slot in self.__slots__}
+
+    def __setstate__(self, state):
+        for slot, value in state.items():
+            setattr(self, slot, value)
+
+obj = Slotted(10, 20)
+restored = pickle.loads(pickle.dumps(obj))
+print(restored.x, restored.y)   # 10 20
+\`\`\`
+
+### 4. Наследование: дочерний класс без __slots__ теряет выгоду
+
+\`\`\`python
+class Base:
+    __slots__ = ("x",)
+
+class ChildBad(Base):
+    pass              # не объявил __slots__ → получает __dict__!
+
+class ChildGood(Base):
+    __slots__ = ("y",)  # добавляем ТОЛЬКО новые атрибуты
+
+c_bad  = ChildBad();  print(hasattr(c_bad, "__dict__"))   # True  — выгода потеряна
+c_good = ChildGood(); print(hasattr(c_good, "__dict__"))  # False — выгода сохранена
+\`\`\`
+
+### 5. Множественное наследование требует осторожности
+
+\`\`\`python
+class A:
+    __slots__ = ("a",)
+
+class B:
+    __slots__ = ("b",)
+
+class C(A, B):
+    __slots__ = ()    # можно — пустые слоты допустимы при MRO без конфликтов
+
+c = C()
+c.a = 1; c.b = 2      # оба слота доступны
+\`\`\`
+
+---
+
+## Когда использовать __slots__?
+
+| Сценарий | Рекомендация |
+|---|---|
+| Миллионы однотипных объектов (точки, события) | ✅ Обязательно |
+| Фиксированная схема данных | ✅ Да |
+| Нужна динамическая добавка атрибутов | ❌ Нет |
+| Активное использование mixin | ⚠️ Осторожно |
+| \`dataclass\` / \`NamedTuple\` | ✅ \`@dataclass(slots=True)\` (Python 3.10+) |
+
+\`\`\`python
+from dataclasses import dataclass
+
+# Python 3.10+: dataclass со __slots__ автоматически
+@dataclass(slots=True)
+class Vector:
+    x: float
+    y: float
+    z: float
+
+v = Vector(1.0, 2.0, 3.0)
+print(hasattr(v, "__dict__"))   # False
+print(sys.getsizeof(v))         # ~56 байт
+\`\`\``,
+  },
+  {
+    id: "array-module-vs-list",
+    question:
+      "Каковы особенности работы встроенного модуля array по сравнению со стандартными списками (list) с точки зрения экономии памяти и производительности?",
+    category: "Внутреннее устройство CPython и управление памятью",
+    difficulty: "middle",
+    answer: `## Фундаментальное различие
+
+Python \`list\` — это **гетерогенный** контейнер: массив указателей (8 байт каждый) на произвольные объекты Python. Каждый элемент является полноценным объектом с заголовком (\`ob_refcnt\`, \`ob_type\`, значение).
+
+\`array.array\` — это **гомогенный** типизированный массив: хранит примитивные значения **напрямую** в непрерывном блоке памяти, без объектного заголовка для каждого элемента.
+
+\`\`\`python
+import sys
+import array
+
+N = 1_000_000
+
+lst = list(range(N))                    # список целых чисел
+arr = array.array("l", range(N))        # array из int64 (signed long)
+
+print(sys.getsizeof(lst))   # ~8 000 056 байт (~8 МБ) — массив указателей
+print(sys.getsizeof(arr))   # ~8 000 064 байт — кажется похоже?
+
+# НО: list ещё хранит сами объекты int!
+# Каждый int в диапазоне вне [-5, 256] = ~28 байт
+# Реальная память под все объекты: 1_000_000 × 28 = ~28 МБ
+# Итого list: ~36 МБ
+# Итого array: ~8 МБ (только сырые данные)
+\`\`\`
+
+---
+
+## Коды типов array
+
+\`array.array\` создаётся с указанием **типового кода**:
+
+| Код | C-тип | Байт | Python-тип |
+|---|---|---|---|
+| \`'b'\` | signed char | 1 | int |
+| \`'B'\` | unsigned char | 1 | int |
+| \`'h'\` | signed short | 2 | int |
+| \`'H'\` | unsigned short | 2 | int |
+| \`'i'\` | signed int | 2 | int |
+| \`'l'\` | signed long | 4 | int |
+| \`'L'\` | unsigned long | 4 | int |
+| \`'q'\` | signed long long | 8 | int |
+| \`'f'\` | float | 4 | float |
+| \`'d'\` | double | 8 | float |
+| \`'u'\` | Py_UNICODE | 2/4 | deprecated |
+
+\`\`\`python
+import array
+
+# Массив однобайтовых беззнаковых целых (0–255)
+pixels = array.array("B", [255, 128, 0, 64, 200])
+print(sys.getsizeof(pixels))   # ~69 байт = 64 (заголовок) + 5×1 байт
+
+# Массив float32 (4 байта) — вдвое компактнее float64
+floats_f32 = array.array("f", [1.5, 2.5, 3.5])   # 3 × 4 = 12 байт данных
+floats_f64 = array.array("d", [1.5, 2.5, 3.5])   # 3 × 8 = 24 байта данных
+\`\`\`
+
+---
+
+## Производительность: когда array быстрее
+
+### Последовательный доступ и числовые операции
+
+\`\`\`python
+import timeit
+import array
+
+N = 100_000
+
+lst = list(range(N))
+arr = array.array("l", range(N))
+
+# Суммирование через цикл
+def sum_list(data):
+    s = 0
+    for x in data: s += x
+    return s
+
+def sum_array(data):
+    s = 0
+    for x in data: s += x
+    return s
+
+t_list  = timeit.timeit(lambda: sum_list(lst), number=100)
+t_array = timeit.timeit(lambda: sum_array(arr), number=100)
+
+print(f"list:  {t_list:.3f}s")   # ~0.85s
+print(f"array: {t_array:.3f}s")  # ~0.90s — примерно одинаково для цикла
+
+# sum() встроенный
+t_sum_list  = timeit.timeit(lambda: sum(lst), number=100)
+t_sum_array = timeit.timeit(lambda: sum(arr), number=100)
+# Встроенный sum на array чуть медленнее — каждый элемент Boxing в int при извлечении
+\`\`\`
+
+### Бинарный ввод/вывод — главное преимущество array
+
+\`\`\`python
+import array, struct, io
+
+N = 1_000_000
+data = array.array("d", range(N))   # 1M float64
+
+buf = io.BytesIO()
+
+# Запись
+data.tofile(buf)           # побайтовая запись без конвертации: очень быстро
+print(buf.tell())          # 8_000_000 байт = 1M × 8
+
+# Чтение
+buf.seek(0)
+restored = array.array("d")
+restored.fromfile(buf, N)  # столь же быстрое чтение
+print(restored == data)    # True
+
+# Для сравнения с list потребовался бы struct.pack/unpack или pickle:
+import pickle, time
+
+start = time.perf_counter()
+raw = pickle.dumps(list(range(N)))
+print(f"pickle list: {time.perf_counter()-start:.3f}s")   # ~0.15s
+
+start = time.perf_counter()
+buf2 = io.BytesIO()
+array.array("q", range(N)).tofile(buf2)
+print(f"array tofile: {time.perf_counter()-start:.3f}s")  # ~0.01s
+\`\`\`
+
+---
+
+## Взаимодействие с C-библиотеками через buffer protocol
+
+\`array.array\` реализует **buffer protocol**, поэтому данные можно передавать в C-библиотеки, \`ctypes\`, \`struct\` и \`memoryview\` без копирования:
+
+\`\`\`python
+import array, struct, ctypes
+
+arr = array.array("i", [10, 20, 30, 40])
+
+# Нулевое копирование через memoryview
+mv = memoryview(arr)
+print(mv[2])         # 30 — прямой доступ к памяти
+
+# Интерпретация как другой тип
+mv_bytes = mv.cast("B")   # те же байты, но как unsigned char
+print(list(mv_bytes))     # байтовое представление чисел
+\`\`\`
+
+---
+
+## array vs list vs numpy vs bytes
+
+| Критерий | \`list\` | \`array.array\` | \`numpy.ndarray\` | \`bytes\`/\`bytearray\` |
+|---|---|---|---|---|
+| Гетерогенность | ✅ любые объекты | ❌ один тип | ❌ один тип | ❌ только байты |
+| Память | ~36 байт/int | ~8 байт/int64 | ~8 байт/int64 | 1 байт |
+| Числовые операции | медленно (boxing) | медленно (boxing) | очень быстро (SIMD) | нет |
+| Бинарный I/O | через pickle | ✅ нативно | ✅ нативно | ✅ |
+| Зависимость | stdlib | stdlib | внешняя | stdlib |
+| Buffer protocol | ❌ | ✅ | ✅ | ✅ |
+
+---
+
+## Практическое применение
+
+\`\`\`python
+import array, socket
+
+# Сценарий 1: Чтение бинарного файла с float-данными (датчики, аудио)
+def read_float_data(path: str) -> array.array:
+    data = array.array("f")   # float32
+    with open(path, "rb") as f:
+        data.fromfile(f, os.path.getsize(path) // 4)
+    return data
+
+# Сценарий 2: Буфер для сетевой передачи
+def send_ints(sock: socket.socket, numbers: list[int]):
+    buf = array.array("H", numbers)   # unsigned short, 2 байта
+    sock.sendall(buf.tobytes())        # нулевое копирование
+
+# Сценарий 3: Пиксельные данные изображения
+width, height = 1920, 1080
+pixels = array.array("B", [0] * (width * height * 3))   # RGB, 1 байт/канал
+print(sys.getsizeof(pixels))   # ~6 220 864 байт ≈ 6 МБ
+\`\`\`
+
+> **Вывод**: \`array.array\` — правильный выбор для больших числовых последовательностей одного типа, особенно при бинарном вводе/выводе. Для математических вычислений предпочтителен \`numpy\`.`,
+  },
+  {
+    id: "gc-generations-cycles",
+    question:
+      "Как работает сборщик мусора (Garbage Collector) в Python, помимо подсчёта ссылок? Как он решает проблему циклических ссылок и что такое поколения (generations)?",
+    category: "Внутреннее устройство CPython и управление памятью",
+    difficulty: "senior",
+    answer: `## Почему одного подсчёта ссылок недостаточно
+
+Подсчёт ссылок освобождает объекты, как только счётчик обнуляется. Но если два объекта ссылаются друг на друга, их счётчики никогда не станут нулём, даже если внешних ссылок на них больше нет — образуется **утечка памяти**.
+
+\`\`\`python
+import gc
+
+gc.disable()   # отключим GC для чистой демонстрации
+
+class Node:
+    def __init__(self, val):
+        self.val = val
+        self.next = None
+
+a = Node(1)
+b = Node(2)
+a.next = b    # a → b: счётчик b = 2
+b.next = a    # b → a: счётчик a = 2
+
+del a         # счётчик a = 1 (b.next ещё смотрит на a)
+del b         # счётчик b = 1 (a.next ещё смотрит на b)
+
+# Оба объекта живы, хотя достичь их извне уже нельзя!
+# Подсчёт ссылок бессилен.
+
+gc.enable()
+collected = gc.collect()
+print(f"GC собрал: {collected}")   # 2
+\`\`\`
+
+---
+
+## Трёхпоколенческий сборщик мусора
+
+CPython реализует **generational garbage collector** — алгоритм, основанный на **гипотезе поколений**: большинство объектов погибают молодыми, а долгоживущие объекты редко образуют новые циклы.
+
+### Три поколения
+
+\`\`\`python
+import gc
+
+# Пороги (thresholds): когда запускается сборка
+print(gc.get_threshold())   # (700, 10, 10) по умолчанию
+
+# Текущие счётчики выживших объектов в каждом поколении
+print(gc.get_count())       # например (412, 5, 1)
+\`\`\`
+
+| Поколение | Объекты | Порог | Частота сборки |
+|---|---|---|---|
+| 0 (молодые) | Новые объекты | 700 | Очень часто |
+| 1 (средние) | Пережили 1 сборку gen-0 | 10 сборок gen-0 | Реже |
+| 2 (старые) | Пережили 1 сборку gen-1 | 10 сборок gen-1 | Редко |
+
+### Жизненный цикл объекта в поколениях
+
+\`\`\`
+Создан → Поколение 0
+    ↓ выжил после сборки gen-0
+Поколение 1
+    ↓ выжил после сборки gen-1
+Поколение 2 (здесь объекты живут долго — модули, глобальные переменные)
+\`\`\`
+
+---
+
+## Алгоритм обнаружения циклов
+
+Для каждой сборки поколения N GC выполняет следующие шаги:
+
+### Шаг 1: Копирование счётчиков ссылок
+GC берёт все объекты поколения N и **внутренне копирует** их \`ob_refcnt\` во вспомогательное поле (\`gc_refs\`).
+
+### Шаг 2: Удаление "внутренних" ссылок
+Для каждого объекта в группе GC просматривает всех его referents (объекты, на которые он ссылается) и уменьшает их \`gc_refs\` на 1. Это симулирует "что было бы, если бы объект исчез".
+
+### Шаг 3: Разделение на достижимые и недостижимые
+- \`gc_refs > 0\` → есть **внешние** ссылки → объект **достижим** (reachable)
+- \`gc_refs == 0\` → ссылки только из группы → объект **недостижим** (unreachable)
+
+### Шаг 4: Распространение достижимости
+Из каждого достижимого объекта делается обход в глубину — все транзитивно достижимые объекты помечаются как живые.
+
+### Шаг 5: Сбор мусора
+Оставшиеся недостижимые объекты — мусор. Они финализируются и освобождаются.
+
+\`\`\`python
+import gc
+
+# Принудительная сборка всех поколений
+gc.collect(2)    # 0, 1 или 2 — поколение, с которого начать
+
+# Посмотреть что сейчас в мусоре (до финализации)
+# Используем callback для диагностики
+def on_collect(phase, info):
+    if phase == "start":
+        print(f"GC запущен: поколение {info['generation']}, "
+              f"объектов к проверке: {info['collected'] + info['uncollectable']}")
+
+gc.callbacks.append(on_collect)
+\`\`\`
+
+---
+
+## Отслеживаемые и неотслеживаемые объекты
+
+GC **не отслеживает** объекты, которые физически не могут образовывать циклы:
+
+\`\`\`python
+import gc
+
+# Неотслеживаемые (не могут содержать ссылки):
+print(gc.is_tracked(42))          # False — int
+print(gc.is_tracked("hello"))     # False — str
+print(gc.is_tracked((1, 2, 3)))   # False — кортеж из простых типов
+
+# Отслеживаемые (могут содержать ссылки):
+print(gc.is_tracked([1, 2, 3]))          # True — list
+print(gc.is_tracked({"a": 1}))           # True — dict
+print(gc.is_tracked((1, [2])))           # True — кортеж с изменяемым элементом
+
+class MyClass: pass
+print(gc.is_tracked(MyClass()))          # True — пользовательские объекты
+\`\`\`
+
+---
+
+## Управление GC в коде
+
+\`\`\`python
+import gc
+
+# Настройка порогов: реже собирать молодых (для высоконагруженных сервисов)
+gc.set_threshold(10_000, 10, 10)
+
+# Ручная сборка в "удобный" момент (например, в конце HTTP-запроса)
+gc.collect()
+
+# Полное отключение GC (опасно! только если нет циклических ссылок)
+gc.disable()
+
+# Диагностика: сколько объектов в каждом поколении
+print(gc.get_count())           # (объектов-gen0, gen1, gen2)
+
+# Найти циклические ссылки в production (осторожно: медленно)
+gc.set_debug(gc.DEBUG_SAVEALL)  # сохранять мусор в gc.garbage
+gc.collect()
+for obj in gc.garbage:
+    print(type(obj), repr(obj)[:80])
+gc.garbage.clear()
+gc.set_debug(0)
+\`\`\`
+
+---
+
+## Практические советы
+
+\`\`\`python
+# 1. Явно разрывайте циклы перед удалением
+class Tree:
+    def __init__(self):
+        self.children = []
+        self.parent = None
+
+    def add_child(self, child):
+        child.parent = self     # ← цикл: child → parent → child
+        self.children.append(child)
+
+    def detach(self):
+        """Явный разрыв цикла перед удалением."""
+        for child in self.children:
+            child.parent = None
+        self.children.clear()
+
+# 2. Используйте weakref для обратных ссылок
+import weakref
+
+class TreeSafe:
+    def __init__(self):
+        self.children = []
+        self._parent_ref = None
+
+    @property
+    def parent(self):
+        return self._parent_ref() if self._parent_ref else None
+
+    def add_child(self, child):
+        child._parent_ref = weakref.ref(self)   # слабая ссылка — не мешает GC
+        self.children.append(child)
+\`\`\``,
+  },
+  {
+    id: "cpython-memory-arenas-pools-blocks",
+    question:
+      "Как устроена память в CPython на низком уровне? Расскажите про концепцию арен (arenas), пулов (pools) и блоков (blocks), а также про small object allocator.",
+    category: "Внутреннее устройство CPython и управление памятью",
+    difficulty: "senior",
+    answer: `## Зачем CPython нужен собственный аллокатор
+
+Вызов системного \`malloc\`/\`free\` для каждого мелкого объекта Python крайне дорог: системный вызов занимает сотни наносекунд, а фрагментация кучи ухудшает локальность кэша. Типичная программа на Python создаёт и уничтожает миллионы мелких объектов — без оптимизации это было бы катастрофически медленно.
+
+Решение — **PyMalloc** (он же small object allocator): собственный менеджер памяти CPython, оптимизированный для объектов **не более 512 байт** (до Python 3.8) или **не более 4096 байт** (начиная с Python 3.8+).
+
+---
+
+## Трёхуровневая иерархия
+
+\`\`\`
+Arena (256 КБ или 1 МБ)
+└── Pool × N (размер пула: 4 КБ = одна страница ОС)
+    └── Block × N (фиксированный размер для класса размеров)
+\`\`\`
+
+### Блок (Block)
+
+Минимальная единица выделения. Каждый блок имеет **фиксированный размер** — один из 32 классов размеров (size classes):
+
+\`\`\`
+Запрос (байт)  →  Класс размера (байт)
+1  – 8         →   8
+9  – 16        →  16
+17 – 24        →  24
+...
+497 – 512      →  512  (последний класс для PyMalloc)
+\`\`\`
+
+Запрос на 17 байт получит блок 24 байт — небольшое округление в обмен на огромную скорость.
+
+### Пул (Pool)
+
+Пул — это страница памяти (4 КБ), целиком состоящая из блоков **одного** класса размеров. Все пулы организованы в двусвязные списки по классу размера.
+
+\`\`\`
+Pool (4 КБ, класс = 32 байта):
+┌──────────────────────────────────────────┐
+│ заголовок пула (arenaindex, szidx, ...)  │
+├────┬────┬────┬────┬────┬────┬────┬────┤
+│ B  │ B  │ B  │ B  │ B  │ B  │ B  │ B  │  ← 32-байтовые блоки
+│    │    │ F  │    │ F  │    │    │    │    F = свободный
+└────┴────┴────┴────┴────┴────┴────┴────┘
+\`\`\`
+
+Свободные блоки связаны в **freelist** — односвязный список внутри самого блока (первые байты свободного блока содержат указатель на следующий свободный блок).
+
+### Арена (Arena)
+
+Арена — это большой непрерывный кусок памяти (256 КБ), разрезанный на пулы. CPython запрашивает у ОС память именно аренами, а затем нарезает её на пулы по мере необходимости.
+
+\`\`\`python
+# Из исходников CPython (obmalloc.c):
+# ARENA_SIZE  = 256 * 1024  = 262144 байт
+# POOL_SIZE   = 4096 байт   (одна страница ОС)
+# Пулов в арене = 262144 / 4096 = 64
+\`\`\`
+
+---
+
+## Жизненный цикл объекта в PyMalloc
+
+\`\`\`
+PyObject_Malloc(n байт) вызван
+         │
+         ▼
+    n > 512?  ──Yes──→  системный malloc()
+         │ No
+         ▼
+  вычислить size class (округление вверх до 8)
+         │
+         ▼
+  есть пул с freelist для этого класса?
+     │ Да                  │ Нет
+     ▼                     ▼
+  взять блок из        взять пустой пул из арены
+  freelist пула        (или создать новую арену)
+     │                     │
+     └──────────┬───────────┘
+                ▼
+          вернуть блок вызывающему
+
+PyObject_Free(ptr) вызван
+         │
+         ▼
+    ptr из PyMalloc?  ──No──→  системный free()
+         │ Да
+         ▼
+  добавить блок обратно в freelist пула
+         │
+         ▼
+  пул полностью свободен?
+     │ Да                  │ Нет
+     ▼                     ▼
+  арена полностью      пул остаётся в списке
+  свободна?            частично свободных
+     │ Да      │ Нет
+     ▼         ▼
+  вернуть    оставить
+  в ОС       арену
+\`\`\`
+
+---
+
+## Диагностика через sys и tracemalloc
+
+\`\`\`python
+import sys
+import tracemalloc
+
+# Статистика PyMalloc
+allocator = sys.getallocatedblocks()
+print(f"Текущих выделенных блоков: {allocator}")
+
+# Детальная трассировка выделений памяти
+tracemalloc.start(25)   # глубина трассировки стека = 25 кадров
+
+# ... запускаем код ...
+import json
+data = [{"id": i, "name": f"user_{i}"} for i in range(10_000)]
+serialized = json.dumps(data)
+
+snapshot = tracemalloc.take_snapshot()
+top = snapshot.statistics("lineno")[:5]
+for stat in top:
+    print(stat)
+
+# Сравнение двух моментов
+snap1 = tracemalloc.take_snapshot()
+# ... ещё код ...
+snap2 = tracemalloc.take_snapshot()
+for stat in snap2.compare_to(snap1, "lineno")[:3]:
+    print(stat)
+
+tracemalloc.stop()
+\`\`\`
+
+---
+
+## Особенности и подводные камни
+
+### Память не всегда возвращается ОС немедленно
+
+\`\`\`python
+import tracemalloc, gc
+
+tracemalloc.start()
+
+# Создаём много объектов
+big_list = [dict(x=i) for i in range(100_000)]
+print(tracemalloc.get_traced_memory())   # (current, peak) — большое число
+
+# Удаляем
+del big_list
+gc.collect()
+
+# Память в RSS процесса может НЕ уменьшиться!
+# CPython вернул блоки в пулы и арены, но арены не отдаёт ОС,
+# пока хотя бы один блок в них занят.
+print(tracemalloc.get_traced_memory())   # (current, peak) — current упал
+\`\`\`
+
+### Фрагментация арен
+
+Если в арене занят хотя бы один блок, вся арена (256 КБ) остаётся в памяти. Это нормальное поведение, но при паттерне "создать много → оставить несколько" может выглядеть как утечка.
+
+### Python 3.11+: мощный инструмент pymalloc_debug
+
+\`\`\`bash
+# Запуск интерпретатора с отладкой аллокатора
+python3 -X mallocstats script.py
+# Выводит подробную статистику пулов и арен при выходе
+\`\`\`
+
+---
+
+## Итог: почему это важно знать
+
+| Вопрос | Ответ |
+|---|---|
+| Почему Python быстро создаёт мелкие объекты? | PyMalloc обходит системный \`malloc\` |
+| Почему RSS процесса не падает после \`del\`? | Арены хранятся до полного освобождения |
+| Почему объекты разного размера занимают кратно 8 байт? | Округление до ближайшего size class |
+| Как найти реальные утечки памяти? | \`tracemalloc\` + \`gc.garbage\` |`,
+  },
+  {
+    id: "weakref-closures-memory",
+    question:
+      "Опишите проблему «живых» (сильных) ссылок в замыканиях и долгоживущих объектах. В каких сценариях критически важно использовать модуль weakref (слабые ссылки)?",
+    category: "Внутреннее устройство CPython и управление памятью",
+    difficulty: "senior",
+    answer: `## Сильные ссылки и проблема замыканий
+
+Когда вложенная функция (**замыкание**) захватывает переменную из внешней области видимости, Python создаёт **ячейку** (cell object) — обёртку над значением, которая удерживает объект живым, пока живёт само замыкание.
+
+\`\`\`python
+import sys
+
+def make_callback(data: list):
+    """data захватывается замыканием — сильная ссылка!"""
+    def callback():
+        print(f"Данных: {len(data)}")
+    return callback
+
+big_data = list(range(1_000_000))   # ~8 МБ
+print(sys.getrefcount(big_data))    # 2 (переменная + getrefcount)
+
+cb = make_callback(big_data)
+print(sys.getrefcount(big_data))    # 3 (переменная + cell + getrefcount)
+
+del big_data  # удаляем внешнюю переменную
+# cb.__closure__[0].cell_contents — big_data ещё жива!
+# 8 МБ данных остаются в памяти, пока жив cb
+
+import gc; gc.collect()
+# Данные всё ещё живы — cb удерживает их через ячейку замыкания
+del cb   # только теперь big_data уничтожается
+\`\`\`
+
+---
+
+## Проблема в кэшах и реестрах
+
+Самый распространённый источник утечек через сильные ссылки:
+
+\`\`\`python
+class EventSystem:
+    """Простая шина событий — классическая ловушка утечки."""
+    _handlers: dict[str, list] = {}
+
+    @classmethod
+    def subscribe(cls, event: str, handler):
+        cls._handlers.setdefault(event, []).append(handler)  # сильная ссылка!
+
+    @classmethod
+    def emit(cls, event: str, *args):
+        for handler in cls._handlers.get(event, []):
+            handler(*args)
+
+class Widget:
+    def __init__(self, name: str):
+        self.name = name
+        EventSystem.subscribe("click", self.on_click)   # регистрируем обработчик
+
+    def on_click(self, x, y):
+        print(f"{self.name} clicked at ({x}, {y})")
+
+# Создаём и "удаляем" виджеты
+for i in range(1000):
+    w = Widget(f"btn_{i}")
+    # w выходит из области видимости, но EventSystem держит on_click (метод),
+    # метод держит self (Widget), Widget никогда не уничтожается!
+
+import gc; print(len(gc.get_objects()))  # тысячи живых виджетов!
+\`\`\`
+
+---
+
+## Слабые ссылки: концепция
+
+**Слабая ссылка** (weak reference) — ссылка на объект, которая **не увеличивает счётчик ссылок**. Если на объект остаются только слабые ссылки, он уничтожается, а слабая ссылка становится «мёртвой» (возвращает \`None\`).
+
+\`\`\`python
+import weakref
+
+class Heavy:
+    def __init__(self, data):
+        self.data = data
+    def __del__(self):
+        print(f"Heavy уничтожен")
+
+obj = Heavy([1] * 1_000_000)
+
+# Сильная ссылка
+strong = obj
+# Слабая ссылка
+weak = weakref.ref(obj)
+
+print(weak())           # <Heavy object ...> — объект жив
+print(weak() is obj)    # True
+
+del obj
+del strong              # счётчик → 0 → объект уничтожается
+# Heavy уничтожен
+print(weak())           # None — объект мёртв, утечки нет
+\`\`\`
+
+---
+
+## Исправление EventSystem через weakref
+
+\`\`\`python
+import weakref
+from collections import defaultdict
+
+class SafeEventSystem:
+    """Шина событий с слабыми ссылками на обработчики."""
+    _handlers: dict[str, list] = defaultdict(list)
+
+    @classmethod
+    def subscribe(cls, event: str, handler):
+        # weakref.WeakMethod для bound-методов, weakref.ref для функций
+        if hasattr(handler, "__self__"):
+            ref = weakref.WeakMethod(handler)
+        else:
+            ref = weakref.ref(handler)
+        cls._handlers[event].append(ref)
+
+    @classmethod
+    def emit(cls, event: str, *args):
+        alive = []
+        for ref in cls._handlers[event]:
+            handler = ref()
+            if handler is not None:   # объект ещё жив
+                handler(*args)
+                alive.append(ref)
+        cls._handlers[event] = alive  # убираем мёртвые ссылки
+
+class Button:
+    def __init__(self, name: str):
+        self.name = name
+        SafeEventSystem.subscribe("click", self.on_click)
+
+    def on_click(self, x, y):
+        print(f"{self.name} clicked at ({x}, {y})")
+
+btn = Button("OK")
+SafeEventSystem.emit("click", 10, 20)   # OK clicked at (10, 20)
+
+del btn   # Button уничтожается немедленно!
+SafeEventSystem.emit("click", 10, 20)   # ничего — мёртвая ссылка убрана
+\`\`\`
+
+---
+
+## weakref.WeakValueDictionary и WeakKeyDictionary
+
+\`\`\`python
+import weakref
+
+# WeakValueDictionary: ключи сильные, значения — слабые
+cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
+
+class Session:
+    def __init__(self, sid: str):
+        self.sid = sid
+    def __repr__(self):
+        return f"Session({self.sid})"
+
+s1 = Session("abc123")
+s2 = Session("xyz789")
+
+cache["abc123"] = s1
+cache["xyz789"] = s2
+
+print(dict(cache))   # {'abc123': Session(abc123), 'xyz789': Session(xyz789)}
+
+del s1               # Session("abc123") уничтожается — слабая ссылка мертва
+print(dict(cache))   # {'xyz789': Session(xyz789)} — автоматически убрано!
+
+# WeakKeyDictionary: значения сильные, ключи — слабые
+# Полезно для дополнения объектов метаданными без изменения их структуры
+metadata: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+
+class Node:
+    pass
+
+n = Node()
+metadata[n] = {"created_at": "2024-01-01", "visits": 42}
+print(metadata[n])   # {'created_at': '2024-01-01', 'visits': 42}
+
+del n    # Node уничтожается, запись из metadata исчезает автоматически
+\`\`\`
+
+---
+
+## weakref.finalize — колбэк при уничтожении
+
+\`\`\`python
+import weakref
+
+class Connection:
+    def __init__(self, host: str):
+        self.host = host
+        self._fd = 42   # имитация файлового дескриптора
+
+def cleanup(host, fd):
+    """Вызывается при уничтожении Connection."""
+    print(f"Закрываем соединение с {host}, fd={fd}")
+
+conn = Connection("db.example.com")
+
+# Регистрируем финализатор — слабая ссылка + колбэк
+fin = weakref.finalize(conn, cleanup, conn.host, conn._fd)
+
+print(fin.alive)   # True
+
+del conn           # → cleanup вызывается автоматически
+                   # "Закрываем соединение с db.example.com, fd=42"
+
+print(fin.alive)   # False
+\`\`\`
+
+---
+
+## Слабые ссылки в замыканиях
+
+\`\`\`python
+import weakref
+
+def make_safe_callback(data: list):
+    """Замыкание удерживает только слабую ссылку на data."""
+    data_ref = weakref.ref(data)
+
+    def callback():
+        d = data_ref()
+        if d is None:
+            print("Данные уже уничтожены")
+            return
+        print(f"Данных: {len(d)}")
+
+    return callback
+
+big_data = list(range(1_000_000))
+cb = make_safe_callback(big_data)
+
+cb()            # Данных: 1000000
+
+del big_data    # данные уничтожаются немедленно!
+cb()            # Данных уже уничтожены
+\`\`\`
+
+---
+
+## Когда использовать weakref?
+
+| Сценарий | Зачем weakref |
+|---|---|
+| Кэш (LRU, объектный) | Не мешать GC освобождать закэшированные объекты |
+| Шина событий / Observer | Позволить подписчикам умирать без ручной отписки |
+| Циклические ссылки (parent ↔ child) | Обратная ссылка — слабая, прямая — сильная |
+| Замыкания с большими данными | Колбэки не должны удерживать payload |
+| Пул объектов | Возвращать объект в пул только если он ещё жив |
+
+> **Ограничение**: не все объекты поддерживают слабые ссылки. \`int\`, \`str\`, \`tuple\`, \`list\` — не поддерживают. Пользовательские классы поддерживают автоматически (если нет \`__slots__\` без \`__weakref__\`).`,
+  },
+  {
+    id: "buffer-protocol-memoryview",
+    question:
+      "Что такое Buffer Protocol (протокол буфера) в Python и как использовать класс memoryview для реализации zero-copy операций при работе с бинарными данными?",
+    category: "Внутреннее устройство CPython и управление памятью",
+    difficulty: "senior",
+    answer: `## Что такое Buffer Protocol?
+
+**Buffer Protocol** — это низкоуровневый C-интерфейс CPython, позволяющий объектам предоставлять прямой доступ к своему внутреннему буферу памяти без копирования данных. Объект, реализующий этот протокол, сообщает интерпретатору: «вот указатель на мою память, её формат и размер — работай с ней напрямую».
+
+Протокол реализуют: \`bytes\`, \`bytearray\`, \`array.array\`, \`numpy.ndarray\`, \`mmap.mmap\` и другие.
+
+Пользователь взаимодействует с протоколом через встроенный класс **\`memoryview\`**.
+
+---
+
+## Проблема без Buffer Protocol: лишние копии
+
+\`\`\`python
+import time
+
+data = bytes(100 * 1024 * 1024)   # 100 МБ
+
+# ПЛОХО: каждый срез bytes создаёт новый объект в памяти
+start = time.perf_counter()
+chunk_size = 4096
+pos = 0
+chunks = []
+while pos < len(data):
+    chunks.append(data[pos:pos + chunk_size])   # копирование!
+    pos += chunk_size
+print(f"С копированием: {time.perf_counter() - start:.3f}s")
+# ~0.15s, создаёт ~25 000 копий по 4 КБ = 100 МБ лишней памяти
+\`\`\`
+
+---
+
+## memoryview: zero-copy доступ
+
+\`\`\`python
+data = bytes(100 * 1024 * 1024)   # 100 МБ
+mv = memoryview(data)              # O(1) — только обёртка, никакого копирования
+
+start = time.perf_counter()
+chunk_size = 4096
+pos = 0
+chunks = []
+while pos < len(mv):
+    chunks.append(mv[pos:pos + chunk_size])   # срез memoryview — тоже zero-copy!
+    pos += chunk_size
+print(f"Без копирования: {time.perf_counter() - start:.3f}s")
+# ~0.005s, все срезы указывают на ту же память
+
+# Проверяем: mv[1000:2000] не копирует данные
+sub = mv[1000:2000]
+print(type(sub))        # <class 'memoryview'>
+print(len(sub))         # 1000
+print(sub.nbytes)       # 1000 — байт в представлении
+print(sub.readonly)     # True — bytes неизменяем
+\`\`\`
+
+---
+
+## Формат и интерпретация данных
+
+\`memoryview\` умеет интерпретировать буфер как массив элементов различных типов, как \`struct\`:
+
+\`\`\`python
+import array
+
+# Массив int32
+arr = array.array("i", [10, 20, 30, 40, 50])
+mv = memoryview(arr)
+
+print(mv.format)     # 'i'  — формат элементов (как struct)
+print(mv.itemsize)   # 4    — байт на элемент
+print(mv.ndim)       # 1    — одномерный
+print(mv.shape)      # (5,) — форма
+print(mv[2])         # 30   — прямой доступ по индексу
+
+# Переинтерпретация: те же байты как unsigned short (2 байта)
+mv_h = mv.cast("H")
+print(mv_h.format)   # 'H'
+print(mv_h.shape)    # (10,) — 5×4 байт = 10×2 байт
+\`\`\`
+
+---
+
+## Запись через memoryview (zero-copy изменение)
+
+\`\`\`python
+# bytearray — изменяемый буфер
+buf = bytearray(b"Hello, World!")
+mv = memoryview(buf)
+
+# Изменяем часть буфера без создания нового объекта
+mv[7:12] = b"Pytho"   # zero-copy запись в тот же буфер
+print(bytes(buf))     # b'Hello, Pytho!'
+
+mv[12:13] = b"n"
+print(bytes(buf))     # b'Hello, Python!'
+
+# Практика: обнуление секрета в памяти без копии
+secret = bytearray(b"password123")
+mv_secret = memoryview(secret)
+mv_secret[:] = b"\\x00" * len(secret)   # затираем на месте
+print(bytes(secret))  # b'\\x00\\x00\\x00...'
+\`\`\`
+
+---
+
+## Практический пример: парсинг бинарного протокола
+
+\`\`\`python
+import struct
+from dataclasses import dataclass
+
+# Бинарный формат пакета: [magic:2B][version:1B][length:4B][payload:NB]
+HEADER_FMT = ">2sBI"   # big-endian: 2 bytes, unsigned char, unsigned int
+HEADER_SIZE = struct.calcsize(HEADER_FMT)   # 7 байт
+
+@dataclass
+class Packet:
+    magic: bytes
+    version: int
+    payload: memoryview   # zero-copy ссылка на исходный буфер
+
+def parse_packets(raw: bytes) -> list[Packet]:
+    mv = memoryview(raw)   # один раз оборачиваем весь буфер
+    packets = []
+    pos = 0
+
+    while pos + HEADER_SIZE <= len(mv):
+        # Читаем заголовок — zero-copy срез
+        magic, version, length = struct.unpack(HEADER_FMT, mv[pos:pos + HEADER_SIZE])
+        pos += HEADER_SIZE
+
+        if pos + length > len(mv):
+            break
+
+        # Payload — тоже zero-copy: просто другой вид на ту же память
+        payload = mv[pos:pos + length]
+        packets.append(Packet(magic, version, payload))
+        pos += length
+
+    return packets
+
+# Создаём тестовый буфер
+raw = struct.pack(">2sBI", b"PY", 3, 5) + b"hello" + \\
+      struct.pack(">2sBI", b"PY", 3, 5) + b"world"
+
+packets = parse_packets(raw)
+print(len(packets))                    # 2
+print(bytes(packets[0].payload))       # b'hello'
+print(bytes(packets[1].payload))       # b'world'
+# Никаких копий данных не создавалось!
+\`\`\`
+
+---
+
+## Применение в сетевом программировании
+
+\`\`\`python
+import socket
+
+def send_large_file(sock: socket.socket, filepath: str):
+    """Отправляем файл кусками без промежуточных копий."""
+    with open(filepath, "rb") as f:
+        data = f.read()
+
+    mv = memoryview(data)
+    total = len(mv)
+    sent = 0
+
+    while sent < total:
+        # sock.send возвращает число отправленных байт (может быть меньше chunk_size)
+        n = sock.send(mv[sent:sent + 65536])   # zero-copy передача сокету
+        sent += n
+
+    return sent
+
+# Аналогично для приёма:
+def recv_into_buffer(sock: socket.socket, size: int) -> bytearray:
+    buf = bytearray(size)
+    mv = memoryview(buf)
+    received = 0
+    while received < size:
+        n = sock.recv_into(mv[received:], size - received)   # zero-copy запись
+        if n == 0:
+            break
+        received += n
+    return buf[:received]
+\`\`\`
+
+---
+
+## Многомерные буферы (numpy-совместимость)
+
+\`\`\`python
+import numpy as np
+
+matrix = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
+mv = memoryview(matrix)
+
+print(mv.ndim)      # 2
+print(mv.shape)     # (2, 3)
+print(mv.strides)   # (12, 4) — шаг строки 12 байт, столбца 4 байта
+
+# Доступ к элементу без копирования
+print(mv[0, 1])     # 2
+\`\`\`
+
+---
+
+## Итог
+
+| Операция | \`bytes\` / \`bytearray\` | \`memoryview\` |
+|---|---|---|
+| Срез \`[a:b]\` | Новый объект (копия) | Новый вид (zero-copy) |
+| Передача в \`socket.send\` | Копирование в ядро | Zero-copy через буферный интерфейс |
+| Интерпретация как int/float | Нужен \`struct.unpack\` + копия | \`cast()\` — zero-copy |
+| Изменение данных | Только \`bytearray\` | \`bytearray\`, \`array\`, \`numpy\` |`,
+  },
+  {
+    id: "string-interning-pep393",
+    question:
+      "Как внутренне оптимизируются строки в CPython? Расскажите про механизм интернирования строк (sys.intern) и спецификацию PEP 393 (гибкое представление строк).",
+    category: "Внутреннее устройство CPython и управление памятью",
+    difficulty: "senior",
+    answer: `## Проблема до PEP 393
+
+До Python 3.3 все строки хранились в формате **UCS-2** (2 байта/символ) или **UCS-4** (4 байта/символ). Строка \`"hello"\` из ASCII-символов занимала 10 или 20 байт вместо 5 — расточительно для типичного Python-кода, где большинство строк состоит из ASCII.
+
+---
+
+## PEP 393: Гибкое представление строк (Flexible String Representation)
+
+Начиная с Python 3.3, CPython выбирает **наиболее компактное** внутреннее представление автоматически, на основе наибольшего кодового пункта в строке:
+
+| Уровень | Представление | Байт/символ | Диапазон символов |
+|---|---|---|---|
+| Latin-1 | \`PyASCIIObject\` / \`PyCompactUnicodeObject\` | **1** | U+0000 – U+00FF |
+| UCS-2 | \`PyCompactUnicodeObject\` | **2** | U+0000 – U+FFFF |
+| UCS-4 | \`PyCompactUnicodeObject\` | **4** | U+0000 – U+10FFFF |
+
+\`\`\`python
+import sys
+
+s_ascii  = "hello"           # только ASCII → Latin-1, 1 байт/символ
+s_latin  = "café"            # é = U+00E9, ≤ U+00FF → Latin-1
+s_ucs2   = "привет"          # и = U+0438, ≤ U+FFFF → UCS-2
+s_emoji  = "hi 🐍"           # 🐍 = U+1F40D > U+FFFF → UCS-4
+
+# getsizeof включает заголовок объекта (~49 байт для ASCII-строк)
+print(sys.getsizeof(s_ascii))   # 54  = 49 + 5×1
+print(sys.getsizeof(s_latin))   # 53  = 49 + 4×1
+print(sys.getsizeof(s_ucs2))    # 61  = 49 + 6×2
+print(sys.getsizeof(s_emoji))   # 80  = 52 + 7×4
+
+# Одна emoji «заражает» всю строку до UCS-4
+long_ascii = "a" * 1000
+long_emoji = "a" * 999 + "🐍"
+print(sys.getsizeof(long_ascii))   # 1049  = 49 + 1000×1
+print(sys.getsizeof(long_emoji))   # 4052  = 52 + 1000×4 — в 4 раза больше!
+\`\`\`
+
+---
+
+## Внутренняя структура строкового объекта
+
+\`\`\`c
+/* Упрощённо из CPython Objects/unicodeobject.c */
+
+typedef struct {
+    PyObject_HEAD           /* ob_refcnt + ob_type: 16 байт */
+    Py_ssize_t length;      /* длина в символах */
+    Py_hash_t  hash;        /* кэшированный хэш (-1 = не вычислен) */
+    struct {
+        unsigned int interned: 2;   /* статус интернирования */
+        unsigned int kind:     3;   /* 1=Latin-1, 2=UCS-2, 4=UCS-4 */
+        unsigned int compact:  1;
+        unsigned int ascii:    1;
+        unsigned int ready:    1;
+    } state;
+    /* далее: данные символов inline (compact строки) */
+} PyASCIIObject;
+\`\`\`
+
+\`\`\`python
+# Посмотреть «kind» через ctypes (только для исследования!)
+import ctypes, sys
+
+def get_string_kind(s: str) -> str:
+    # Смещение поля state в структуре PyASCIIObject
+    # (зависит от платформы, это упрощение)
+    addr = id(s)
+    # Реальный способ — читать через объект
+    if all(ord(c) < 256 for c in s):
+        return "Latin-1 (1 byte/char)"
+    elif all(ord(c) < 65536 for c in s):
+        return "UCS-2 (2 bytes/char)"
+    else:
+        return "UCS-4 (4 bytes/char)"
+
+print(get_string_kind("hello"))    # Latin-1
+print(get_string_kind("привет"))   # UCS-2
+print(get_string_kind("hi🐍"))     # UCS-4
+\`\`\`
+
+---
+
+## Кэширование хэша
+
+Хэш строки вычисляется **один раз** и сохраняется в поле \`hash\`. Повторные вызовы \`hash(s)\` возвращают кэшированное значение за O(1). Это ключевой фактор производительности словарей и множеств с строковыми ключами.
+
+\`\`\`python
+import timeit
+
+s = "a_very_long_string_" * 100   # 2000 символов
+
+# Первый вызов: вычисление хэша O(n)
+# Последующие: чтение из кэша O(1)
+t = timeit.timeit(lambda: hash(s), number=10_000_000)
+print(f"hash() на кэшированной строке: {t:.3f}s")   # ~0.3s — чистый overhead вызова
+\`\`\`
+
+> **Важно**: в Python 3.3+ введена **рандомизация хэша** (hash randomization, \`PYTHONHASHSEED\`). Хэш строки различается между запусками интерпретатора — это защита от HashDoS-атак.
+
+---
+
+## Интернирование строк: sys.intern()
+
+**Интернирование** — это кэширование строк в глобальной таблице так, чтобы одинаковые строки были **одним объектом** в памяти.
+
+### Автоматическое интернирование (CPython)
+
+CPython автоматически интернирует строки, которые выглядят как **идентификаторы** (состоят из букв, цифр, подчёркиваний):
+
+\`\`\`python
+a = "hello_world"
+b = "hello_world"
+print(a is b)    # True — автоматически интернировано (похоже на идентификатор)
+
+a = "hello world"   # пробел — не интернируется автоматически
+b = "hello world"
+print(a is b)    # False (обычно), хотя may vary
+
+# Строки-константы в одном блоке кода — constant folding компилятора
+a = "hello!"
+b = "hello!"
+print(a is b)    # True в CPython — компилятор сложил константы
+
+# Но динамически созданные строки — нет:
+a = "hel" + "lo!"   # compile-time folding → True
+b = input_func()    # runtime → не интернировано
+\`\`\`
+
+### Ручное интернирование: sys.intern()
+
+\`\`\`python
+import sys
+
+# Принудительно интернируем строку с пробелами/спецсимволами
+a = sys.intern("hello world!")
+b = sys.intern("hello world!")
+print(a is b)    # True — гарантировано один объект
+
+# Практический кейс: обработка миллионов строк из лога
+def process_log_lines(lines: list[str]) -> dict[str, int]:
+    """Считаем частоту уровней лога. Интернируем повторяющиеся значения."""
+    counts: dict[str, int] = {}
+    for line in lines:
+        parts = line.split(" ", 1)
+        if parts:
+            level = sys.intern(parts[0])   # "INFO"/"WARN"/"ERROR" — будет одним объектом
+            counts[level] = counts.get(level, 0) + 1
+    return counts
+
+# Без интернирования: 1M объектов строки "INFO"
+# С интернированием: 3 объекта + быстрое сравнение через is
+\`\`\`
+
+### Ускорение сравнения через интернирование
+
+\`\`\`python
+import sys, timeit
+
+s1 = sys.intern("common_key_in_dict_lookup")
+s2 = sys.intern("common_key_in_dict_lookup")
+
+s3 = "common_key_in_dict_lookup"   # не интернировано (создано заново)
+s4 = "common_key_in_dict_lookup"
+
+# Интернированные: сравнение по указателю O(1)
+t_is   = timeit.timeit(lambda: s1 is s2,  number=50_000_000)
+
+# Не интернированные: посимвольное O(n) с ранней остановкой
+t_eq   = timeit.timeit(lambda: s3 == s4,  number=50_000_000)
+
+print(f"is  (intern): {t_is:.3f}s")   # ~0.5s
+print(f"==  (no intern): {t_eq:.3f}s") # ~0.6s (длинная строка = заметная разница)
+\`\`\`
+
+---
+
+## Практические рекомендации
+
+\`\`\`python
+import sys
+
+# 1. Интернируйте ключи словарей, которые повторяются миллионы раз
+status_values = ["OK", "ERROR", "WARN", "TIMEOUT"]
+interned = {sys.intern(s): s for s in status_values}
+
+# 2. Избегайте UCS-4 «загрязнения» при конкатенации
+def safe_format(template: str, value: str) -> str:
+    # Если value содержит emoji, результат будет UCS-4
+    # Рассмотрите нормализацию или замену перед форматированием
+    return template.format(value)
+
+# 3. Помните: is сравнивает идентичность, == — значение
+# Никогда не пишите: if user_input is "admin"  — это баг!
+# Правильно:         if user_input == "admin"
+\`\`\`
+
+---
+
+## Итог по PEP 393
+
+| Строка | Представление | Память (N символов) |
+|---|---|---|
+| Только ASCII / Latin-1 | 1 байт/символ | N + ~49 байт |
+| Кириллица, CJK | UCS-2 (2 байт/символ) | 2N + ~49 байт |
+| Emoji, редкие символы | UCS-4 (4 байт/символ) | 4N + ~49 байт |
+| Одна emoji в ASCII-строке | UCS-4 для всей строки | 4×(N+1) + ~52 байт |`,
+  },
+  {
+    id: "cpython-bytecode-optimizations",
+    question:
+      "Какие базовые оптимизации выполняет компилятор Python при генерации байт-кода на этапе парсинга (например, constant folding и peephole optimization)?",
+    category: "Внутреннее устройство CPython и управление памятью",
+    difficulty: "senior",
+    answer: `## Пайплайн компиляции Python
+
+Прежде чем выполнить код, CPython проходит несколько стадий:
+
+\`\`\`
+Исходный код
+     ↓ tokenizer
+Токены
+     ↓ parser
+AST (Abstract Syntax Tree)
+     ↓ AST optimizer        ← constant folding здесь
+Оптимизированный AST
+     ↓ compiler
+Байт-код (raw)
+     ↓ peephole optimizer   ← peephole оптимизации здесь
+Оптимизированный байт-код (.pyc)
+     ↓ eval loop (CPython VM)
+Результат
+\`\`\`
+
+---
+
+## Инструменты для изучения байт-кода
+
+\`\`\`python
+import dis
+import ast
+
+# Посмотреть AST
+code = "x = 2 * 3 + 1"
+tree = ast.parse(code)
+print(ast.dump(tree, indent=2))
+
+# Посмотреть байт-код
+def example():
+    x = 2 * 3 + 1
+
+dis.dis(example)
+# Вместо трёх операций (умножение, сложение, присвоение)
+# компилятор сразу помещает 7 как константу
+\`\`\`
+
+---
+
+## 1. Constant Folding (свёртка констант)
+
+Компилятор вычисляет выражения из **констант времени компиляции** и заменяет их на результат. Это происходит на уровне AST-оптимизатора.
+
+\`\`\`python
+import dis
+
+def folded():
+    # Арифметика
+    x = 2 * 3 + 1          # → 7 (одна константа)
+    y = 10 / 2              # → 5.0
+    z = 2 ** 10             # → 1024
+
+    # Строки
+    s = "Hello, " + "World" # → "Hello, World"
+    t = "ab" * 3            # → "ababab"
+
+    # Кортежи (неизменяемые — можно свернуть)
+    tup = (1, 2) + (3, 4)   # → (1, 2, 3, 4)
+
+dis.dis(folded)
+# LOAD_CONST  7
+# LOAD_CONST  5.0
+# LOAD_CONST  1024
+# LOAD_CONST  'Hello, World'
+# LOAD_CONST  'ababab'
+# LOAD_CONST  (1, 2, 3, 4)
+\`\`\`
+
+### Что НЕ сворачивается
+
+\`\`\`python
+def not_folded(n):
+    x = n * 3          # n — переменная, не константа → нет свёртки
+    y = [1, 2] + [3]   # list — изменяемый → нет свёртки
+    z = "x" * 10_000   # строки длиннее ~4096 символов — не сворачиваются
+                       # (защита от раздувания .pyc)
+
+import dis
+dis.dis(not_folded)
+# Для x: LOAD_FAST + LOAD_CONST(3) + BINARY_OP
+\`\`\`
+
+---
+
+## 2. Peephole Optimization
+
+**Peephole** («смотровое отверстие») — оптимизатор, который смотрит на короткие последовательности инструкций байт-кода и заменяет их более эффективными. В CPython 3.12+ это делает \`_Py_Specialize_*\` и оптимизирующий компилятор.
+
+### 2.1 Оптимизация условных переходов
+
+\`\`\`python
+import dis
+
+def dead_code():
+    if True:          # условие всегда истинно
+        return 1
+    return 2          # мёртвый код — никогда не выполнится
+
+dis.dis(dead_code)
+# LOAD_CONST  1
+# RETURN_VALUE
+# (return 2 полностью убран!)
+\`\`\`
+
+### 2.2 Преобразование list/set в frozenset для in
+
+\`\`\`python
+import dis
+
+def membership_test(x):
+    return x in [1, 2, 3]     # список → кортеж или frozenset
+
+def membership_set(x):
+    return x in {1, 2, 3}     # множество → frozenset (хэш-поиск O(1))
+
+dis.dis(membership_test)
+# LOAD_CONST  (1, 2, 3)   ← список заменён кортежем-константой
+# CONTAINS_OP
+
+dis.dis(membership_set)
+# LOAD_CONST  frozenset({1, 2, 3})  ← множество → frozenset (O(1) поиск)
+# CONTAINS_OP
+\`\`\`
+
+### 2.3 Устранение лишних переходов (jump threading)
+
+\`\`\`python
+def jump_chain(x):
+    if x > 0:
+        pass       # пустой блок
+    return x
+
+# Компилятор убирает прыжок к прыжку:
+# JUMP_IF_FALSE → JUMP_FORWARD → CODE
+# оптимизируется в:
+# JUMP_IF_FALSE → CODE (прямо)
+\`\`\`
+
+---
+
+## 3. Специализация инструкций (Python 3.11+, adaptive interpreter)
+
+Начиная с CPython 3.11, интерпретатор реализует **адаптивную специализацию**: часто используемые инструкции заменяются специализированными версиями после нескольких выполнений.
+
+\`\`\`python
+# Обычная операция:
+# BINARY_OP  + (полиморфная)
+
+# После нескольких вызовов с int + int:
+# BINARY_OP_ADD_INT  (специализированная — пропускает проверку типа)
+
+# Для вызовов функций:
+# CALL  (общий) → CALL_PY_EXACT_ARGS (специализированный для Python-функций)
+#              → CALL_BUILTIN_FAST    (специализированный для встроенных)
+\`\`\`
+
+Посмотреть специализированный байт-код:
+
+\`\`\`python
+import dis
+
+def hot_function(a: int, b: int) -> int:
+    return a + b
+
+# Прогреваем функцию
+for i in range(100):
+    hot_function(i, i + 1)
+
+# Специализированный байт-код (Python 3.12+)
+dis.dis(hot_function, adaptive=True)
+# RESUME
+# LOAD_FAST           a
+# LOAD_FAST           b
+# BINARY_OP_ADD_INT   +   ← специализированная инструкция!
+# RETURN_VALUE
+\`\`\`
+
+---
+
+## 4. Оптимизация загрузки глобалов (LOAD_GLOBAL)
+
+В Python 3.12 инструкция \`LOAD_GLOBAL\` была переработана: теперь она кэширует результат поиска в словаре модуля с помощью версионного счётчика. Повторный поиск \`len\`, \`print\` и т.д. происходит без хэш-поиска.
+
+\`\`\`python
+import dis
+
+def use_builtins(data):
+    return len(data) + sum(data)
+
+dis.dis(use_builtins)
+# LOAD_GLOBAL  1 (len + NULL)    ← флаг "1" означает push NULL+callable
+# LOAD_GLOBAL  3 (sum + NULL)
+# ...
+# В 3.12: LOAD_GLOBAL специализируется в LOAD_GLOBAL_MODULE или
+#         LOAD_GLOBAL_BUILTIN после нескольких вызовов
+\`\`\`
+
+---
+
+## Практический пример: сравнение до/после
+
+\`\`\`python
+import dis, timeit
+
+# Вариант 1: проверка принадлежности к списку (медленно)
+def check_list(x):
+    return x in [1, 2, 3, 4, 5]
+
+# Вариант 2: проверка принадлежности к множеству (быстрее синтаксически,
+# но peephole оптимизатор уже делает это за вас в варианте 1!)
+def check_set(x):
+    return x in {1, 2, 3, 4, 5}
+
+# Посмотрим байт-код
+print("=== check_list ===")
+dis.dis(check_list)
+# LOAD_CONST (1, 2, 3, 4, 5)   ← список превратился в кортеж/frozenset!
+
+print("\\n=== check_set ===")
+dis.dis(check_set)
+# LOAD_CONST frozenset({1, 2, 3, 4, 5})
+
+t1 = timeit.timeit(lambda: check_list(3), number=10_000_000)
+t2 = timeit.timeit(lambda: check_set(3),  number=10_000_000)
+print(f"list: {t1:.3f}s, set: {t2:.3f}s")  # примерно одинаково после оптимизации
+\`\`\`
+
+---
+
+## Итог: что оптимизирует компилятор
+
+| Оптимизация | Когда применяется | Пример |
+|---|---|---|
+| Constant folding | AST-стадия | \`2*3+1\` → \`7\` |
+| Строковая конкатенация | AST-стадия | \`"a"+"b"\` → \`"ab"\` |
+| Dead code elimination | Peephole | \`if True:\` убирает else |
+| \`[1,2,3]\` → кортеж/frozenset | Peephole | \`x in [1,2,3]\` → \`x in (1,2,3)\` |
+| Jump threading | Peephole | Цепочки переходов → один прыжок |
+| Специализация инструкций | Runtime (3.11+) | \`BINARY_OP\` → \`BINARY_OP_ADD_INT\` |`,
+  },
+  {
+    id: "gil-global-interpreter-lock",
+    question:
+      "Что такое GIL (Global Interpreter Lock)? Как он влияет на выполнение многопоточного кода и в каких сценариях становится бутылочным горлышком?",
+    category: "Многопоточность, параллелизм и асинхронность",
+    difficulty: "middle",
+    answer: `## Что такое GIL?
+
+**GIL (Global Interpreter Lock)** — это мьютекс (взаимное исключение) внутри CPython, который гарантирует, что в каждый момент времени **только один поток** выполняет байт-код Python. Технически это примитив синхронизации \`PyThread_type_lock\`, захваченный перед выполнением Python-инструкций и освобождаемый в ряде сценариев.
+
+\`\`\`
+Поток 1: ──[захват GIL]──[Python байт-код]──[освобождение GIL]──
+Поток 2: ─────────────────────────────────────[захват GIL]──[байт-код]──
+Поток 3: ──ожидание GIL──────────────────────────────────────────────────
+\`\`\`
+
+---
+
+## Зачем GIL нужен?
+
+GIL защищает внутренние структуры CPython от **состояния гонки** (race condition):
+
+1. **Счётчики ссылок** (\`ob_refcnt\`) — без GIL одновременное изменение счётчиков двумя потоками привело бы к двойному освобождению или утечке памяти.
+2. **Словари и списки** — внутренние структуры данных не являются потокобезопасными сами по себе.
+3. **Аллокатор памяти** — PyMalloc не является потокобезопасным без внешней синхронизации.
+
+\`\`\`python
+import sys, threading
+
+counter = [0]   # простой счётчик через список (изменяемый)
+
+def increment_unsafe(n: int):
+    for _ in range(n):
+        counter[0] += 1   # НЕ атомарная операция: LOAD + ADD + STORE
+
+threads = [threading.Thread(target=increment_unsafe, args=(100_000,)) for _ in range(4)]
+for t in threads: t.start()
+for t in threads: t.join()
+
+print(counter[0])   # Ожидаем 400_000, но из-за GIL получим 400_000 (!)
+                    # GIL защищает от гонки на уровне байт-кода
+                    # Но: += всё равно НЕ атомарен — нужен Lock для надёжности
+\`\`\`
+
+---
+
+## Когда GIL освобождается
+
+GIL **не удерживается постоянно**. CPython освобождает его в ряде ситуаций:
+
+### 1. Каждые N байт-кодовых инструкций (sys.getswitchinterval)
+
+\`\`\`python
+import sys
+print(sys.getswitchinterval())   # 0.005 секунды (5 мс) — дефолт с Python 3.2+
+
+# Изменить интервал (редко нужно):
+sys.setswitchinterval(0.001)   # переключаться каждую 1 мс
+\`\`\`
+
+### 2. При вызове блокирующих системных операций
+
+I/O операции (файлы, сокеты, \`time.sleep\`) **освобождают GIL** на время ожидания:
+
+\`\`\`python
+# GIL освобождается здесь ↓ и захватывается после завершения I/O
+data = file.read()
+response = requests.get(url)
+time.sleep(1.0)
+\`\`\`
+
+### 3. В расширениях на C (numpy, cryptography и т.д.)
+
+\`\`\`python
+import numpy as np
+# numpy освобождает GIL для большинства математических операций:
+# a + b, np.dot(), np.fft() — выполняются параллельно в нескольких потоках
+a = np.random.rand(10_000_000)
+b = np.random.rand(10_000_000)
+result = a + b   # GIL освобождён на время вычисления
+\`\`\`
+
+---
+
+## GIL как бутылочное горлышко: CPU-bound задачи
+
+\`\`\`python
+import threading, multiprocessing, time
+
+def cpu_bound(n: int) -> int:
+    """Чистая вычислительная задача — GIL не освобождается."""
+    return sum(i * i for i in range(n))
+
+N = 5_000_000
+
+# Последовательно
+start = time.perf_counter()
+cpu_bound(N); cpu_bound(N)
+print(f"Последовательно: {time.perf_counter() - start:.2f}s")   # ~1.0s
+
+# Threading: из-за GIL НЕ быстрее, даже медленнее из-за переключений
+start = time.perf_counter()
+t1 = threading.Thread(target=cpu_bound, args=(N,))
+t2 = threading.Thread(target=cpu_bound, args=(N,))
+t1.start(); t2.start()
+t1.join(); t2.join()
+print(f"Threading (CPU-bound): {time.perf_counter() - start:.2f}s")   # ~1.2s — хуже!
+
+# Multiprocessing: каждый процесс имеет свой GIL → реальный параллелизм
+start = time.perf_counter()
+with multiprocessing.Pool(2) as pool:
+    pool.map(cpu_bound, [N, N])
+print(f"Multiprocessing: {time.perf_counter() - start:.2f}s")   # ~0.5s — в 2 раза быстрее
+\`\`\`
+
+---
+
+## GIL не мешает: I/O-bound задачи
+
+\`\`\`python
+import threading, time, urllib.request
+
+urls = [
+    "https://httpbin.org/delay/1",
+    "https://httpbin.org/delay/1",
+    "https://httpbin.org/delay/1",
+    "https://httpbin.org/delay/1",
+]
+
+def fetch(url: str):
+    urllib.request.urlopen(url)   # GIL освобождается на время запроса!
+
+# Последовательно: ~4 секунды
+# Threading: ~1 секунда (все запросы идут параллельно, GIL не мешает)
+start = time.perf_counter()
+threads = [threading.Thread(target=fetch, args=(url,)) for url in urls]
+for t in threads: t.start()
+for t in threads: t.join()
+print(f"Threading (I/O-bound): {time.perf_counter() - start:.2f}s")   # ~1.0s
+\`\`\`
+
+---
+
+## Проблема «GIL thrashing»
+
+При большом числе CPU-bound потоков возникает «дрожание GIL» — потоки тратят больше времени на борьбу за GIL, чем на реальную работу:
+
+\`\`\`python
+import threading, time
+
+def busy_work():
+    total = 0
+    for i in range(1_000_000):
+        total += i
+    return total
+
+# С одним потоком
+start = time.perf_counter()
+busy_work()
+t1 = time.perf_counter() - start
+
+# С восемью потоками (CPU-bound!)
+start = time.perf_counter()
+threads = [threading.Thread(target=busy_work) for _ in range(8)]
+for t in threads: t.start()
+for t in threads: t.join()
+t8 = time.perf_counter() - start
+
+print(f"1 поток: {t1:.3f}s, 8 потоков: {t8:.3f}s, overhead: {(t8/t1 - 1)*100:.0f}%")
+# Ожидаемо: 8 потоков ~= 1 поток, но с ~20-50% overhead
+\`\`\`
+
+---
+
+## Стратегии обхода GIL
+
+| Задача | Решение |
+|---|---|
+| CPU-bound: числа, обработка данных | \`multiprocessing\` / \`ProcessPoolExecutor\` |
+| CPU-bound: матрицы | \`numpy\` (освобождает GIL), \`numba\` (JIT) |
+| CPU-bound: высокая производительность | Cython (\`nogil\` блоки), C-расширения |
+| I/O-bound: сетевые запросы | \`threading\` / \`asyncio\` / \`aiohttp\` |
+| I/O-bound: файлы | \`ThreadPoolExecutor\` / \`asyncio\` |
+
+---
+
+## Будущее GIL: PEP 703
+
+PEP 703 (Python 3.13+) вводит **режим без GIL** (\`--disable-gil\`). В Python 3.13 он доступен как экспериментальный, в 3.14+ планируется как опциональный по умолчанию.
+
+\`\`\`bash
+# Запуск CPython без GIL (Python 3.13+)
+python3.13 --disable-gil script.py
+\`\`\``,
+  },
+  {
+    id: "threading-vs-multiprocessing",
+    question:
+      "В чём ключевое различие между модулями threading и multiprocessing? В каких ситуациях строго рекомендуется использовать процессы вместо потоков?",
+    category: "Многопоточность, параллелизм и асинхронность",
+    difficulty: "middle",
+    answer: `## Фундаментальное различие
+
+| Характеристика | \`threading\` | \`multiprocessing\` |
+|---|---|---|
+| Единица работы | Поток ОС | Процесс ОС |
+| Память | **Общая** (shared heap) | **Изолированная** (каждый процесс — своя куча) |
+| GIL | Один на все потоки | Каждый процесс — свой GIL |
+| CPU-bound | ❌ Нет параллелизма | ✅ Реальный параллелизм |
+| I/O-bound | ✅ Отлично | ✅ Работает, но избыточно |
+| Создание | Быстро (~1 мс) | Медленно (~50-100 мс на UNIX, ~200 мс на Windows) |
+| Overhead памяти | Малый (~8 МБ стек) | Большой (копия процесса: десятки МБ) |
+| Обмен данными | Напрямую (объекты) | Сериализация (pickle) или shared memory |
+| Падение одного | Может убить все (shared state) | Изолировано, основной процесс жив |
+
+---
+
+## threading: потоки в пределах одного процесса
+
+\`\`\`python
+import threading
+import time
+from queue import Queue
+
+# Классический Producer-Consumer с общей очередью
+def producer(q: Queue, n: int):
+    for i in range(n):
+        q.put(i)
+        time.sleep(0.01)   # имитируем I/O
+    q.put(None)            # сигнал завершения
+
+def consumer(q: Queue, results: list):
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        results.append(item * item)   # общий список — работает из-за GIL
+
+q = Queue()
+results = []
+
+t_prod = threading.Thread(target=producer, args=(q, 10))
+t_cons = threading.Thread(target=consumer, args=(q, results))
+
+t_prod.start(); t_cons.start()
+t_prod.join();  t_cons.join()
+print(results)   # [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]
+\`\`\`
+
+### Синхронизация потоков
+
+\`\`\`python
+import threading
+
+# Lock — базовый мьютекс
+counter = 0
+lock = threading.Lock()
+
+def safe_increment(n: int):
+    global counter
+    for _ in range(n):
+        with lock:        # атомарный инкремент
+            counter += 1
+
+# RLock — реентерантный мьютекс (можно захватить дважды из одного потока)
+rlock = threading.RLock()
+
+# Event — флаг-сигнал
+ready = threading.Event()
+
+def worker():
+    ready.wait()          # ждём сигнала
+    print("Worker started!")
+
+def setup():
+    time.sleep(0.1)
+    ready.set()           # сигналим всем ожидающим
+
+# Semaphore — ограничение числа одновременных потоков
+sem = threading.Semaphore(3)  # не более 3 одновременно
+
+def limited_task(i: int):
+    with sem:
+        print(f"Task {i} running")
+        time.sleep(0.5)
+\`\`\`
+
+---
+
+## multiprocessing: изолированные процессы
+
+\`\`\`python
+from multiprocessing import Pool, Process, Queue, Manager
+import time
+import os
+
+def cpu_heavy(data: list[int]) -> int:
+    """CPU-bound задача: выигрывает от multiprocessing."""
+    print(f"Процесс {os.getpid()} обрабатывает {len(data)} элементов")
+    return sum(x * x for x in data)
+
+if __name__ == "__main__":   # ОБЯЗАТЕЛЬНО для multiprocessing на Windows/macOS
+    data = list(range(1_000_000))
+    chunks = [data[i::4] for i in range(4)]   # делим на 4 части
+
+    with Pool(processes=4) as pool:
+        results = pool.map(cpu_heavy, chunks)
+
+    print(f"Сумма квадратов: {sum(results)}")
+\`\`\`
+
+### Обмен данными между процессами
+
+\`\`\`python
+from multiprocessing import Process, Queue, Pipe, Value, Array
+import ctypes
+
+# 1. Queue — очередь с сериализацией через pickle
+def sender(q: Queue):
+    q.put({"key": "value", "numbers": [1, 2, 3]})   # pickle!
+
+def receiver(q: Queue):
+    data = q.get()
+    print(data)
+
+# 2. Pipe — двусторонний канал (быстрее Queue для пар процессов)
+parent_conn, child_conn = Pipe()
+
+# 3. Shared Memory — общая память без сериализации (Python 3.8+)
+from multiprocessing.shared_memory import SharedMemory
+import numpy as np
+
+shm = SharedMemory(create=True, size=8 * 1000)   # 1000 float64
+arr = np.ndarray(1000, dtype=np.float64, buffer=shm.buf)
+arr[:] = np.arange(1000)
+
+def worker_shm(shm_name: str):
+    existing_shm = SharedMemory(name=shm_name)
+    arr = np.ndarray(1000, dtype=np.float64, buffer=existing_shm.buf)
+    print(f"Первый элемент: {arr[0]}")   # 0.0 — без копирования!
+    existing_shm.close()
+\`\`\`
+
+---
+
+## Когда СТРОГО рекомендуется multiprocessing
+
+### 1. CPU-bound вычисления
+
+\`\`\`python
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+import time
+
+def factorize(n: int) -> list[int]:
+    """Факторизация числа — чисто CPU-bound."""
+    factors = []
+    d = 2
+    while d * d <= n:
+        while n % d == 0:
+            factors.append(d)
+            n //= d
+        d += 1
+    if n > 1:
+        factors.append(n)
+    return factors
+
+numbers = [10**12 + 39, 10**12 + 61, 10**12 + 3, 10**12 + 7]
+
+# Threading: медленно (GIL)
+start = time.perf_counter()
+with ThreadPoolExecutor(4) as ex:
+    list(ex.map(factorize, numbers))
+t_thread = time.perf_counter() - start
+
+# ProcessPoolExecutor: быстро (реальный параллелизм)
+start = time.perf_counter()
+with ProcessPoolExecutor(4) as ex:
+    list(ex.map(factorize, numbers))
+t_process = time.perf_counter() - start
+
+print(f"Threading: {t_thread:.2f}s, Processes: {t_process:.2f}s")
+# Threading: ~4.0s, Processes: ~1.2s (на 4-ядерном CPU)
+\`\`\`
+
+### 2. Изоляция при работе с нестабильными библиотеками
+
+\`\`\`python
+from multiprocessing import Process, Queue
+
+def risky_operation(data: bytes, result_q: Queue):
+    """Операция, которая может упасть (segfault в C-расширении)."""
+    try:
+        import some_unstable_c_lib
+        result = some_unstable_c_lib.process(data)
+        result_q.put(("ok", result))
+    except Exception as e:
+        result_q.put(("error", str(e)))
+
+# Падение в дочернем процессе НЕ убивает основной процесс
+q = Queue()
+p = Process(target=risky_operation, args=(b"data", q))
+p.start()
+p.join(timeout=10)
+
+if p.exitcode != 0:
+    print(f"Процесс упал с кодом {p.exitcode}")
+else:
+    status, result = q.get()
+\`\`\`
+
+### 3. Обход GIL-ограничений для data science
+
+\`\`\`python
+from multiprocessing import Pool
+import numpy as np
+
+def process_chunk(chunk: np.ndarray) -> dict:
+    """Статистика по чанку данных."""
+    return {
+        "mean": float(np.mean(chunk)),
+        "std":  float(np.std(chunk)),
+        "max":  float(np.max(chunk)),
+    }
+
+if __name__ == "__main__":
+    data = np.random.rand(10_000_000)
+    chunks = np.array_split(data, 8)
+
+    with Pool(8) as pool:
+        stats = pool.map(process_chunk, chunks)
+
+    print(stats[0])
+\`\`\`
+
+---
+
+## concurrent.futures: единый интерфейс
+
+\`\`\`python
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+
+# Один и тот же код — меняем только executor
+def work(x: int) -> int:
+    return x * x
+
+# Для I/O-bound: ThreadPoolExecutor
+# Для CPU-bound: ProcessPoolExecutor
+with ProcessPoolExecutor(max_workers=4) as executor:
+    futures = {executor.submit(work, i): i for i in range(10)}
+
+    for future in as_completed(futures):
+        original = futures[future]
+        result = future.result()
+        print(f"work({original}) = {result}")
+\`\`\`
+
+---
+
+## Правило выбора
+
+\`\`\`
+Задача I/O-bound?
+  → threading или asyncio (asyncio предпочтительнее)
+
+Задача CPU-bound?
+  → Использует numpy/C-расширение с nogil?
+      → threading (GIL освобождается)
+  → Чистый Python?
+      → multiprocessing / ProcessPoolExecutor
+\`\`\``,
+  },
+  {
+    id: "asyncio-event-loop",
+    question:
+      "Как устроен цикл событий (event loop) в asyncio? Чем принципиально async/await отличается от подходов на основе многопоточности?",
+    category: "Многопоточность, параллелизм и асинхронность",
+    difficulty: "senior",
+    answer: `## Фундаментальная концепция: кооперативная многозадачность
+
+\`asyncio\` реализует **кооперативную многозадачность** (cooperative multitasking) — в отличие от вытесняющей многозадачности потоков (preemptive). Ключевое различие:
+
+- **Потоки** (threading): ОС прерывает поток в любой момент и передаёт управление другому.
+- **asyncio**: задача **сама** отдаёт управление через \`await\`, говоря: «я жду, выполни что-нибудь другое».
+
+\`\`\`
+Потоки (preemptive):          asyncio (cooperative):
+──────────────────            ──────────────────────
+Thread 1: ─█─░█─░─█─         Task A: ─█─await─────█─await──█─
+Thread 2: ──░─█─░█─█─        Task B: ────────█─await──█─────
+               ↑                              ↑
+     ОС прерывает в           задача сама отдаёт управление
+     произвольный момент      через await
+\`\`\`
+
+---
+
+## Устройство Event Loop
+
+Event Loop — это **бесконечный цикл**, который:
+
+1. Ведёт очередь готовых к выполнению **корутин** (callbacks/Tasks)
+2. Отслеживает I/O события через **selectors** (\`select\`/\`epoll\`/\`kqueue\`)
+3. Управляет **таймерами** (\`call_later\`, \`call_at\`)
+4. Передаёт управление корутинам по одной за раз
+
+\`\`\`python
+import asyncio
+import selectors
+
+# Упрощённая схема работы event loop:
+#
+# while True:
+#     # 1. Запустить все готовые callbacks/Tasks
+#     for callback in ready_queue:
+#         callback()
+#
+#     # 2. Подождать I/O события (через epoll/select)
+#     events = selector.select(timeout=next_timer_deadline)
+#
+#     # 3. Обработать I/O события → добавить в ready_queue
+#     for key, mask in events:
+#         callback = key.data
+#         ready_queue.append(callback)
+#
+#     # 4. Обработать сработавшие таймеры
+#     for timer in expired_timers:
+#         ready_queue.append(timer.callback)
+
+# Получить текущий event loop
+loop = asyncio.get_event_loop()
+print(type(loop))   # <class 'asyncio.unix_events._UnixSelectorEventLoop'>
+\`\`\`
+
+---
+
+## Корутины и await: как это работает изнутри
+
+\`\`\`python
+import asyncio
+
+async def fetch_data(url: str) -> str:
+    """Корутина — это генератор особого вида."""
+    print(f"Начинаем запрос к {url}")
+    await asyncio.sleep(1.0)    # ← здесь корутина ПРИОСТАНАВЛИВАЕТСЯ
+                                # event loop выполняет другие задачи
+    print(f"Запрос к {url} завершён")
+    return f"data from {url}"
+
+# await разворачивается примерно в:
+# result = yield from some_future
+# То есть: «дай управление event loop'у до получения результата»
+
+async def main():
+    # Запускаем три корутины «параллельно»
+    results = await asyncio.gather(
+        fetch_data("api.com/users"),
+        fetch_data("api.com/orders"),
+        fetch_data("api.com/products"),
+    )
+    # Все три запроса выполняются в течение ~1 секунды (не 3!)
+    print(results)
+
+asyncio.run(main())
+\`\`\`
+
+### Корутина — это объект, не вызов
+
+\`\`\`python
+async def greet(name: str) -> str:
+    return f"Hello, {name}!"
+
+# Вызов async-функции создаёт объект корутины, но НЕ выполняет её:
+coro = greet("Alice")
+print(type(coro))    # <class 'coroutine'>
+print(coro)          # <coroutine object greet at 0x...>
+
+# Для выполнения нужен event loop:
+result = asyncio.run(greet("Alice"))
+print(result)        # "Hello, Alice!"
+
+# Предупреждение: корутина без await/run:
+# RuntimeWarning: coroutine 'greet' was never awaited
+\`\`\`
+
+---
+
+## Задачи (Tasks) vs Корутины
+
+\`\`\`python
+import asyncio
+import time
+
+async def slow_task(name: str, delay: float) -> str:
+    print(f"[{name}] старт")
+    await asyncio.sleep(delay)
+    print(f"[{name}] финиш")
+    return f"{name} done"
+
+async def main():
+    # Просто await: последовательное выполнение
+    start = time.perf_counter()
+    r1 = await slow_task("A", 1.0)
+    r2 = await slow_task("B", 1.0)
+    print(f"Последовательно: {time.perf_counter() - start:.2f}s")   # ~2.0s
+
+    # asyncio.create_task: параллельное выполнение
+    start = time.perf_counter()
+    t1 = asyncio.create_task(slow_task("C", 1.0))   # задача запущена немедленно
+    t2 = asyncio.create_task(slow_task("D", 1.0))
+    r1 = await t1   # ждём завершения
+    r2 = await t2
+    print(f"Параллельно: {time.perf_counter() - start:.2f}s")   # ~1.0s
+
+asyncio.run(main())
+\`\`\`
+
+---
+
+## asyncio vs threading: ключевые отличия
+
+\`\`\`python
+import asyncio
+import threading
+import time
+
+# --- asyncio версия ---
+async def async_worker(n: int) -> int:
+    await asyncio.sleep(0.1)   # неблокирующее ожидание
+    return n * n
+
+async def async_main():
+    start = time.perf_counter()
+    results = await asyncio.gather(*[async_worker(i) for i in range(100)])
+    print(f"asyncio: {time.perf_counter() - start:.3f}s, "
+          f"поток: 1, задач: 100")
+
+asyncio.run(async_main())
+# asyncio: ~0.100s, поток: 1, задач: 100
+
+# --- threading версия ---
+def thread_worker(n: int, results: list, idx: int):
+    time.sleep(0.1)   # блокирующее ожидание
+    results[idx] = n * n
+
+def thread_main():
+    results = [0] * 100
+    start = time.perf_counter()
+    threads = [threading.Thread(target=thread_worker, args=(i, results, i))
+               for i in range(100)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    print(f"threading: {time.perf_counter() - start:.3f}s, "
+          f"потоков: 100")
+
+thread_main()
+# threading: ~0.115s, потоков: 100 (100 потоков по 8 МБ стека = ~800 МБ!)
+\`\`\`
+
+| Аспект | \`asyncio\` | \`threading\` |
+|---|---|---|
+| Потоки ОС | 1 | По числу задач |
+| Переключение | Только в \`await\` | В любой момент (ОС) |
+| Гонки данных | ❌ Нет (single-threaded) | ⚠️ Возможны (нужны Lock) |
+| Масштаб задач | Тысячи корутин | Сотни потоков (стек ~8 МБ) |
+| CPU-bound | ❌ Плохо | ❌ Плохо (GIL) |
+| I/O-bound | ✅ Идеально | ✅ Хорошо |
+| Отладка | Сложнее (стектрейсы) | Проще |
+
+---
+
+## Интеграция с блокирующим кодом
+
+\`\`\`python
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+
+async def main():
+    loop = asyncio.get_running_loop()
+
+    # 1. Блокирующий I/O (файлы, БД без async-драйвера) → ThreadPoolExecutor
+    def blocking_io() -> str:
+        with open("/etc/hosts") as f:
+            return f.read()
+
+    result = await loop.run_in_executor(None, blocking_io)  # None = дефолтный threadpool
+
+    # 2. CPU-bound → ProcessPoolExecutor (избегаем GIL)
+    def cpu_work(n: int) -> int:
+        return sum(i * i for i in range(n))
+
+    with ProcessPoolExecutor() as executor:
+        result = await loop.run_in_executor(executor, cpu_work, 1_000_000)
+        print(result)
+
+asyncio.run(main())
+\`\`\`
+
+---
+
+## Практический пример: асинхронный HTTP-клиент
+
+\`\`\`python
+import asyncio
+import aiohttp   # pip install aiohttp
+import time
+
+async def fetch(session: aiohttp.ClientSession, url: str) -> dict:
+    async with session.get(url) as response:
+        return {"url": url, "status": response.status}
+
+async def fetch_all(urls: list[str]) -> list[dict]:
+    async with aiohttp.ClientSession() as session:
+        tasks = [asyncio.create_task(fetch(session, url)) for url in urls]
+        return await asyncio.gather(*tasks)
+
+async def main():
+    urls = [f"https://httpbin.org/status/200" for _ in range(20)]
+    start = time.perf_counter()
+    results = await fetch_all(urls)
+    elapsed = time.perf_counter() - start
+    print(f"20 запросов за {elapsed:.2f}s в 1 потоке")
+    # ~0.5s вместо ~10s последовательно
+
+asyncio.run(main())
+\`\`\``,
+  },
+  {
+    id: "asyncio-gather-wait-taskgroup",
+    question:
+      "Каковы внутренние различия в реализации и поведении между asyncio.gather, asyncio.wait, asyncio.as_completed и современными TaskGroup (включая обработку ExceptionGroup)?",
+    category: "Многопоточность, параллелизм и асинхронность",
+    difficulty: "senior",
+    answer: `## Обзор инструментов параллельного запуска корутин
+
+| Функция | Возвращает | Порядок результатов | При ошибке | Отмена при ошибке |
+|---|---|---|---|---|
+| \`asyncio.gather\` | список результатов | Сохраняется | По умолчанию отменяет все | \`return_exceptions=True\` меняет поведение |
+| \`asyncio.wait\` | \`(done, pending)\` — множества | Не сохраняется | Не отменяет остальных | Управление вручную |
+| \`asyncio.as_completed\` | итератор futures | По завершению | Передаёт в \`result()\` | Нет автоматической |
+| \`TaskGroup\` (3.11+) | — (через переменные) | N/A | \`ExceptionGroup\` после ожидания всех | Отменяет все задачи группы |
+
+---
+
+## asyncio.gather: самый простой, собирает все результаты
+
+\`\`\`python
+import asyncio
+
+async def task(name: str, delay: float, fail: bool = False) -> str:
+    await asyncio.sleep(delay)
+    if fail:
+        raise ValueError(f"{name} упал!")
+    return f"{name} готов"
+
+async def demo_gather():
+    # Базовое использование: все результаты в правильном порядке
+    results = await asyncio.gather(
+        task("A", 0.3),
+        task("B", 0.1),
+        task("C", 0.2),
+    )
+    print(results)   # ['A готов', 'B готов', 'C готов'] — порядок по аргументам!
+
+    # По умолчанию при первом исключении — всё отменяется:
+    try:
+        results = await asyncio.gather(
+            task("X", 0.1),
+            task("Y", 0.05, fail=True),   # упадёт раньше
+            task("Z", 0.3),
+        )
+    except ValueError as e:
+        print(f"Поймали: {e}")   # Y упал! — X и Z отменены
+
+    # return_exceptions=True: исключения в результате, не пробрасываются
+    results = await asyncio.gather(
+        task("X", 0.1),
+        task("Y", 0.05, fail=True),
+        task("Z", 0.3),
+        return_exceptions=True,
+    )
+    for r in results:
+        if isinstance(r, Exception):
+            print(f"Ошибка: {r}")
+        else:
+            print(f"Успех: {r}")
+    # Успех: X готов
+    # Ошибка: Y упал!
+    # Успех: Z готов
+
+asyncio.run(demo_gather())
+\`\`\`
+
+---
+
+## asyncio.wait: тонкий контроль над ожиданием
+
+\`\`\`python
+import asyncio
+
+async def demo_wait():
+    tasks = [
+        asyncio.create_task(task("A", 0.5)),
+        asyncio.create_task(task("B", 0.1)),
+        asyncio.create_task(task("C", 1.0)),
+        asyncio.create_task(task("D", 0.3, fail=True)),
+    ]
+
+    # FIRST_COMPLETED: вернуться когда хоть одна задача завершилась
+    done, pending = await asyncio.wait(
+        tasks,
+        return_when=asyncio.FIRST_COMPLETED
+    )
+    print(f"Первая завершилась: {len(done)} задача(и)")
+    print(f"Ещё выполняются: {len(pending)} задача(и)")
+
+    # Дожидаемся остальных вручную
+    if pending:
+        done2, _ = await asyncio.wait(pending, return_when=asyncio.ALL_COMPLETED)
+        done |= done2
+
+    # Разбираем результаты
+    for t in done:
+        try:
+            result = t.result()
+            print(f"✓ {result}")
+        except Exception as e:
+            print(f"✗ {e}")
+
+    # FIRST_EXCEPTION: вернуться при первом исключении
+    tasks2 = [asyncio.create_task(task(f"T{i}", i * 0.1)) for i in range(5)]
+    done, pending = await asyncio.wait(
+        tasks2,
+        return_when=asyncio.FIRST_EXCEPTION,
+        timeout=0.35    # таймаут в секундах
+    )
+    print(f"Done: {len(done)}, Pending: {len(pending)}")
+    # Отменяем незавершённые
+    for t in pending:
+        t.cancel()
+
+asyncio.run(demo_wait())
+\`\`\`
+
+---
+
+## asyncio.as_completed: обработка по мере готовности
+
+\`\`\`python
+import asyncio
+import time
+
+async def variable_task(name: str, delay: float) -> tuple[str, float]:
+    start = time.perf_counter()
+    await asyncio.sleep(delay)
+    return name, time.perf_counter() - start
+
+async def demo_as_completed():
+    tasks = [
+        variable_task("быстрый",  0.1),
+        variable_task("средний",  0.5),
+        variable_task("медленный", 1.0),
+        variable_task("мгновенный", 0.05),
+    ]
+
+    print("Обрабатываем по мере завершения:")
+    # as_completed возвращает futures в порядке завершения, не создания
+    for coro in asyncio.as_completed(tasks, timeout=2.0):
+        try:
+            name, elapsed = await coro
+            print(f"  ✓ {name} завершился за {elapsed:.2f}s")
+        except asyncio.TimeoutError:
+            print("  ✗ таймаут!")
+
+    # Вывод:
+    # ✓ мгновенный завершился за 0.05s
+    # ✓ быстрый завершился за 0.10s
+    # ✓ средний завершился за 0.50s
+    # ✓ медленный завершился за 1.00s
+
+asyncio.run(demo_as_completed())
+\`\`\`
+
+---
+
+## TaskGroup (Python 3.11+): структурированный параллелизм
+
+\`\`\`python
+import asyncio
+
+async def demo_taskgroup():
+    results = []
+
+    async with asyncio.TaskGroup() as tg:
+        # Создаём задачи внутри группы
+        t1 = tg.create_task(task("A", 0.1))
+        t2 = tg.create_task(task("B", 0.2))
+        t3 = tg.create_task(task("C", 0.15))
+        # При выходе из блока with — ждём ВСЕ задачи
+
+    # Здесь все задачи гарантированно завершены
+    print(t1.result())   # A готов
+    print(t2.result())   # B готов
+    print(t3.result())   # C готов
+
+asyncio.run(demo_taskgroup())
+\`\`\`
+
+### TaskGroup и ExceptionGroup: обработка множественных ошибок
+
+\`\`\`python
+import asyncio
+
+async def failing_task(name: str, delay: float, fail: bool = False) -> str:
+    await asyncio.sleep(delay)
+    if fail:
+        raise RuntimeError(f"{name} упал")
+    return f"{name} готов"
+
+async def demo_exception_group():
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(failing_task("A", 0.1, fail=True))
+            tg.create_task(failing_task("B", 0.2, fail=False))
+            tg.create_task(failing_task("C", 0.15, fail=True))
+            # TaskGroup дожидается ВСЕХ задач перед пробросом ошибок
+    except* RuntimeError as eg:
+        # except* (Python 3.11+) — обработка ExceptionGroup
+        print(f"Поймали {len(eg.exceptions)} ошибки(ок) RuntimeError:")
+        for exc in eg.exceptions:
+            print(f"  - {exc}")
+    except* ValueError as eg:
+        print(f"ValueError'ов: {len(eg.exceptions)}")
+
+    # Вывод:
+    # Поймали 2 ошибки(ок) RuntimeError:
+    #   - A упал
+    #   - C упал
+
+asyncio.run(demo_exception_group())
+\`\`\`
+
+### Отличие поведения при ошибке
+
+\`\`\`python
+import asyncio
+
+async def show_cancellation():
+    """TaskGroup при ошибке отменяет ВСЕ оставшиеся задачи группы."""
+
+    async def long_task(name: str, delay: float) -> str:
+        try:
+            await asyncio.sleep(delay)
+            return f"{name} done"
+        except asyncio.CancelledError:
+            print(f"{name} был отменён!")
+            raise
+
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(long_task("быстрый", 0.1))
+            tg.create_task(long_task("медленный", 5.0))  # будет отменён
+            tg.create_task(failing_task("ошибочный", 0.2, fail=True))
+    except* RuntimeError:
+        pass
+    # медленный будет отменён при возникновении ошибки в ошибочный
+
+asyncio.run(show_cancellation())
+\`\`\`
+
+---
+
+## Когда что использовать
+
+\`\`\`python
+import asyncio
+
+# 1. gather: хочу результаты всех задач в одном списке
+async def use_gather():
+    a, b, c = await asyncio.gather(coro_a(), coro_b(), coro_c())
+
+# 2. wait: нужен тонкий контроль или таймаут
+async def use_wait():
+    done, pending = await asyncio.wait(tasks, timeout=5.0,
+                                       return_when=asyncio.FIRST_COMPLETED)
+
+# 3. as_completed: обработка результатов по мере прихода (прогресс-бар)
+async def use_as_completed():
+    for coro in asyncio.as_completed(tasks):
+        result = await coro
+        update_progress(result)
+
+# 4. TaskGroup: современный подход, структурированный параллелизм
+async def use_taskgroup():
+    async with asyncio.TaskGroup() as tg:
+        tasks = [tg.create_task(work(i)) for i in range(10)]
+    results = [t.result() for t in tasks]
+\`\`\`
+
+| Используйте | Когда |
+|---|---|
+| \`gather\` | Нужен список всех результатов, простая логика ошибок |
+| \`wait\` | Таймауты, FIRST_COMPLETED, ручное управление отменой |
+| \`as_completed\` | Обработка каждого результата сразу как он готов |
+| \`TaskGroup\` | Python 3.11+, структурированный параллелизм, несколько исключений |`,
+  },
+  {
+    id: "threads-io-gil-release",
+    question:
+      "Как ведут себя потоки (threads) в Python при выполнении блокирующих операций ввода-вывода (I/O) на уровне Си-расширений? Освобождается ли GIL в этот момент?",
+    category: "Многопоточность, параллелизм и асинхронность",
+    difficulty: "middle",
+    answer: `## Короткий ответ
+
+Да — при блокирующих I/O операциях на уровне C-расширений CPython **всегда** освобождает GIL. Именно поэтому \`threading\` хорошо работает для сетевых запросов, чтения файлов и любого ожидания: пока один поток ждёт завершения системного вызова, остальные потоки могут свободно выполнять Python-код.
+
+---
+
+## Как CPython освобождает GIL для I/O
+
+В исходниках CPython любая блокирующая операция оборачивается макросами:
+
+\`\`\`c
+/* Из CPython/Modules/socketmodule.c (упрощённо) */
+
+Py_BEGIN_ALLOW_THREADS          /* ← освобождаем GIL */
+ret = send(sockfd, buf, len, flags);   /* системный вызов */
+Py_END_ALLOW_THREADS            /* ← захватываем GIL обратно */
+\`\`\`
+
+Эти макросы раскрываются в:
+
+\`\`\`c
+/* Py_BEGIN_ALLOW_THREADS: */
+PyThreadState *_save = PyEval_SaveThread();   // сохраняем состояние, освобождаем GIL
+
+/* ... системный вызов (блокирует только этот поток ОС) ... */
+
+/* Py_END_ALLOW_THREADS: */
+PyEval_RestoreThread(_save);                  // ждём GIL, восстанавливаем состояние
+\`\`\`
+
+---
+
+## Демонстрация: потоки действительно работают параллельно при I/O
+
+\`\`\`python
+import threading
+import time
+import urllib.request
+
+def fetch(url: str, results: list, idx: int):
+    start = time.perf_counter()
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = resp.read()
+        results[idx] = (True, len(data), time.perf_counter() - start)
+    except Exception as e:
+        results[idx] = (False, 0, time.perf_counter() - start)
+
+urls = [
+    "https://httpbin.org/delay/1",
+    "https://httpbin.org/delay/1",
+    "https://httpbin.org/delay/1",
+    "https://httpbin.org/delay/1",
+]
+
+results = [None] * len(urls)
+
+# Последовательно: ~4 секунды (GIL не при чём — чистое ожидание I/O)
+start = time.perf_counter()
+for i, url in enumerate(urls):
+    fetch(url, results, i)
+print(f"Последовательно: {time.perf_counter() - start:.2f}s")   # ~4.0s
+
+# Потоки: ~1 секунда — GIL освобождается на время каждого запроса
+results = [None] * len(urls)
+start = time.perf_counter()
+threads = [threading.Thread(target=fetch, args=(url, results, i))
+           for i, url in enumerate(urls)]
+for t in threads: t.start()
+for t in threads: t.join()
+print(f"Threading: {time.perf_counter() - start:.2f}s")   # ~1.0s
+\`\`\`
+
+---
+
+## Что происходит внутри при сетевом I/O
+
+\`\`\`
+Поток 1:  [Python код] → [send()] → ░░░░░░░░░░░░ждёт ОС░░░░░░░░ → [обработка ответа]
+                                    ↑ GIL освобождён               ↑ GIL захвачен
+Поток 2:  ───────────────[Python код]───────────────[Python код]────
+Поток 3:  ────────────────────────[Python код]─────────────────────
+\`\`\`
+
+Ключевой момент: блокируется **поток ОС**, а не интерпретатор. GIL свободен, и другие потоки выполняют Python-инструкции.
+
+---
+
+## Какие операции освобождают GIL
+
+\`\`\`python
+import socket, time, os
+
+# ✅ Освобождают GIL:
+# - socket.recv(), socket.send(), socket.connect()
+# - file.read(), file.write() (через open())
+# - time.sleep()
+# - os.waitpid() / subprocess.wait()
+# - select.select(), poll(), epoll()
+# - hashlib (md5, sha256 и т.д.) для больших данных
+# - ssl операции
+# - subprocess вызовы
+
+# Проверяем time.sleep — самый простой пример
+def sleeper(name: str, secs: float):
+    print(f"{name} засыпает на {secs}s")
+    time.sleep(secs)   # GIL освобождается на время сна
+    print(f"{name} проснулся")
+
+start = time.perf_counter()
+t1 = threading.Thread(target=sleeper, args=("T1", 1.0))
+t2 = threading.Thread(target=sleeper, args=("T2", 1.0))
+t1.start(); t2.start()
+t1.join();  t2.join()
+print(f"Итого: {time.perf_counter() - start:.2f}s")   # ~1.0s, не 2.0s!
+\`\`\`
+
+---
+
+## Важное исключение: не все файловые операции одинаковы
+
+\`\`\`python
+import threading, time, mmap
+
+# Обычный read() — освобождает GIL (системный вызов)
+def read_file(path: str) -> bytes:
+    with open(path, "rb") as f:
+        return f.read()   # GIL освобождается
+
+# НО: mmap.read() в Python-пространстве — не всегда
+# Зависит от конкретной операции и платформы
+m = mmap.mmap(-1, 1024)
+m.write(b"x" * 1024)
+m.seek(0)
+# mmap.read() освобождает GIL для фактического чтения из памяти
+data = m.read(1024)
+
+# os.read() vs file.read() — оба освобождают GIL
+fd = os.open("/etc/hosts", os.O_RDONLY)
+data = os.read(fd, 4096)   # GIL освобождается
+os.close(fd)
+\`\`\`
+
+---
+
+## Когда GIL НЕ освобождается (ложная блокировка)
+
+\`\`\`python
+import threading
+
+# ❌ Pure-Python «занятый» цикл — GIL НЕ освобождается во время вычислений:
+def busy_wait(seconds: float):
+    deadline = time.perf_counter() + seconds
+    while time.perf_counter() < deadline:
+        pass   # активное ожидание — GIL удерживается!
+
+# Два потока с busy_wait работают ПОСЛЕДОВАТЕЛЬНО, не параллельно
+start = time.perf_counter()
+t1 = threading.Thread(target=busy_wait, args=(1.0,))
+t2 = threading.Thread(target=busy_wait, args=(1.0,))
+t1.start(); t2.start()
+t1.join();  t2.join()
+print(f"busy_wait: {time.perf_counter() - start:.2f}s")   # ~2.0s (не 1.0!)
+
+# ✅ Правильное ожидание — используем time.sleep(), освобождает GIL:
+def proper_wait(seconds: float):
+    time.sleep(seconds)
+
+start = time.perf_counter()
+t1 = threading.Thread(target=proper_wait, args=(1.0,))
+t2 = threading.Thread(target=proper_wait, args=(1.0,))
+t1.start(); t2.start()
+t1.join();  t2.join()
+print(f"proper_wait: {time.perf_counter() - start:.2f}s")   # ~1.0s
+\`\`\`
+
+---
+
+## Итог: правило GIL для I/O
+
+| Операция | GIL освобождается? | Параллелизм с threading? |
+|---|---|---|
+| \`socket.recv()\` / \`send()\` | ✅ Да | ✅ Да |
+| \`file.read()\` / \`write()\` | ✅ Да | ✅ Да |
+| \`time.sleep()\` | ✅ Да | ✅ Да |
+| \`subprocess.wait()\` | ✅ Да | ✅ Да |
+| \`hashlib\` (большие блоки) | ✅ Да | ✅ Да |
+| \`numpy\` арифметика | ✅ Да (внутри C) | ✅ Да |
+| Pure-Python цикл | ❌ Нет (между инструкциями) | ❌ Нет |
+| Чистый CPU-bound Python | ❌ Нет | ❌ Нет |
+
+> **Вывод**: \`threading\` — правильный инструмент для I/O-bound задач. Для CPU-bound задач используйте \`multiprocessing\` или C-расширения с явным \`Py_BEGIN_ALLOW_THREADS\`.`,
+  },
+  {
+    id: "bypass-gil-cython-cext-ctypes-pyo3",
+    question:
+      "Какими способами можно оптимизировать CPU-bound задачи в Python, минуя ограничения GIL? Сравните подходы: Cython, C-extensions, ctypes, PyO3 (Rust).",
+    category: "Многопоточность, параллелизм и асинхронность",
+    difficulty: "senior",
+    answer: `## Почему нужно «обходить» GIL для CPU-bound кода
+
+Чистый Python-цикл удерживает GIL на каждой инструкции — параллелизм невозможен. Единственный способ получить истинный параллелизм с потоками — выйти из-под GIL в C/Rust-код и явно его освободить.
+
+\`\`\`
+Python код → GIL удерживается → нет параллелизма
+     ↓
+C/Cython/Rust код с Py_BEGIN_ALLOW_THREADS → GIL освобождён → потоки работают параллельно
+\`\`\`
+
+---
+
+## 1. Cython: Python → C с явным nogil
+
+Cython компилирует Python-подобный код в C, с возможностью явно освободить GIL через блок \`nogil\`.
+
+\`\`\`python
+# math_ops.pyx (Cython-файл)
+# cython: boundscheck=False, wraparound=False
+
+import cython
+from cython.parallel import prange   # параллельные циклы
+
+def sum_squares_py(int n) -> int:
+    """Обычная Cython-функция — GIL удерживается."""
+    cdef long long result = 0
+    cdef int i
+    for i in range(n):
+        result += i * i
+    return result
+
+def sum_squares_nogil(int n) -> int:
+    """Функция с освобождённым GIL — можно вызывать из потоков параллельно."""
+    cdef long long result = 0
+    cdef int i
+    with nogil:               # ← освобождаем GIL
+        for i in range(n):
+            result += i * i
+    return result
+
+def parallel_sum(int n, int num_threads=4) -> long long:
+    """Параллельный цикл через OpenMP."""
+    cdef long long result = 0
+    cdef int i
+    for i in prange(n, nogil=True, num_threads=num_threads):
+        result += i * i
+    return result
+\`\`\`
+
+\`\`\`python
+# setup.py для компиляции
+from setuptools import setup
+from Cython.Build import cythonize
+import numpy as np
+
+setup(
+    ext_modules=cythonize("math_ops.pyx",
+                          compiler_directives={"language_level": "3"}),
+)
+# Сборка: python setup.py build_ext --inplace
+
+# Использование
+import math_ops
+import threading, time
+
+N = 10_000_000
+
+# Потоки с nogil-функцией — реальный параллелизм
+results = [0, 0]
+def worker(idx, n):
+    results[idx] = math_ops.sum_squares_nogil(n)
+
+start = time.perf_counter()
+t1 = threading.Thread(target=worker, args=(0, N))
+t2 = threading.Thread(target=worker, args=(1, N))
+t1.start(); t2.start()
+t1.join(); t2.join()
+print(f"Cython nogil 2 потока: {time.perf_counter() - start:.3f}s")
+# В ~2 раза быстрее одного потока на многоядерном CPU
+\`\`\`
+
+---
+
+## 2. C-Extensions: явный контроль через Py_BEGIN/END_ALLOW_THREADS
+
+Нативные C-расширения (\`.so\` / \`.pyd\`) дают максимальный контроль и производительность.
+
+\`\`\`c
+/* fast_math.c */
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
+#include <stdlib.h>
+
+static PyObject* sum_squares(PyObject* self, PyObject* args) {
+    long long n;
+    if (!PyArg_ParseTuple(args, "L", &n)) return NULL;
+
+    long long result = 0;
+
+    Py_BEGIN_ALLOW_THREADS    /* ← GIL освобождён */
+    for (long long i = 0; i < n; i++) {
+        result += i * i;
+    }
+    Py_END_ALLOW_THREADS      /* ← GIL захвачен обратно */
+
+    return PyLong_FromLongLong(result);
+}
+
+static PyMethodDef FastMathMethods[] = {
+    {"sum_squares", sum_squares, METH_VARARGS, "Sum of squares without GIL"},
+    {NULL, NULL, 0, NULL}
+};
+
+static struct PyModuleDef fastmathmodule = {
+    PyModuleDef_HEAD_INIT, "fast_math", NULL, -1, FastMathMethods
+};
+
+PyMODINIT_FUNC PyInit_fast_math(void) {
+    return PyModule_Create(&fastmathmodule);
+}
+\`\`\`
+
+\`\`\`python
+# setup.py
+from setuptools import setup, Extension
+
+ext = Extension("fast_math", sources=["fast_math.c"])
+setup(name="fast_math", ext_modules=[ext])
+# Сборка: python setup.py build_ext --inplace
+
+import fast_math
+result = fast_math.sum_squares(10_000_000)
+print(result)   # 333333283333335000000
+\`\`\`
+
+---
+
+## 3. ctypes: вызов существующих C-библиотек без компиляции расширения
+
+\`ctypes\` позволяет вызывать функции из \`.so\`/\`.dll\` напрямую из Python. GIL **автоматически освобождается** на время вызова C-функции.
+
+\`\`\`python
+import ctypes
+import ctypes.util
+import threading
+import time
+
+# Вызов функции из системной libm
+libm = ctypes.CDLL(ctypes.util.find_library("m"))
+
+# Объявляем типы аргументов и возвращаемого значения
+libm.sqrt.argtypes = [ctypes.c_double]
+libm.sqrt.restype  = ctypes.c_double
+
+print(libm.sqrt(2.0))   # 1.4142135623730951
+
+# Создаём свою библиотеку (compute.c → libcompute.so)
+# gcc -O2 -shared -fPIC -o libcompute.so compute.c
+
+# Для демонстрации используем libc qsort:
+libc = ctypes.CDLL(ctypes.util.find_library("c"))
+
+data = (ctypes.c_int * 5)(5, 3, 1, 4, 2)
+CMP_FUNC = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)
+
+def cmp_int(a, b):
+    return ctypes.cast(a, ctypes.POINTER(ctypes.c_int))[0] - \\
+           ctypes.cast(b, ctypes.POINTER(ctypes.c_int))[0]
+
+libc.qsort(data, 5, ctypes.sizeof(ctypes.c_int), CMP_FUNC(cmp_int))
+print(list(data))   # [1, 2, 3, 4, 5]
+
+# ✅ GIL освобождается на время вызова qsort (C-код)
+# ❌ Но CMP_FUNC-колбэк возвращает управление Python → GIL захватывается снова
+#    Колбэки Python внутри ctypes "держат" GIL — избегайте их в горячих путях
+\`\`\`
+
+### ctypes без колбэков: чистое освобождение GIL
+
+\`\`\`python
+import ctypes, threading, time
+
+# Загружаем нашу библиотеку без Python-колбэков
+# lib = ctypes.CDLL("./libcompute.so")
+# lib.compute_heavy.argtypes = [ctypes.c_longlong]
+# lib.compute_heavy.restype  = ctypes.c_longlong
+
+# Вызов без колбэков: GIL полностью освобождается на всё время C-функции
+# results = [0, 0]
+# def worker(idx, n):
+#     results[idx] = lib.compute_heavy(n)
+# threading.Thread(target=worker, args=(0, N)).start()
+# threading.Thread(target=worker, args=(1, N)).start()
+\`\`\`
+
+---
+
+## 4. PyO3: Rust-расширения для Python
+
+PyO3 — самый современный способ писать Python-расширения на Rust. Безопасность памяти Rust + скорость + удобный API.
+
+\`\`\`rust
+// src/lib.rs
+use pyo3::prelude::*;
+
+/// Сумма квадратов с явным освобождением GIL
+#[pyfunction]
+fn sum_squares(py: Python<'_>, n: i64) -> PyResult<i64> {
+    // py.allow_threads освобождает GIL на время замыкания
+    let result = py.allow_threads(|| {
+        (0..n).map(|i| i * i).sum::<i64>()
+    });
+    Ok(result)
+}
+
+/// Параллельная обработка вектора через rayon
+#[pyfunction]
+fn parallel_sum_squares(py: Python<'_>, n: i64) -> PyResult<i64> {
+    use rayon::prelude::*;
+    let result = py.allow_threads(|| {
+        (0..n).into_par_iter().map(|i| i * i).sum::<i64>()
+    });
+    Ok(result)
+}
+
+#[pymodule]
+fn fast_rust(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(sum_squares, m)?)?;
+    m.add_function(wrap_pyfunction!(parallel_sum_squares, m)?)?;
+    Ok(())
+}
+\`\`\`
+
+\`\`\`toml
+# Cargo.toml
+[package]
+name = "fast_rust"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "fast_rust"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3   = { version = "0.21", features = ["extension-module"] }
+rayon  = "1.8"
+\`\`\`
+
+\`\`\`python
+# pyproject.toml (для maturin)
+# [build-system]
+# requires = ["maturin>=1.0"]
+# build-backend = "maturin"
+
+# Сборка: maturin develop
+import fast_rust
+
+result = fast_rust.sum_squares(10_000_000)
+print(result)
+
+# Параллельная версия через rayon (использует все ядра):
+result = fast_rust.parallel_sum_squares(10_000_000)
+\`\`\`
+
+---
+
+## Сравнение подходов
+
+| Подход | Сложность | Производительность | GIL-контроль | Безопасность | Когда использовать |
+|---|---|---|---|---|---|
+| **Cython** | Средняя | Высокая | \`nogil\` блок / \`prange\` | Нет (C-ошибки) | Переписать Python с минимальными изменениями |
+| **C-Extension** | Высокая | Максимальная | Полный контроль | Нет (ручное управление памятью) | Критичный к скорости код, интеграция с C-библиотеками |
+| **ctypes** | Низкая | Средняя | Автоматически (без колбэков) | Нет (нет проверки типов) | Быстрый вызов существующих \`.so\`/\`.dll\` |
+| **PyO3 (Rust)** | Средняя | Очень высокая | \`py.allow_threads\` | ✅ Rust borrow checker | Новые расширения с гарантиями безопасности |
+| **multiprocessing** | Низкая | Высокая | Обходит GIL (разные процессы) | ✅ Изоляция | Когда нет возможности писать C/Rust |
+| **numpy** | Низкая | Очень высокая | Автоматически (vectorized ops) | ✅ | Матричные и числовые вычисления |
+
+---
+
+## Практический выбор
+
+\`\`\`python
+# Правило выбора:
+#
+# Уже есть C/Rust библиотека?
+#   → ctypes (быстро) или cffi (гибче)
+#
+# Нужно ускорить существующий Python?
+#   → Cython (минимальные изменения кода)
+#
+# Пишешь новый высокопроизводительный компонент?
+#   → PyO3 (Rust) — безопасность + скорость
+#
+# Максимальный контроль, критичный к скорости?
+#   → C Extension
+#
+# Числовые вычисления?
+#   → numpy (уже оптимизирован, освобождает GIL)
+\`\`\``,
+  },
+  {
+    id: "multiprocessing-queue-vs-shared-memory",
+    question:
+      "Опишите различия в накладных расходах на сериализацию и межпроцессное взаимодействие при использовании multiprocessing.Queue в сравнении с multiprocessing.shared_memory.",
+    category: "Многопоточность, параллелизм и асинхронность",
+    difficulty: "senior",
+    answer: `## Фундаментальное различие: сериализация vs общая память
+
+Процессы в Python полностью изолированы по памяти. Для обмена данными между ними существуют два принципиально разных подхода:
+
+\`\`\`
+multiprocessing.Queue:          multiprocessing.shared_memory:
+─────────────────────           ──────────────────────────────
+Process A                       Process A
+ [Python obj] → pickle          [numpy arr] ←── shm segment ──→ [numpy arr]
+      ↓                                         (физически одна
+  [bytes] → OS pipe/socket                       страница ОС)
+      ↓
+ [bytes] → unpickle             Process B
+      ↓
+ [Python obj]
+Process B
+\`\`\`
+
+---
+
+## multiprocessing.Queue: как устроена под капотом
+
+\`Queue\` использует: **pickle** (сериализация) + **OS pipe** или **socket** (транспорт) + **threading.Lock** (синхронизация).
+
+\`\`\`python
+from multiprocessing import Queue, Process
+import numpy as np
+import time
+import os
+
+def producer(q: Queue, data: np.ndarray):
+    print(f"Producer PID: {os.getpid()}")
+    q.put(data)   # 1. pickle(data) → bytes  2. write(bytes) → pipe
+
+def consumer(q: Queue):
+    print(f"Consumer PID: {os.getpid()}")
+    data = q.get()   # 1. read(pipe) → bytes  2. unpickle(bytes) → объект
+    print(f"Получено: shape={data.shape}, sum={data.sum():.2f}")
+
+if __name__ == "__main__":
+    # Тест: передача 10 МБ numpy-массива через Queue
+    arr = np.random.rand(1_250_000)   # 10 МБ (1.25M float64 × 8 байт)
+    q = Queue()
+
+    start = time.perf_counter()
+    p = Process(target=consumer, args=(q,))
+    p.start()
+    q.put(arr)          # сериализация + передача через pipe
+    p.join()
+    print(f"Queue 10MB: {time.perf_counter() - start:.3f}s")
+    # ~0.05–0.15s: pickle занимает значительное время
+\`\`\`
+
+### Накладные расходы Queue
+
+\`\`\`python
+import pickle, io, timeit
+import numpy as np
+
+arr_small  = np.random.rand(1_000)        # 8 КБ
+arr_medium = np.random.rand(1_000_000)    # 8 МБ
+arr_large  = np.random.rand(10_000_000)   # 80 МБ
+
+def measure_pickle(arr):
+    buf = io.BytesIO()
+    start = time.perf_counter()
+    pickle.dump(arr, buf)
+    t_serialize = time.perf_counter() - start
+
+    buf.seek(0)
+    start = time.perf_counter()
+    pickle.load(buf)
+    t_deserialize = time.perf_counter() - start
+
+    return t_serialize, t_deserialize, buf.tell()
+
+for name, arr in [("8KB", arr_small), ("8MB", arr_medium), ("80MB", arr_large)]:
+    s, d, size = measure_pickle(arr)
+    print(f"{name}: serialize={s*1000:.1f}ms, deserialize={d*1000:.1f}ms, "
+          f"bytes={size//1024}KB")
+
+# 8KB:  serialize=0.03ms,  deserialize=0.02ms,  bytes=8KB
+# 8MB:  serialize=12ms,    deserialize=8ms,      bytes=8MB
+# 80MB: serialize=110ms,   deserialize=80ms,     bytes=80MB
+\`\`\`
+
+---
+
+## multiprocessing.shared_memory: нулевое копирование
+
+\`SharedMemory\` создаёт **именованный сегмент разделяемой памяти** ОС (POSIX \`shm_open\` на Linux, \`CreateFileMapping\` на Windows). Оба процесса **маппируют одни и те же физические страницы** в своё адресное пространство.
+
+\`\`\`python
+from multiprocessing import shared_memory, Process
+import numpy as np
+import time
+
+def worker_shm(shm_name: str, shape: tuple, dtype: str):
+    """Дочерний процесс: подключается к существующей SharedMemory."""
+    # Подключаемся к существующему сегменту — никакого копирования!
+    existing_shm = shared_memory.SharedMemory(name=shm_name)
+    arr = np.ndarray(shape, dtype=dtype, buffer=existing_shm.buf)
+
+    # Читаем данные — прямо из общей памяти
+    print(f"Worker: sum={arr.sum():.2f}")
+
+    # Записываем данные — изменения видны родителю!
+    arr[:] *= 2.0
+
+    existing_shm.close()   # отключаемся (не удаляем!)
+
+if __name__ == "__main__":
+    arr = np.random.rand(1_250_000)   # 10 МБ
+    shape, dtype = arr.shape, str(arr.dtype)
+
+    # Создаём разделяемую память и копируем туда данные (один раз!)
+    shm = shared_memory.SharedMemory(create=True, size=arr.nbytes)
+    shared_arr = np.ndarray(shape, dtype=dtype, buffer=shm.buf)
+    shared_arr[:] = arr   # ← единственное копирование
+
+    start = time.perf_counter()
+    p = Process(target=worker_shm, args=(shm.name, shape, dtype))
+    p.start()
+    p.join()
+    print(f"SharedMemory 10MB: {time.perf_counter() - start:.3f}s")
+    # ~0.005s: нет сериализации, нет pipe
+
+    # Изменения от дочернего процесса видны здесь!
+    print(f"Parent after worker: sum={shared_arr.sum():.2f}")  # удвоенная сумма
+
+    shm.close()
+    shm.unlink()   # ОБЯЗАТЕЛЬНО: удалить сегмент (иначе утечка ресурсов ОС!)
+\`\`\`
+
+---
+
+## Детальное сравнение производительности
+
+\`\`\`python
+from multiprocessing import Queue, Process, shared_memory
+import numpy as np
+import time
+
+SIZES = {
+    "1KB":   1_000 // 8,
+    "1MB":   1_000_000 // 8,
+    "100MB": 100_000_000 // 8,
+}
+
+def benchmark_queue(n_elements: int) -> float:
+    arr = np.random.rand(n_elements)
+    q = Queue()
+    done = Queue()
+
+    def recv():
+        data = q.get()
+        done.put(data.sum())
+
+    p = Process(target=recv)
+    p.start()
+    start = time.perf_counter()
+    q.put(arr)
+    done.get()
+    elapsed = time.perf_counter() - start
+    p.join()
+    return elapsed
+
+def benchmark_shm(n_elements: int) -> float:
+    arr = np.random.rand(n_elements)
+    shm = shared_memory.SharedMemory(create=True, size=arr.nbytes)
+    shared_arr = np.ndarray(arr.shape, dtype=arr.dtype, buffer=shm.buf)
+    shared_arr[:] = arr
+
+    done = Queue()
+
+    def recv(name, shape, dtype):
+        s = shared_memory.SharedMemory(name=name)
+        a = np.ndarray(shape, dtype=dtype, buffer=s.buf)
+        done.put(a.sum())
+        s.close()
+
+    p = Process(target=recv, args=(shm.name, arr.shape, str(arr.dtype)))
+    p.start()
+    start = time.perf_counter()
+    done.get()
+    elapsed = time.perf_counter() - start
+    p.join()
+    shm.close(); shm.unlink()
+    return elapsed
+
+if __name__ == "__main__":
+    for name, n in SIZES.items():
+        t_q   = benchmark_queue(n)
+        t_shm = benchmark_shm(n)
+        speedup = t_q / t_shm if t_shm > 0 else float("inf")
+        print(f"{name:6}: Queue={t_q*1000:.1f}ms, SharedMem={t_shm*1000:.1f}ms, "
+              f"speedup={speedup:.1f}x")
+
+# 1KB:    Queue=0.5ms,  SharedMem=0.4ms,  speedup=1.2x
+# 1MB:    Queue=3ms,    SharedMem=0.5ms,  speedup=6x
+# 100MB:  Queue=350ms,  SharedMem=1ms,    speedup=350x
+\`\`\`
+
+---
+
+## Синхронизация при работе с SharedMemory
+
+\`SharedMemory\` не имеет встроенной синхронизации. Используйте \`multiprocessing.Lock\` или \`Semaphore\`:
+
+\`\`\`python
+from multiprocessing import shared_memory, Lock, Process
+import numpy as np
+
+def increment_worker(shm_name: str, shape: tuple, dtype: str,
+                     lock: Lock, n_iterations: int):
+    shm = shared_memory.SharedMemory(name=shm_name)
+    arr = np.ndarray(shape, dtype=dtype, buffer=shm.buf)
+
+    for _ in range(n_iterations):
+        with lock:           # критическая секция
+            arr[0] += 1.0
+    shm.close()
+
+if __name__ == "__main__":
+    shm = shared_memory.SharedMemory(create=True, size=8)   # один float64
+    arr = np.ndarray((1,), dtype=np.float64, buffer=shm.buf)
+    arr[0] = 0.0
+
+    lock = Lock()
+    workers = [Process(target=increment_worker,
+                       args=(shm.name, (1,), "float64", lock, 10_000))
+               for _ in range(4)]
+
+    for w in workers: w.start()
+    for w in workers: w.join()
+
+    print(f"Результат: {arr[0]}")   # 40000.0 (без race condition благодаря Lock)
+    shm.close(); shm.unlink()
+\`\`\`
+
+---
+
+## Итоговое сравнение
+
+| Критерий | \`multiprocessing.Queue\` | \`multiprocessing.shared_memory\` |
+|---|---|---|
+| Сериализация | pickle (CPU + память) | Нет (zero-copy) |
+| Копирование данных | Полное (send + receive) | Только инициализация |
+| Синхронизация | Встроенная (thread-safe) | Ручная (Lock/Semaphore) |
+| Произвольные объекты | ✅ Любые picklable | ❌ Только буферы |
+| Производительность (большие данные) | ❌ Медленно (O(n)) | ✅ O(1) |
+| Сложность | ✅ Простая | ⚠️ Нужно управлять ресурсами |
+| Утечки ресурсов | Нет | \`unlink()\` обязателен |
+| Подходит для | Команды/события, небольшие данные | Большие массивы numpy, видео, матрицы |`,
+  },
+  {
+    id: "generator-coroutines-vs-native-async",
+    question:
+      "Как работают корутины на базе генераторов (yield from) в старых версиях Python в сравнении с нативными корутинами (async/await)? Опишите эволюцию асинхронности в языке.",
+    category: "Многопоточность, параллелизм и асинхронность",
+    difficulty: "senior",
+    answer: `## Временная шкала эволюции асинхронности в Python
+
+\`\`\`
+Python 2.2  → генераторы (yield) — PEP 255
+Python 2.5  → send()/throw() в генераторах — PEP 342
+Python 3.3  → yield from — PEP 380
+Python 3.4  → asyncio + @asyncio.coroutine / yield from — PEP 3156
+Python 3.5  → async def / await (нативные корутины) — PEP 492
+Python 3.6  → асинхронные генераторы, асинхронные comprehensions — PEP 525/530
+Python 3.8  → @asyncio.coroutine deprecated
+Python 3.10 → @asyncio.coroutine удалён
+Python 3.11 → TaskGroup, ExceptionGroup
+\`\`\`
+
+---
+
+## Этап 1: Генераторы как корутины (Python 2.5, PEP 342)
+
+Открытие: генераторы умеют не только отдавать значения, но и **принимать** их через \`send()\`.
+
+\`\`\`python
+def simple_coroutine():
+    """Генераторная корутина: принимает и отдаёт значения."""
+    print("Старт корутины")
+    value = yield "готов"      # ← приостановка, отдаём "готов", ждём send()
+    print(f"Получили: {value}")
+    result = yield value * 2   # ← ещё одна приостановка
+    print(f"Финиш")
+
+coro = simple_coroutine()
+first = next(coro)             # запускаем до первого yield: "Старт корутины"
+print(first)                   # "готов"
+
+second = coro.send(10)         # передаём 10 → "Получили: 10"
+print(second)                  # 20
+
+try:
+    coro.send(None)            # "Финиш" → StopIteration
+except StopIteration:
+    pass
+\`\`\`
+
+---
+
+## Этап 2: yield from и делегирование (Python 3.3, PEP 380)
+
+\`yield from\` — синтаксический сахар для **делегирования** генератору: прозрачно передаёт \`send()\`, \`throw()\`, и перехватывает \`StopIteration\`.
+
+\`\`\`python
+def inner_gen():
+    yield 1
+    yield 2
+    return "результат inner"   # ← значение StopIteration.value
+
+def outer_gen():
+    # yield from: прокси между вызывающим и inner_gen
+    result = yield from inner_gen()
+    print(f"inner вернул: {result}")   # "результат inner"
+    yield 3
+
+for v in outer_gen():
+    print(v)
+# 1
+# inner вернул: результат inner
+# 2... нет, ожидаем 1, 2, 3
+\`\`\`
+
+### Ручная реализация эквивалента yield from
+
+\`\`\`python
+def manual_yield_from(gen):
+    """Показывает, во что разворачивается yield from."""
+    value = None
+    while True:
+        try:
+            yielded = gen.send(value)
+            value = yield yielded   # прокидываем наружу и получаем send() обратно
+        except StopIteration as e:
+            return e.value         # передаём return-значение наверх
+\`\`\`
+
+---
+
+## Этап 3: @asyncio.coroutine + yield from (Python 3.4)
+
+В Python 3.4 появился \`asyncio\`. Корутины писались как генераторы с декоратором:
+
+\`\`\`python
+import asyncio
+
+# Python 3.4 стиль (УСТАРЕЛ, удалён в 3.10)
+@asyncio.coroutine
+def old_style_fetch(url):
+    print(f"Запрос к {url}")
+    yield from asyncio.sleep(1.0)   # ← вместо await
+    return f"данные с {url}"
+
+@asyncio.coroutine
+def old_style_main():
+    result = yield from old_style_fetch("example.com")
+    print(result)
+
+# Запуск (старый стиль):
+loop = asyncio.get_event_loop()
+loop.run_until_complete(old_style_main())
+loop.close()
+\`\`\`
+
+### Как yield from связывался с event loop
+
+\`\`\`python
+# Упрощённая схема того, что делает asyncio.sleep():
+@asyncio.coroutine
+def sleep_impl(delay):
+    """Внутренняя реализация asyncio.sleep в старом стиле."""
+    future = asyncio.Future()
+    loop = asyncio.get_event_loop()
+    loop.call_later(delay, future.set_result, None)
+    yield from future   # ← передаём Future event loop'у: "разбуди меня когда done"
+\`\`\`
+
+---
+
+## Этап 4: async def / await — нативные корутины (Python 3.5, PEP 492)
+
+\`\`\`python
+import asyncio
+
+# Python 3.5+ стиль (современный, правильный)
+async def fetch(url: str) -> str:
+    print(f"Запрос к {url}")
+    await asyncio.sleep(1.0)   # ← await вместо yield from
+    return f"данные с {url}"
+
+async def main():
+    result = await fetch("example.com")
+    print(result)
+
+asyncio.run(main())   # asyncio.run появился в Python 3.7
+\`\`\`
+
+### Ключевые отличия нативных корутин
+
+\`\`\`python
+import types, inspect
+
+# Генераторная корутина (старый стиль):
+@asyncio.coroutine
+def gen_coro():
+    yield from asyncio.sleep(0)
+
+# Нативная корутина (новый стиль):
+async def native_coro():
+    await asyncio.sleep(0)
+
+obj_gen    = gen_coro()
+obj_native = native_coro()
+
+# Тип:
+print(type(obj_gen))       # <class 'generator'>
+print(type(obj_native))    # <class 'coroutine'>
+
+# Проверки:
+print(inspect.isgenerator(obj_gen))          # True
+print(inspect.iscoroutine(obj_native))       # True
+print(inspect.isgenerator(obj_native))       # False!
+
+# Нативные корутины НЕЛЬЗЯ использовать как генераторы:
+# list(native_coro())  → TypeError!
+
+# Нативные корутины НЕ совместимы с обычным yield:
+# async def bad():
+#     yield from [1, 2, 3]  → SyntaxError
+# (нужно: async def good(): ... yield ... — это асинхронный генератор)
+
+# Очистка:
+obj_gen.close(); obj_native.close()
+\`\`\`
+
+---
+
+## Глубокое сравнение: yield from vs await
+
+\`\`\`python
+# Функционально эквивалентны, но синтаксически строже:
+
+# СТАРЫЙ СТИЛЬ (Python 3.4):
+@asyncio.coroutine
+def old_parallel():
+    results = yield from asyncio.gather(
+        old_style_fetch("a.com"),
+        old_style_fetch("b.com"),
+    )
+    return results
+
+# НОВЫЙ СТИЛЬ (Python 3.5+):
+async def new_parallel():
+    results = await asyncio.gather(
+        fetch("a.com"),
+        fetch("b.com"),
+    )
+    return results
+
+# Различия:
+# 1. async def нельзя вызвать как обычный генератор
+# 2. await работает только внутри async def (синтаксическая проверка)
+# 3. yield from внутри @coroutine мог вызываться из обычных генераторов
+# 4. Нативные корутины видны type-checkerам (mypy, pyright)
+# 5. Нативные корутины на 10-30% быстрее (нет overhead генератора)
+\`\`\`
+
+---
+
+## Асинхронные итераторы и генераторы (Python 3.6+)
+
+\`\`\`python
+import asyncio
+
+# Асинхронный итератор (протокол __aiter__/__anext__)
+class AsyncCounter:
+    def __init__(self, stop: int):
+        self.current = 0
+        self.stop = stop
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.current >= self.stop:
+            raise StopAsyncIteration
+        await asyncio.sleep(0.01)   # имитация async I/O
+        value = self.current
+        self.current += 1
+        return value
+
+# Асинхронный генератор (Python 3.6+)
+async def async_range(start: int, stop: int, delay: float = 0.01):
+    for i in range(start, stop):
+        await asyncio.sleep(delay)
+        yield i   # ← yield внутри async def = асинхронный генератор
+
+async def main():
+    # async for с асинхронным итератором
+    async for value in AsyncCounter(5):
+        print(value, end=" ")   # 0 1 2 3 4
+    print()
+
+    # async for с асинхронным генератором
+    async for value in async_range(0, 5):
+        print(value, end=" ")   # 0 1 2 3 4
+    print()
+
+    # Асинхронное list comprehension (Python 3.6+)
+    squares = [v * v async for v in async_range(0, 5)]
+    print(squares)   # [0, 1, 4, 9, 16]
+
+asyncio.run(main())
+\`\`\`
+
+---
+
+## Итоговая эволюция в одной таблице
+
+| Версия | Механизм | Синтаксис | Статус |
+|---|---|---|---|
+| 2.2 | Генераторы | \`yield\` | Актуально |
+| 2.5 | Корутины-генераторы | \`send()\`, \`throw()\` | Актуально |
+| 3.3 | Делегирование | \`yield from\` | Актуально |
+| 3.4 | asyncio | \`@coroutine\` + \`yield from\` | ❌ Удалён в 3.10 |
+| 3.5 | Нативные корутины | \`async def\` / \`await\` | ✅ Современный стандарт |
+| 3.6 | Async генераторы | \`async def\` + \`yield\` | ✅ |
+| 3.7 | Улучшения asyncio | \`asyncio.run()\` | ✅ |
+| 3.11 | Structured concurrency | \`TaskGroup\`, \`except*\` | ✅ |`,
+  },
+  {
+    id: "contextvars-vs-threading-local",
+    question:
+      "Как устроен контекст выполнения (contextvars) в Python? Почему стандартный threading.local некорректно работает в асинхронных приложениях (asyncio) и как contextvars решают эту проблему?",
+    category: "Многопоточность, параллелизм и асинхронность",
+    difficulty: "senior",
+    answer: `## Проблема контекстных данных в многозадачном коде
+
+Задача: хранить данные, специфичные для текущего «контекста выполнения» — например, \`request_id\` текущего HTTP-запроса — так, чтобы разные запросы не мешали друг другу.
+
+---
+
+## threading.local: работает для потоков, ломается в asyncio
+
+\`threading.local\` хранит данные в хранилище, **индексированном по идентификатору потока** ОС (\`pthread_getspecific\` / \`TlsGetValue\`).
+
+\`\`\`python
+import threading
+
+local = threading.local()
+
+def worker(name: str):
+    local.request_id = name   # каждый поток хранит своё значение
+    import time; time.sleep(0.01)
+    print(f"Поток {name}: request_id = {local.request_id}")   # своё значение
+
+threads = [threading.Thread(target=worker, args=(f"req-{i}",)) for i in range(5)]
+for t in threads: t.start()
+for t in threads: t.join()
+# Каждый поток видит своё request_id — корректно!
+\`\`\`
+
+### Почему threading.local ломается в asyncio
+
+В asyncio все корутины выполняются в **одном потоке**. \`threading.local\` видит один поток — одно хранилище. Несколько корутин пишут в одно место и перезаписывают данные друг друга:
+
+\`\`\`python
+import asyncio
+import threading
+
+local = threading.local()
+
+async def handle_request(request_id: str):
+    local.request_id = request_id   # записываем в хранилище потока
+    await asyncio.sleep(0.01)       # ← ПЕРЕКЛЮЧЕНИЕ на другую корутину!
+                                    # другая корутина перезапишет local.request_id
+    # Здесь local.request_id может уже принадлежать ДРУГОМУ запросу!
+    print(f"Запрос {request_id}: вижу request_id = {local.request_id}")
+
+async def main():
+    await asyncio.gather(
+        handle_request("req-001"),
+        handle_request("req-002"),
+        handle_request("req-003"),
+    )
+
+asyncio.run(main())
+
+# Вывод (некорректный):
+# Запрос req-001: вижу request_id = req-003  ← ЧУЖОЙ id!
+# Запрос req-002: вижу request_id = req-003  ← ЧУЖОЙ id!
+# Запрос req-003: вижу request_id = req-003
+\`\`\`
+
+---
+
+## contextvars.ContextVar: правильное решение (Python 3.7+)
+
+\`ContextVar\` — это переменная, значение которой хранится не в потоке, а в **контексте** (\`Context\`) — изолированном снимке состояния, привязанном к конкретной задаче или корутине.
+
+\`\`\`python
+import asyncio
+from contextvars import ContextVar
+
+# Создаём контекстную переменную с дефолтным значением
+request_id: ContextVar[str] = ContextVar("request_id", default="unknown")
+
+async def handle_request(rid: str):
+    # Устанавливаем значение в текущем контексте
+    token = request_id.set(rid)   # set() возвращает токен для сброса
+
+    await asyncio.sleep(0.01)     # ← переключение на другую корутину
+
+    # Видим СВОЁ значение, несмотря на переключение!
+    print(f"Запрос {rid}: вижу request_id = {request_id.get()}")
+
+    request_id.reset(token)       # восстановить предыдущее значение (опционально)
+
+async def main():
+    await asyncio.gather(
+        handle_request("req-001"),
+        handle_request("req-002"),
+        handle_request("req-003"),
+    )
+
+asyncio.run(main())
+
+# Вывод (корректный):
+# Запрос req-001: вижу request_id = req-001
+# Запрос req-002: вижу request_id = req-002
+# Запрос req-003: вижу request_id = req-003
+\`\`\`
+
+---
+
+## Как устроен Context внутри
+
+Каждый \`asyncio.Task\` при создании делает **копию текущего контекста** через \`copy_context()\`. Эта копия — изолированный словарь \`{ContextVar → value}\`, который живёт на протяжении всей задачи.
+
+\`\`\`python
+import asyncio
+from contextvars import ContextVar, copy_context
+
+user_id: ContextVar[int] = ContextVar("user_id", default=0)
+
+async def child_task():
+    """Дочерняя задача видит КОПИЮ контекста родителя."""
+    print(f"child_task: user_id = {user_id.get()}")   # видит значение из родителя
+    user_id.set(999)   # изменяет ТОЛЬКО свою копию
+    print(f"child_task после set: user_id = {user_id.get()}")
+
+async def parent_task():
+    user_id.set(42)
+    print(f"parent до spawn: user_id = {user_id.get()}")   # 42
+
+    # create_task копирует текущий контекст
+    task = asyncio.create_task(child_task())
+    await task
+
+    # Изменения в дочерней задаче НЕ видны здесь
+    print(f"parent после spawn: user_id = {user_id.get()}")   # 42 (не 999!)
+
+asyncio.run(parent_task())
+
+# parent до spawn: user_id = 42
+# child_task: user_id = 42
+# child_task после set: user_id = 999
+# parent после spawn: user_id = 42
+\`\`\`
+
+### Ручная работа с Context
+
+\`\`\`python
+from contextvars import ContextVar, copy_context
+
+x: ContextVar[int] = ContextVar("x", default=0)
+
+def show():
+    print(f"x = {x.get()}")
+
+x.set(10)
+
+# Создаём снимок текущего контекста
+ctx = copy_context()
+
+x.set(20)
+
+# Запускаем в скопированном контексте (где x=10)
+ctx.run(show)    # x = 10  — видит снимок на момент копирования
+
+show()           # x = 20  — текущий контекст
+\`\`\`
+
+---
+
+## Практический пример: request-scoped логирование
+
+\`\`\`python
+import asyncio
+import logging
+from contextvars import ContextVar
+from typing import Optional
+
+# Контекстные переменные для трассировки запросов
+request_id:  ContextVar[str] = ContextVar("request_id",  default="-")
+user_id_var: ContextVar[Optional[int]] = ContextVar("user_id_var", default=None)
+
+class ContextFilter(logging.Filter):
+    """Добавляет request_id в каждую строку лога."""
+    def filter(self, record):
+        record.request_id = request_id.get()
+        record.user_id    = user_id_var.get()
+        return True
+
+# Настройка логгера
+logger = logging.getLogger("app")
+logger.addFilter(ContextFilter())
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(
+    "[%(request_id)s|user=%(user_id)s] %(message)s"
+))
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+async def process_payment(amount: float):
+    logger.info(f"Обрабатываем платёж на {amount}")
+    await asyncio.sleep(0.01)
+    logger.info(f"Платёж {amount} завершён")
+
+async def handle_request(rid: str, uid: int, amount: float):
+    request_id.set(rid)
+    user_id_var.set(uid)
+    logger.info("Запрос получен")
+    await process_payment(amount)   # process_payment видит тот же контекст!
+
+async def main():
+    await asyncio.gather(
+        handle_request("req-abc", 101, 500.0),
+        handle_request("req-xyz", 202, 1500.0),
+    )
+
+asyncio.run(main())
+
+# [req-abc|user=101] Запрос получен
+# [req-xyz|user=202] Запрос получен
+# [req-abc|user=101] Обрабатываем платёж на 500.0
+# [req-xyz|user=202] Обрабатываем платёж на 1500.0
+# [req-abc|user=101] Платёж 500.0 завершён
+# [req-xyz|user=202] Платёж 1500.0 завершён
+\`\`\`
+
+---
+
+## contextvars + threading: работает в обоих мирах
+
+\`ContextVar\` корректно работает и с потоками: каждый поток стартует с копией контекста, как и каждая Task.
+
+\`\`\`python
+import threading
+from contextvars import ContextVar
+
+tenant: ContextVar[str] = ContextVar("tenant", default="default")
+
+def thread_worker(name: str):
+    tenant.set(name)         # изолировано в этом потоке
+    import time; time.sleep(0.05)
+    print(f"Thread {name}: tenant = {tenant.get()}")   # видит своё значение
+
+tenant.set("main-thread")
+
+threads = [threading.Thread(target=thread_worker, args=(f"tenant-{i}",))
+           for i in range(3)]
+for t in threads: t.start()
+for t in threads: t.join()
+
+print(f"Main thread: tenant = {tenant.get()}")   # main-thread — не изменилось!
+\`\`\`
+
+---
+
+## Итоговое сравнение
+
+| Свойство | \`threading.local\` | \`contextvars.ContextVar\` |
+|---|---|---|
+| Изоляция в потоках | ✅ Да | ✅ Да |
+| Изоляция в asyncio Tasks | ❌ Нет (один поток) | ✅ Да (копия контекста) |
+| Наследование в дочерних задачах | ❌ Нет | ✅ Да (копируется) |
+| Изменения дочерней задачи видны родителю | — | ❌ Нет (изоляция) |
+| Доступность | Python 2+ | Python 3.7+ |
+| Применение в FastAPI/Starlette | ❌ Не рекомендуется | ✅ Основной механизм |`,
+  },
+  {
+    id: "init-py-packages",
+    question:
+      "Зачем нужен файл __init__.py в директориях пакетов и обязателен ли он в современных версиях Python?",
+    category: "Модульная система, профилирование и мета-инструменты",
+    difficulty: "junior",
+    answer: `## Что такое __init__.py?
+
+\`__init__.py\` — это файл, который **превращает директорию в Python-пакет**: сигнализирует интерпретатору, что директория является модулем, который можно импортировать. Именно этот файл выполняется при первом импорте пакета.
+
+---
+
+## История: Regular Packages (до Python 3.3)
+
+До Python 3.3 файл \`__init__.py\` был **обязателен**. Без него директория не считалась пакетом.
+
+\`\`\`
+myproject/
+├── mypackage/
+│   ├── __init__.py      ← обязателен
+│   ├── module_a.py
+│   └── subpkg/
+│       ├── __init__.py  ← тоже обязателен
+│       └── module_b.py
+└── main.py
+\`\`\`
+
+\`\`\`python
+# mypackage/__init__.py
+print("Пакет mypackage загружен!")
+
+# Публичный API пакета
+from .module_a import ClassA, function_x
+from .subpkg.module_b import ClassB
+
+__version__ = "1.2.3"
+__all__ = ["ClassA", "function_x", "ClassB"]
+\`\`\`
+
+\`\`\`python
+# main.py
+import mypackage          # → "Пакет mypackage загружен!"
+from mypackage import ClassA   # берём из __init__.py
+
+print(mypackage.__version__)   # "1.2.3"
+\`\`\`
+
+---
+
+## Что делает __init__.py при выполнении
+
+\`\`\`python
+# mypackage/__init__.py — типичное содержимое
+
+# 1. Определение версии
+__version__ = "2.0.0"
+__author__ = "Team"
+
+# 2. Формирование публичного API (ленивый импорт)
+from .core import Engine
+from .utils import helper
+
+# 3. Инициализация состояния пакета
+import logging
+logger = logging.getLogger(__name__)
+logger.info("Пакет инициализирован")
+
+# 4. __all__ — управляет тем, что экспортирует from package import *
+__all__ = ["Engine", "helper"]
+
+# 5. Регистрация плагинов, настройка окружения и т.д.
+\`\`\`
+
+\`\`\`python
+# Различие с __all__:
+from mypackage import *          # импортирует только то, что в __all__
+from mypackage import Engine     # всегда работает (если Engine определён)
+\`\`\`
+
+---
+
+## Python 3.3+: Namespace Packages (PEP 420)
+
+Начиная с Python 3.3, появились **namespace packages** — пакеты **без** \`__init__.py\`. Это позволяет разбивать один логический пакет по нескольким директориям или дистрибутивам.
+
+\`\`\`
+# Структура: два репозитория, один пакет mypkg
+# repo1/mypkg/feature_a.py
+# repo2/mypkg/feature_b.py
+# (ни в одном нет __init__.py)
+
+# sys.path = ["/path/repo1", "/path/repo2"]
+import mypkg.feature_a   # OK — Python находит mypkg в repo1
+import mypkg.feature_b   # OK — Python находит mypkg в repo2
+\`\`\`
+
+\`\`\`python
+import importlib, mypkg
+
+# namespace package не имеет __file__, но имеет __path__
+print(type(mypkg))           # <class 'module'>
+print(hasattr(mypkg, "__file__"))   # False — нет единого файла
+print(mypkg.__path__)        # _NamespacePath(['/path/repo1/mypkg', '/path/repo2/mypkg'])
+\`\`\`
+
+---
+
+## Различия: Regular Package vs Namespace Package
+
+| Характеристика | Regular Package (с \`__init__.py\`) | Namespace Package (без) |
+|---|---|---|
+| \`__init__.py\` | ✅ Присутствует | ❌ Отсутствует |
+| Выполнение кода при импорте | ✅ Да | ❌ Нет |
+| Публичный API (\`__all__\`) | ✅ Да | ❌ Нет |
+| \`__file__\` | Путь к \`__init__.py\` | \`None\` |
+| Разбивка по нескольким путям | ❌ | ✅ |
+| Приоритет при поиске | Выше (находится первым) | Ниже |
+| Применение | Библиотеки, приложения | Плагины, корпоративные монорепо |
+
+---
+
+## Практические советы
+
+\`\`\`python
+# Пустой __init__.py vs отсутствие:
+# - Пустой __init__.py: явный Regular Package, поведение предсказуемо
+# - Без __init__.py: Namespace Package, может быть неожиданным поведением
+
+# Проверить тип пакета:
+import mypackage
+import importlib.util
+
+spec = importlib.util.find_spec("mypackage")
+print(spec.origin)        # путь к __init__.py (или None для namespace)
+print(spec.submodule_search_locations)  # пути поиска субмодулей
+
+# Ленивая инициализация в __init__.py (Python 3.7+):
+def __getattr__(name: str):
+    """Ленивый импорт атрибутов пакета."""
+    if name == "HeavyClass":
+        from .heavy_module import HeavyClass
+        return HeavyClass
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+# HeavyClass не импортируется, пока к нему не обратятся
+\`\`\`
+
+---
+
+## Когда __init__.py обязателен сегодня?
+
+1. **Нужен публичный API** — реэкспорт имён, \`__all__\`, \`__version__\`.
+2. **Инициализация при импорте** — настройка логирования, регистрация адаптеров.
+3. **Совместимость с Python < 3.3** — устаревшее требование.
+4. **Инструменты сборки** — некоторые setuptools-конфигурации ожидают \`__init__.py\`.
+5. **Явность** — команда договорилась использовать явные пакеты везде.
+
+> **Вывод**: в Python 3.3+ файл \`__init__.py\` **не обязателен**, но **рекомендован** для библиотек и пакетов с публичным API. Для внутренних модулей приложения допустимо работать без него.`,
+  },
+  {
+    id: "profiling-cprofile-timeit-memory",
+    question:
+      "Как работает профилирование кода в Python? Назовите и сравните базовые инструменты (cProfile, timeit, memory_profiler).",
+    category: "Модульная система, профилирование и мета-инструменты",
+    difficulty: "middle",
+    answer: `## Зачем профилировать?
+
+Профилирование отвечает на вопросы: **где** программа тратит время (CPU profiling) и **где** она потребляет память (memory profiling). Без профилирования оптимизация — это угадывание.
+
+---
+
+## 1. timeit: точное измерение времени
+
+\`timeit\` предназначен для **микробенчмарков** — сравнения небольших фрагментов кода. Запускает код многократно и усредняет результат, устраняя шум.
+
+\`\`\`python
+import timeit
+
+# Базовое использование: строка кода
+t = timeit.timeit("x = [i**2 for i in range(1000)]", number=10_000)
+print(f"List comprehension: {t:.3f}s")
+
+# С setup-кодом
+t = timeit.timeit(
+    stmt="result = sum(squares)",
+    setup="squares = [i**2 for i in range(1000)]",
+    number=100_000
+)
+print(f"sum(): {t:.3f}s")
+
+# Через callable (лямбду) — удобнее для сложного кода
+def func_to_test():
+    return sorted([3, 1, 4, 1, 5, 9, 2, 6], reverse=True)
+
+t = timeit.timeit(func_to_test, number=500_000)
+print(f"sorted(): {t:.3f}s")
+
+# repeat(): несколько запусков для выбора минимума
+results = timeit.repeat(func_to_test, repeat=5, number=100_000)
+print(f"Минимум: {min(results):.4f}s")
+print(f"Все результаты: {[f'{r:.4f}' for r in results]}")
+\`\`\`
+
+### В командной строке
+
+\`\`\`bash
+python -m timeit -n 100000 -r 5 "'-'.join(str(n) for n in range(100))"
+# 100000 loops, best of 5: 8.84 usec per loop
+
+python -m timeit -n 100000 "'-'.join(map(str, range(100)))"
+# 100000 loops, best of 5: 6.45 usec per loop
+\`\`\`
+
+---
+
+## 2. cProfile: CPU-профилирование на уровне функций
+
+\`cProfile\` — **детерминированный профилировщик**: перехватывает каждый вызов функции и замеряет время. Написан на C, overhead минимален.
+
+\`\`\`python
+import cProfile
+import pstats
+import io
+
+def slow_fibonacci(n: int) -> int:
+    if n <= 1:
+        return n
+    return slow_fibonacci(n - 1) + slow_fibonacci(n - 2)
+
+def main():
+    result = slow_fibonacci(30)
+    return result
+
+# Способ 1: прямой вызов
+cProfile.run("main()")
+
+# Способ 2: сохранить в файл и проанализировать
+profiler = cProfile.Profile()
+profiler.enable()
+
+main()
+
+profiler.disable()
+
+# Вывод в читаемом виде
+stream = io.StringIO()
+stats = pstats.Stats(profiler, stream=stream)
+stats.strip_dirs()
+stats.sort_stats("cumulative")   # сортировка по суммарному времени
+stats.print_stats(10)            # топ 10 функций
+print(stream.getvalue())
+\`\`\`
+
+### Интерпретация вывода cProfile
+
+\`\`\`
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+  2692537    1.234    0.000    1.234    0.000 profile_demo.py:4(slow_fibonacci)
+        1    0.000    0.000    1.234    1.234 profile_demo.py:9(main)
+
+Колонки:
+- ncalls   — количество вызовов
+- tottime  — суммарное время ТОЛЬКО в этой функции (без дочерних)
+- percall  — tottime / ncalls
+- cumtime  — суммарное время включая дочерние вызовы
+- percall  — cumtime / ncalls
+\`\`\`
+
+\`\`\`python
+# Сортировка по разным критериям
+stats.sort_stats("tottime")    # по собственному времени — где "горячая точка"
+stats.sort_stats("cumulative") # по суммарному — что долго работает в целом
+stats.sort_stats("ncalls")     # по числу вызовов — что вызывается чаще всего
+
+# Фильтрация по имени файла/функции
+stats.print_stats("fibonacci")
+
+# Сохранение в бинарный файл для SnakeViz
+profiler.dump_stats("profile_output.prof")
+# Визуализация: pip install snakeviz && snakeviz profile_output.prof
+\`\`\`
+
+### Профилирование через декоратор
+
+\`\`\`python
+import cProfile
+import functools
+
+def profile(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        pr = cProfile.Profile()
+        pr.enable()
+        result = func(*args, **kwargs)
+        pr.disable()
+        pr.print_stats(sort="cumulative")
+        return result
+    return wrapper
+
+@profile
+def compute_something(n: int) -> list:
+    return [i ** 0.5 for i in range(n)]
+
+compute_something(1_000_000)
+\`\`\`
+
+---
+
+## 3. line_profiler: профилирование по строкам
+
+\`cProfile\` показывает функции, \`line_profiler\` — каждую **строку** внутри функции.
+
+\`\`\`python
+# pip install line_profiler
+
+from line_profiler import LineProfiler
+
+def process_data(data: list) -> list:
+    result = []
+    for item in data:
+        processed = item ** 2       # ← сколько времени тут?
+        filtered = processed > 100  # ← и тут?
+        if filtered:
+            result.append(processed)
+    return result
+
+lp = LineProfiler()
+lp.add_function(process_data)
+
+data = list(range(100_000))
+lp_wrapper = lp(process_data)
+lp_wrapper(data)
+
+lp.print_stats()
+# Line #  Hits   Time   Per Hit  % Time  Line Contents
+#      6  100000  45678   0.5    25.1%   processed = item ** 2
+#      7  100000  89234   0.9    49.2%   filtered = processed > 100
+\`\`\`
+
+\`\`\`bash
+# Через декоратор @profile и kernprof:
+# kernprof -l -v script.py
+\`\`\`
+
+---
+
+## 4. memory_profiler: профилирование памяти
+
+\`\`\`python
+# pip install memory_profiler
+
+from memory_profiler import profile, memory_usage
+import tracemalloc
+
+# Декоратор @profile: построчный анализ памяти
+@profile
+def memory_hungry():
+    data = [i for i in range(1_000_000)]    # ~8 МБ
+    matrix = [[0] * 1000 for _ in range(1000)]  # ~8 МБ
+    del data
+    return matrix
+
+# memory_usage(): замер в отдельном процессе
+def target():
+    return [i for i in range(1_000_000)]
+
+mem = memory_usage((target,), interval=0.01)
+print(f"Пик памяти: {max(mem):.1f} МБ")
+print(f"Базовая: {min(mem):.1f} МБ")
+print(f"Рост: {max(mem) - min(mem):.1f} МБ")
+\`\`\`
+
+\`\`\`bash
+# Командная строка:
+python -m memory_profiler script.py
+
+# Вывод:
+# Line #    Mem usage    Increment  Line Contents
+#      5   45.2 MiB    45.2 MiB   def memory_hungry():
+#      6   53.4 MiB     8.2 MiB   data = [i for i in range(1_000_000)]
+#      7   69.1 MiB    15.7 MiB   matrix = [[0]*1000 for _ in range(1000)]
+#      8   61.0 MiB    -8.1 MiB   del data
+\`\`\`
+
+### tracemalloc: встроенный трекинг выделений памяти
+
+\`\`\`python
+import tracemalloc
+
+tracemalloc.start()
+
+# Код для анализа
+import json
+data = [{"id": i, "value": i * 3.14} for i in range(50_000)]
+serialized = json.dumps(data)
+
+snapshot = tracemalloc.take_snapshot()
+top_stats = snapshot.statistics("lineno")
+
+print("Топ 5 по памяти:")
+for stat in top_stats[:5]:
+    print(stat)
+
+# Сравнение двух моментов
+snap1 = tracemalloc.take_snapshot()
+extra = list(range(1_000_000))
+snap2 = tracemalloc.take_snapshot()
+
+print("\\nПрирост:")
+for stat in snap2.compare_to(snap1, "lineno")[:3]:
+    print(stat)
+
+tracemalloc.stop()
+\`\`\`
+
+---
+
+## Сравнение инструментов
+
+| Инструмент | Что измеряет | Гранулярность | Overhead | Встроен? |
+|---|---|---|---|---|
+| \`timeit\` | Время выполнения | Фрагмент кода | Минимальный | ✅ |
+| \`cProfile\` | Время CPU | Функция | Малый (~10%) | ✅ |
+| \`line_profiler\` | Время CPU | Строка кода | Средний | ❌ pip |
+| \`memory_profiler\` | Память (RSS) | Строка кода | Большой | ❌ pip |
+| \`tracemalloc\` | Выделения памяти | Строка/трассировка | Малый | ✅ |
+| \`py-spy\` | Время CPU | Сэмплирующий | Ничтожный | ❌ pip |
+
+---
+
+## Общий рабочий процесс профилирования
+
+\`\`\`python
+# 1. Сначала: найти медленные функции через cProfile
+# 2. Потом: детализировать через line_profiler
+# 3. Если нужна память: memory_profiler или tracemalloc
+# 4. Микросравнения конкретных решений: timeit
+
+# Правило: не оптимизируй то, что не профилировал!
+# "Premature optimization is the root of all evil" — Knuth
+\`\`\``,
+  },
+  {
+    id: "sys-settrace-debuggers-coverage",
+    question:
+      "Каков механизм работы функции sys.settrace? Как на её основе строятся дебаггеры и инструменты вычисления покрытия кода тестами (coverage)?",
+    category: "Модульная система, профилирование и мета-инструменты",
+    difficulty: "senior",
+    answer: `## Что такое sys.settrace?
+
+\`sys.settrace\` устанавливает **глобальную trace-функцию** — колбэк, который CPython вызывает при каждом значимом событии выполнения: переходе на новую строку, входе/выходе из функции, возникновении исключения.
+
+Это основа всего Python-инструментария: дебаггеров (\`pdb\`), coverage.py, профилировщиков, отладчиков IDE.
+
+---
+
+## Сигнатура trace-функции
+
+\`\`\`python
+import sys
+
+def trace_func(frame, event: str, arg):
+    """
+    frame — объект фрейма (PyFrameObject): locals, globals, код, строка
+    event — тип события: 'call', 'line', 'return', 'exception', 'opcode'
+    arg   — зависит от события:
+              'call'      → None
+              'line'      → None
+              'return'    → возвращаемое значение
+              'exception' → (exc_type, exc_value, traceback)
+              'opcode'    → None (если включён f_trace_opcodes)
+    """
+    filename = frame.f_code.co_filename
+    lineno   = frame.f_lineno
+    funcname = frame.f_code.co_name
+
+    print(f"  [{event:9}] {filename}:{lineno} в {funcname}()")
+
+    # Важно: trace-функция должна возвращать себя (или другую функцию)
+    # для продолжения трассировки ВНУТРИ функции.
+    # Возврат None отключает трассировку для данного фрейма.
+    return trace_func
+
+sys.settrace(trace_func)
+
+def greet(name: str) -> str:
+    greeting = f"Hello, {name}"
+    return greeting
+
+result = greet("World")
+
+sys.settrace(None)   # отключаем трассировку
+\`\`\`
+
+\`\`\`
+[call     ] demo.py:11 в greet()
+[line     ] demo.py:12 в greet()
+[line     ] demo.py:13 в greet()
+[return   ] demo.py:13 в greet()
+\`\`\`
+
+---
+
+## Локальная трассировка: f_trace
+
+Глобальная trace-функция вызывается при \`call\`. Чтобы получать события \`line\`/\`return\`/\`exception\` **внутри** функции, она должна вернуть **локальную** trace-функцию (может быть той же самой или другой):
+
+\`\`\`python
+def global_trace(frame, event, arg):
+    if event == "call":
+        # Решаем: трассировать ли эту функцию?
+        if "interesting_module" in frame.f_code.co_filename:
+            return local_trace   # ← трассируем внутренние события
+        return None              # ← пропускаем эту функцию
+    return None
+
+def local_trace(frame, event, arg):
+    if event == "line":
+        print(f"Строка {frame.f_lineno}: {frame.f_locals}")
+    elif event == "return":
+        print(f"Возврат: {arg}")
+    elif event == "exception":
+        exc_type, exc_value, _ = arg
+        print(f"Исключение: {exc_type.__name__}: {exc_value}")
+    return local_trace
+
+sys.settrace(global_trace)
+\`\`\`
+
+---
+
+## Построение минимального дебаггера
+
+\`\`\`python
+import sys
+import cmd
+
+class MiniDebugger(cmd.Cmd):
+    """Простейший интерактивный дебаггер."""
+    prompt = "(minidbg) "
+
+    def __init__(self):
+        super().__init__()
+        self.breakpoints: set[int] = set()
+        self.paused = False
+
+    def set_trace(self):
+        sys.settrace(self._trace)
+
+    def _trace(self, frame, event, arg):
+        lineno = frame.f_lineno
+
+        if event == "line":
+            if lineno in self.breakpoints:
+                print(f"\\n>>> Breakpoint hit at line {lineno}")
+                self._interactive(frame)
+            elif self.paused:
+                self._interactive(frame)
+
+        return self._trace
+
+    def _interactive(self, frame):
+        """Интерактивный prompt при останове."""
+        import dis
+        print(f"    Файл: {frame.f_code.co_filename}, строка {frame.f_lineno}")
+        print(f"    Функция: {frame.f_code.co_name}")
+        print(f"    Локальные переменные: {frame.f_locals}")
+
+        cmd = input("(n)ext / (c)ontinue / (q)uit: ").strip()
+        if cmd == "c":
+            self.paused = False
+        elif cmd == "q":
+            sys.settrace(None)
+            raise SystemExit
+
+    def add_breakpoint(self, lineno: int):
+        self.breakpoints.add(lineno)
+        print(f"Breakpoint добавлен на строку {lineno}")
+
+# Использование:
+# dbg = MiniDebugger()
+# dbg.add_breakpoint(15)
+# dbg.set_trace()
+# some_function()   ← выполнится с остановкой на строке 15
+\`\`\`
+
+---
+
+## Как устроен pdb изнутри
+
+\`\`\`python
+import pdb
+import inspect
+
+# pdb.set_trace() делает следующее:
+def set_trace_impl():
+    debugger = pdb.Pdb()
+
+    # Получаем фрейм вызывающего кода
+    frame = sys._getframe().f_back
+
+    # Устанавливаем трассировку и останавливаем выполнение
+    debugger.set_trace(frame)
+    # Внутри: sys.settrace(debugger.trace_dispatch)
+    #         frame.f_trace = debugger.dispatch_line
+
+# Breakpoint в Python 3.7+:
+# breakpoint()  ←→  import pdb; pdb.set_trace()
+# Настраивается через PYTHONBREAKPOINT env var:
+# PYTHONBREAKPOINT=0         → отключить все breakpoint()
+# PYTHONBREAKPOINT=ipdb.set_trace → использовать ipdb
+\`\`\`
+
+---
+
+## Как работает coverage.py
+
+\`coverage.py\` использует \`sys.settrace\` (или более быстрый C-расширение \`tracer\`) для **отслеживания выполненных строк**.
+
+\`\`\`python
+import sys
+from collections import defaultdict
+
+class SimpleCoverage:
+    """Упрощённая реализация coverage.py."""
+
+    def __init__(self):
+        self.executed_lines: dict[str, set[int]] = defaultdict(set)
+        self._original_trace = None
+
+    def start(self):
+        self._original_trace = sys.gettrace()
+        sys.settrace(self._trace)
+
+    def stop(self):
+        sys.settrace(self._original_trace)
+
+    def _trace(self, frame, event, arg):
+        if event == "call":
+            return self._line_trace
+        return None
+
+    def _line_trace(self, frame, event, arg):
+        if event == "line":
+            filename = frame.f_code.co_filename
+            lineno   = frame.f_lineno
+            self.executed_lines[filename].add(lineno)
+        return self._line_trace
+
+    def report(self, filename: str):
+        import ast
+
+        with open(filename) as f:
+            source = f.read()
+
+        # Определяем все исполняемые строки через AST
+        tree = ast.parse(source)
+        executable = set()
+        for node in ast.walk(tree):
+            if hasattr(node, "lineno") and not isinstance(
+                node, (ast.FunctionDef, ast.ClassDef, ast.Module, ast.Import,
+                       ast.ImportFrom, ast.arguments, ast.arg)
+            ):
+                executable.add(node.lineno)
+
+        executed = self.executed_lines.get(filename, set())
+        covered = executable & executed
+        missed  = executable - executed
+
+        pct = len(covered) / len(executable) * 100 if executable else 0
+        print(f"\\nФайл: {filename}")
+        print(f"Строк всего: {len(executable)}, выполнено: {len(covered)}, "
+              f"пропущено: {len(missed)}")
+        print(f"Покрытие: {pct:.1f}%")
+        if missed:
+            print(f"Невыполненные строки: {sorted(missed)}")
+
+
+# Использование
+cov = SimpleCoverage()
+cov.start()
+
+# Ваш код здесь
+def example(x):
+    if x > 0:
+        return "positive"
+    else:
+        return "non-positive"
+
+example(1)   # ветка "positive" покрыта
+# example(-1) не вызывали — ветка "non-positive" НЕ покрыта
+
+cov.stop()
+# cov.report("this_file.py")
+\`\`\`
+
+---
+
+## Производительность: sys.settrace vs sys.monitoring (3.12+)
+
+\`\`\`python
+# sys.settrace: вызывается на КАЖДОЕ событие → overhead ~10-50x
+# Основная проблема: колбэк вызывается слишком часто
+
+# Python 3.12+: sys.monitoring — новый API с избирательной подпиской на события
+import sys
+
+if sys.version_info >= (3, 12):
+    # Выбираем только нужные события (не все подряд!)
+    TOOL_ID = sys.monitoring.PROFILER_ID   # зарезервированный ID
+
+    sys.monitoring.set_events(
+        TOOL_ID,
+        sys.monitoring.events.LINE | sys.monitoring.events.CALL
+    )
+
+    def line_handler(code, line_number):
+        print(f"Строка {line_number} в {code.co_name}")
+
+    sys.monitoring.register_callback(
+        TOOL_ID,
+        sys.monitoring.events.LINE,
+        line_handler
+    )
+    # sys.monitoring на практике ~2-5x быстрее sys.settrace
+\`\`\`
+
+---
+
+## Итог: стек трассировки
+
+\`\`\`
+pdb / ipdb        →  sys.settrace  →  CPython eval loop
+coverage.py       →  sys.settrace или C-tracer
+line_profiler     →  sys.settrace
+pydevd (PyCharm)  →  sys.settrace + собственные оптимизации
+sys.monitoring    →  прямая интеграция в eval loop (Python 3.12+, быстрее)
+\`\`\``,
+  },
+  {
+    id: "import-system-sys-modules-meta-path",
+    question:
+      "Как устроен механизм импорта модулей в Python? За что отвечают sys.modules, sys.meta_path, а также абстрактные классы Finder и Loader?",
+    category: "Модульная система, профилирование и мета-инструменты",
+    difficulty: "senior",
+    answer: `## Полный путь оператора import
+
+Когда Python встречает \`import foo\`, запускается следующая цепочка:
+
+\`\`\`
+import foo
+    │
+    ▼
+1. sys.modules["foo"] существует?
+    │ Да → вернуть кэшированный модуль (O(1))
+    │ Нет ↓
+    ▼
+2. Пройти по sys.meta_path: [BuiltinImporter, FrozenImporter, PathFinder]
+    │ Каждый finder.find_spec(name, path, target) → ModuleSpec или None
+    │ Первый нашедший → ModuleSpec
+    ▼
+3. ModuleSpec.loader.create_module(spec) → объект module (или None → дефолт)
+    ▼
+4. sys.modules[name] = module  ← регистрируем ДО выполнения (защита от циклов)
+    ▼
+5. ModuleSpec.loader.exec_module(module) ← выполняем код модуля
+    ▼
+6. Возвращаем module
+\`\`\`
+
+---
+
+## sys.modules: кэш всех импортированных модулей
+
+\`\`\`python
+import sys
+
+# sys.modules — словарь {имя: объект_модуля}
+print(type(sys.modules))           # <class 'dict'>
+print(len(sys.modules))            # ~100-200 при запуске
+print("os" in sys.modules)         # True — уже импортирован
+print("some_lib" in sys.modules)   # False — ещё нет
+
+import json
+print(sys.modules["json"])         # <module 'json' from '...'>
+
+# Имена субпакетов тоже регистрируются:
+import email.mime.text
+print("email" in sys.modules)      # True
+print("email.mime" in sys.modules) # True
+print("email.mime.text" in sys.modules)  # True
+
+# Принудительная перезагрузка модуля:
+import importlib
+importlib.reload(json)   # повторно выполнит json/__init__.py
+
+# Удаление из кэша (следующий import загрузит заново):
+del sys.modules["json"]
+import json   # загрузится заново
+\`\`\`
+
+### Защита от циклических импортов
+
+\`\`\`python
+# Почему модуль регистрируется в sys.modules ДО exec_module?
+# Потому что модуль может импортировать сам себя транзитивно:
+
+# a.py: import b
+# b.py: import a  ← если a ещё нет в sys.modules — бесконечная рекурсия!
+# Но a уже есть (частично инициализированный) → цикл разрывается
+
+# Следствие: при циклическом импорте модуль может быть "пустым" в момент обращения
+\`\`\`
+
+---
+
+## sys.meta_path: цепочка Finder'ов
+
+\`sys.meta_path\` — список **Meta Path Finder**'ов, каждый из которых умеет находить модули определённого типа.
+
+\`\`\`python
+import sys
+
+# Стандартные finder'ы:
+for finder in sys.meta_path:
+    print(type(finder).__name__)
+# BuiltinImporter  — встроенные модули (sys, builtins, _io...)
+# FrozenImporter   — замороженные модули (importlib._bootstrap...)
+# PathFinder       — модули на диске (через sys.path)
+\`\`\`
+
+### Протокол Finder: find_spec()
+
+\`\`\`python
+from importlib.abc import MetaPathFinder
+from importlib.machinery import ModuleSpec
+
+class VerboseFinder(MetaPathFinder):
+    """Finder, который логирует все запросы на импорт."""
+
+    def find_spec(self, fullname: str, path, target=None):
+        print(f"  [find_spec] ищем: {fullname!r}, path={path}")
+        # Возвращаем None → передаём следующему finder'у в цепочке
+        return None
+
+# Добавляем в начало — будет первым в цепочке
+sys.meta_path.insert(0, VerboseFinder())
+
+import urllib.parse   # теперь будет напечатан маршрут поиска
+
+sys.meta_path.pop(0)  # убираем
+\`\`\`
+
+---
+
+## Протокол Loader: create_module + exec_module
+
+\`\`\`python
+from importlib.abc import Loader
+from importlib.machinery import ModuleSpec
+import types
+
+class InMemoryLoader(Loader):
+    """Загружает модуль из строки кода в памяти."""
+
+    def __init__(self, source_code: str):
+        self.source_code = source_code
+
+    def create_module(self, spec: ModuleSpec):
+        return None   # None → Python создаст стандартный объект module
+
+    def exec_module(self, module: types.ModuleType):
+        exec(compile(self.source_code, module.__spec__.origin, "exec"),
+             module.__dict__)
+\`\`\`
+
+---
+
+## Кастомный Meta Path Finder: импорт из базы данных
+
+\`\`\`python
+import sys
+import types
+from importlib.abc import MetaPathFinder, Loader
+from importlib.machinery import ModuleSpec
+
+# "База данных" модулей (в реальности: SQLite, Redis, S3...)
+MODULE_REGISTRY = {
+    "virtual.greetings": """
+def hello(name: str) -> str:
+    return f"Hello from virtual module, {name}!"
+
+VERSION = "1.0.0"
+""",
+    "virtual.math_utils": """
+def square(x): return x * x
+def cube(x):   return x * x * x
+""",
+}
+
+class VirtualModuleFinder(MetaPathFinder):
+    """Загружает модули из словаря, а не с диска."""
+
+    def find_spec(self, fullname: str, path, target=None):
+        if fullname in MODULE_REGISTRY:
+            loader = VirtualModuleLoader(MODULE_REGISTRY[fullname])
+            return ModuleSpec(
+                name=fullname,
+                loader=loader,
+                origin="<virtual registry>",
+            )
+        return None
+
+class VirtualModuleLoader(Loader):
+    def __init__(self, source: str):
+        self.source = source
+
+    def create_module(self, spec): return None
+
+    def exec_module(self, module: types.ModuleType):
+        exec(compile(self.source, "<virtual>", "exec"), module.__dict__)
+
+# Регистрируем finder
+sys.meta_path.insert(0, VirtualModuleFinder())
+
+# Теперь работает как обычный импорт!
+import virtual.greetings
+import virtual.math_utils
+
+print(virtual.greetings.hello("Python"))   # Hello from virtual module, Python!
+print(virtual.math_utils.square(7))        # 49
+print(virtual.greetings.VERSION)           # 1.0.0
+
+# Убираем finder
+sys.meta_path.pop(0)
+\`\`\`
+
+---
+
+## sys.path_hooks: PathFinder и пользовательские пути
+
+\`PathFinder\` (последний в \`sys.meta_path\`) ищет модули по \`sys.path\` используя **Path Entry Finder**'ы из \`sys.path_hooks\`:
+
+\`\`\`python
+import sys, zipimport
+
+# sys.path может содержать:
+# - директории: "/usr/lib/python3.12"
+# - zip-архивы: "/path/to/archive.zip"
+# - любые строки, для которых есть hook в sys.path_hooks
+print(sys.path[:3])
+
+# sys.path_hooks — список фабрик:
+# zipimport.zipimporter  — загрузка из ZIP (eggs, wheels)
+# FileFinder             — загрузка из директории
+for hook in sys.path_hooks:
+    print(hook)
+
+# Пример: добавить zip-архив в путь поиска
+# sys.path.insert(0, "/path/to/mylibs.zip")
+# import mymodule  # теперь ищется внутри ZIP!
+\`\`\`
+
+---
+
+## importlib.import_module vs __import__
+
+\`\`\`python
+import importlib
+
+# Динамический импорт по строке (предпочтительный способ):
+module = importlib.import_module("json")
+print(module.dumps({"key": "value"}))
+
+# Импорт субмодуля с указанием пакета:
+parse = importlib.import_module(".parse", package="urllib")
+print(parse.urlparse("https://example.com"))
+
+# Устаревший __import__ (низкоуровневый):
+json_mod = __import__("json")    # работает, но не рекомендуется
+
+# Полная интроспекция spec'а модуля:
+spec = importlib.util.find_spec("email.mime.text")
+print(spec.name)                 # "email.mime.text"
+print(spec.origin)               # "/usr/lib/.../email/mime/text.py"
+print(spec.submodule_search_locations)  # None (не пакет)
+print(spec.loader)               # <SourceFileLoader ...>
+\`\`\`
+
+---
+
+## Итог: полная карта системы импорта
+
+\`\`\`
+import foo
+    │
+    ├─► sys.modules?  ──Yes──► готово (кэш)
+    │
+    │   No
+    ▼
+sys.meta_path (список Finder'ов):
+    ├─► BuiltinImporter.find_spec("foo")  → None или ModuleSpec
+    ├─► FrozenImporter.find_spec("foo")   → None или ModuleSpec
+    └─► PathFinder.find_spec("foo")
+            │
+            └─► sys.path × sys.path_hooks:
+                    ├─► zipimporter("/path/to/lib.zip")
+                    └─► FileFinder("/usr/lib/python3.12")
+                            ├─► .py → SourceFileLoader
+                            ├─► .pyc → SourcelessFileLoader
+                            └─► .so/.pyd → ExtensionFileLoader
+
+ModuleSpec (name, loader, origin, submodule_search_locations)
+    │
+    ├─► loader.create_module(spec) → module object
+    ├─► sys.modules[name] = module
+    └─► loader.exec_module(module) → выполнить код
+\`\`\``,
+  },
 ];
