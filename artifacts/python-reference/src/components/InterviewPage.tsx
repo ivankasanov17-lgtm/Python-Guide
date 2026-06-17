@@ -244,28 +244,245 @@ function QuestionDetail({
   );
 }
 
+type Block =
+  | { type: "heading"; level: 2 | 3; text: string }
+  | { type: "hr" }
+  | { type: "code"; lang: string; lines: string[] }
+  | { type: "table"; headers: string[]; rows: string[][] }
+  | { type: "list"; items: string[] }
+  | { type: "paragraph"; lines: string[] };
+
+function parseMarkdown(text: string): Block[] {
+  const blocks: Block[] = [];
+  const lines = text.split("\n");
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Fenced code block
+    if (line.startsWith("```")) {
+      const lang = line.slice(3).trim();
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++; // skip closing ```
+      blocks.push({ type: "code", lang, lines: codeLines });
+      continue;
+    }
+
+    // Heading ##
+    const h2 = line.match(/^##\s+(.+)$/);
+    if (h2) {
+      blocks.push({ type: "heading", level: 2, text: h2[1] });
+      i++;
+      continue;
+    }
+
+    // Heading ###
+    const h3 = line.match(/^###\s+(.+)$/);
+    if (h3) {
+      blocks.push({ type: "heading", level: 3, text: h3[1] });
+      i++;
+      continue;
+    }
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      blocks.push({ type: "hr" });
+      i++;
+      continue;
+    }
+
+    // Table
+    if (line.trim().startsWith("|") && line.trim().endsWith("|")) {
+      const headers = line
+        .split("|")
+        .slice(1, -1)
+        .map((h) => h.trim());
+      i++;
+      // skip separator row |---|---|
+      if (i < lines.length && /^\|[-:| ]+\|$/.test(lines[i].trim())) {
+        i++;
+      }
+      const rows: string[][] = [];
+      while (
+        i < lines.length &&
+        lines[i].trim().startsWith("|") &&
+        lines[i].trim().endsWith("|")
+      ) {
+        const cells = lines[i]
+          .split("|")
+          .slice(1, -1)
+          .map((c) => c.trim());
+        rows.push(cells);
+        i++;
+      }
+      blocks.push({ type: "table", headers, rows });
+      continue;
+    }
+
+    // Unordered list
+    if (/^[-*]\s/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^[-*]\s/.test(lines[i])) {
+        items.push(lines[i].replace(/^[-*]\s+/, ""));
+        i++;
+      }
+      blocks.push({ type: "list", items });
+      continue;
+    }
+
+    // Empty line — skip
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    // Paragraph — collect consecutive non-special lines
+    const paraLines: string[] = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== "" &&
+      !lines[i].startsWith("```") &&
+      !lines[i].startsWith("##") &&
+      !/^---+$/.test(lines[i].trim()) &&
+      !/^[-*]\s/.test(lines[i]) &&
+      !lines[i].trim().startsWith("|")
+    ) {
+      paraLines.push(lines[i]);
+      i++;
+    }
+    if (paraLines.length > 0) {
+      blocks.push({ type: "paragraph", lines: paraLines });
+    }
+  }
+
+  return blocks;
+}
+
 function AnswerRenderer({ text }: { text: string }) {
-  const paragraphs = text.split(/\n\n+/);
+  const blocks = parseMarkdown(text);
+
   return (
-    <div className="space-y-4 text-sm text-muted-foreground leading-relaxed">
-      {paragraphs.map((para, pi) => {
-        const lines = para.split("\n");
-        return (
-          <div key={pi} className="space-y-1">
-            {lines.map((line, li) => (
-              <p key={li}>
-                <InlineMarkup text={line} />
-              </p>
-            ))}
-          </div>
-        );
+    <div className="space-y-4 text-sm leading-relaxed">
+      {blocks.map((block, idx) => {
+        if (block.type === "heading" && block.level === 2) {
+          return (
+            <h2
+              key={idx}
+              className="text-base font-bold text-foreground mt-6 mb-1 first:mt-0"
+            >
+              {block.text}
+            </h2>
+          );
+        }
+
+        if (block.type === "heading" && block.level === 3) {
+          return (
+            <h3
+              key={idx}
+              className="text-sm font-semibold text-foreground mt-4 mb-1"
+            >
+              {block.text}
+            </h3>
+          );
+        }
+
+        if (block.type === "hr") {
+          return (
+            <hr key={idx} className="border-border/50 my-4" />
+          );
+        }
+
+        if (block.type === "code") {
+          return (
+            <div key={idx} className="rounded-xl overflow-hidden border border-border/60 shadow-sm">
+              {block.lang && (
+                <div className="px-4 py-1.5 bg-muted/80 border-b border-border/40 flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-medium text-muted-foreground uppercase tracking-wide">
+                    {block.lang}
+                  </span>
+                </div>
+              )}
+              <pre className="bg-muted/40 overflow-x-auto p-4 text-xs font-mono text-foreground leading-relaxed">
+                <code>{block.lines.join("\n")}</code>
+              </pre>
+            </div>
+          );
+        }
+
+        if (block.type === "table") {
+          return (
+            <div key={idx} className="overflow-x-auto rounded-xl border border-border/60">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/60 border-b border-border/60">
+                    {block.headers.map((h, hi) => (
+                      <th
+                        key={hi}
+                        className="px-4 py-2.5 text-left font-semibold text-foreground whitespace-nowrap"
+                      >
+                        <InlineMarkup text={h} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, ri) => (
+                    <tr
+                      key={ri}
+                      className="border-b border-border/40 last:border-0 odd:bg-background even:bg-muted/20"
+                    >
+                      {row.map((cell, ci) => (
+                        <td key={ci} className="px-4 py-2.5 text-muted-foreground">
+                          <InlineMarkup text={cell} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        if (block.type === "list") {
+          return (
+            <ul key={idx} className="space-y-1.5 pl-1">
+              {block.items.map((item, ii) => (
+                <li key={ii} className="flex items-start gap-2 text-muted-foreground">
+                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary/60 flex-shrink-0" />
+                  <span><InlineMarkup text={item} /></span>
+                </li>
+              ))}
+            </ul>
+          );
+        }
+
+        if (block.type === "paragraph") {
+          return (
+            <div key={idx} className="space-y-1 text-muted-foreground">
+              {block.lines.map((line, li) => (
+                <p key={li}>
+                  <InlineMarkup text={line} />
+                </p>
+              ))}
+            </div>
+          );
+        }
+
+        return null;
       })}
     </div>
   );
 }
 
 function InlineMarkup({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`\n]+`)/g);
   return (
     <>
       {parts.map((part, i) => {
@@ -278,7 +495,10 @@ function InlineMarkup({ text }: { text: string }) {
         }
         if (part.startsWith("`") && part.endsWith("`")) {
           return (
-            <code key={i} className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+            <code
+              key={i}
+              className="font-mono text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded"
+            >
               {part.slice(1, -1)}
             </code>
           );
