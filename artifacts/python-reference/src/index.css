@@ -267,6 +267,9 @@
   .lg\:w-96 {
     width: calc(var(--spacing) * 140);
   }
+
+}
+@media (max-width: 968px){
   div.fixed:nth-child(2) + div.fixed:nth-child(3){
       width: 100%;
       right: 0;
@@ -275,3 +278,4 @@
       max-height: 75vh;
   }
 }
+
