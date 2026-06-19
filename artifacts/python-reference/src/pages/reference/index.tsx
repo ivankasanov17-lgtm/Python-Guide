@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Search,
   ChevronRight,
@@ -13,6 +13,14 @@ import { CodeBlock } from "@/components/CodeBlock";
 export default function ReferencePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTermName, setSelectedTermName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const termParam = params.get("term");
+    if (termParam) {
+      setSelectedTermName(decodeURIComponent(termParam));
+    }
+  }, []);
 
   const uniqueTerms = useMemo(() => {
     const seen = new Set<string>();

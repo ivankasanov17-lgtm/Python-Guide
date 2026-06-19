@@ -1,5 +1,5 @@
 import { Link, useRoute, useLocation } from "wouter";
-import { BookOpen, Code2, Layers, Zap, GraduationCap, Menu, X } from "lucide-react";
+import { BookOpen, Code2, Layers, Zap, GraduationCap, Menu, X, Cpu, Brain } from "lucide-react";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { useState, useEffect, useRef } from "react";
@@ -40,6 +40,15 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/fastapi-interview", label: "Собеседование", icon: <GraduationCap className="h-4 w-4" /> },
     ],
   },
+  {
+    label: "DRF",
+    color: "text-rose-500",
+    links: [
+      { href: "/drf", label: "Справочник", icon: <Cpu className="h-4 w-4" /> },
+      { href: "/drf-examples", label: "Примеры", icon: <Code2 className="h-4 w-4" /> },
+      { href: "/drf-interview", label: "Собеседование", icon: <GraduationCap className="h-4 w-4" /> },
+    ],
+  },
 ];
 
 function NavItem({ href, label, icon, onClose }: NavLink & { onClose: () => void }) {
@@ -66,6 +75,13 @@ function NavItem({ href, label, icon, onClose }: NavLink & { onClose: () => void
 
 function ActivePageLabel() {
   const [location] = useLocation();
+  if (location === "/review") {
+    return (
+      <span className="hidden sm:flex items-center gap-1.5 text-sm text-muted-foreground">
+        <span className="font-medium text-primary">Повторение</span>
+      </span>
+    );
+  }
   for (const group of NAV_GROUPS) {
     for (const link of group.links) {
       if (link.href === location) {
@@ -186,6 +202,14 @@ export function Navbar() {
               className="fixed right-4 top-20 z-50 w-72 rounded-xl border border-border/60 bg-background shadow-xl sm:right-6 lg:right-8"
             >
               <div className="p-2 space-y-1">
+                {/* Повторение — общая страница */}
+                <NavItem
+                  href="/review"
+                  label="Повторение"
+                  icon={<Brain className="h-4 w-4" />}
+                  onClose={() => setOpen(false)}
+                />
+                <div className="my-1 border-t border-border/40" />
                 {NAV_GROUPS.map((group, i) => (
                   <div key={group.label}>
                     {i > 0 && <div className="my-1 border-t border-border/40" />}

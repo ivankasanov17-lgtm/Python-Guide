@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect } from "react";
 import { Search, ChevronRight, Terminal, ArrowLeft, BookOpen } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { fastapiTerms, FastAPITerm } from "@/data/fastapi-terms";
+import { drfTerms, DrfTerm } from "@/data/drf-terms";
 import { CodeBlock } from "@/components/CodeBlock";
 
-export default function FastAPIPage() {
+export default function DrfPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTermName, setSelectedTermName] = useState<string | null>(null);
 
@@ -17,9 +17,9 @@ export default function FastAPIPage() {
   }, []);
 
   const filteredTerms = useMemo(() => {
-    if (!searchQuery.trim()) return fastapiTerms;
+    if (!searchQuery.trim()) return drfTerms;
     const q = searchQuery.toLowerCase();
-    return fastapiTerms.filter(
+    return drfTerms.filter(
       (t) =>
         t.name.toLowerCase().includes(q) ||
         t.description.toLowerCase().includes(q) ||
@@ -28,12 +28,12 @@ export default function FastAPIPage() {
   }, [searchQuery]);
 
   const selectedTerm = useMemo(
-    () => fastapiTerms.find((t) => t.name === selectedTermName) ?? null,
+    () => drfTerms.find((t) => t.name === selectedTermName) ?? null,
     [selectedTermName]
   );
 
   const groupedTerms = useMemo(() => {
-    const groups: { category: string; terms: FastAPITerm[] }[] = [];
+    const groups: { category: string; terms: DrfTerm[] }[] = [];
     for (const term of filteredTerms) {
       const last = groups[groups.length - 1];
       if (last && last.category === term.category) {
@@ -48,13 +48,11 @@ export default function FastAPIPage() {
   return (
     <div className="flex h-[calc(100vh-4rem)] max-w-7xl mx-auto overflow-hidden bg-background">
 
-      {/* Сайдбар */}
       <div
         className={`flex-col w-full md:w-80 lg:w-96 border-r border-border/50 bg-sidebar/50 flex-shrink-0 ${
           selectedTerm ? "hidden md:flex" : "flex"
         }`}
       >
-        {/* Поиск */}
         <div className="p-4 border-b border-border/50 bg-background/50 backdrop-blur z-10 sticky top-0">
           <div className="relative group">
             <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-muted-foreground group-focus-within:text-primary transition-colors">
@@ -63,27 +61,16 @@ export default function FastAPIPage() {
             <input
               type="text"
               className="w-full bg-background border border-input rounded-xl py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-primary/20 focus:border-primary placeholder:text-muted-foreground shadow-sm"
-              placeholder="Поиск методов FastAPI..."
+              placeholder="Поиск классов и методов DRF..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
         </div>
 
-        {/* Список терминов с категориями */}
         <div className="flex-1 overflow-y-auto p-3">
           <AnimatePresence>
-            {fastapiTerms.length === 0 ? (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-center py-16 px-4 text-muted-foreground"
-              >
-                <Terminal className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                <p className="text-sm font-medium mb-1">Термины ещё не добавлены</p>
-                <p className="text-xs opacity-60">Скоро здесь появится справочник FastAPI</p>
-              </motion.div>
-            ) : groupedTerms.length === 0 ? (
+            {groupedTerms.length === 0 ? (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -105,7 +92,6 @@ export default function FastAPIPage() {
                       {group.category}
                     </span>
                   </div>
-
                   <div className="space-y-0.5">
                     {group.terms.map((term) => (
                       <button
@@ -137,7 +123,6 @@ export default function FastAPIPage() {
         </div>
       </div>
 
-      {/* Основная область контента */}
       <div
         className={`flex-1 flex-col overflow-y-auto bg-background/50 ${
           selectedTerm ? "flex" : "hidden md:flex"
@@ -151,7 +136,6 @@ export default function FastAPIPage() {
             transition={{ duration: 0.3 }}
             className="max-w-4xl mx-auto w-full p-4 sm:p-6 lg:p-10"
           >
-            {/* Кнопка «Назад» на мобильных */}
             <button
               onClick={() => setSelectedTermName(null)}
               className="md:hidden flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
@@ -160,10 +144,15 @@ export default function FastAPIPage() {
               Назад к списку
             </button>
 
-            {/* Заголовок */}
             <div className="mb-10">
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight font-mono text-foreground inline-flex items-center gap-3">
-                <span className="text-primary">fastapi</span> {selectedTerm.name}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs font-semibold uppercase tracking-wider px-2.5 py-1 rounded-md bg-orange-500/10 text-orange-500 border border-orange-500/20">
+                  {selectedTerm.category}
+                </span>
+              </div>
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight font-mono text-foreground">
+                <span className="text-orange-500">drf</span>{" "}
+                {selectedTerm.name}
               </h1>
               <p className="mt-4 text-base sm:text-lg text-muted-foreground leading-relaxed">
                 {selectedTerm.description}
@@ -171,7 +160,6 @@ export default function FastAPIPage() {
             </div>
 
             <div className="space-y-10">
-              {/* Синтаксис */}
               <section>
                 <h2 className="text-xl font-semibold text-foreground mb-4 flex items-center gap-2">
                   <Terminal className="w-5 h-5 text-primary" />
@@ -184,10 +172,9 @@ export default function FastAPIPage() {
                 </div>
               </section>
 
-              {/* Аргументы */}
               {selectedTerm.arguments.length > 0 && (
                 <section>
-                  <h2 className="text-xl font-semibold text-foreground mb-4">Аргументы</h2>
+                  <h2 className="text-xl font-semibold text-foreground mb-4">Параметры</h2>
                   <div className="border border-border/50 rounded-2xl overflow-hidden bg-card shadow-sm">
                     <table className="w-full text-left text-sm">
                       <thead className="bg-muted/50 border-b border-border/50">
@@ -215,7 +202,6 @@ export default function FastAPIPage() {
                 </section>
               )}
 
-              {/* Пример */}
               <section>
                 <h2 className="text-xl font-semibold text-foreground mb-4">Пример использования</h2>
                 <CodeBlock code={selectedTerm.example} />
@@ -227,9 +213,9 @@ export default function FastAPIPage() {
             <div className="w-20 h-20 bg-muted rounded-3xl flex items-center justify-center mb-6 shadow-inner rotate-3">
               <BookOpen className="w-10 h-10 text-muted-foreground -rotate-3" />
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">Справочник FastAPI</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Справочник DRF</h2>
             <p className="text-muted-foreground max-w-md">
-              Выберите метод или термин из бокового меню слева, чтобы посмотреть его подробное описание, синтаксис и примеры использования.
+              Выберите класс или метод из бокового меню слева, чтобы посмотреть его подробное описание, параметры и примеры использования.
             </p>
           </div>
         )}

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Search, ChevronRight, Terminal, ArrowLeft, BookOpen } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { djangoTerms, DjangoTerm } from "@/data/django-terms";
@@ -7,6 +7,14 @@ import { CodeBlock } from "@/components/CodeBlock";
 export default function DjangoPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTermName, setSelectedTermName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const termParam = params.get("term");
+    if (termParam) {
+      setSelectedTermName(decodeURIComponent(termParam));
+    }
+  }, []);
 
   const filteredTerms = useMemo(() => {
     if (!searchQuery.trim()) return djangoTerms;

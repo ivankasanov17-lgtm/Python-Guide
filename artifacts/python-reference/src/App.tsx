@@ -15,6 +15,10 @@ import FastAPIExamplesPage from "@/pages/fastapi-examples";
 import PythonInterviewPage from "@/pages/python-interview";
 import DjangoInterviewPage from "@/pages/django-interview";
 import FastAPIInterviewPage from "@/pages/fastapi-interview";
+import DrfPage from "@/pages/drf";
+import DrfExamplesPage from "@/pages/drf-examples";
+import DrfInterviewPage from "@/pages/drf-interview";
+import ReviewPage from "@/pages/review";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +40,10 @@ function Router() {
           <Route path="/python-interview" component={PythonInterviewPage} />
           <Route path="/django-interview" component={DjangoInterviewPage} />
           <Route path="/fastapi-interview" component={FastAPIInterviewPage} />
+          <Route path="/drf" component={DrfPage} />
+          <Route path="/drf-examples" component={DrfExamplesPage} />
+          <Route path="/drf-interview" component={DrfInterviewPage} />
+          <Route path="/review" component={ReviewPage} />
           <Route component={NotFound} />
         </Switch>
       </main>
