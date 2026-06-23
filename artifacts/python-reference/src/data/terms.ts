@@ -75384,4 +75384,7456 @@ async def main():
     await r2.ping()
     await r2.aclose()`
   },
+   {
+    name: "redis.asyncio.StrictRedis.execute_command(*args, **options)",
+    description:
+      "Асинхронно выполняет произвольную команду Redis. Принимает название команды и её аргументы, отправляет запрос на сервер Redis и возвращает результат. Используется как низкоуровневый метод для выполнения команд, не охваченных стандартным API клиента.",
+    syntax: "await client.execute_command(*args, **options)",
+    arguments: [
+      {
+        name: "*args",
+        description:
+          "Название команды Redis и её аргументы. Первым элементом должно быть имя команды (например, 'SET', 'GET'), остальные — её параметры.",
+      },
+      {
+        name: "**options",
+        description:
+          "Дополнительные параметры, влияющие на разбор ответа (например, callback-функции для обработки результата).",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+    # Выполняем команду SET напрямую
+    await client.execute_command("SET", "my_key", "my_value")
+    # Выполняем команду GET напрямую
+    result = await client.execute_command("GET", "my_key")
+    print(result)  # b'my_value'
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.parse_response(connection, command_name, **options)",
+    description:
+      "Разбирает ответ сервера Redis для указанной команды. Вызывается внутри execute_command после получения сырых данных от сервера. Можно переопределить в подклассе для кастомной обработки ответов конкретных команд.",
+    syntax:
+      "await client.parse_response(connection, command_name, **options)",
+    arguments: [
+      {
+        name: "connection",
+        description:
+          "Объект соединения с сервером Redis, из которого читается ответ.",
+      },
+      {
+        name: "command_name",
+        description:
+          "Строка с названием выполненной команды Redis (например, 'GET', 'SET'). Используется для выбора нужного парсера из RESPONSE_CALLBACKS.",
+      },
+      {
+        name: "**options",
+        description:
+          "Дополнительные параметры, передаваемые в callback-функцию для разбора ответа.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+class MyRedis(redis.StrictRedis):
+    async def parse_response(self, connection, command_name, **options):
+        # Кастомная логика перед стандартным разбором
+        response = await super().parse_response(connection, command_name, **options)
+        print(f"Команда: {command_name}, Ответ: {response}")
+        return response
+
+async def main():
+    client = MyRedis()
+    await client.set("key", "value")
+    await client.get("key")  # Команда: GET, Ответ: b'value'
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_cat(category=None, **kwargs)",
+    description:
+      "Возвращает список категорий ACL или список команд, входящих в указанную категорию. Без аргументов выводит все доступные категории ACL (например, 'string', 'hash', 'admin'). При указании категории возвращает список команд, принадлежащих ей.",
+    syntax: "await client.acl_cat(category=None, **kwargs)",
+    arguments: [
+      {
+        name: "category",
+        description:
+          "Необязательно. Название категории ACL (например, 'string', 'hash'). Если не указана, возвращаются все категории.",
+      },
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Все категории ACL
+    categories = await client.acl_cat()
+    print(categories)  # [b'keyspace', b'read', b'write', ...]
+
+    # Команды в категории 'string'
+    string_cmds = await client.acl_cat("string")
+    print(string_cmds)  # [b'get', b'set', b'append', ...]
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_deluser(*username, **kwargs)",
+    description:
+      "Удаляет одного или нескольких пользователей из ACL Redis. После удаления все соединения этих пользователей принудительно закрываются. Пользователь 'default' не может быть удалён — при попытке будет возвращена ошибка.",
+    syntax: "await client.acl_deluser(*username, **kwargs)",
+    arguments: [
+      {
+        name: "*username",
+        description:
+          "Одно или несколько имён пользователей ACL, которых необходимо удалить.",
+      },
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Создаём пользователей
+    await client.acl_setuser("alice", enabled=True, passwords=["+secret"])
+    await client.acl_setuser("bob", enabled=True, passwords=["+qwerty"])
+
+    # Удаляем одного пользователя
+    deleted = await client.acl_deluser("alice")
+    print(deleted)  # 1
+
+    # Удаляем нескольких пользователей сразу
+    deleted = await client.acl_deluser("bob", "charlie")
+    print(deleted)  # 1 (charlie не существовал)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_dryrun(username, command, *args, **kwargs)",
+    description:
+      "Проверяет, разрешено ли пользователю выполнить указанную команду, без фактического её исполнения. Позволяет тестировать ACL-правила: если команда разрешена, возвращает 'OK'; если запрещена — возвращает сообщение об ошибке с причиной отказа.",
+    syntax:
+      "await client.acl_dryrun(username, command, *args, **kwargs)",
+    arguments: [
+      {
+        name: "username",
+        description: "Имя пользователя ACL, для которого выполняется проверка.",
+      },
+      {
+        name: "command",
+        description:
+          "Название команды Redis, которую требуется проверить (например, 'GET', 'SET').",
+      },
+      {
+        name: "*args",
+        description:
+          "Дополнительные аргументы команды (например, имя ключа для команд, ограниченных по ключам).",
+      },
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Создаём пользователя только с правами на чтение
+    await client.acl_setuser(
+        "readonly_user",
+        enabled=True,
+        passwords=["+mypass"],
+        commands=["+get"],
+        keys=["*"]
+    )
+
+    # Проверяем разрешённую команду
+    result = await client.acl_dryrun("readonly_user", "GET", "some_key")
+    print(result)  # OK
+
+    # Проверяем запрещённую команду
+    result = await client.acl_dryrun("readonly_user", "SET", "some_key", "val")
+    print(result)  # ошибка: команда SET запрещена
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_genpass(bits=None, **kwargs)",
+    description:
+      "Генерирует случайный безопасный пароль с помощью встроенного генератора псевдослучайных чисел Redis. По умолчанию возвращает 64-символьную шестнадцатеричную строку (256 бит). Можно задать желаемую длину в битах.",
+    syntax: "await client.acl_genpass(bits=None, **kwargs)",
+    arguments: [
+      {
+        name: "bits",
+        description:
+          "Необязательно. Количество бит энтропии (от 1 до 1024). Результат округляется до ближайшего кратного 4. По умолчанию — 256 бит (64 символа).",
+      },
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Пароль по умолчанию — 256 бит (64 символа)
+    password = await client.acl_genpass()
+    print(password)  # b'9f4c2a1e....' (64 hex-символа)
+
+    # Пароль из 128 бит (32 символа)
+    short_password = await client.acl_genpass(128)
+    print(short_password)  # b'3d7f...' (32 hex-символа)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_getuser(username, **kwargs)",
+    description:
+      "Возвращает подробную информацию об ACL-правилах указанного пользователя: статус (активен/отключён), список разрешённых команд, ключи и каналы, к которым открыт доступ, а также хэши паролей. Если пользователь не существует, возвращает None.",
+    syntax: "await client.acl_getuser(username, **kwargs)",
+    arguments: [
+      {
+        name: "username",
+        description:
+          "Имя пользователя ACL, информацию о котором необходимо получить.",
+      },
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.acl_setuser(
+        "alice",
+        enabled=True,
+        passwords=["+secret"],
+        commands=["+get", "+set"],
+        keys=["data:*"]
+    )
+
+    info = await client.acl_getuser("alice")
+    print(info["enabled"])    # True
+    print(info["commands"])   # '+get +set'
+    print(info["keys"])       # ['data:*']
+    print(info["passwords"])  # [{'sha256': '...'}]
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_help(**kwargs)",
+    description:
+      "Возвращает справочную информацию по синтаксису команды ACL Redis. Выводит список допустимых подкоманд и их краткое описание. Полезно для изучения возможностей системы управления доступом прямо из кода.",
+    syntax: "await client.acl_help(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    help_text = await client.acl_help()
+    for line in help_text:
+        print(line.decode())
+    # ACL <subcommand> [<arg> [value] [opt] ...]. Subcommands are:
+    # CAT [<category>]
+    #     List all commands that belong to <category>, or all command categories
+    # ...
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_list(**kwargs)",
+    description:
+      "Возвращает полный список ACL-правил для всех пользователей Redis в виде строк, совместимых с форматом файла конфигурации ACL. Каждая строка описывает одного пользователя со всеми его правами — удобно для аудита и резервного копирования настроек доступа.",
+    syntax: "await client.acl_list(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.acl_setuser("alice", enabled=True, passwords=["+pass1"])
+    await client.acl_setuser("bob", enabled=False)
+
+    rules = await client.acl_list()
+    for rule in rules:
+        print(rule.decode())
+    # user default on nopass ~* &* +@all
+    # user alice on #... ~* &* -@all
+    # user bob off nopass ~* &* -@all
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_load(**kwargs)",
+    description:
+      "Перезагружает ACL-правила из внешнего файла, путь к которому задан параметром aclfile в конфигурации Redis. Применяется для синхронизации правил доступа после ручного редактирования файла. Если Redis запущен без aclfile, команда вернёт ошибку.",
+    syntax: "await client.acl_load(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Предполагается, что Redis запущен с параметром:
+    # aclfile /etc/redis/users.acl
+    # и файл был изменён вручную
+
+    try:
+        result = await client.acl_load()
+        print(result)  # True — правила успешно перезагружены
+    except redis.ResponseError as e:
+        print(f"Ошибка: {e}")
+        # Например: ERR This Redis instance is not configured to use an ACL file
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_log(count=None, **kwargs)",
+    description:
+      "Возвращает записи из журнала нарушений ACL — случаев, когда клиент попытался выполнить команду или обратиться к ключу, не разрешённому его правилами доступа. Позволяет отслеживать несанкционированные попытки и отлаживать настройки ACL. При передаче строки 'RESET' очищает журнал.",
+    syntax: "await client.acl_log(count=None, **kwargs)",
+    arguments: [
+      {
+        name: "count",
+        description:
+          "Необязательно. Количество последних записей для возврата. Если не указано — возвращаются все записи. Строка 'RESET' очищает журнал.",
+      },
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Получить последние 5 нарушений ACL
+    log = await client.acl_log(count=5)
+    for entry in log:
+        print(entry["reason"])      # auth / command / key
+        print(entry["object"])      # название команды или ключа
+        print(entry["username"])    # пользователь, нарушивший правило
+        print(entry["age-seconds"]) # сколько секунд назад произошло
+
+    # Очистить журнал
+    await client.acl_log("RESET")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_save(**kwargs)",
+    description:
+      "Сохраняет текущие ACL-правила всех пользователей в файл, заданный параметром aclfile в конфигурации Redis. Используется для персистентного хранения изменений, внесённых через команды ACL SETUSER и ACL DELUSER. Если Redis запущен без aclfile, команда вернёт ошибку.",
+    syntax: "await client.acl_save(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Создаём нового пользователя
+    await client.acl_setuser("alice", enabled=True, passwords=["+secret"])
+
+    # Сохраняем изменения в файл ACL
+    try:
+        result = await client.acl_save()
+        print(result)  # True
+    except redis.ResponseError as e:
+        print(f"Ошибка: {e}")
+        # ERR This Redis instance is not configured to use an ACL file
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_setuser(username, rules=None, **kwargs)",
+    description:
+      "Создаёт нового пользователя ACL или изменяет правила существующего. Принимает список правил в синтаксисе Redis ACL: включение/отключение пользователя, добавление паролей, разрешение команд и категорий, ограничение доступа к ключам и pub/sub каналам. Если пользователь не существует — создаётся автоматически.",
+    syntax: "await client.acl_setuser(username, rules=None, **kwargs)",
+    arguments: [
+      {
+        name: "username",
+        description: "Имя создаваемого или изменяемого пользователя ACL.",
+      },
+      {
+        name: "rules",
+        description:
+          "Список правил ACL в виде строк Redis-синтаксиса (например, ['on', '+get', '~*', '>password']). Если не указан — создаётся отключённый пользователь без паролей и прав.",
+      },
+      {
+        name: "**kwargs",
+        description:
+          "Удобные именованные параметры: enabled (bool), passwords (list), commands (list), keys (list), channels (list), nopass (bool), reset (bool) и другие.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Создаём пользователя с правами только на чтение строк
+    await client.acl_setuser(
+        "reader",
+        enabled=True,
+        passwords=["+mypassword"],
+        commands=["+get", "+mget", "+keys"],
+        keys=["data:*"]
+    )
+
+    # Через синтаксис правил Redis напрямую
+    await client.acl_setuser("writer", rules=["on", ">writerpass", "+set", "~cache:*"])
+
+    info = await client.acl_getuser("reader")
+    print(info["enabled"])  # True
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_users(**kwargs)",
+    description:
+      "Возвращает список имён всех пользователей, определённых в ACL Redis. Включает встроенного пользователя 'default' и всех пользователей, добавленных через ACL SETUSER. Полезно для аудита — позволяет узнать, какие учётные записи существуют на сервере.",
+    syntax: "await client.acl_users(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.acl_setuser("alice", enabled=True)
+    await client.acl_setuser("bob", enabled=False)
+
+    users = await client.acl_users()
+    for user in users:
+        print(user.decode())
+    # default
+    # alice
+    # bob
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.acl_whoami(**kwargs)",
+    description:
+      "Возвращает имя текущего аутентифицированного пользователя ACL для данного соединения. Удобно для проверки, под каким пользователем работает клиент, особенно в системах с несколькими учётными записями Redis.",
+    syntax: "await client.acl_whoami(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры для выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    # Подключение под пользователем по умолчанию
+    client = redis.StrictRedis()
+    name = await client.acl_whoami()
+    print(name.decode())  # default
+
+    # Подключение с аутентификацией
+    auth_client = redis.StrictRedis(username="alice", password="secret")
+    name = await auth_client.acl_whoami()
+    print(name.decode())  # alice
+
+    await client.aclose()
+    await auth_client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.append(key, value)",
+    description:
+      "Добавляет строку value в конец существующего значения ключа key. Если ключ не существует — создаётся как пустая строка, и операция эквивалентна SET. Возвращает итоговую длину строки после добавления. Работает только со строковыми значениями.",
+    syntax: "await client.append(key, value)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ, к значению которого нужно добавить строку.",
+      },
+      {
+        name: "value",
+        description: "Строка, которая добавляется в конец текущего значения ключа.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Ключ не существует — создаётся
+    length = await client.append("log", "2024-01-01: start")
+    print(length)  # 17
+
+    # Добавляем следующую запись
+    length = await client.append("log", "\\n2024-01-02: update")
+    print(length)  # 36
+
+    result = await client.get("log")
+    print(result.decode())
+    # 2024-01-01: start
+    # 2024-01-02: update
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.asking()",
+    description:
+      "Отправляет команду ASKING серверу Redis. Используется в режиме кластера при перенаправлении (MOVED/ASK): после получения ошибки ASK клиент должен отправить ASKING на целевой узел перед выполнением запроса, чтобы обратиться к слоту, который находится в процессе миграции.",
+    syntax: "await client.asking()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+# Команда asking используется внутри кластерного клиента автоматически.
+# Ручной вызов необходим при реализации собственной логики перенаправления:
+
+async def handle_ask_redirect(node_client: redis.StrictRedis):
+    # После получения ошибки ASK от кластера
+    await node_client.asking()
+    # Теперь можно выполнить нужную команду на этом узле
+    result = await node_client.get("migrating_key")
+    return result`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.auth(password, username=None)",
+    description:
+      "Аутентифицирует клиента на сервере Redis. В Redis 6+ поддерживается аутентификация по имени пользователя и паролю (ACL). В более старых версиях используется только пароль. Метод применяется для явной аутентификации уже установленного соединения; обычно учётные данные передаются при создании клиента.",
+    syntax: "await client.auth(password, username=None)",
+    arguments: [
+      {
+        name: "password",
+        description: "Пароль пользователя Redis для аутентификации.",
+      },
+      {
+        name: "username",
+        description:
+          "Необязательно. Имя пользователя ACL (Redis 6+). Если не указано — используется пользователь 'default'.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    # Обычно учётные данные задаются при создании клиента
+    client = redis.StrictRedis(host="localhost", port=6379)
+
+    # Явная аутентификация (Redis < 6, только пароль)
+    await client.auth("mypassword")
+
+    # Аутентификация с именем пользователя (Redis 6+, ACL)
+    await client.auth("userpassword", username="alice")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.bgrewriteaof()",
+    description:
+      "Асинхронно запускает перезапись файла AOF (Append Only File) в фоновом режиме. Redis создаёт дочерний процесс, который формирует оптимизированную версию AOF с минимальным набором команд для восстановления текущего состояния данных. Возвращает немедленно, не ожидая завершения перезаписи.",
+    syntax: "await client.bgrewriteaof()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Запускаем фоновую перезапись AOF
+    result = await client.bgrewriteaof()
+    print(result)
+    # Background append only file rewriting started
+
+    # Проверяем статус через INFO
+    info = await client.info("persistence")
+    print(info["aof_rewrite_in_progress"])  # 1 — идёт перезапись
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.bgsave(schedule=False)",
+    description:
+      "Асинхронно запускает сохранение снимка базы данных (RDB-файла) в фоновом режиме. Redis форкает дочерний процесс, который записывает данные на диск, не блокируя основной поток. При schedule=True планирует сохранение при следующей возможности, если фоновая операция уже выполняется.",
+    syntax: "await client.bgsave(schedule=False)",
+    arguments: [
+      {
+        name: "schedule",
+        description:
+          "Если True — запрос ставится в очередь и выполняется при следующей возможности (флаг SCHEDULE). Если False — возвращает ошибку, если сохранение уже идёт.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Немедленный запуск фонового сохранения
+    result = await client.bgsave()
+    print(result)  # True
+
+    # Запланированное сохранение (если уже идёт другая операция)
+    result = await client.bgsave(schedule=True)
+    print(result)  # True
+
+    # Проверяем время последнего сохранения
+    last_save = await client.lastsave()
+    print(last_save)  # datetime объект
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.bitcount(key, start=None, end=None, mode=None)",
+    description:
+      "Подсчитывает количество установленных битов (единиц) в строковом значении ключа. Можно ограничить диапазон байт или бит с помощью start и end. Параметр mode задаёт интерпретацию диапазона: BYTE (по умолчанию) — диапазон байт, BIT — диапазон бит.",
+    syntax: "await client.bitcount(key, start=None, end=None, mode=None)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ, в значении которого подсчитываются биты.",
+      },
+      {
+        name: "start",
+        description:
+          "Необязательно. Начало диапазона (включительно). Отрицательные значения отсчитываются с конца.",
+      },
+      {
+        name: "end",
+        description:
+          "Необязательно. Конец диапазона (включительно). Отрицательные значения отсчитываются с конца.",
+      },
+      {
+        name: "mode",
+        description:
+          "Необязательно. 'BYTE' — диапазон в байтах (по умолчанию), 'BIT' — диапазон в битах (Redis 7.0+).",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("bits", b"\\xff\\xf0\\x00")  # 8 + 4 + 0 = 12 единиц
+
+    # Все биты
+    count = await client.bitcount("bits")
+    print(count)  # 12
+
+    # Только первый байт (0xFF = 8 единиц)
+    count = await client.bitcount("bits", 0, 0)
+    print(count)  # 8
+
+    # Диапазон в битах (Redis 7.0+): первые 4 бита
+    count = await client.bitcount("bits", 0, 3, mode="BIT")
+    print(count)  # 4
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.bitfield(key, default_overflow=None)",
+    description:
+      "Возвращает объект BitFieldOperation для работы с целочисленными полями произвольной разрядности, хранящимися внутри строковых значений Redis. Позволяет атомарно выполнять операции GET, SET и INCRBY над битовыми полями с контролем переполнения (WRAP, SAT, FAIL).",
+    syntax: "await client.bitfield(key, default_overflow=None)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ, в строковом значении которого хранятся битовые поля.",
+      },
+      {
+        name: "default_overflow",
+        description:
+          "Необязательно. Поведение при переполнении по умолчанию: 'WRAP' (циклический, по умолчанию), 'SAT' (насыщение) или 'FAIL' (возврат None).",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Записываем беззнаковое 8-битное число в позицию 0
+    result = await client.bitfield("counter").set("u8", 0, 100).execute()
+    print(result)  # [0]  (предыдущее значение)
+
+    # Увеличиваем на 200 — переполнение WRAP: (100 + 200) % 256 = 44
+    result = await (
+        client.bitfield("counter", default_overflow="WRAP")
+        .incrby("u8", 0, 200)
+        .execute()
+    )
+    print(result)  # [44]
+
+    # Читаем текущее значение
+    result = await client.bitfield("counter").get("u8", 0).execute()
+    print(result)  # [44]
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.bitop(operation, destkey, *keys)",
+    description:
+      "Выполняет побитовую операцию над несколькими ключами и сохраняет результат в destkey. Поддерживает операции AND, OR, XOR и NOT. NOT применяется только к одному ключу. Возвращает длину результирующей строки в байтах.",
+    syntax: "await client.bitop(operation, destkey, *keys)",
+    arguments: [
+      {
+        name: "operation",
+        description:
+          "Побитовая операция: 'AND', 'OR', 'XOR' или 'NOT'. NOT допускает только один исходный ключ.",
+      },
+      {
+        name: "destkey",
+        description: "Ключ, в который записывается результат операции.",
+      },
+      {
+        name: "*keys",
+        description: "Один или несколько ключей — операнды побитовой операции.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("key1", b"\\xff")  # 11111111
+    await client.set("key2", b"\\x0f")  # 00001111
+
+    # AND: 11111111 & 00001111 = 00001111
+    length = await client.bitop("AND", "result_and", "key1", "key2")
+    val = await client.get("result_and")
+    print(val)  # b'\\x0f'
+
+    # OR: 11111111 | 00001111 = 11111111
+    await client.bitop("OR", "result_or", "key1", "key2")
+
+    # XOR: 11111111 ^ 00001111 = 11110000
+    await client.bitop("XOR", "result_xor", "key1", "key2")
+
+    # NOT: ~00001111 = 11110000
+    await client.bitop("NOT", "result_not", "key2")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.bitpos(key, bit, start=None, end=None, mode=None)",
+    description:
+      "Возвращает позицию первого бита с заданным значением (0 или 1) в строковом значении ключа. Поиск можно ограничить диапазоном байт или бит. Если искомый бит не найден — возвращает -1 (для 1) или позицию за пределами строки (для 0).",
+    syntax: "await client.bitpos(key, bit, start=None, end=None, mode=None)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ, в значении которого ведётся поиск бита.",
+      },
+      {
+        name: "bit",
+        description: "Искомое значение бита: 0 или 1.",
+      },
+      {
+        name: "start",
+        description:
+          "Необязательно. Начальная позиция диапазона поиска (включительно).",
+      },
+      {
+        name: "end",
+        description:
+          "Необязательно. Конечная позиция диапазона поиска (включительно).",
+      },
+      {
+        name: "mode",
+        description:
+          "Необязательно. 'BYTE' — диапазон в байтах (по умолчанию), 'BIT' — диапазон в битах (Redis 7.0+).",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("mykey", b"\\x00\\xff\\x00")
+    # 00000000 11111111 00000000
+
+    # Первый установленный бит (1) — позиция 8
+    pos = await client.bitpos("mykey", 1)
+    print(pos)  # 8
+
+    # Первый нулевой бит — позиция 0
+    pos = await client.bitpos("mykey", 0)
+    print(pos)  # 0
+
+    # Первый нулевой бит начиная со второго байта
+    pos = await client.bitpos("mykey", 0, 1)
+    print(pos)  # 16
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.blmove(src, dst, srcout='RIGHT', dstin='LEFT', timeout=0.0)",
+    description:
+      "Блокирующая версия lmove: атомарно перемещает элемент из списка src в список dst. Извлекает элемент с указанной стороны src (LEFT или RIGHT) и вставляет его с указанной стороны dst. Если src пуст — блокирует соединение до появления элемента или истечения таймаута.",
+    syntax:
+      "await client.blmove(src, dst, srcout='RIGHT', dstin='LEFT', timeout=0.0)",
+    arguments: [
+      {
+        name: "src",
+        description: "Ключ исходного списка, из которого извлекается элемент.",
+      },
+      {
+        name: "dst",
+        description: "Ключ целевого списка, в который вставляется элемент.",
+      },
+      {
+        name: "srcout",
+        description:
+          "Сторона исходного списка: 'LEFT' (начало) или 'RIGHT' (конец). По умолчанию 'RIGHT'.",
+      },
+      {
+        name: "dstin",
+        description:
+          "Сторона целевого списка: 'LEFT' (начало) или 'RIGHT' (конец). По умолчанию 'LEFT'.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Время ожидания в секундах. 0 — ждать бесконечно. Может быть вещественным числом.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+import asyncio
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("queue", "task1", "task2", "task3")
+
+    # Перемещаем задачу из конца очереди в начало обработки
+    item = await client.blmove("queue", "processing", srcout="LEFT", dstin="RIGHT")
+    print(item.decode())  # task1
+
+    # С таймаутом 2 секунды
+    item = await client.blmove("empty_queue", "processing", timeout=2.0)
+    print(item)  # None — таймаут истёк
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.blpop(keys, timeout=0)",
+    description:
+      "Блокирующая версия lpop: извлекает и возвращает первый элемент из первого непустого списка в keys. Если все списки пусты — блокирует соединение до появления элемента в любом из них или до истечения таймаута. Возвращает кортеж (имя_ключа, значение) или None при таймауте.",
+    syntax: "await client.blpop(keys, timeout=0)",
+    arguments: [
+      {
+        name: "keys",
+        description:
+          "Один ключ или список ключей, из которых извлекается элемент. Проверяются по порядку.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Время ожидания в секундах. 0 — ждать бесконечно. Может быть вещественным числом.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+import asyncio
+
+async def worker(client):
+    while True:
+        # Ждём задачу из одной из очередей
+        result = await client.blpop(["high_priority", "low_priority"], timeout=5)
+        if result is None:
+            print("Таймаут, задач нет")
+            break
+        queue_name, task = result
+        print(f"Очередь: {queue_name.decode()}, Задача: {task.decode()}")
+
+async def main():
+    client = redis.StrictRedis()
+    await client.rpush("low_priority", "task_A")
+    await worker(client)
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.brpop(keys, timeout=0)",
+    description:
+      "Блокирующая версия rpop: извлекает и возвращает последний элемент из первого непустого списка в keys. Если все списки пусты — блокирует соединение до появления элемента или истечения таймаута. Возвращает кортеж (имя_ключа, значение) или None при таймауте.",
+    syntax: "await client.brpop(keys, timeout=0)",
+    arguments: [
+      {
+        name: "keys",
+        description:
+          "Один ключ или список ключей, из которых извлекается последний элемент. Проверяются по порядку.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Время ожидания в секундах. 0 — ждать бесконечно. Может быть вещественным числом.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("mylist", "one", "two", "three")
+
+    # Извлекаем последний элемент
+    result = await client.brpop("mylist", timeout=3)
+    print(result)  # (b'mylist', b'three')
+
+    # Если список пуст — ждём таймаут
+    result = await client.brpop("empty_list", timeout=1)
+    print(result)  # None
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.brpoplpush(src, dst, timeout=0)",
+    description:
+      "Устаревший метод (deprecated с Redis 6.2). Блокирующая версия rpoplpush: атомарно извлекает последний элемент из src и вставляет его в начало dst. Если src пуст — блокирует соединение до появления элемента или таймаута. Рекомендуется использовать blmove вместо этого метода.",
+    syntax: "await client.brpoplpush(src, dst, timeout=0)",
+    arguments: [
+      {
+        name: "src",
+        description: "Ключ исходного списка, из конца которого извлекается элемент.",
+      },
+      {
+        name: "dst",
+        description: "Ключ целевого списка, в начало которого вставляется элемент.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Время ожидания в секундах. 0 — ждать бесконечно.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("tasks", "task1", "task2")
+
+    # Перемещаем задачу в список обработки (надёжная очередь)
+    item = await client.brpoplpush("tasks", "processing", timeout=5)
+    print(item.decode())  # task2
+
+    # После обработки удаляем из processing
+    await client.lrem("processing", 1, item)
+
+    # Рекомендуемая альтернатива (Redis 6.2+):
+    # item = await client.blmove("tasks", "processing", "RIGHT", "LEFT", timeout=5)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.bzpopmax(keys, timeout=0)",
+    description:
+      "Блокирующая версия zpopmax: извлекает элемент с наибольшим score из первого непустого отсортированного множества в keys. Если все множества пусты — блокирует соединение до появления элемента или истечения таймаута. Возвращает кортеж (имя_ключа, элемент, score) или None при таймауте.",
+    syntax: "await client.bzpopmax(keys, timeout=0)",
+    arguments: [
+      {
+        name: "keys",
+        description:
+          "Один ключ или список ключей отсортированных множеств. Проверяются по порядку.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Время ожидания в секундах. 0 — ждать бесконечно. Может быть вещественным числом.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Добавляем задачи с приоритетом (score)
+    await client.zadd("priority_queue", {"low_task": 1, "high_task": 10, "mid_task": 5})
+
+    # Извлекаем задачу с наивысшим приоритетом
+    result = await client.bzpopmax("priority_queue", timeout=3)
+    print(result)
+    # (b'priority_queue', b'high_task', 10.0)
+
+    # Если множество пусто — ждём
+    result = await client.bzpopmax("empty_zset", timeout=1)
+    print(result)  # None
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.bzpopmin(keys, timeout=0)",
+    description:
+      "Блокирующая версия zpopmin: извлекает элемент с наименьшим score из первого непустого отсортированного множества в keys. Если все множества пусты — блокирует соединение до появления элемента или истечения таймаута. Возвращает кортеж (имя_ключа, элемент, score) или None при таймауте.",
+    syntax: "await client.bzpopmin(keys, timeout=0)",
+    arguments: [
+      {
+        name: "keys",
+        description:
+          "Один ключ или список ключей отсортированных множеств. Проверяются по порядку.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Время ожидания в секундах. 0 — ждать бесконечно. Может быть вещественным числом.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.zadd("jobs", {"job_a": 3, "job_b": 1, "job_c": 2})
+
+    # Извлекаем задачу с наименьшим приоритетом
+    result = await client.bzpopmin("jobs", timeout=3)
+    print(result)
+    # (b'jobs', b'job_b', 1.0)
+
+    # Из нескольких множеств — берём первое непустое
+    result = await client.bzpopmin(["empty_set", "jobs"], timeout=2)
+    print(result)
+    # (b'jobs', b'job_a', 2.0) — взято из второго ключа
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_getname()",
+    description:
+      "Возвращает имя текущего соединения, установленное командой CLIENT SETNAME. Имя помогает идентифицировать соединение в выводе CLIENT LIST. Если имя не было задано, возвращает None.",
+    syntax: "await client.client_getname()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # По умолчанию имя не задано
+    name = await client.client_getname()
+    print(name)  # None
+
+    # Устанавливаем имя
+    await client.client_setname("my-worker")
+    name = await client.client_getname()
+    print(name.decode())  # my-worker
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_getredir()",
+    description:
+      "Возвращает ID клиента, которому перенаправляются уведомления при клиентском трекинге (CLIENT TRACKING). Если перенаправление не настроено — возвращает -1. Используется совместно с функцией client_tracking для отладки настроек кэш-инвалидации.",
+    syntax: "await client.client_getredir()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Получаем ID для перенаправления уведомлений трекинга
+    redir_id = await client.client_getredir()
+    print(redir_id)  # -1 (перенаправление не настроено)
+
+    # После настройки трекинга с redirect
+    my_id = await client.client_id()
+    await client.client_tracking(on=True, redirect=my_id)
+    redir_id = await client.client_getredir()
+    print(redir_id)  # <ID текущего клиента>
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_id()",
+    description:
+      "Возвращает уникальный числовой идентификатор текущего соединения с Redis. ID монотонно возрастает и уникален в рамках одного экземпляра Redis. Используется в командах CLIENT KILL, CLIENT UNBLOCK и CLIENT TRACKING для адресации конкретных соединений.",
+    syntax: "await client.client_id()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    conn_id = await client.client_id()
+    print(conn_id)  # например, 42
+
+    # Используем ID для разблокировки из другого соединения
+    admin = redis.StrictRedis()
+    await admin.client_unblock(conn_id)
+
+    await client.aclose()
+    await admin.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_info()",
+    description:
+      "Возвращает подробную информацию о текущем соединении: ID, адрес, имя, флаги, используемые команды, статус трекинга и другие параметры. Аналогично одной строке вывода CLIENT LIST, но только для текущего клиента. Удобно для самодиагностики соединения.",
+    syntax: "await client.client_info()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+    await client.client_setname("my-app")
+
+    info = await client.client_info()
+    print(info["id"])      # числовой ID соединения
+    print(info["name"])    # my-app
+    print(info["cmd"])     # последняя выполненная команда
+    print(info["flags"])   # флаги (N = нормальный клиент)
+    print(info["age"])     # время жизни соединения в секундах
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_kill(address)",
+    description:
+      "Принудительно закрывает соединение с клиентом по его адресу (IP:порт). После выполнения клиент отключается немедленно. Метод работает с Redis всех версий, однако для расширенной фильтрации следует использовать client_kill_filter.",
+    syntax: "await client.client_kill(address)",
+    arguments: [
+      {
+        name: "address",
+        description:
+          "Адрес соединения в формате 'IP:порт', например '127.0.0.1:54321'. Можно получить из вывода client_list.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    admin = redis.StrictRedis()
+
+    # Получаем список клиентов
+    clients = await admin.client_list()
+    for c in clients:
+        if c["name"] == "old-worker":
+            addr = c["addr"]
+            result = await admin.client_kill(addr)
+            print(result)  # True
+
+    await admin.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_kill_filter(_id=None, _type=None, addr=None, laddr=None, skipme=None, user=None)",
+    description:
+      "Расширенная версия client_kill: завершает соединения по одному или нескольким критериям фильтрации. Позволяет отключить группы клиентов по типу, пользователю, адресу или ID. Возвращает количество завершённых соединений.",
+    syntax:
+      "await client.client_kill_filter(_id=None, _type=None, addr=None, laddr=None, skipme=None, user=None)",
+    arguments: [
+      {
+        name: "_id",
+        description: "ID конкретного соединения для завершения.",
+      },
+      {
+        name: "_type",
+        description:
+          "Тип клиента: 'normal', 'replica', 'slave', 'pubsub' или 'multi'.",
+      },
+      {
+        name: "addr",
+        description: "Удалённый адрес клиента в формате 'IP:порт'.",
+      },
+      {
+        name: "laddr",
+        description: "Локальный адрес сервера, к которому подключён клиент.",
+      },
+      {
+        name: "skipme",
+        description:
+          "Если True — текущее соединение не будет завершено, даже если попадает под критерий.",
+      },
+      {
+        name: "user",
+        description: "Имя пользователя ACL — завершить все соединения этого пользователя.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    admin = redis.StrictRedis()
+
+    # Завершить все pubsub-клиенты
+    count = await admin.client_kill_filter(_type="pubsub")
+    print(f"Закрыто {count} pubsub-соединений")
+
+    # Завершить все соединения пользователя alice
+    count = await admin.client_kill_filter(user="alice", skipme=True)
+    print(f"Закрыто {count} соединений alice")
+
+    await admin.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_list(_type=None, client_ids=[])",
+    description:
+      "Возвращает список всех подключённых клиентов с подробной информацией о каждом соединении: ID, адрес, имя, флаги, используемые команды, объём переданных данных и др. Можно фильтровать по типу клиента или конкретным ID.",
+    syntax: "await client.client_list(_type=None, client_ids=[])",
+    arguments: [
+      {
+        name: "_type",
+        description:
+          "Необязательно. Фильтр по типу клиента: 'normal', 'replica', 'slave', 'pubsub' или 'multi'.",
+      },
+      {
+        name: "client_ids",
+        description:
+          "Необязательно. Список числовых ID — вернуть только эти соединения.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+    await client.client_setname("app-main")
+
+    clients = await client.client_list()
+    for c in clients:
+        print(f"id={c['id']} name={c['name']} addr={c['addr']} cmd={c['cmd']}")
+
+    # Только pubsub-клиенты
+    pubsub_clients = await client.client_list(_type="pubsub")
+    print(f"PubSub клиентов: {len(pubsub_clients)}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_no_evict(on)",
+    description:
+      "Включает или отключает защиту текущего соединения от вытеснения при нехватке памяти. Если защита включена (on='on'), Redis не будет закрывать это соединение для освобождения памяти. Полезно для критически важных административных соединений.",
+    syntax: "await client.client_no_evict(on)",
+    arguments: [
+      {
+        name: "on",
+        description:
+          "Строка 'on' для включения защиты от вытеснения или 'off' для отключения.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Защищаем административное соединение от вытеснения
+    await client.client_no_evict("on")
+    print("Соединение защищено от вытеснения")
+
+    # Снимаем защиту
+    await client.client_no_evict("off")
+    print("Защита снята")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_no_touch(on)",
+    description:
+      "Включает или отключает режим, при котором текущее соединение не обновляет счётчик LRU/LFU ключей при их чтении. Используется для мониторинга и диагностических операций, чтобы не влиять на политику вытеснения ключей.",
+    syntax: "await client.client_no_touch(on)",
+    arguments: [
+      {
+        name: "on",
+        description:
+          "Строка 'on' — ключи не обновляют LRU/LFU при обращении. 'off' — стандартное поведение.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Включаем режим без обновления LRU
+    await client.client_no_touch("on")
+
+    # Чтение ключей не изменит их LRU-время
+    await client.get("some_key")
+    await client.get("another_key")
+
+    # Возвращаем стандартное поведение
+    await client.client_no_touch("off")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_pause(timeout)",
+    description:
+      "Приостанавливает обработку команд от всех клиентов (или только команд записи) на указанное время в миллисекундах. Используется для обслуживания: позволяет реплике догнать мастер перед переключением. Команды накапливаются и выполняются после снятия паузы.",
+    syntax: "await client.client_pause(timeout)",
+    arguments: [
+      {
+        name: "timeout",
+        description:
+          "Время паузы в миллисекундах. После истечения сервер возобновляет обработку команд автоматически.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    admin = redis.StrictRedis()
+
+    # Приостанавливаем всех клиентов на 2 секунды
+    await admin.client_pause(2000)
+    print("Клиенты поставлены на паузу на 2 секунды")
+
+    # Можно снять паузу досрочно
+    await admin.client_unpause()
+    print("Пауза снята")
+
+    await admin.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_reply(reply)",
+    description:
+      "Управляет тем, отправляет ли сервер ответы на команды текущего соединения. Режим 'OFF' отключает все ответы (кроме самой команды CLIENT REPLY), 'SKIP' — пропускает ответ только на следующую команду, 'ON' — восстанавливает стандартное поведение.",
+    syntax: "await client.client_reply(reply)",
+    arguments: [
+      {
+        name: "reply",
+        description:
+          "Режим ответов: 'ON' — включить (по умолчанию), 'OFF' — отключить все ответы, 'SKIP' — пропустить ответ на следующую команду.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Пропускаем ответ на следующую команду
+    await client.client_reply("SKIP")
+    await client.set("key", "value")  # ответ не будет получен
+
+    # Возвращаем нормальный режим
+    await client.client_reply("ON")
+    result = await client.get("key")
+    print(result.decode())  # value
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_setinfo(lib_name=None, lib_version=None)",
+    description:
+      "Задаёт метаданные клиентской библиотеки для текущего соединения: имя библиотеки и её версию. Эти данные отображаются в выводе CLIENT LIST и CLIENT INFO, что упрощает мониторинг и идентификацию клиентов по используемому SDK.",
+    syntax: "await client.client_setinfo(lib_name=None, lib_version=None)",
+    arguments: [
+      {
+        name: "lib_name",
+        description: "Название клиентской библиотеки, например 'redis-py'.",
+      },
+      {
+        name: "lib_version",
+        description: "Версия библиотеки, например '5.0.1'.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.client_setinfo(lib_name="my-app", lib_version="2.3.0")
+
+    info = await client.client_info()
+    print(info.get("lib-name"))     # my-app
+    print(info.get("lib-ver"))      # 2.3.0
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_setname(name)",
+    description:
+      "Устанавливает имя для текущего соединения. Имя отображается в выводе CLIENT LIST и CLIENT INFO, что облегчает мониторинг и отладку: можно понять, какое приложение или поток открыл данное соединение. Имя должно состоять из печатаемых символов без пробелов.",
+    syntax: "await client.client_setname(name)",
+    arguments: [
+      {
+        name: "name",
+        description:
+          "Строка-идентификатор соединения. Допустимы буквы, цифры и дефисы. Не должна содержать пробелов.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+import os
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Именуем соединение по имени сервиса и PID
+    conn_name = f"worker-{os.getpid()}"
+    await client.client_setname(conn_name)
+
+    name = await client.client_getname()
+    print(name.decode())  # worker-12345
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_tracking(on, redirect=None, prefixes=[], bcast=False, optin=False, optout=False, noloop=False)",
+    description:
+      "Включает или отключает клиентское кэш-трекинг для данного соединения. Redis будет присылать уведомления об инвалидации ключей, которые клиент читал ранее. Используется для реализации клиентского кэширования с автоматической инвалидацией.",
+    syntax:
+      "await client.client_tracking(on, redirect=None, prefixes=[], bcast=False, optin=False, optout=False, noloop=False)",
+    arguments: [
+      {
+        name: "on",
+        description: "True — включить трекинг, False — отключить.",
+      },
+      {
+        name: "redirect",
+        description:
+          "ID клиента, которому перенаправляются уведомления об инвалидации (необходимо для RESP2-соединений).",
+      },
+      {
+        name: "prefixes",
+        description:
+          "Список префиксов ключей для трекинга в режиме BCAST. Трекаются только ключи, начинающиеся с указанных префиксов.",
+      },
+      {
+        name: "bcast",
+        description:
+          "Если True — режим широковещательного трекинга: уведомления отправляются при любом изменении, без учёта истории запросов клиента.",
+      },
+      {
+        name: "optin",
+        description:
+          "Если True — трекинг включается только для ключей, явно отмеченных командой CLIENT CACHING yes.",
+      },
+      {
+        name: "optout",
+        description:
+          "Если True — трекинг включён для всех ключей, кроме явно исключённых командой CLIENT CACHING no.",
+      },
+      {
+        name: "noloop",
+        description:
+          "Если True — клиент не получает уведомления об изменениях, которые он сам же и сделал.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    # Клиент для данных, клиент для получения уведомлений
+    data_client = redis.StrictRedis()
+    notif_client = redis.StrictRedis()
+
+    notif_id = await notif_client.client_id()
+
+    # Включаем трекинг с перенаправлением уведомлений
+    await data_client.client_tracking(on=True, redirect=notif_id)
+
+    await data_client.get("tracked_key")  # ключ теперь отслеживается
+
+    # При изменении tracked_key notif_client получит уведомление
+    await data_client.set("tracked_key", "new_value")
+
+    await data_client.aclose()
+    await notif_client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_trackinginfo()",
+    description:
+      "Возвращает подробные сведения о текущем статусе клиентского трекинга для данного соединения: включён ли трекинг, режим (OPTIN, OPTOUT, BCAST), список префиксов и ID клиента для перенаправления уведомлений.",
+    syntax: "await client.client_trackinginfo()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Включаем трекинг в широковещательном режиме
+    await client.client_tracking(on=True, bcast=True, prefixes=["user:", "order:"])
+
+    info = await client.client_trackinginfo()
+    print(info["flags"])     # ['on', 'bcast']
+    print(info["prefixes"])  # [b'user:', b'order:']
+    print(info["redirect"])  # -1 (без перенаправления)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_unblock(client_id, error=False)",
+    description:
+      "Разблокирует клиента, заблокированного блокирующей командой (BLPOP, BRPOP, WAIT и др.). При error=False клиент получает пустой ответ и продолжает работу. При error=True — получает ошибку UNBLOCKED. Выполняется от имени другого клиента (административная операция).",
+    syntax: "await client.client_unblock(client_id, error=False)",
+    arguments: [
+      {
+        name: "client_id",
+        description: "Числовой ID клиента, которого нужно разблокировать.",
+      },
+      {
+        name: "error",
+        description:
+          "Если True — заблокированный клиент получает ошибку. Если False (по умолчанию) — получает пустой ответ.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+import asyncio
+
+async def main():
+    worker = redis.StrictRedis()
+    admin = redis.StrictRedis()
+
+    worker_id = await worker.client_id()
+
+    # В другом корутине worker заблокирован на BLPOP
+    async def blocked_worker():
+        result = await worker.blpop("empty_queue", timeout=30)
+        print(f"Разблокирован с результатом: {result}")  # None
+
+    # Запускаем заблокированный воркер и разблокируем его
+    task = asyncio.create_task(blocked_worker())
+    await asyncio.sleep(0.1)
+    await admin.client_unblock(worker_id)
+    await task
+
+    await worker.aclose()
+    await admin.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.client_unpause()",
+    description:
+      "Досрочно снимает паузу, ранее установленную командой CLIENT PAUSE. Все накопившиеся во время паузы команды клиентов немедленно начинают выполняться. Позволяет прервать плановую паузу обслуживания раньше истечения таймаута.",
+    syntax: "await client.client_unpause()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+import asyncio
+
+async def main():
+    admin = redis.StrictRedis()
+
+    # Ставим клиентов на паузу на 10 секунд
+    await admin.client_pause(10000)
+    print("Пауза установлена на 10 секунд")
+
+    # Обслуживание завершилось раньше — снимаем паузу
+    await asyncio.sleep(2)
+    await admin.client_unpause()
+    print("Пауза снята досрочно")
+
+    await admin.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.cluster(command, *args, **kwargs)",
+    description:
+      "Выполняет подкоманды CLUSTER Redis напрямую: CLUSTER INFO, CLUSTER NODES, CLUSTER MEET, CLUSTER SLOTS и другие. Используется для управления и мониторинга Redis Cluster. Является низкоуровневым интерфейсом; большинство команд доступны в специализированных методах кластерного клиента.",
+    syntax: "await client.cluster(command, *args, **kwargs)",
+    arguments: [
+      {
+        name: "command",
+        description:
+          "Подкоманда CLUSTER: 'INFO', 'NODES', 'SLOTS', 'SHARDS', 'MEET', 'REPLICATE', 'RESET', 'FAILOVER' и другие.",
+      },
+      {
+        name: "*args",
+        description: "Аргументы подкоманды (например, IP и порт для MEET).",
+      },
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры выполнения команды.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Информация о кластере
+    info = await client.cluster("INFO")
+    print(info["cluster_enabled"])   # 1
+    print(info["cluster_size"])      # число мастер-узлов
+
+    # Список узлов кластера
+    nodes = await client.cluster("NODES")
+    for node in nodes.values():
+        print(node["host"], node["port"], node["flags"])
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.command()",
+    description:
+      "Возвращает подробную информацию обо всех командах Redis: имя, арность (количество аргументов), флаги (readonly, write, admin и т.д.), первый ключ, последний ключ и шаг. Полезно для интроспекции возможностей сервера и построения инструментов валидации команд.",
+    syntax: "await client.command()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    commands = await client.command()
+    print(f"Всего команд: {len(commands)}")
+
+    # Информация о команде GET
+    get_info = commands.get("get")
+    if get_info:
+        print(f"Арность GET: {get_info['arity']}")    # 2
+        print(f"Флаги GET: {get_info['flags']}")       # ['readonly', 'fast']
+
+    # Только команды с флагом 'admin'
+    admin_cmds = [name for name, info in commands.items() if "admin" in info.get("flags", [])]
+    print(f"Административных команд: {len(admin_cmds)}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.command_count()",
+    description:
+      "Возвращает общее количество команд, поддерживаемых текущим сервером Redis. Полезно для быстрой проверки версии возможностей без загрузки полного списка через COMMAND.",
+    syntax: "await client.command_count()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    count = await client.command_count()
+    print(f"Сервер поддерживает {count} команд")
+    # Сервер поддерживает 246 команд
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.command_docs(*commands)",
+    description:
+      "Возвращает документацию для указанных команд Redis: описание, группу, флаги, параметры и подкоманды. Доступно с Redis 7.0. Если команды не указаны — возвращает документацию для всех команд.",
+    syntax: "await client.command_docs(*commands)",
+    arguments: [
+      {
+        name: "*commands",
+        description:
+          "Названия команд Redis, для которых нужна документация. Если не указаны — возвращается документация по всем командам.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Документация для GET и SET
+    docs = await client.command_docs("GET", "SET")
+
+    get_doc = docs.get("get", {})
+    print(get_doc.get("summary"))   # Get the value of a key
+    print(get_doc.get("group"))     # string
+    print(get_doc.get("since"))     # 1.0.0
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.command_getkeys(command, *args)",
+    description:
+      "Возвращает список ключей, которые затронет указанная команда Redis с заданными аргументами. Позволяет определить, к каким ключам обращается команда, не выполняя её. Полезно при маршрутизации в Redis Cluster.",
+    syntax: "await client.command_getkeys(command, *args)",
+    arguments: [
+      {
+        name: "command",
+        description: "Название команды Redis, например 'SET', 'MGET', 'EVAL'.",
+      },
+      {
+        name: "*args",
+        description: "Аргументы команды в том же порядке, в котором они передаются при выполнении.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Ключи для MSET
+    keys = await client.command_getkeys("MSET", "key1", "val1", "key2", "val2")
+    print(keys)  # [b'key1', b'key2']
+
+    # Ключи для EVAL
+    keys = await client.command_getkeys("EVAL", "return 1", "2", "keyA", "keyB")
+    print(keys)  # [b'keyA', b'keyB']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.command_info(*commands)",
+    description:
+      "Возвращает краткую информацию об указанных командах Redis: арность, флаги, позиции ключей и шаг. В отличие от command_docs, не включает текстовые описания — только структурные метаданные.",
+    syntax: "await client.command_info(*commands)",
+    arguments: [
+      {
+        name: "*commands",
+        description: "Одно или несколько названий команд Redis для получения информации.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    info = await client.command_info("GET", "SET", "ZADD")
+    for cmd_name, cmd_info in info.items():
+        print(f"{cmd_name}: арность={cmd_info['arity']}, флаги={cmd_info['flags']}")
+    # get: арность=2, флаги=['readonly', 'fast']
+    # set: арность=-3, флаги=['write', 'denyoom']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.command_list(filter_by=None, value=None)",
+    description:
+      "Возвращает список имён команд Redis, опционально отфильтрованных по категории ACL, модулю или шаблону имени. Доступно с Redis 7.0. Удобно для обнаружения доступных команд без загрузки полных метаданных.",
+    syntax: "await client.command_list(filter_by=None, value=None)",
+    arguments: [
+      {
+        name: "filter_by",
+        description:
+          "Тип фильтра: 'ACLCAT' (категория ACL), 'MODULE' (модуль) или 'PATTERN' (шаблон имени).",
+      },
+      {
+        name: "value",
+        description: "Значение фильтра: название категории, модуля или glob-шаблон.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Все команды
+    all_cmds = await client.command_list()
+    print(f"Всего: {len(all_cmds)}")
+
+    # Команды категории 'string'
+    string_cmds = await client.command_list(filter_by="ACLCAT", value="string")
+    print(string_cmds)  # [b'get', b'set', b'append', ...]
+
+    # По шаблону
+    z_cmds = await client.command_list(filter_by="PATTERN", value="z*")
+    print(z_cmds)  # [b'zadd', b'zrange', b'zcard', ...]
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.config_get(parameter='*')",
+    description:
+      "Возвращает текущие значения параметров конфигурации Redis. Поддерживает glob-шаблоны для получения нескольких параметров сразу. Без аргументов (или с '*') возвращает все конфигурационные параметры.",
+    syntax: "await client.config_get(parameter='*')",
+    arguments: [
+      {
+        name: "parameter",
+        description:
+          "Имя параметра или glob-шаблон (например, 'maxmemory*', 'save', '*max*'). По умолчанию '*' — все параметры.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Лимит памяти
+    cfg = await client.config_get("maxmemory")
+    print(cfg)  # {'maxmemory': '0'}
+
+    # Все параметры с 'max' в имени
+    cfg = await client.config_get("*max*")
+    for key, val in cfg.items():
+        print(f"{key}: {val}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.config_resetstat()",
+    description:
+      "Сбрасывает статистику Redis, возвращаемую командой INFO: счётчики попаданий/промахов ключевого пространства, количество обработанных команд, число подключений и другие накопленные метрики. Не влияет на данные и конфигурацию сервера.",
+    syntax: "await client.config_resetstat()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Посмотрим статистику до сброса
+    info_before = await client.info("stats")
+    print(f"Команд до: {info_before['total_commands_processed']}")
+
+    # Сбрасываем статистику
+    await client.config_resetstat()
+
+    info_after = await client.info("stats")
+    print(f"Команд после: {info_after['total_commands_processed']}")
+    # Значение будет минимальным
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.config_rewrite()",
+    description:
+      "Записывает текущую конфигурацию Redis в файл redis.conf, с которым был запущен сервер. Обновляет только те директивы, которые изменились по сравнению с дефолтными значениями. Если Redis запущен без файла конфигурации — вернёт ошибку.",
+    syntax: "await client.config_rewrite()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Меняем параметр во время выполнения
+    await client.config_set("maxmemory", "512mb")
+
+    # Сохраняем изменения в redis.conf
+    try:
+        result = await client.config_rewrite()
+        print(result)  # True
+    except redis.ResponseError as e:
+        print(f"Ошибка: {e}")
+        # ERR The server is running without a config file
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.config_set(parameter, value=None)",
+    description:
+      "Изменяет один или несколько параметров конфигурации Redis без перезапуска сервера. С Redis 7.0 поддерживается передача словаря для одновременного изменения нескольких параметров. Изменения вступают в силу немедленно, но не сохраняются в файл — для этого нужно вызвать config_rewrite.",
+    syntax: "await client.config_set(parameter, value=None)",
+    arguments: [
+      {
+        name: "parameter",
+        description:
+          "Имя параметра конфигурации (строка) или словарь {параметр: значение} для массового обновления (Redis 7.0+).",
+      },
+      {
+        name: "value",
+        description:
+          "Новое значение параметра. Игнорируется, если parameter — словарь.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Один параметр
+    await client.config_set("maxmemory", "256mb")
+    await client.config_set("maxmemory-policy", "allkeys-lru")
+
+    # Несколько параметров сразу (Redis 7.0+)
+    await client.config_set({
+        "hz": "20",
+        "loglevel": "notice",
+    })
+
+    cfg = await client.config_get("maxmemory")
+    print(cfg)  # {'maxmemory': '268435456'}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.copy(source, destination, db=None, replace=False)",
+    description:
+      "Копирует значение ключа source в ключ destination. По умолчанию destination должен отсутствовать; флаг replace=True позволяет перезаписать существующий ключ. Можно скопировать ключ в другую базу данных, указав параметр db.",
+    syntax: "await client.copy(source, destination, db=None, replace=False)",
+    arguments: [
+      {
+        name: "source",
+        description: "Ключ-источник, значение которого нужно скопировать.",
+      },
+      {
+        name: "destination",
+        description: "Ключ-назначение, в который записывается копия.",
+      },
+      {
+        name: "db",
+        description:
+          "Необязательно. Номер базы данных для destination. Если не указан — используется текущая БД.",
+      },
+      {
+        name: "replace",
+        description:
+          "Если True — перезаписывает destination, если он уже существует. По умолчанию False.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("original", "hello world")
+
+    # Простое копирование
+    result = await client.copy("original", "backup")
+    print(result)  # True
+
+    # Скопировать в другую БД
+    await client.copy("original", "original", db=1)
+
+    # Перезаписать существующий ключ
+    await client.set("backup", "old value")
+    result = await client.copy("original", "backup", replace=True)
+    print(result)  # True
+
+    val = await client.get("backup")
+    print(val.decode())  # hello world
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.dbsize()",
+    description:
+      "Возвращает количество ключей в текущей базе данных Redis. Выполняется мгновенно — Redis хранит счётчик ключей и не сканирует базу. Полезно для мониторинга объёма данных.",
+    syntax: "await client.dbsize()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("a", 1)
+    await client.set("b", 2)
+    await client.set("c", 3)
+
+    size = await client.dbsize()
+    print(f"Ключей в БД: {size}")  # Ключей в БД: 3
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.debug_object(key)",
+    description:
+      "Возвращает отладочную информацию о внутреннем представлении ключа: кодировку (encoding), количество ссылок (refcount), выровненный размер (serializedlength), время последнего доступа (lru_seconds_idle) и другие параметры. Используется для диагностики потребления памяти.",
+    syntax: "await client.debug_object(key)",
+    arguments: [
+      {
+        name: "key",
+        description: "Ключ, внутреннее состояние которого нужно исследовать.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("mykey", "Hello, Redis!")
+    info = await client.debug_object("mykey")
+
+    print(info["encoding"])            # embstr
+    print(info["serializedlength"])    # сжатый размер в байтах
+    print(info["lru_seconds_idle"])    # секунд без обращения
+    print(info["refcount"])            # число ссылок на объект
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.debug_segfault()",
+    description:
+      "Намеренно вызывает аварийное завершение процесса Redis с сигналом SIGSEGV. Используется исключительно для тестирования поведения системы при сбое сервера (сторожевые процессы, автоматический перезапуск). Никогда не вызывать на рабочем сервере.",
+    syntax: "await client.debug_segfault()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+# ВНИМАНИЕ: Эта команда немедленно завершает процесс Redis!
+# Используйте только в тестовой среде.
+
+async def test_crash_recovery():
+    client = redis.StrictRedis()
+    try:
+        await client.debug_segfault()
+    except Exception:
+        pass  # Соединение разорвётся — сервер упал
+    # Проверяем, что Redis перезапустился (например, через supervisord)`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.decr(name, amount=1)",
+    description:
+      "Уменьшает целочисленное значение ключа на 1 (или на указанную величину). Если ключ не существует — создаётся со значением 0, после чего выполняется декремент. Операция атомарна. Если значение не является целым числом — возвращается ошибка.",
+    syntax: "await client.decr(name, amount=1)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, значение которого нужно уменьшить.",
+      },
+      {
+        name: "amount",
+        description: "Величина декремента. По умолчанию 1.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("stock", 10)
+
+    # Уменьшаем на 1
+    new_val = await client.decr("stock")
+    print(new_val)  # 9
+
+    # Уменьшаем на 3
+    new_val = await client.decr("stock", amount=3)
+    print(new_val)  # 6
+
+    # Несуществующий ключ начинается с 0
+    new_val = await client.decr("new_counter")
+    print(new_val)  # -1
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.decrby(name, amount=1)",
+    description:
+      "Уменьшает целочисленное значение ключа на указанную величину. Функционально эквивалентен decr(name, amount). Если ключ не существует — создаётся со значением 0 перед выполнением операции. Операция атомарна.",
+    syntax: "await client.decrby(name, amount=1)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, значение которого нужно уменьшить.",
+      },
+      {
+        name: "amount",
+        description: "Величина декремента.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("balance", 1000)
+
+    # Списываем 250
+    remaining = await client.decrby("balance", 250)
+    print(remaining)  # 750
+
+    # Атомарное списание без race condition
+    remaining = await client.decrby("balance", 100)
+    print(remaining)  # 650
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.delete(*names)",
+    description:
+      "Удаляет один или несколько ключей из Redis. Возвращает количество фактически удалённых ключей (ключи, которых не существовало, не учитываются). Операция атомарна при удалении нескольких ключей.",
+    syntax: "await client.delete(*names)",
+    arguments: [
+      {
+        name: "*names",
+        description: "Один или несколько ключей для удаления.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("a", 1)
+    await client.set("b", 2)
+    await client.set("c", 3)
+
+    # Удаляем один ключ
+    deleted = await client.delete("a")
+    print(deleted)  # 1
+
+    # Удаляем несколько, один не существует
+    deleted = await client.delete("b", "c", "nonexistent")
+    print(deleted)  # 2
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.dump(name)",
+    description:
+      "Сериализует значение ключа во внутренний бинарный формат Redis (RDB-совместимый) и возвращает результат. Полученные данные можно восстановить командой RESTORE. Используется для миграции ключей между серверами и создания снимков отдельных ключей.",
+    syntax: "await client.dump(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, значение которого нужно сериализовать.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    source = redis.StrictRedis(host="source-host")
+    target = redis.StrictRedis(host="target-host")
+
+    await source.set("mykey", "important data")
+
+    # Сериализуем ключ
+    serialized = await source.dump("mykey")
+    print(type(serialized))  # <class 'bytes'>
+
+    # Восстанавливаем на другом сервере (TTL=0 — без истечения)
+    await target.restore("mykey", 0, serialized)
+
+    val = await target.get("mykey")
+    print(val.decode())  # important data
+
+    await source.aclose()
+    await target.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.echo(value)",
+    description:
+      "Отправляет строку на сервер Redis и получает её обратно без изменений. Используется для проверки соединения и кодирования данных. Фактически является эхо-командой на уровне Redis-протокола.",
+    syntax: "await client.echo(value)",
+    arguments: [
+      {
+        name: "value",
+        description: "Строка или байты, которые нужно отправить и получить обратно.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    response = await client.echo("Hello, Redis!")
+    print(response.decode())  # Hello, Redis!
+
+    # Проверка кодировки
+    response = await client.echo("Привет, мир!")
+    print(response.decode("utf-8"))  # Привет, мир!
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.eval(script, numkeys, *keys_and_args)",
+    description:
+      "Выполняет Lua-скрипт на сервере Redis. Скрипт выполняется атомарно: пока он работает, никакие другие команды не обрабатываются. Ключи передаются через KEYS[], аргументы через ARGV[]. Для повторного использования скрипта рекомендуется evalsha.",
+    syntax: "await client.eval(script, numkeys, *keys_and_args)",
+    arguments: [
+      {
+        name: "script",
+        description: "Текст Lua-скрипта для выполнения.",
+      },
+      {
+        name: "numkeys",
+        description:
+          "Количество ключей среди keys_and_args. Первые numkeys элементов попадают в KEYS[], остальные — в ARGV[].",
+      },
+      {
+        name: "*keys_and_args",
+        description:
+          "Ключи и аргументы скрипта: первые numkeys — ключи (KEYS[1], KEYS[2]...), остальные — аргументы (ARGV[1], ARGV[2]...).",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("counter", 10)
+
+    # Атомарное условное увеличение
+    script = """
+    local val = tonumber(redis.call('GET', KEYS[1]))
+    if val < tonumber(ARGV[1]) then
+        return redis.call('INCR', KEYS[1])
+    else
+        return val
+    end
+    """
+    result = await client.eval(script, 1, "counter", 100)
+    print(result)  # 11
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.eval_ro(script, numkeys, *keys_and_args)",
+    description:
+      "Выполняет Lua-скрипт в режиме только для чтения: скрипт не может вызывать команды записи. Позволяет запускать скрипты на репликах Redis. Доступно с Redis 7.0.",
+    syntax: "await client.eval_ro(script, numkeys, *keys_and_args)",
+    arguments: [
+      {
+        name: "script",
+        description: "Текст Lua-скрипта. Может содержать только команды чтения.",
+      },
+      {
+        name: "numkeys",
+        description: "Количество ключей среди keys_and_args.",
+      },
+      {
+        name: "*keys_and_args",
+        description: "Ключи и аргументы скрипта.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    # Подключаемся к реплике
+    replica = redis.StrictRedis(host="replica-host")
+
+    await replica.set("data", "value")  # будет ошибка на реплике
+
+    # Безопасное чтение через eval_ro
+    script = "return redis.call('GET', KEYS[1])"
+    result = await replica.eval_ro(script, 1, "data")
+    print(result.decode())  # value
+
+    await replica.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.evalsha(sha, numkeys, *keys_and_args)",
+    description:
+      "Выполняет предварительно загруженный Lua-скрипт по его SHA1-хэшу. Скрипт должен быть ранее загружен командой SCRIPT LOAD или выполнен через eval. Позволяет повторно вызывать скрипт без передачи его текста, экономя полосу пропускания.",
+    syntax: "await client.evalsha(sha, numkeys, *keys_and_args)",
+    arguments: [
+      {
+        name: "sha",
+        description: "SHA1-хэш Lua-скрипта, полученный через script_load.",
+      },
+      {
+        name: "numkeys",
+        description: "Количество ключей среди keys_and_args.",
+      },
+      {
+        name: "*keys_and_args",
+        description: "Ключи и аргументы скрипта.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    script = "return redis.call('GET', KEYS[1])"
+
+    # Загружаем скрипт и получаем SHA
+    sha = await client.script_load(script)
+    print(sha)  # например: 'e0e1f9fabfa9d353e02d7b3a8c8e8e7fcb6e9...'
+
+    await client.set("greeting", "Hello!")
+
+    # Вызываем по SHA — без передачи текста скрипта
+    result = await client.evalsha(sha, 1, "greeting")
+    print(result.decode())  # Hello!
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.evalsha_ro(sha, numkeys, *keys_and_args)",
+    description:
+      "Выполняет предварительно загруженный Lua-скрипт по SHA1-хэшу в режиме только для чтения. Комбинирует преимущества evalsha (без передачи текста скрипта) и eval_ro (выполнение на репликах). Доступно с Redis 7.0.",
+    syntax: "await client.evalsha_ro(sha, numkeys, *keys_and_args)",
+    arguments: [
+      {
+        name: "sha",
+        description: "SHA1-хэш ранее загруженного Lua-скрипта.",
+      },
+      {
+        name: "numkeys",
+        description: "Количество ключей среди keys_and_args.",
+      },
+      {
+        name: "*keys_and_args",
+        description: "Ключи и аргументы скрипта.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    master = redis.StrictRedis()
+    replica = redis.StrictRedis(host="replica-host")
+
+    script = """
+    local val = redis.call('GET', KEYS[1])
+    return val
+    """
+
+    # Загружаем скрипт на мастере (реплика синхронизирует кэш скриптов)
+    sha = await master.script_load(script)
+
+    await master.set("config", "production")
+
+    # Выполняем read-only на реплике по SHA
+    result = await replica.evalsha_ro(sha, 1, "config")
+    print(result.decode())  # production
+
+    await master.aclose()
+    await replica.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.exec()",
+    description:
+      "Выполняет все команды, поставленные в очередь в рамках текущей транзакции (MULTI/EXEC). Возвращает список ответов на каждую команду в порядке их добавления. Как правило, не вызывается напрямую — используется через контекстный менеджер pipeline(transaction=True).",
+    syntax: "await client.exec()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Транзакция через pipeline (рекомендуемый способ)
+    async with client.pipeline(transaction=True) as pipe:
+        await pipe.set("balance", 1000)
+        await pipe.incrby("balance", 500)
+        await pipe.get("balance")
+        results = await pipe.execute()
+
+    print(results)  # [True, 1500, b'1500']
+
+    # Ручное управление транзакцией (низкоуровневый способ)
+    await client.execute_command("MULTI")
+    await client.execute_command("SET", "x", 1)
+    responses = await client.exec()
+    print(responses)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.exists(*names)",
+    description:
+      "Проверяет существование одного или нескольких ключей. Возвращает количество ключей, которые реально существуют в базе. Если один ключ передан несколько раз — каждое вхождение считается отдельно.",
+    syntax: "await client.exists(*names)",
+    arguments: [
+      {
+        name: "*names",
+        description: "Один или несколько ключей для проверки существования.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("a", 1)
+    await client.set("b", 2)
+
+    # Один ключ
+    print(await client.exists("a"))            # 1
+    print(await client.exists("missing"))      # 0
+
+    # Несколько ключей
+    print(await client.exists("a", "b", "missing"))  # 2
+
+    # Один ключ дважды — считается 2 раза
+    print(await client.exists("a", "a"))       # 2
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.expire(name, time, nx=False, xx=False, gt=False, lt=False)",
+    description:
+      "Устанавливает TTL (время жизни) ключа в секундах. По истечении времени ключ автоматически удаляется. Флаги nx, xx, gt, lt (Redis 7.0+) позволяют обновлять TTL условно: только если он не задан, уже задан, больше или меньше текущего.",
+    syntax: "await client.expire(name, time, nx=False, xx=False, gt=False, lt=False)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, для которого устанавливается TTL.",
+      },
+      {
+        name: "time",
+        description: "Время жизни в секундах (целое число или timedelta).",
+      },
+      {
+        name: "nx",
+        description: "Установить TTL только если у ключа ещё нет срока жизни.",
+      },
+      {
+        name: "xx",
+        description: "Установить TTL только если у ключа уже есть срок жизни.",
+      },
+      {
+        name: "gt",
+        description: "Установить TTL только если новое значение больше текущего.",
+      },
+      {
+        name: "lt",
+        description: "Установить TTL только если новое значение меньше текущего.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("session", "abc123")
+
+    # Простой TTL — 60 секунд
+    await client.expire("session", 60)
+
+    # Только если TTL ещё не задан
+    await client.expire("session", 3600, nx=True)  # не применится — уже задан
+
+    # Только если новый TTL больше текущего
+    await client.expire("session", 120, gt=True)   # применится: 120 > 60
+
+    ttl = await client.ttl("session")
+    print(ttl)  # ≈ 120
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.expireat(name, when, nx=False, xx=False, gt=False, lt=False)",
+    description:
+      "Устанавливает абсолютное время истечения ключа в виде Unix-временной метки (в секундах). По истечении времени ключ автоматически удаляется. Поддерживает те же условные флаги, что и expire.",
+    syntax: "await client.expireat(name, when, nx=False, xx=False, gt=False, lt=False)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, для которого задаётся время истечения.",
+      },
+      {
+        name: "when",
+        description:
+          "Unix-временная метка в секундах (int) или объект datetime, после которой ключ будет удалён.",
+      },
+      {
+        name: "nx",
+        description: "Установить только если TTL ещё не задан.",
+      },
+      {
+        name: "xx",
+        description: "Установить только если TTL уже задан.",
+      },
+      {
+        name: "gt",
+        description: "Установить только если новая метка позже текущей.",
+      },
+      {
+        name: "lt",
+        description: "Установить только если новая метка раньше текущей.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+from datetime import datetime, timedelta
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("promo", "SALE50")
+
+    # Истекает в конкретный момент времени
+    expire_at = datetime(2026, 12, 31, 23, 59, 59)
+    await client.expireat("promo", expire_at)
+
+    # Через Unix-метку
+    import time
+    ts = int(time.time()) + 3600  # через 1 час
+    await client.expireat("promo", ts, gt=True)  # только если позже текущего
+
+    ttl = await client.ttl("promo")
+    print(f"Осталось секунд: {ttl}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.expiretime(name)",
+    description:
+      "Возвращает абсолютную Unix-временную метку (в секундах), после которой ключ истечёт. Если у ключа нет TTL — возвращает -1. Если ключ не существует — возвращает -2. Доступно с Redis 7.0.",
+    syntax: "await client.expiretime(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, для которого нужно узнать время истечения.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+from datetime import datetime
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("token", "xyz", ex=3600)
+
+    ts = await client.expiretime("token")
+    if ts > 0:
+        expire_dt = datetime.fromtimestamp(ts)
+        print(f"Истекает: {expire_dt}")
+
+    # Без TTL
+    await client.set("persistent", "value")
+    print(await client.expiretime("persistent"))  # -1
+
+    # Несуществующий ключ
+    print(await client.expiretime("ghost"))  # -2
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.failover(to=None, force=False, timeout=None)",
+    description:
+      "Инициирует контролируемую передачу роли мастера указанной реплике. Redis уведомляет реплику, она накапливает все изменения, затем мастер отказывается от своей роли. Используется для плановых технических работ без потери данных. Доступно с Redis 6.2.",
+    syntax: "await client.failover(to=None, force=False, timeout=None)",
+    arguments: [
+      {
+        name: "to",
+        description:
+          "Кортеж (host, port) реплики, которая станет новым мастером. Если не указан — выбирается любая синхронизированная реплика.",
+      },
+      {
+        name: "force",
+        description:
+          "Если True — принудительный failover без ожидания синхронизации реплики.",
+      },
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в миллисекундах. По истечении операция отменяется.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    master = redis.StrictRedis(host="master-host")
+
+    # Передать роль конкретной реплике
+    await master.failover(to=("replica-host", 6379), timeout=5000)
+    print("Failover инициирован")
+
+    # Принудительный failover без ожидания синхронизации
+    await master.failover(force=True, timeout=3000)
+
+    await master.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.flushall(asynchronous=False)",
+    description:
+      "Удаляет все ключи из всех баз данных Redis на текущем сервере. По умолчанию выполняется синхронно (блокирует сервер). При asynchronous=True удаление происходит в фоновом потоке, не блокируя сервер. Необратимая операция — используйте с осторожностью.",
+    syntax: "await client.flushall(asynchronous=False)",
+    arguments: [
+      {
+        name: "asynchronous",
+        description:
+          "Если True — удаление выполняется асинхронно в фоне (ASYNC). Если False (по умолчанию) — синхронно.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("key1", "val1")
+    await client.select(1)
+    await client.set("key2", "val2")
+
+    # Удаляем всё из всех БД
+    await client.flushall()
+    print(await client.dbsize())  # 0
+
+    # Асинхронное удаление (не блокирует сервер)
+    await client.flushall(asynchronous=True)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.flushdb(asynchronous=False)",
+    description:
+      "Удаляет все ключи только из текущей базы данных Redis. В отличие от flushall, не затрагивает другие БД. При asynchronous=True удаление происходит в фоновом потоке. Необратимая операция.",
+    syntax: "await client.flushdb(asynchronous=False)",
+    arguments: [
+      {
+        name: "asynchronous",
+        description:
+          "Если True — удаление выполняется в фоновом потоке (ASYNC). Если False (по умолчанию) — синхронно.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("a", 1)
+    await client.set("b", 2)
+    print(await client.dbsize())  # 2
+
+    # Очищаем только текущую БД
+    await client.flushdb()
+    print(await client.dbsize())  # 0
+
+    # Фоновая очистка
+    await client.set("c", 3)
+    await client.flushdb(asynchronous=True)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.function_delete(name)",
+    description:
+      "Удаляет библиотеку функций Redis с указанным именем вместе со всеми функциями, которые она содержит. Доступно с Redis 7.0. Если библиотека не существует — возвращает ошибку.",
+    syntax: "await client.function_delete(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Имя библиотеки функций для удаления.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    code = """#!lua name=mylib
+    redis.register_function('myfunc', function(keys, args)
+      return args[1]
+    end)"""
+    await client.function_load(code)
+
+    # Удаляем библиотеку
+    await client.function_delete("mylib")
+    print("Библиотека удалена")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.function_dump()",
+    description:
+      "Сериализует все библиотеки функций Redis в бинарный формат RDB. Результат можно сохранить и восстановить на другом сервере через function_restore. Используется для миграции и резервного копирования функций. Доступно с Redis 7.0.",
+    syntax: "await client.function_dump()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    source = redis.StrictRedis(host="source-host")
+    target = redis.StrictRedis(host="target-host")
+
+    # Сериализуем все функции
+    dump = await source.function_dump()
+    print(type(dump))  # <class 'bytes'>
+
+    # Восстанавливаем на другом сервере
+    await target.function_restore(dump)
+    print("Функции перенесены")
+
+    await source.aclose()
+    await target.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.function_flush(asynchronous=False)",
+    description:
+      "Удаляет все библиотеки функций из Redis. При asynchronous=True выполняется в фоновом потоке. Доступно с Redis 7.0. Необратимая операция — все зарегистрированные функции будут удалены.",
+    syntax: "await client.function_flush(asynchronous=False)",
+    arguments: [
+      {
+        name: "asynchronous",
+        description:
+          "Если True — удаление выполняется асинхронно. Если False (по умолчанию) — синхронно.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    libs_before = await client.function_list()
+    print(f"Библиотек до: {len(libs_before)}")
+
+    # Удаляем все функции
+    await client.function_flush()
+
+    libs_after = await client.function_list()
+    print(f"Библиотек после: {len(libs_after)}")  # 0
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.function_kill()",
+    description:
+      "Прерывает выполнение текущей Lua-функции Redis, если она выполняется слишком долго. Работает только если функция не производила операций записи — иначе для прерывания необходим RESET. Аналог SCRIPT KILL для функций. Доступно с Redis 7.0.",
+    syntax: "await client.function_kill()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+import asyncio
+
+async def main():
+    client = redis.StrictRedis()
+    admin = redis.StrictRedis()
+
+    # Запускаем бесконечную функцию в отдельной задаче
+    async def run_infinite():
+        code = """#!lua name=inflib
+        redis.register_function('inf', function(keys, args)
+          while true do end
+        end)"""
+        try:
+            await client.function_load(code, replace=True)
+            await client.fcall("inf", 0)
+        except Exception:
+            pass
+
+    task = asyncio.create_task(run_infinite())
+    await asyncio.sleep(0.5)
+
+    # Прерываем выполнение
+    await admin.function_kill()
+    await task
+
+    await client.aclose()
+    await admin.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.function_list(library_name=None, withcode=False)",
+    description:
+      "Возвращает список всех зарегистрированных библиотек функций с их метаданными: имя, движок, список функций. При withcode=True включает исходный код библиотеки. Можно фильтровать по имени библиотеки. Доступно с Redis 7.0.",
+    syntax: "await client.function_list(library_name=None, withcode=False)",
+    arguments: [
+      {
+        name: "library_name",
+        description:
+          "Необязательно. Фильтр по имени библиотеки (поддерживает glob-шаблоны).",
+      },
+      {
+        name: "withcode",
+        description:
+          "Если True — включает исходный код библиотеки в ответ. По умолчанию False.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    libs = await client.function_list()
+    for lib in libs:
+        print(f"Библиотека: {lib['library_name']}")
+        print(f"Движок: {lib['engine']}")
+        for fn in lib["functions"]:
+            print(f"  Функция: {fn['name']}")
+
+    # С исходным кодом
+    libs = await client.function_list(withcode=True)
+    print(libs[0]["library_code"])  # исходный Lua-код
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.function_load(code, replace=False)",
+    description:
+      "Загружает библиотеку функций в Redis. Библиотека должна быть написана на поддерживаемом движке (Lua). При replace=True заменяет существующую библиотеку с тем же именем. Доступно с Redis 7.0.",
+    syntax: "await client.function_load(code, replace=False)",
+    arguments: [
+      {
+        name: "code",
+        description:
+          "Исходный код библиотеки. Должен начинаться с директивы shebang, например '#!lua name=mylib'.",
+      },
+      {
+        name: "replace",
+        description:
+          "Если True — перезаписывает существующую библиотеку с тем же именем. По умолчанию False.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    code = """#!lua name=utils
+    redis.register_function('greet', function(keys, args)
+      return 'Hello, ' .. args[1] .. '!'
+    end)
+
+    redis.register_function('add', function(keys, args)
+      return tonumber(args[1]) + tonumber(args[2])
+    end)
+    """
+
+    # Загружаем библиотеку
+    await client.function_load(code)
+
+    # Вызываем функции
+    result = await client.fcall("greet", 0, "Redis")
+    print(result.decode())  # Hello, Redis!
+
+    result = await client.fcall("add", 0, 3, 5)
+    print(result)  # 8
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.function_restore(code, policy='flush')",
+    description:
+      "Восстанавливает библиотеки функций из бинарного дампа, полученного через function_dump. Политика определяет поведение при конфликтах имён: 'flush' — очистить всё перед восстановлением, 'append' — добавить без замены, 'replace' — заменить конфликтующие. Доступно с Redis 7.0.",
+    syntax: "await client.function_restore(code, policy='flush')",
+    arguments: [
+      {
+        name: "code",
+        description: "Бинарные данные дампа, полученные через function_dump.",
+      },
+      {
+        name: "policy",
+        description:
+          "'flush' (по умолчанию) — удалить все существующие функции перед восстановлением. 'append' — добавить, ошибка при конфликте. 'replace' — заменить конфликтующие библиотеки.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    source = redis.StrictRedis(host="source-host")
+    target = redis.StrictRedis(host="target-host")
+
+    dump = await source.function_dump()
+
+    # Восстановить, заменив конфликтующие библиотеки
+    await target.function_restore(dump, policy="replace")
+    print("Функции восстановлены")
+
+    # Восстановить с очисткой (по умолчанию)
+    await target.function_restore(dump, policy="flush")
+
+    await source.aclose()
+    await target.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.function_stats()",
+    description:
+      "Возвращает статистику о функциях Redis: текущий статус выполнения (запущена ли функция сейчас), информацию о движке (Lua) и список загруженных библиотек. Доступно с Redis 7.0.",
+    syntax: "await client.function_stats()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    stats = await client.function_stats()
+
+    # Статус текущего выполнения
+    running = stats.get("running_script")
+    if running:
+        print(f"Выполняется функция: {running['name']}")
+    else:
+        print("Функции не выполняются")
+
+    # Статистика движка Lua
+    engines = stats.get("engines", {})
+    lua = engines.get("LUA", {})
+    print(f"Библиотек: {lua.get('libraries_count', 0)}")
+    print(f"Функций:   {lua.get('functions_count', 0)}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.geoadd(name, values, nx=False, xx=False, ch=False)",
+    description:
+      "Добавляет одно или несколько геопространственных местоположений (долгота, широта, имя) в отсортированное геомножество. Внутри хранится как score в ZSET с использованием geohash-кодирования. Возвращает количество добавленных элементов.",
+    syntax: "await client.geoadd(name, values, nx=False, xx=False, ch=False)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ геомножества, в которое добавляются координаты.",
+      },
+      {
+        name: "values",
+        description:
+          "Плоский список или кортежи вида (долгота, широта, имя_места). Можно передать несколько точек: [lon1, lat1, name1, lon2, lat2, name2, ...].",
+      },
+      {
+        name: "nx",
+        description: "Добавлять только новые элементы, не обновлять существующие.",
+      },
+      {
+        name: "xx",
+        description: "Обновлять только существующие элементы, не добавлять новые.",
+      },
+      {
+        name: "ch",
+        description:
+          "Если True — возвращает количество изменённых элементов (добавленных + обновлённых) вместо только добавленных.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Добавляем несколько городов
+    added = await client.geoadd("cities", [
+        37.6173, 55.7558, "Moscow",
+        30.3141, 59.9383, "Saint-Petersburg",
+        82.9204, 55.0302, "Novosibirsk",
+    ])
+    print(f"Добавлено: {added}")  # 3
+
+    # Обновить только существующие координаты
+    await client.geoadd("cities", [37.62, 55.75, "Moscow"], xx=True)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.geodist(name, place1, place2, unit='m')",
+    description:
+      "Вычисляет расстояние между двумя геопространственными точками, хранящимися в геомножестве. Поддерживает единицы: m (метры), km (километры), mi (мили), ft (футы). Если одна из точек не существует — возвращает None.",
+    syntax: "await client.geodist(name, place1, place2, unit='m')",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ геомножества.",
+      },
+      {
+        name: "place1",
+        description: "Имя первой точки в геомножестве.",
+      },
+      {
+        name: "place2",
+        description: "Имя второй точки в геомножестве.",
+      },
+      {
+        name: "unit",
+        description:
+          "Единица измерения расстояния: 'm' (метры, по умолчанию), 'km', 'mi', 'ft'.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.geoadd("cities", [
+        37.6173, 55.7558, "Moscow",
+        30.3141, 59.9383, "Saint-Petersburg",
+    ])
+
+    dist_m = await client.geodist("cities", "Moscow", "Saint-Petersburg")
+    print(f"Расстояние: {dist_m:.0f} м")  # ≈ 634 000 м
+
+    dist_km = await client.geodist("cities", "Moscow", "Saint-Petersburg", unit="km")
+    print(f"Расстояние: {dist_km:.1f} км")  # ≈ 634.0 км
+
+    # Несуществующая точка
+    result = await client.geodist("cities", "Moscow", "Kazan", unit="km")
+    print(result)  # None
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.geohash(name, *values)",
+    description:
+      "Возвращает geohash-строки для указанных точек из геомножества. Geohash — компактное текстовое представление координат (11 символов), которое можно использовать для приблизительного сравнения расположения точек. Если точка не существует — возвращает None для неё.",
+    syntax: "await client.geohash(name, *values)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ геомножества.",
+      },
+      {
+        name: "*values",
+        description: "Имена одной или нескольких точек для получения geohash.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.geoadd("cities", [37.6173, 55.7558, "Moscow"])
+
+    hashes = await client.geohash("cities", "Moscow")
+    print(hashes[0].decode())  # ucfv0xvhbc0 (geohash Москвы)
+
+    # Несколько точек
+    await client.geoadd("cities", [30.3141, 59.9383, "Saint-Petersburg"])
+    hashes = await client.geohash("cities", "Moscow", "Saint-Petersburg", "Kazan")
+    print(hashes)  # [b'ucfv0...', b'ud7gb...', None]
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.geopos(name, *values)",
+    description:
+      "Возвращает координаты (долготу и широту) для указанных точек из геомножества. Координаты восстанавливаются из geohash-кодирования, поэтому могут незначительно отличаться от исходных (погрешность ~0.6 мм). Если точка не существует — возвращает None для неё.",
+    syntax: "await client.geopos(name, *values)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ геомножества.",
+      },
+      {
+        name: "*values",
+        description: "Имена одной или нескольких точек для получения координат.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.geoadd("cities", [
+        37.6173, 55.7558, "Moscow",
+        30.3141, 59.9383, "Saint-Petersburg",
+    ])
+
+    positions = await client.geopos("cities", "Moscow", "Saint-Petersburg", "Kazan")
+    for city, pos in zip(["Moscow", "Saint-Petersburg", "Kazan"], positions):
+        if pos:
+            lon, lat = pos
+            print(f"{city}: долгота={lon:.4f}, широта={lat:.4f}")
+        else:
+            print(f"{city}: не найден")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.georadius(name, longitude, latitude, radius, unit='m', withcoord=False, withdist=False, withhash=False, count=None, any=False, sort=None, store=None, store_dist=None)",
+    description:
+      "Устаревший метод (deprecated с Redis 6.2). Возвращает точки геомножества, находящиеся в заданном радиусе от произвольных координат. Рекомендуется использовать geosearch вместо этого метода. Поддерживает фильтрацию, сортировку, возврат координат, расстояний и сохранение результата.",
+    syntax:
+      "await client.georadius(name, longitude, latitude, radius, unit='m', withcoord=False, withdist=False, withhash=False, count=None, any=False, sort=None, store=None, store_dist=None)",
+    arguments: [
+      { name: "name", description: "Ключ геомножества." },
+      { name: "longitude", description: "Долгота центральной точки поиска." },
+      { name: "latitude", description: "Широта центральной точки поиска." },
+      { name: "radius", description: "Радиус поиска в единицах unit." },
+      { name: "unit", description: "Единица измерения: 'm', 'km', 'mi', 'ft'." },
+      { name: "withcoord", description: "Если True — включает координаты каждой точки в ответ." },
+      { name: "withdist", description: "Если True — включает расстояние до каждой точки." },
+      { name: "withhash", description: "Если True — включает geohash каждой точки." },
+      { name: "count", description: "Максимальное количество возвращаемых результатов." },
+      { name: "sort", description: "Сортировка: 'ASC' (ближе) или 'DESC' (дальше)." },
+      { name: "store", description: "Ключ для сохранения результата как ZSET." },
+      { name: "store_dist", description: "Ключ для сохранения результата с расстоянием как score." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.geoadd("stations", [
+        37.6173, 55.7558, "Kremlin",
+        37.5855, 55.7415, "Kievskaya",
+        37.6597, 55.7781, "Komsomolskaya",
+    ])
+
+    # Найти станции в радиусе 5 км от точки
+    results = await client.georadius(
+        "stations", 37.618, 55.752, 5, unit="km",
+        withdist=True, sort="ASC"
+    )
+    for item in results:
+        print(item)  # ['Kremlin', 0.45]
+
+    # Рекомендуется использовать geosearch (Redis 6.2+)
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.georadiusbymember(name, member, radius, unit='m', withcoord=False, withdist=False, withhash=False, count=None, any=False, sort=None, store=None, store_dist=None)",
+    description:
+      "Устаревший метод (deprecated с Redis 6.2). Возвращает точки геомножества в заданном радиусе от указанного участника множества (а не от произвольных координат). Рекомендуется использовать geosearch с параметром member.",
+    syntax:
+      "await client.georadiusbymember(name, member, radius, unit='m', withcoord=False, withdist=False, withhash=False, count=None, any=False, sort=None, store=None, store_dist=None)",
+    arguments: [
+      { name: "name", description: "Ключ геомножества." },
+      { name: "member", description: "Имя точки-центра из геомножества." },
+      { name: "radius", description: "Радиус поиска в единицах unit." },
+      { name: "unit", description: "Единица измерения: 'm', 'km', 'mi', 'ft'." },
+      { name: "withcoord", description: "Если True — включает координаты в ответ." },
+      { name: "withdist", description: "Если True — включает расстояние в ответ." },
+      { name: "count", description: "Максимальное количество результатов." },
+      { name: "sort", description: "Сортировка: 'ASC' или 'DESC'." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.geoadd("cities", [
+        37.6173, 55.7558, "Moscow",
+        30.3141, 59.9383, "Saint-Petersburg",
+        82.9204, 55.0302, "Novosibirsk",
+        44.0121, 56.3269, "Nizhny Novgorod",
+    ])
+
+    # Города в радиусе 500 км от Москвы
+    nearby = await client.georadiusbymember(
+        "cities", "Moscow", 500, unit="km",
+        withdist=True, sort="ASC"
+    )
+    for city in nearby:
+        print(city)  # ['Moscow', 0.0], ['Nizhny Novgorod', 396.6]
+
+    # Рекомендуется geosearch(member='Moscow', ...)
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.geosearch(name, longitude=None, latitude=None, member=None, radius=None, unit='m', boxw=None, boxh=None, boxunit='m', sort=None, count=None, any=False, withcoord=False, withdist=False, withhash=False)",
+    description:
+      "Ищет точки в геомножестве по кругу (radius) или прямоугольнику (boxw × boxh) относительно произвольных координат или участника множества. Замена устаревших georadius и georadiusbymember. Доступно с Redis 6.2.",
+    syntax:
+      "await client.geosearch(name, longitude=None, latitude=None, member=None, radius=None, unit='m', boxw=None, boxh=None, boxunit='m', sort=None, count=None, any=False, withcoord=False, withdist=False, withhash=False)",
+    arguments: [
+      { name: "name", description: "Ключ геомножества." },
+      { name: "longitude", description: "Долгота центра поиска (если не используется member)." },
+      { name: "latitude", description: "Широта центра поиска (если не используется member)." },
+      { name: "member", description: "Имя точки из множества как центр поиска (альтернатива координатам)." },
+      { name: "radius", description: "Радиус кругового поиска." },
+      { name: "unit", description: "Единица для radius: 'm', 'km', 'mi', 'ft'." },
+      { name: "boxw", description: "Ширина прямоугольной области поиска." },
+      { name: "boxh", description: "Высота прямоугольной области поиска." },
+      { name: "boxunit", description: "Единица для box: 'm', 'km', 'mi', 'ft'." },
+      { name: "sort", description: "Сортировка: 'ASC' или 'DESC'." },
+      { name: "count", description: "Максимальное количество результатов." },
+      { name: "withcoord", description: "Включить координаты в ответ." },
+      { name: "withdist", description: "Включить расстояние в ответ." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.geoadd("shops", [
+        37.618, 55.756, "CenterMall",
+        37.640, 55.760, "EastShop",
+        37.590, 55.748, "WestStore",
+    ])
+
+    # Круговой поиск по координатам, радиус 3 км
+    results = await client.geosearch(
+        "shops", longitude=37.618, latitude=55.756,
+        radius=3, unit="km", withdist=True, sort="ASC"
+    )
+    for r in results:
+        print(r)  # ['CenterMall', 0.0]
+
+    # Прямоугольный поиск от участника множества
+    results = await client.geosearch(
+        "shops", member="CenterMall",
+        boxw=5, boxh=5, boxunit="km", sort="ASC"
+    )
+    print(results)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.geosearchstore(dest, src, longitude=None, latitude=None, member=None, radius=None, unit='m', boxw=None, boxh=None, boxunit='m', sort=None, count=None, any=False, store_dist=False)",
+    description:
+      "Выполняет поиск в геомножестве (аналогично geosearch) и сохраняет результат в новый ключ как отсортированное множество. При store_dist=True сохраняет расстояние как score вместо geohash. Доступно с Redis 6.2.",
+    syntax:
+      "await client.geosearchstore(dest, src, longitude=None, latitude=None, member=None, radius=None, unit='m', boxw=None, boxh=None, boxunit='m', sort=None, count=None, any=False, store_dist=False)",
+    arguments: [
+      { name: "dest", description: "Ключ назначения, в который сохраняется результат." },
+      { name: "src", description: "Ключ исходного геомножества для поиска." },
+      { name: "longitude", description: "Долгота центра поиска." },
+      { name: "latitude", description: "Широта центра поиска." },
+      { name: "member", description: "Участник src как центр поиска." },
+      { name: "radius", description: "Радиус кругового поиска." },
+      { name: "unit", description: "Единица для radius: 'm', 'km', 'mi', 'ft'." },
+      { name: "store_dist", description: "Если True — score в dest = расстояние, иначе geohash." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.geoadd("all_shops", [
+        37.618, 55.756, "CenterMall",
+        37.700, 55.800, "FarShop",
+        37.625, 55.762, "NearStore",
+    ])
+
+    # Сохранить ближайшие 2 магазина в радиусе 2 км
+    count = await client.geosearchstore(
+        "nearby_shops", "all_shops",
+        longitude=37.618, latitude=55.756,
+        radius=2, unit="km",
+        sort="ASC", count=2, store_dist=True
+    )
+    print(f"Сохранено: {count}")  # 2
+
+    # Score = расстояние в метрах
+    results = await client.zrange("nearby_shops", 0, -1, withscores=True)
+    for name, dist in results:
+        print(f"{name.decode()}: {dist:.1f} м")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.get(name)",
+    description:
+      "Возвращает значение строкового ключа. Если ключ не существует — возвращает None. Если значение не является строкой — возвращает ошибку. Самая часто используемая команда Redis.",
+    syntax: "await client.get(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, значение которого нужно получить.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("greeting", "Hello, Redis!")
+
+    value = await client.get("greeting")
+    print(value.decode())  # Hello, Redis!
+
+    # Несуществующий ключ
+    missing = await client.get("ghost")
+    print(missing)  # None
+
+    # decode_responses=True — получаем строку сразу
+    r = redis.StrictRedis(decode_responses=True)
+    print(await r.get("greeting"))  # Hello, Redis!
+
+    await client.aclose()
+    await r.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.getbit(name, offset)",
+    description:
+      "Возвращает значение бита (0 или 1) по заданному смещению в строковом значении ключа. Если смещение выходит за пределы строки — возвращает 0. Биты нумеруются от 0, начиная со старшего бита первого байта.",
+    syntax: "await client.getbit(name, offset)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, в строковом значении которого читается бит.",
+      },
+      {
+        name: "offset",
+        description: "Позиция бита (0-based). Бит 0 — старший бит первого байта.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # 'A' = 0x41 = 01000001
+    await client.set("letter", "A")
+
+    print(await client.getbit("letter", 0))  # 0
+    print(await client.getbit("letter", 1))  # 1
+    print(await client.getbit("letter", 7))  # 1
+
+    # За пределами строки — 0
+    print(await client.getbit("letter", 100))  # 0
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.getdel(name)",
+    description:
+      "Атомарно возвращает значение ключа и удаляет его. Если ключ не существует — возвращает None. Эквивалент последовательности GET + DEL, но выполняется атомарно. Доступно с Redis 6.2.",
+    syntax: "await client.getdel(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ, значение которого нужно получить и удалить.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("one_time_token", "abc-123-xyz")
+
+    # Получаем и сразу удаляем (одноразовый токен)
+    token = await client.getdel("one_time_token")
+    print(token.decode())  # abc-123-xyz
+
+    # Повторное обращение — ключ уже удалён
+    result = await client.getdel("one_time_token")
+    print(result)  # None
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.getex(name, ex=None, px=None, exat=None, pxat=None, persist=False)",
+    description:
+      "Возвращает значение ключа и одновременно изменяет его TTL. Позволяет получить значение и продлить, сократить или снять срок жизни за одну атомарную операцию. Если ключ не существует — возвращает None. Доступно с Redis 6.2.",
+    syntax:
+      "await client.getex(name, ex=None, px=None, exat=None, pxat=None, persist=False)",
+    arguments: [
+      { name: "name", description: "Ключ, значение которого нужно получить." },
+      { name: "ex", description: "Новый TTL в секундах." },
+      { name: "px", description: "Новый TTL в миллисекундах." },
+      { name: "exat", description: "Абсолютная Unix-метка истечения в секундах." },
+      { name: "pxat", description: "Абсолютная Unix-метка истечения в миллисекундах." },
+      { name: "persist", description: "Если True — снимает TTL, делая ключ постоянным." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("session", "user42", ex=60)
+
+    # Получить и продлить TTL до 300 секунд
+    value = await client.getex("session", ex=300)
+    print(value.decode())  # user42
+    print(await client.ttl("session"))  # ≈ 300
+
+    # Получить и сделать ключ постоянным
+    value = await client.getex("session", persist=True)
+    print(await client.ttl("session"))  # -1 (без TTL)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.getrange(key, start, end)",
+    description:
+      "Возвращает подстроку строкового значения ключа в диапазоне байт от start до end включительно. Отрицательные значения отсчитываются от конца строки (-1 — последний байт). Не изменяет значение ключа.",
+    syntax: "await client.getrange(key, start, end)",
+    arguments: [
+      { name: "key", description: "Ключ, фрагмент значения которого нужно получить." },
+      { name: "start", description: "Начальный индекс байта (включительно). Отрицательные значения — с конца." },
+      { name: "end", description: "Конечный индекс байта (включительно). Отрицательные значения — с конца." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("message", "Hello, Redis!")
+
+    # Первые 5 байт
+    part = await client.getrange("message", 0, 4)
+    print(part.decode())  # Hello
+
+    # Последние 6 байт
+    part = await client.getrange("message", -6, -1)
+    print(part.decode())  # Redis!
+
+    # Вся строка
+    part = await client.getrange("message", 0, -1)
+    print(part.decode())  # Hello, Redis!
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.getset(name, value)",
+    description:
+      "Устаревший метод (deprecated с Redis 6.2). Атомарно устанавливает новое значение ключа и возвращает старое. Если ключ не существовал — возвращает None. Рекомендуется использовать set(name, value, get=True) вместо этого метода.",
+    syntax: "await client.getset(name, value)",
+    arguments: [
+      { name: "name", description: "Ключ, значение которого нужно заменить." },
+      { name: "value", description: "Новое значение ключа." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("status", "idle")
+
+    # Устанавливаем новое значение, получаем старое
+    old = await client.getset("status", "busy")
+    print(old.decode())  # idle
+
+    print(await client.get("status"))  # b'busy'
+
+    # Современная альтернатива (Redis 6.2+)
+    old = await client.set("status", "idle", get=True)
+    print(old.decode())  # busy
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hdel(name, *keys)",
+    description:
+      "Удаляет одно или несколько полей из хэша. Возвращает количество фактически удалённых полей (несуществующие поля не учитываются). Если все поля хэша удалены — хэш автоматически удаляется.",
+    syntax: "await client.hdel(name, *keys)",
+    arguments: [
+      { name: "name", description: "Ключ хэша, из которого удаляются поля." },
+      { name: "*keys", description: "Одно или несколько имён полей для удаления." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("user:1", mapping={
+        "name": "Alice",
+        "email": "alice@example.com",
+        "age": "30",
+        "temp": "delete_me"
+    })
+
+    # Удаляем одно поле
+    deleted = await client.hdel("user:1", "temp")
+    print(deleted)  # 1
+
+    # Удаляем несколько полей
+    deleted = await client.hdel("user:1", "age", "nonexistent")
+    print(deleted)  # 1 (nonexistent не существовало)
+
+    print(await client.hgetall("user:1"))
+    # {b'name': b'Alice', b'email': b'alice@example.com'}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hexists(name, key)",
+    description:
+      "Проверяет, существует ли указанное поле в хэше. Возвращает True, если поле есть, и False, если поле или хэш не существует.",
+    syntax: "await client.hexists(name, key)",
+    arguments: [
+      { name: "name", description: "Ключ хэша." },
+      { name: "key", description: "Имя поля для проверки существования." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("product:1", mapping={"title": "Widget", "price": "9.99"})
+
+    print(await client.hexists("product:1", "title"))   # True
+    print(await client.hexists("product:1", "stock"))   # False
+    print(await client.hexists("missing_hash", "any"))  # False
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hget(name, key)",
+    description:
+      "Возвращает значение указанного поля из хэша. Если поле или хэш не существует — возвращает None.",
+    syntax: "await client.hget(name, key)",
+    arguments: [
+      { name: "name", description: "Ключ хэша." },
+      { name: "key", description: "Имя поля, значение которого нужно получить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("user:42", mapping={"name": "Bob", "role": "admin"})
+
+    name = await client.hget("user:42", "name")
+    print(name.decode())  # Bob
+
+    role = await client.hget("user:42", "role")
+    print(role.decode())  # admin
+
+    # Несуществующее поле
+    phone = await client.hget("user:42", "phone")
+    print(phone)  # None
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hgetall(name)",
+    description:
+      "Возвращает все поля и значения хэша в виде словаря. Если хэш не существует — возвращает пустой словарь. При большом количестве полей используйте hscan для постепенного обхода без блокировки сервера.",
+    syntax: "await client.hgetall(name)",
+    arguments: [
+      {
+        name: "name",
+        description: "Ключ хэша, все поля которого нужно получить.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("config", mapping={
+        "host": "localhost",
+        "port": "5432",
+        "db": "myapp",
+        "pool_size": "10"
+    })
+
+    config = await client.hgetall("config")
+    for field, value in config.items():
+        print(f"{field.decode()}: {value.decode()}")
+    # host: localhost
+    # port: 5432
+    # ...
+
+    # Несуществующий хэш
+    print(await client.hgetall("ghost"))  # {}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hincrby(name, key, amount=1)",
+    description:
+      "Увеличивает целочисленное значение поля хэша на заданную величину. Если поле не существует — создаётся со значением 0 перед операцией. Если хэш не существует — создаётся автоматически. Операция атомарна.",
+    syntax: "await client.hincrby(name, key, amount=1)",
+    arguments: [
+      { name: "name", description: "Ключ хэша." },
+      { name: "key", description: "Имя поля, значение которого нужно увеличить." },
+      { name: "amount", description: "Целое число на которое увеличивается значение. Может быть отрицательным." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("stats:page", mapping={"views": "100", "likes": "42"})
+
+    # Увеличиваем счётчик просмотров
+    new_views = await client.hincrby("stats:page", "views", 1)
+    print(new_views)  # 101
+
+    # Отнимаем (отрицательный amount)
+    new_likes = await client.hincrby("stats:page", "likes", -5)
+    print(new_likes)  # 37
+
+    # Несуществующее поле создаётся с нуля
+    comments = await client.hincrby("stats:page", "comments", 3)
+    print(comments)  # 3
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hincrbyfloat(name, key, amount=1.0)",
+    description:
+      "Увеличивает значение поля хэша на вещественное число. Если поле не существует — создаётся со значением 0.0 перед операцией. Поддерживает научную нотацию. Результат хранится как строка с достаточной точностью.",
+    syntax: "await client.hincrbyfloat(name, key, amount=1.0)",
+    arguments: [
+      { name: "name", description: "Ключ хэша." },
+      { name: "key", description: "Имя поля, значение которого нужно изменить." },
+      { name: "amount", description: "Вещественное число (положительное или отрицательное) для прибавления." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("product:1", "price", "9.99")
+
+    # Увеличиваем цену
+    new_price = await client.hincrbyfloat("product:1", "price", 0.50)
+    print(new_price)  # 10.49
+
+    # Уменьшаем (скидка)
+    new_price = await client.hincrbyfloat("product:1", "price", -1.0)
+    print(new_price)  # 9.49
+
+    # Накапливаем рейтинг
+    rating = await client.hincrbyfloat("product:1", "rating", 4.7)
+    print(rating)  # 4.7
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hkeys(name)",
+    description:
+      "Возвращает список всех имён полей хэша. Если хэш не существует — возвращает пустой список. При большом количестве полей используйте hscan для итерации без блокировки сервера.",
+    syntax: "await client.hkeys(name)",
+    arguments: [
+      { name: "name", description: "Ключ хэша, имена полей которого нужно получить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("user:1", mapping={"name": "Alice", "age": "30", "city": "Moscow"})
+
+    fields = await client.hkeys("user:1")
+    print([f.decode() for f in fields])
+    # ['name', 'age', 'city']
+
+    # Несуществующий хэш
+    print(await client.hkeys("ghost"))  # []
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hlen(name)",
+    description:
+      "Возвращает количество полей в хэше. Если хэш не существует — возвращает 0. Выполняется за O(1).",
+    syntax: "await client.hlen(name)",
+    arguments: [
+      { name: "name", description: "Ключ хэша, количество полей которого нужно получить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("profile", mapping={
+        "name": "Bob",
+        "email": "bob@example.com",
+        "age": "25",
+        "city": "Paris"
+    })
+
+    count = await client.hlen("profile")
+    print(count)  # 4
+
+    print(await client.hlen("missing"))  # 0
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hmget(name, keys, *args)",
+    description:
+      "Возвращает значения нескольких полей хэша одним запросом. Для полей, которых не существует, возвращает None. Порядок значений в ответе совпадает с порядком запрошенных полей.",
+    syntax: "await client.hmget(name, keys, *args)",
+    arguments: [
+      { name: "name", description: "Ключ хэша." },
+      { name: "keys", description: "Список имён полей или несколько имён через запятую." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("user:5", mapping={"name": "Eve", "role": "editor", "plan": "pro"})
+
+    # Получить несколько полей за один запрос
+    values = await client.hmget("user:5", ["name", "plan", "missing_field"])
+    print([v.decode() if v else None for v in values])
+    # ['Eve', 'pro', None]
+
+    # Альтернативный синтаксис
+    values = await client.hmget("user:5", "name", "role")
+    print([v.decode() for v in values])  # ['Eve', 'editor']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hmset(name, mapping)",
+    description:
+      "Устаревший метод (deprecated с Redis 4.0). Устанавливает значения нескольких полей хэша одним запросом. Рекомендуется использовать hset(name, mapping=...) вместо этого метода.",
+    syntax: "await client.hmset(name, mapping)",
+    arguments: [
+      { name: "name", description: "Ключ хэша." },
+      { name: "mapping", description: "Словарь {поле: значение} для записи в хэш." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Устаревший способ
+    await client.hmset("config", {
+        "host": "localhost",
+        "port": "6379",
+        "timeout": "30"
+    })
+
+    # Современная альтернатива (рекомендуется)
+    await client.hset("config", mapping={
+        "host": "localhost",
+        "port": "6379",
+        "timeout": "30"
+    })
+
+    print(await client.hget("config", "host"))  # b'localhost'
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hrandfield(key, count=None, withvalues=False)",
+    description:
+      "Возвращает одно или несколько случайных полей хэша. Без аргументов возвращает одно случайное поле. При положительном count — до count уникальных полей. При отрицательном count — count полей, возможно с повторениями. При withvalues=True включает значения в ответ. Доступно с Redis 6.2.",
+    syntax: "await client.hrandfield(key, count=None, withvalues=False)",
+    arguments: [
+      { name: "key", description: "Ключ хэша." },
+      { name: "count", description: "Количество полей. Положительное — уникальные, отрицательное — с повторениями." },
+      { name: "withvalues", description: "Если True — возвращает пары (поле, значение)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("colors", mapping={"red": "#FF0000", "green": "#00FF00", "blue": "#0000FF"})
+
+    # Одно случайное поле
+    field = await client.hrandfield("colors")
+    print(field.decode())  # например: 'green'
+
+    # Два уникальных случайных поля с значениями
+    result = await client.hrandfield("colors", count=2, withvalues=True)
+    print(result)  # [b'red', b'#FF0000', b'blue', b'#0000FF']
+
+    # Отрицательный count — возможны повторения
+    fields = await client.hrandfield("colors", count=-5)
+    print(len(fields))  # 5
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hscan(name, cursor=0, match=None, count=None)",
+    description:
+      "Инкрементально итерирует поля хэша, не блокируя сервер. Возвращает кортеж (новый_cursor, {поле: значение}). Когда cursor возвращается как 0 — итерация завершена. Используйте hscan_iter для удобного обхода в цикле.",
+    syntax: "await client.hscan(name, cursor=0, match=None, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ хэша для итерации." },
+      { name: "cursor", description: "Курсор итерации. Начинается с 0, продолжается до возврата 0." },
+      { name: "match", description: "Glob-шаблон для фильтрации полей по имени, например 'user_*'." },
+      { name: "count", description: "Приблизительное количество элементов на итерацию (подсказка серверу)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Заполняем хэш
+    await client.hset("big_hash", mapping={f"field_{i}": f"val_{i}" for i in range(100)})
+
+    cursor = 0
+    all_fields = {}
+    while True:
+        cursor, data = await client.hscan("big_hash", cursor=cursor, count=10)
+        all_fields.update(data)
+        if cursor == 0:
+            break
+
+    print(f"Итого полей: {len(all_fields)}")  # 100
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hscan_iter(name, match=None, count=None)",
+    description:
+      "Асинхронный генератор для итерации по всем полям хэша. Автоматически управляет курсором hscan, позволяя обходить хэш в цикле async for без ручной работы с курсором. Безопасен для больших хэшей — не загружает все данные в память сразу.",
+    syntax: "async for field, value in client.hscan_iter(name, match=None, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ хэша для итерации." },
+      { name: "match", description: "Glob-шаблон для фильтрации полей по имени." },
+      { name: "count", description: "Приблизительное количество элементов на один внутренний вызов hscan." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("inventory", mapping={
+        "item_sword": "5",
+        "item_shield": "3",
+        "item_potion": "10",
+        "gold": "1500",
+    })
+
+    # Перебираем только поля с prefix 'item_'
+    async for field, value in client.hscan_iter("inventory", match="item_*"):
+        print(f"{field.decode()}: {value.decode()}")
+    # item_sword: 5
+    # item_shield: 3
+    # item_potion: 10
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hset(name, key=None, value=None, mapping=None)",
+    description:
+      "Устанавливает одно или несколько полей хэша. Является заменой устаревших hmset и hsetnx при передаче mapping. Если хэш не существует — создаётся автоматически. Возвращает количество новых полей (не считая обновлённых).",
+    syntax: "await client.hset(name, key=None, value=None, mapping=None)",
+    arguments: [
+      { name: "name", description: "Ключ хэша." },
+      { name: "key", description: "Имя поля (при записи одного поля)." },
+      { name: "value", description: "Значение поля (при записи одного поля)." },
+      { name: "mapping", description: "Словарь {поле: значение} для записи нескольких полей за раз." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Одно поле
+    await client.hset("session:abc", "user_id", "42")
+
+    # Несколько полей через mapping
+    added = await client.hset("user:42", mapping={
+        "name": "Alice",
+        "email": "alice@example.com",
+        "role": "admin",
+    })
+    print(added)  # 3 (три новых поля)
+
+    # Обновление существующего поля
+    updated = await client.hset("user:42", "role", "moderator")
+    print(updated)  # 0 (поле уже существовало)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hsetnx(name, key, value)",
+    description:
+      "Устанавливает значение поля хэша только если поле ещё не существует. Если поле уже есть — операция игнорируется. Возвращает True при успешной записи и False, если поле уже существовало. Операция атомарна.",
+    syntax: "await client.hsetnx(name, key, value)",
+    arguments: [
+      { name: "name", description: "Ключ хэша." },
+      { name: "key", description: "Имя поля, которое нужно установить." },
+      { name: "value", description: "Значение поля." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Поля ещё нет — успешно записывается
+    result = await client.hsetnx("user:1", "email", "alice@example.com")
+    print(result)  # True
+
+    # Поле уже есть — запись игнорируется
+    result = await client.hsetnx("user:1", "email", "other@example.com")
+    print(result)  # False
+
+    # Email остался прежним
+    print(await client.hget("user:1", "email"))  # b'alice@example.com'
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.hvals(name)",
+    description:
+      "Возвращает список всех значений хэша без имён полей. Порядок значений соответствует внутреннему порядку хранения. Если хэш не существует — возвращает пустой список.",
+    syntax: "await client.hvals(name)",
+    arguments: [
+      { name: "name", description: "Ключ хэша, значения полей которого нужно получить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.hset("scores", mapping={"alice": "95", "bob": "87", "carol": "91"})
+
+    values = await client.hvals("scores")
+    print([v.decode() for v in values])
+    # ['95', '87', '91']
+
+    # Сумма всех очков
+    total = sum(int(v) for v in values)
+    print(f"Сумма: {total}")  # 273
+
+    print(await client.hvals("ghost"))  # []
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.incr(name, amount=1)",
+    description:
+      "Увеличивает целочисленное значение ключа на 1 (или на amount). Если ключ не существует — создаётся со значением 0, затем выполняется инкремент. Операция атомарна и безопасна при конкурентном доступе.",
+    syntax: "await client.incr(name, amount=1)",
+    arguments: [
+      { name: "name", description: "Ключ, значение которого нужно увеличить." },
+      { name: "amount", description: "Величина прибавки. По умолчанию 1." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Счётчик посещений страницы
+    await client.set("page:home:views", 0)
+
+    views = await client.incr("page:home:views")
+    print(views)  # 1
+
+    # Атомарное увеличение на 5
+    views = await client.incr("page:home:views", amount=5)
+    print(views)  # 6
+
+    # Несуществующий ключ начинается с 0
+    count = await client.incr("new_counter")
+    print(count)  # 1
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.incrby(name, amount=1)",
+    description:
+      "Увеличивает целочисленное значение ключа на заданную величину. Функционально эквивалентен incr(name, amount). Если ключ не существует — создаётся со значением 0. Операция атомарна.",
+    syntax: "await client.incrby(name, amount=1)",
+    arguments: [
+      { name: "name", description: "Ключ, значение которого нужно увеличить." },
+      { name: "amount", description: "Целое число для прибавления (может быть отрицательным)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("credits", 100)
+
+    # Начисляем бонусы
+    new_balance = await client.incrby("credits", 50)
+    print(new_balance)  # 150
+
+    # Списываем (отрицательное значение)
+    new_balance = await client.incrby("credits", -30)
+    print(new_balance)  # 120
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.incrbyfloat(name, amount=1.0)",
+    description:
+      "Увеличивает значение ключа на вещественное число. Если ключ не существует — создаётся со значением 0.0. Поддерживает научную нотацию. Результат сохраняется как строка с достаточной точностью. Операция атомарна.",
+    syntax: "await client.incrbyfloat(name, amount=1.0)",
+    arguments: [
+      { name: "name", description: "Ключ, значение которого нужно изменить." },
+      { name: "amount", description: "Вещественное число для прибавления (может быть отрицательным)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("temperature", "36.5")
+
+    temp = await client.incrbyfloat("temperature", 0.3)
+    print(temp)  # 36.8
+
+    temp = await client.incrbyfloat("temperature", -1.0)
+    print(temp)  # 35.8
+
+    # Накопление суммы платежей
+    await client.incrbyfloat("revenue", 199.99)
+    await client.incrbyfloat("revenue", 49.50)
+    print(await client.get("revenue"))  # b'249.49'
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.info(section=None)",
+    description:
+      "Возвращает статистическую информацию о сервере Redis в виде словаря. Без аргументов возвращает все секции. Можно запросить конкретную секцию: 'server', 'clients', 'memory', 'persistence', 'stats', 'replication', 'cpu', 'keyspace' и другие.",
+    syntax: "await client.info(section=None)",
+    arguments: [
+      {
+        name: "section",
+        description:
+          "Необязательно. Название секции: 'server', 'clients', 'memory', 'persistence', 'stats', 'replication', 'cpu', 'keyspace', 'all', 'everything'.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Информация о памяти
+    mem = await client.info("memory")
+    print(f"Используется памяти: {mem['used_memory_human']}")
+    print(f"Пик памяти: {mem['used_memory_peak_human']}")
+
+    # Информация о репликации
+    repl = await client.info("replication")
+    print(f"Роль: {repl['role']}")           # master / slave
+    print(f"Реплик: {repl['connected_slaves']}")
+
+    # Версия сервера
+    server = await client.info("server")
+    print(f"Redis {server['redis_version']}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.keys(pattern='*')",
+    description:
+      "Возвращает все ключи базы данных, совпадающие с glob-шаблоном. По умолчанию возвращает все ключи. Блокирует сервер на время выполнения — не используйте на больших базах в продакшне. Для безопасного перебора применяйте scan_iter.",
+    syntax: "await client.keys(pattern='*')",
+    arguments: [
+      {
+        name: "pattern",
+        description:
+          "Glob-шаблон: '*' — все ключи, 'user:*' — с префиксом, 'h?llo' — один любой символ, 'h[ae]llo' — символ из набора.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.mset({"user:1": "Alice", "user:2": "Bob", "session:abc": "xyz"})
+
+    # Все ключи
+    all_keys = await client.keys("*")
+    print([k.decode() for k in all_keys])
+
+    # Ключи пользователей
+    user_keys = await client.keys("user:*")
+    print([k.decode() for k in user_keys])  # ['user:1', 'user:2']
+
+    # В продакшне лучше использовать:
+    async for key in client.scan_iter("user:*"):
+        print(key.decode())
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.lastsave()",
+    description:
+      "Возвращает время последнего успешного сохранения данных на диск (RDB-снимка) в виде объекта datetime. Используется для мониторинга актуальности резервных копий.",
+    syntax: "await client.lastsave()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+from datetime import datetime, timezone
+
+async def main():
+    client = redis.StrictRedis()
+
+    last = await client.lastsave()
+    print(f"Последнее сохранение: {last}")
+    # Последнее сохранение: 2026-06-23 10:15:42
+
+    # Проверяем, давно ли было сохранение
+    now = datetime.now(timezone.utc)
+    delta = now - last.replace(tzinfo=timezone.utc)
+    if delta.total_seconds() > 3600:
+        print("Внимание: последнее сохранение более часа назад!")
+        await client.bgsave()
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.latency_doctor()",
+    description:
+      "Возвращает отчёт диагностики задержек Redis в виде текста с рекомендациями. Анализирует историю задержек и предлагает конкретные действия для устранения проблем с производительностью. Требует включённого latency-мониторинга в конфигурации.",
+    syntax: "await client.latency_doctor()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Убедитесь, что включён мониторинг задержек:
+    await client.config_set("latency-monitor-threshold", "100")
+
+    report = await client.latency_doctor()
+    print(report)
+    # I have no delay problems to report. Everything looks fine.
+    # — или подробные рекомендации при наличии проблем
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.latency_graph(event)",
+    description:
+      "Возвращает ASCII-график истории задержек для указанного события. Позволяет визуально оценить динамику задержек во времени прямо из кода без внешних инструментов. Требует включённого latency-мониторинга.",
+    syntax: "await client.latency_graph(event)",
+    arguments: [
+      {
+        name: "event",
+        description: "Имя события задержки, например 'command', 'fast-command', 'aof-stat'.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.config_set("latency-monitor-threshold", "1")
+
+    try:
+        graph = await client.latency_graph("command")
+        print(graph)
+        # ASCII-представление графика задержек
+    except Exception as e:
+        print(f"Нет данных о задержках: {e}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.latency_history(event)",
+    description:
+      "Возвращает историю измерений задержки для указанного события в виде списка пар (timestamp, latency_ms). Позволяет программно анализировать пики задержек. Требует включённого latency-мониторинга.",
+    syntax: "await client.latency_history(event)",
+    arguments: [
+      {
+        name: "event",
+        description: "Имя события задержки, например 'command', 'aof-stat', 'rdb-unlink-temp-file'.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+from datetime import datetime
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.config_set("latency-monitor-threshold", "1")
+
+    history = await client.latency_history("command")
+    for timestamp, latency in history:
+        dt = datetime.fromtimestamp(timestamp)
+        print(f"{dt}: {latency} мс")
+
+    if history:
+        max_latency = max(lat for _, lat in history)
+        print(f"Максимальная задержка: {max_latency} мс")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.latency_latest()",
+    description:
+      "Возвращает последние зафиксированные значения задержки для всех отслеживаемых событий: имя события, временную метку, задержку и максимальную задержку за всё время. Удобно для быстрого мониторинга текущего состояния.",
+    syntax: "await client.latency_latest()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.config_set("latency-monitor-threshold", "1")
+
+    events = await client.latency_latest()
+    for event in events:
+        name, ts, latency, max_latency = event
+        print(f"Событие: {name.decode()}")
+        print(f"  Последняя задержка: {latency} мс")
+        print(f"  Максимальная:       {max_latency} мс")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.latency_reset(*events)",
+    description:
+      "Сбрасывает историю задержек для указанных событий или для всех событий, если аргументы не переданы. Возвращает количество сброшенных событий. Используется для очистки данных после устранения проблем с производительностью.",
+    syntax: "await client.latency_reset(*events)",
+    arguments: [
+      {
+        name: "*events",
+        description:
+          "Необязательно. Имена событий для сброса. Если не указаны — сбрасывается история всех событий.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Сбросить историю конкретного события
+    count = await client.latency_reset("command")
+    print(f"Сброшено событий: {count}")  # 1
+
+    # Сбросить все события
+    count = await client.latency_reset()
+    print(f"Сброшено всего событий: {count}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.lindex(name, index)",
+    description:
+      "Возвращает элемент списка по индексу. Индексация начинается с 0. Отрицательные индексы отсчитываются с конца: -1 — последний элемент, -2 — предпоследний. Если индекс вне диапазона — возвращает None.",
+    syntax: "await client.lindex(name, index)",
+    arguments: [
+      { name: "name", description: "Ключ списка." },
+      { name: "index", description: "Индекс элемента. Отрицательные значения отсчитываются с конца." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("queue", "first", "second", "third")
+
+    print(await client.lindex("queue", 0))   # b'first'
+    print(await client.lindex("queue", 1))   # b'second'
+    print(await client.lindex("queue", -1))  # b'third'
+
+    # Вне диапазона
+    print(await client.lindex("queue", 99))  # None
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.linsert(name, where, refvalue, value)",
+    description:
+      "Вставляет значение в список до или после указанного опорного элемента. Если опорный элемент не найден — возвращает -1. Если список не существует — возвращает 0. Возвращает новую длину списка.",
+    syntax: "await client.linsert(name, where, refvalue, value)",
+    arguments: [
+      { name: "name", description: "Ключ списка." },
+      { name: "where", description: "'BEFORE' — вставить перед refvalue, 'AFTER' — вставить после." },
+      { name: "refvalue", description: "Опорный элемент, относительно которого выполняется вставка." },
+      { name: "value", description: "Значение для вставки." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("steps", "start", "end")
+
+    # Вставить 'middle' перед 'end'
+    length = await client.linsert("steps", "BEFORE", "end", "middle")
+    print(length)  # 3
+
+    items = await client.lrange("steps", 0, -1)
+    print([i.decode() for i in items])  # ['start', 'middle', 'end']
+
+    # После конкретного элемента
+    await client.linsert("steps", "AFTER", "middle", "almost-end")
+    items = await client.lrange("steps", 0, -1)
+    print([i.decode() for i in items])
+    # ['start', 'middle', 'almost-end', 'end']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.llen(name)",
+    description:
+      "Возвращает количество элементов в списке. Если ключ не существует — возвращает 0. Выполняется за O(1).",
+    syntax: "await client.llen(name)",
+    arguments: [
+      { name: "name", description: "Ключ списка, длину которого нужно получить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("tasks", "task1", "task2", "task3")
+
+    print(await client.llen("tasks"))    # 3
+    print(await client.llen("missing"))  # 0
+
+    await client.lpop("tasks")
+    print(await client.llen("tasks"))    # 2
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.lmove(src, dst, srcout='RIGHT', dstin='LEFT')",
+    description:
+      "Атомарно перемещает элемент из одного списка в другой. Забирает элемент со стороны srcout исходного списка и помещает его на сторону dstin целевого. Возвращает перемещённый элемент. Доступно с Redis 6.2.",
+    syntax: "await client.lmove(src, dst, srcout='RIGHT', dstin='LEFT')",
+    arguments: [
+      { name: "src", description: "Ключ исходного списка." },
+      { name: "dst", description: "Ключ целевого списка." },
+      { name: "srcout", description: "Сторона изъятия из src: 'LEFT' или 'RIGHT' (по умолчанию)." },
+      { name: "dstin", description: "Сторона вставки в dst: 'LEFT' (по умолчанию) или 'RIGHT'." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("inbox", "msg1", "msg2", "msg3")
+
+    # Перемещаем с правого конца inbox в левый конец processing
+    item = await client.lmove("inbox", "processing", srcout="LEFT", dstin="RIGHT")
+    print(item.decode())  # msg1
+
+    print([x.decode() for x in await client.lrange("inbox", 0, -1)])
+    # ['msg2', 'msg3']
+    print([x.decode() for x in await client.lrange("processing", 0, -1)])
+    # ['msg1']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.lpop(name, count=None)",
+    description:
+      "Удаляет и возвращает один или несколько элементов с левого конца списка. Без аргумента count возвращает один элемент (или None, если список пуст). При count возвращает список элементов (или None, если список пуст).",
+    syntax: "await client.lpop(name, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ списка." },
+      { name: "count", description: "Необязательно. Количество элементов для извлечения с левого конца." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("queue", "a", "b", "c", "d", "e")
+
+    # Один элемент
+    item = await client.lpop("queue")
+    print(item.decode())  # a
+
+    # Несколько элементов
+    items = await client.lpop("queue", count=2)
+    print([i.decode() for i in items])  # ['b', 'c']
+
+    # Пустой список
+    print(await client.lpop("empty_list"))  # None
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.lpos(name, value, rank=None, count=None, maxlen=None)",
+    description:
+      "Возвращает индекс (или список индексов) первого вхождения значения в списке. При count=0 возвращает все вхождения. rank позволяет пропустить первые N совпадений. maxlen ограничивает глубину поиска. Доступно с Redis 6.0.6.",
+    syntax: "await client.lpos(name, value, rank=None, count=None, maxlen=None)",
+    arguments: [
+      { name: "name", description: "Ключ списка." },
+      { name: "value", description: "Искомое значение." },
+      { name: "rank", description: "Порядковый номер совпадения (1 — первое, 2 — второе, -1 — с конца)." },
+      { name: "count", description: "Количество позиций для возврата. 0 — все вхождения." },
+      { name: "maxlen", description: "Максимальное количество элементов для просмотра (0 — весь список)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("letters", "a", "b", "c", "b", "d", "b")
+
+    # Первое вхождение 'b'
+    print(await client.lpos("letters", "b"))        # 1
+
+    # Второе вхождение 'b'
+    print(await client.lpos("letters", "b", rank=2))  # 3
+
+    # Все вхождения 'b'
+    print(await client.lpos("letters", "b", count=0))  # [1, 3, 5]
+
+    # Поиск только в первых 4 элементах
+    print(await client.lpos("letters", "b", count=0, maxlen=4))  # [1, 3]
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.lpush(name, *values)",
+    description:
+      "Добавляет одно или несколько значений в начало (левый конец) списка. Если список не существует — создаётся. Возвращает новую длину списка. При передаче нескольких значений они вставляются слева одно за другим, поэтому в итоге оказываются в обратном порядке.",
+    syntax: "await client.lpush(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ списка." },
+      { name: "*values", description: "Одно или несколько значений для добавления в начало списка." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Добавляем по одному
+    await client.lpush("stack", "first")
+    await client.lpush("stack", "second")
+    await client.lpush("stack", "third")
+
+    items = await client.lrange("stack", 0, -1)
+    print([i.decode() for i in items])  # ['third', 'second', 'first']
+
+    # Добавляем сразу несколько
+    length = await client.lpush("log", "c", "b", "a")
+    print(length)  # 3
+    print([i.decode() for i in await client.lrange("log", 0, -1)])
+    # ['a', 'b', 'c']  — обратный порядок
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.lpushx(name, *values)",
+    description:
+      "Добавляет значения в начало списка только если список уже существует. Если ключа нет — операция игнорируется и возвращает 0. Используется когда нужно гарантировать, что список был явно создан заранее.",
+    syntax: "await client.lpushx(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ существующего списка." },
+      { name: "*values", description: "Значения для добавления в начало списка." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Список не существует — операция игнорируется
+    result = await client.lpushx("nonexistent", "value")
+    print(result)  # 0
+
+    # Создаём список
+    await client.rpush("mylist", "existing")
+
+    # Теперь lpushx работает
+    length = await client.lpushx("mylist", "new")
+    print(length)  # 2
+
+    items = await client.lrange("mylist", 0, -1)
+    print([i.decode() for i in items])  # ['new', 'existing']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.lrange(name, start, end)",
+    description:
+      "Возвращает подсписок элементов от индекса start до end включительно. Отрицательные индексы поддерживаются: -1 — последний элемент. Для получения всего списка используйте lrange(name, 0, -1). Не изменяет список.",
+    syntax: "await client.lrange(name, start, end)",
+    arguments: [
+      { name: "name", description: "Ключ списка." },
+      { name: "start", description: "Начальный индекс (включительно). Отрицательные — с конца." },
+      { name: "end", description: "Конечный индекс (включительно). -1 — до последнего элемента." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("nums", "0", "1", "2", "3", "4", "5")
+
+    # Весь список
+    print([x.decode() for x in await client.lrange("nums", 0, -1)])
+    # ['0', '1', '2', '3', '4', '5']
+
+    # Первые три элемента
+    print([x.decode() for x in await client.lrange("nums", 0, 2)])
+    # ['0', '1', '2']
+
+    # Последние два элемента
+    print([x.decode() for x in await client.lrange("nums", -2, -1)])
+    # ['4', '5']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.lrem(name, count, value)",
+    description:
+      "Удаляет из списка элементы, равные value. Параметр count определяет поведение: >0 — удалить count совпадений с начала, <0 — удалить |count| совпадений с конца, 0 — удалить все совпадения. Возвращает количество удалённых элементов.",
+    syntax: "await client.lrem(name, count, value)",
+    arguments: [
+      { name: "name", description: "Ключ списка." },
+      { name: "count", description: "Количество удалений: >0 — с начала, <0 — с конца, 0 — все." },
+      { name: "value", description: "Значение для удаления." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("items", "a", "b", "a", "c", "a", "b")
+
+    # Удалить первые 2 вхождения 'a'
+    removed = await client.lrem("items", 2, "a")
+    print(removed)  # 2
+    print([x.decode() for x in await client.lrange("items", 0, -1)])
+    # ['b', 'c', 'a', 'b']
+
+    # Удалить все 'b'
+    await client.lrem("items", 0, "b")
+    print([x.decode() for x in await client.lrange("items", 0, -1)])
+    # ['c', 'a']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.lset(name, index, value)",
+    description:
+      "Устанавливает значение элемента списка по индексу. Индексация начинается с 0; отрицательные индексы отсчитываются с конца. Если индекс вне диапазона — возвращает ошибку. Список должен существовать.",
+    syntax: "await client.lset(name, index, value)",
+    arguments: [
+      { name: "name", description: "Ключ списка." },
+      { name: "index", description: "Индекс элемента для замены. Отрицательные значения — с конца." },
+      { name: "value", description: "Новое значение элемента." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("fruits", "apple", "bananaa", "cherry")
+
+    # Исправляем опечатку
+    await client.lset("fruits", 1, "banana")
+
+    items = await client.lrange("fruits", 0, -1)
+    print([x.decode() for x in items])  # ['apple', 'banana', 'cherry']
+
+    # Заменяем последний элемент
+    await client.lset("fruits", -1, "mango")
+    print(await client.lindex("fruits", -1))  # b'mango'
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.ltrim(name, start, end)",
+    description:
+      "Обрезает список, оставляя только элементы в диапазоне от start до end включительно. Элементы за пределами диапазона удаляются. Полезно для ограничения размера списка (например, хранить только последние N записей).",
+    syntax: "await client.ltrim(name, start, end)",
+    arguments: [
+      { name: "name", description: "Ключ списка для обрезки." },
+      { name: "start", description: "Начальный индекс диапазона (включительно)." },
+      { name: "end", description: "Конечный индекс диапазона (включительно). -1 — до последнего элемента." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Лог событий — храним только последние 3
+    for i in range(10):
+        await client.lpush("event_log", f"event_{i}")
+        await client.ltrim("event_log", 0, 2)  # оставляем только 3
+
+    log = await client.lrange("event_log", 0, -1)
+    print([x.decode() for x in log])
+    # ['event_9', 'event_8', 'event_7']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.memory_doctor()",
+    description:
+      "Возвращает текстовый отчёт с диагностикой использования памяти Redis и рекомендациями по её оптимизации. Анализирует фрагментацию, режимы хранения и другие факторы, влияющие на потребление памяти.",
+    syntax: "await client.memory_doctor()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    report = await client.memory_doctor()
+    print(report)
+    # Sam, I detected a few issues with this Redis instance memory implants:
+    # * High total RSS: ...
+    # — или: "I have no memory issues to report."
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.memory_help()",
+    description:
+      "Возвращает список доступных подкоманд MEMORY с краткими описаниями. Полезно для быстрого ознакомления с возможностями диагностики памяти Redis прямо из кода.",
+    syntax: "await client.memory_help()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    help_text = await client.memory_help()
+    for line in help_text:
+        print(line.decode() if isinstance(line, bytes) else line)
+    # MEMORY <subcommand> [<arg> [value] [opt] ...]. subcommands are:
+    # DOCTOR
+    #     Return memory problems report.
+    # MALLOC-STATS
+    #     Return allocator stats.
+    # ...
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.memory_malloc_stats()",
+    description:
+      "Возвращает детальную статистику аллокатора памяти (jemalloc) в текстовом виде. Содержит информацию о выделенных блоках, фрагментации и эффективности распределения памяти. Полезно при глубоком профилировании памяти Redis.",
+    syntax: "await client.memory_malloc_stats()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    stats = await client.memory_malloc_stats()
+    # Вывод — многострочный текст статистики jemalloc
+    print(stats[:500])  # первые 500 символов
+    # ___ Begin jemalloc statistics ___
+    # Version: 5.x.x
+    # ...
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.memory_purge()",
+    description:
+      "Запрашивает аллокатор памяти (jemalloc) освободить кэшированные, но неиспользуемые страницы памяти обратно операционной системе. Помогает снизить RSS процесса Redis после освобождения большого объёма данных.",
+    syntax: "await client.memory_purge()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    mem_before = await client.info("memory")
+    print(f"RSS до: {mem_before['used_memory_rss_human']}")
+
+    # Удаляем много данных
+    await client.flushdb()
+
+    # Возвращаем память ОС
+    await client.memory_purge()
+
+    mem_after = await client.info("memory")
+    print(f"RSS после: {mem_after['used_memory_rss_human']}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.memory_stats()",
+    description:
+      "Возвращает подробную статистику использования памяти Redis в виде словаря. Включает данные о потреблении памяти разными компонентами: пиковые значения, фрагментацию, использование lua-скриптами, репликацией и другими подсистемами.",
+    syntax: "await client.memory_stats()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    stats = await client.memory_stats()
+
+    print(f"Пиковое потребление: {stats['peak.allocated']}")
+    print(f"Фрагментация RSS: {stats['rss-overhead.ratio']:.2f}")
+    print(f"Размер key space: {stats['dataset.bytes']}")
+
+    # Все доступные ключи
+    for key, value in list(stats.items())[:10]:
+        print(f"  {key}: {value}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.memory_usage(key, samples=None)",
+    description:
+      "Возвращает примерный объём памяти в байтах, занимаемый ключом вместе с его значением и служебными структурами данных Redis. Параметр samples задаёт количество выборок для агрегатных типов (списков, хэшей и т.д.).",
+    syntax: "await client.memory_usage(key, samples=None)",
+    arguments: [
+      { name: "key", description: "Ключ, для которого нужно узнать потребление памяти." },
+      {
+        name: "samples",
+        description:
+          "Количество элементов для выборки при оценке агрегатных типов. По умолчанию 5. 0 — анализирует все элементы.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("small_key", "hello")
+    await client.lpush("big_list", *[f"item_{i}" for i in range(1000)])
+    await client.hset("big_hash", mapping={f"f{i}": f"v{i}" for i in range(500)})
+
+    print(await client.memory_usage("small_key"))  # ~56 байт
+
+    # Для списка — с выборкой 10 элементов
+    usage = await client.memory_usage("big_list", samples=10)
+    print(f"Список ~{usage / 1024:.1f} KB")
+
+    # Точный подсчёт (все элементы)
+    usage = await client.memory_usage("big_hash", samples=0)
+    print(f"Хэш точно: {usage} байт")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.mget(keys, *args)",
+    description:
+      "Возвращает значения нескольких ключей одним запросом. Для несуществующих ключей возвращает None на соответствующей позиции. Порядок значений совпадает с порядком переданных ключей.",
+    syntax: "await client.mget(keys, *args)",
+    arguments: [
+      {
+        name: "keys",
+        description: "Список ключей или несколько ключей через запятую.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.mset({"name": "Alice", "city": "Moscow", "age": "30"})
+
+    values = await client.mget(["name", "city", "missing", "age"])
+    print([v.decode() if v else None for v in values])
+    # ['Alice', 'Moscow', None, '30']
+
+    # Альтернативный синтаксис
+    values = await client.mget("name", "age")
+    print([v.decode() for v in values])  # ['Alice', '30']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.migrate(host, port, keys, destination_db, timeout, copy=False, replace=False, auth=None, username=None)",
+    description:
+      "Атомарно переносит один или несколько ключей на другой сервер Redis. По умолчанию ключи удаляются на исходном сервере. При copy=True ключи остаются на источнике. При replace=True перезаписывает конфликтующие ключи на целевом сервере.",
+    syntax:
+      "await client.migrate(host, port, keys, destination_db, timeout, copy=False, replace=False, auth=None, username=None)",
+    arguments: [
+      { name: "host", description: "Хост целевого сервера Redis." },
+      { name: "port", description: "Порт целевого сервера Redis." },
+      { name: "keys", description: "Ключ (строка) или список ключей для переноса." },
+      { name: "destination_db", description: "Номер базы данных на целевом сервере." },
+      { name: "timeout", description: "Таймаут операции в миллисекундах." },
+      { name: "copy", description: "Если True — ключи сохраняются на источнике (копирование)." },
+      { name: "replace", description: "Если True — перезаписывает уже существующие ключи на целевом сервере." },
+      { name: "auth", description: "Пароль для аутентификации на целевом сервере." },
+      { name: "username", description: "Имя пользователя ACL на целевом сервере." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    source = redis.StrictRedis(host="source-host")
+    await source.set("important_key", "some_value")
+
+    # Переносим ключ на другой сервер
+    await source.migrate(
+        host="target-host",
+        port=6379,
+        keys="important_key",
+        destination_db=0,
+        timeout=5000
+    )
+
+    # Копирование без удаления с источника
+    await source.migrate(
+        host="target-host",
+        port=6379,
+        keys=["key1", "key2"],
+        destination_db=0,
+        timeout=5000,
+        copy=True,
+        replace=True
+    )
+
+    await source.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.module_list()",
+    description:
+      "Возвращает список загруженных модулей Redis с их именами и версиями. Модули расширяют функциональность Redis новыми типами данных и командами (например, RedisJSON, RediSearch, RedisTimeSeries).",
+    syntax: "await client.module_list()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    modules = await client.module_list()
+    if not modules:
+        print("Модули не загружены")
+    else:
+        for mod in modules:
+            name = mod.get(b"name", b"").decode()
+            ver  = mod.get(b"ver", 0)
+            print(f"Модуль: {name}, версия: {ver}")
+    # Модуль: ReJSON, версия: 20000
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.module_load(path, *args)",
+    description:
+      "Загружает модуль Redis из указанного пути к динамической библиотеке (.so). Дополнительные аргументы передаются в модуль при инициализации. После загрузки модуль добавляет новые команды и/или типы данных.",
+    syntax: "await client.module_load(path, *args)",
+    arguments: [
+      { name: "path", description: "Полный путь к файлу модуля (.so) на сервере Redis." },
+      { name: "*args", description: "Необязательные аргументы инициализации модуля." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Загружаем RedisJSON
+    await client.module_load("/usr/lib/redis/modules/librejson.so")
+    print("Модуль загружен")
+
+    # С аргументами инициализации
+    await client.module_load("/path/to/module.so", "arg1", "arg2")
+
+    modules = await client.module_list()
+    print([m.get(b"name", b"").decode() for m in modules])
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.module_unload(name)",
+    description:
+      "Выгружает ранее загруженный модуль Redis по имени. После выгрузки все команды и типы данных, добавленные модулем, становятся недоступны. Нельзя выгрузить модуль, если существуют ключи с его типами данных.",
+    syntax: "await client.module_unload(name)",
+    arguments: [
+      { name: "name", description: "Имя модуля для выгрузки (регистрозависимо)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Проверяем загруженные модули
+    modules = await client.module_list()
+    print([m[b"name"].decode() for m in modules])
+
+    # Выгружаем модуль
+    await client.module_unload("ReJSON")
+    print("Модуль выгружен")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.move(name, db)",
+    description:
+      "Перемещает ключ из текущей базы данных в указанную БД того же сервера. Возвращает True при успехе. Если ключ уже существует в целевой БД — операция не выполняется и возвращает False.",
+    syntax: "await client.move(name, db)",
+    arguments: [
+      { name: "name", description: "Ключ для перемещения." },
+      { name: "db", description: "Номер целевой базы данных (0–15)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis(db=0)
+
+    await client.set("temp_data", "value123")
+
+    # Перемещаем ключ в БД 1
+    moved = await client.move("temp_data", 1)
+    print(moved)  # True
+
+    # В БД 0 ключа больше нет
+    print(await client.exists("temp_data"))  # 0
+
+    # Проверяем в БД 1
+    client1 = redis.StrictRedis(db=1)
+    print(await client1.get("temp_data"))  # b'value123'
+
+    await client.aclose()
+    await client1.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.mset(mapping)",
+    description:
+      "Устанавливает значения нескольких ключей за один атомарный запрос. Существующие ключи перезаписываются. Более эффективен, чем несколько отдельных вызовов set.",
+    syntax: "await client.mset(mapping)",
+    arguments: [
+      {
+        name: "mapping",
+        description: "Словарь вида {ключ: значение} для массовой записи.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.mset({
+        "user:1:name": "Alice",
+        "user:1:age":  "30",
+        "user:1:city": "Moscow",
+    })
+
+    values = await client.mget(["user:1:name", "user:1:age", "user:1:city"])
+    print([v.decode() for v in values])
+    # ['Alice', '30', 'Moscow']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.msetnx(mapping)",
+    description:
+      "Устанавливает значения нескольких ключей только если ни один из них не существует. Операция атомарна: либо записываются все ключи, либо ни один. Возвращает True при успехе и False, если хотя бы один ключ уже существует.",
+    syntax: "await client.msetnx(mapping)",
+    arguments: [
+      {
+        name: "mapping",
+        description: "Словарь {ключ: значение}. Все ключи записываются только если все отсутствуют.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Все ключи новые — успешно
+    ok = await client.msetnx({"a": "1", "b": "2", "c": "3"})
+    print(ok)  # True
+
+    # Ключ 'a' уже существует — ни один не записывается
+    ok = await client.msetnx({"a": "10", "d": "4"})
+    print(ok)  # False
+
+    print(await client.get("d"))  # None — 'd' не был записан
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.multi()",
+    description:
+      "Отправляет команду MULTI для начала транзакции Redis вручную. Как правило, не вызывается напрямую: используйте pipeline(transaction=True) в качестве контекстного менеджера — он автоматически управляет MULTI/EXEC. Команда устарела для прямого использования в redis-py.",
+    syntax: "await client.multi()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Рекомендуемый способ — pipeline как контекстный менеджер
+    async with client.pipeline(transaction=True) as pipe:
+        await pipe.set("counter", 0)
+        await pipe.incr("counter")
+        await pipe.incr("counter")
+        results = await pipe.execute()
+    print(results)  # [True, 1, 2]
+
+    # Ручное управление (низкоуровневый способ — не рекомендуется)
+    pipe = client.pipeline()
+    await pipe.multi()
+    pipe.set("x", 1)
+    pipe.incr("x")
+    results = await pipe.execute()
+    print(results)  # [True, 2]
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.object(infotype, key)",
+    description:
+      "Возвращает информацию о внутреннем представлении Redis-объекта. Тип запроса задаётся параметром infotype: 'refcount' — счётчик ссылок, 'encoding' — внутренний формат хранения, 'idletime' — время с последнего доступа (секунды), 'freq' — частота доступа (LFU).",
+    syntax: "await client.object(infotype, key)",
+    arguments: [
+      {
+        name: "infotype",
+        description:
+          "Тип запрашиваемой информации: 'refcount', 'encoding', 'idletime', 'freq', 'help'.",
+      },
+      { name: "key", description: "Ключ, информацию о котором нужно получить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("counter", 12345)
+    await client.lpush("mylist", "a", "b", "c")
+
+    # Внутренний формат хранения
+    print(await client.object("encoding", "counter"))   # b'int'
+    print(await client.object("encoding", "mylist"))    # b'listpack'
+
+    # Время простоя
+    print(await client.object("idletime", "counter"))   # 0
+
+    # Счётчик ссылок
+    print(await client.object("refcount", "counter"))   # 1
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.persist(name)",
+    description:
+      "Снимает TTL с ключа, делая его постоянным (без срока жизни). Возвращает True, если TTL был снят, и False, если ключ не существует или уже не имеет TTL.",
+    syntax: "await client.persist(name)",
+    arguments: [
+      { name: "name", description: "Ключ, с которого нужно снять TTL." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("token", "abc123", ex=60)
+    print(await client.ttl("token"))  # 60
+
+    # Делаем ключ постоянным
+    result = await client.persist("token")
+    print(result)  # True
+
+    print(await client.ttl("token"))  # -1 (без TTL)
+
+    # Уже постоянный — False
+    print(await client.persist("token"))  # False
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.pexpire(name, time, nx=False, xx=False, gt=False, lt=False)",
+    description:
+      "Устанавливает TTL ключа в миллисекундах. Аналог expire, но с более высокой точностью. Поддерживает те же условные флаги nx, xx, gt, lt (Redis 7.0+).",
+    syntax: "await client.pexpire(name, time, nx=False, xx=False, gt=False, lt=False)",
+    arguments: [
+      { name: "name", description: "Ключ, для которого устанавливается TTL." },
+      { name: "time", description: "Время жизни в миллисекундах." },
+      { name: "nx", description: "Установить TTL только если его ещё нет." },
+      { name: "xx", description: "Установить TTL только если он уже задан." },
+      { name: "gt", description: "Установить только если новое значение больше текущего." },
+      { name: "lt", description: "Установить только если новое значение меньше текущего." },
+    ],
+    example: `import redis.asyncio as redis
+import asyncio
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("temp", "value")
+
+    # TTL 500 миллисекунд
+    await client.pexpire("temp", 500)
+
+    print(await client.pttl("temp"))   # ≈ 500 мс
+    await asyncio.sleep(0.3)
+    print(await client.pttl("temp"))   # ≈ 200 мс
+    await asyncio.sleep(0.3)
+    print(await client.exists("temp")) # 0 — ключ истёк
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.pexpireat(name, when, nx=False, xx=False, gt=False, lt=False)",
+    description:
+      "Устанавливает абсолютное время истечения ключа в виде Unix-временной метки в миллисекундах. Аналог expireat с точностью до миллисекунды. Поддерживает условные флаги nx, xx, gt, lt (Redis 7.0+).",
+    syntax: "await client.pexpireat(name, when, nx=False, xx=False, gt=False, lt=False)",
+    arguments: [
+      { name: "name", description: "Ключ, для которого задаётся время истечения." },
+      { name: "when", description: "Unix-метка в миллисекундах (int) или объект datetime." },
+      { name: "nx", description: "Установить только если TTL ещё не задан." },
+      { name: "xx", description: "Установить только если TTL уже задан." },
+      { name: "gt", description: "Установить только если новая метка позже текущей." },
+      { name: "lt", description: "Установить только если новая метка раньше текущей." },
+    ],
+    example: `import redis.asyncio as redis
+import time
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("event", "data")
+
+    # Истекает через 10 секунд (Unix-метка в мс)
+    expire_ms = int(time.time() * 1000) + 10_000
+    await client.pexpireat("event", expire_ms)
+
+    remaining = await client.pttl("event")
+    print(f"Осталось: {remaining} мс")  # ≈ 10000
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.pexpiretime(name)",
+    description:
+      "Возвращает абсолютную Unix-временную метку истечения ключа в миллисекундах. Аналог expiretime с точностью до миллисекунды. -1 если TTL не задан, -2 если ключ не существует. Доступно с Redis 7.0.",
+    syntax: "await client.pexpiretime(name)",
+    arguments: [
+      { name: "name", description: "Ключ, для которого нужно узнать время истечения." },
+    ],
+    example: `import redis.asyncio as redis
+from datetime import datetime
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("session", "data", px=30_000)  # 30 секунд в мс
+
+    ts_ms = await client.pexpiretime("session")
+    if ts_ms > 0:
+        dt = datetime.fromtimestamp(ts_ms / 1000)
+        print(f"Истекает: {dt}")
+
+    # Без TTL
+    await client.set("forever", "value")
+    print(await client.pexpiretime("forever"))  # -1
+
+    # Несуществующий
+    print(await client.pexpiretime("ghost"))    # -2
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.ping()",
+    description:
+      "Отправляет команду PING серверу Redis и возвращает True при успешном ответе. Используется для проверки соединения и работоспособности сервера.",
+    syntax: "await client.ping()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    result = await client.ping()
+    print(result)  # True
+
+    # Проверка доступности перед операциями
+    try:
+        await client.ping()
+        print("Redis доступен")
+    except redis.ConnectionError:
+        print("Redis недоступен")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.psetex(name, time_ms, value)",
+    description:
+      "Устанавливает значение ключа с TTL в миллисекундах за один атомарный запрос. Эквивалент set(name, value, px=time_ms), но более явный. Если ключ уже существует — перезаписывает его.",
+    syntax: "await client.psetex(name, time_ms, value)",
+    arguments: [
+      { name: "name", description: "Ключ для записи." },
+      { name: "time_ms", description: "Время жизни в миллисекундах (целое число или timedelta)." },
+      { name: "value", description: "Значение для сохранения." },
+    ],
+    example: `import redis.asyncio as redis
+import asyncio
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Токен живёт 500 миллисекунд
+    await client.psetex("otp", 500, "836492")
+
+    print(await client.get("otp"))     # b'836492'
+    print(await client.pttl("otp"))   # ≈ 500
+
+    await asyncio.sleep(0.6)
+    print(await client.get("otp"))    # None — истёк
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.pttl(name)",
+    description:
+      "Возвращает оставшееся время жизни ключа в миллисекундах. -1 — ключ существует, но без TTL. -2 — ключ не существует. Аналог ttl с точностью до миллисекунды.",
+    syntax: "await client.pttl(name)",
+    arguments: [
+      { name: "name", description: "Ключ, TTL которого нужно проверить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("cache", "data", px=5000)  # 5 секунд
+
+    ms = await client.pttl("cache")
+    print(f"Осталось: {ms} мс")  # ≈ 5000
+
+    # Без TTL
+    await client.set("forever", "x")
+    print(await client.pttl("forever"))  # -1
+
+    # Несуществующий
+    print(await client.pttl("ghost"))   # -2
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.publish(channel, message)",
+    description:
+      "Публикует сообщение в указанный канал Pub/Sub. Возвращает количество подписчиков, получивших сообщение. Сообщения не сохраняются: если подписчиков нет — сообщение теряется.",
+    syntax: "await client.publish(channel, message)",
+    arguments: [
+      { name: "channel", description: "Имя канала, в который публикуется сообщение." },
+      { name: "message", description: "Публикуемое сообщение (строка или bytes)." },
+    ],
+    example: `import redis.asyncio as redis
+import asyncio
+
+async def subscriber():
+    client = redis.StrictRedis()
+    pubsub = client.pubsub()
+    await pubsub.subscribe("news")
+    async for msg in pubsub.listen():
+        if msg["type"] == "message":
+            print(f"Получено: {msg['data'].decode()}")
+            break
+    await client.aclose()
+
+async def publisher():
+    client = redis.StrictRedis()
+    await asyncio.sleep(0.1)  # ждём подписки
+    receivers = await client.publish("news", "Breaking: Redis 8 released!")
+    print(f"Доставлено {receivers} подписчикам")
+    await client.aclose()
+
+async def main():
+    await asyncio.gather(subscriber(), publisher())`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.pubsub_channels(pattern='*')",
+    description:
+      "Возвращает список активных Pub/Sub каналов (тех, у которых есть хотя бы один подписчик). Поддерживает glob-фильтрацию по имени канала.",
+    syntax: "await client.pubsub_channels(pattern='*')",
+    arguments: [
+      {
+        name: "pattern",
+        description: "Glob-шаблон для фильтрации каналов. По умолчанию '*' — все каналы.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    admin = redis.StrictRedis()
+
+    # Все активные каналы
+    channels = await admin.pubsub_channels()
+    print([ch.decode() for ch in channels])
+    # ['news', 'alerts', 'chat:general']
+
+    # Только каналы чата
+    chat_channels = await admin.pubsub_channels("chat:*")
+    print([ch.decode() for ch in chat_channels])
+    # ['chat:general']
+
+    await admin.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.pubsub_numpat()",
+    description:
+      "Возвращает количество активных шаблонных подписок (psubscribe) на сервере. Не считает обычные подписки по имени канала (subscribe).",
+    syntax: "await client.pubsub_numpat()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    admin = redis.StrictRedis()
+
+    # Количество шаблонных подписок на сервере
+    count = await admin.pubsub_numpat()
+    print(f"Шаблонных подписок: {count}")
+    # Шаблонных подписок: 3
+
+    await admin.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.pubsub_numsub(*channels)",
+    description:
+      "Возвращает количество подписчиков для каждого из указанных каналов. Без аргументов возвращает пустой результат. Возвращает словарь {канал: количество_подписчиков}.",
+    syntax: "await client.pubsub_numsub(*channels)",
+    arguments: [
+      {
+        name: "*channels",
+        description: "Имена каналов, для которых нужно узнать количество подписчиков.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    admin = redis.StrictRedis()
+
+    stats = await admin.pubsub_numsub("news", "alerts", "chat")
+    for channel, count in stats.items():
+        print(f"{channel.decode()}: {count} подписчиков")
+    # news: 5 подписчиков
+    # alerts: 2 подписчиков
+    # chat: 0 подписчиков
+
+    await admin.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.pubsub_shardchannels(pattern='*')",
+    description:
+      "Возвращает список активных shard-каналов (каналов шардированного Pub/Sub), у которых есть хотя бы один подписчик. Шардированный Pub/Sub доступен с Redis 7.0 и работает в рамках одного шарда кластера.",
+    syntax: "await client.pubsub_shardchannels(pattern='*')",
+    arguments: [
+      {
+        name: "pattern",
+        description: "Glob-шаблон для фильтрации shard-каналов. По умолчанию '*' — все.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    # Шардированный Pub/Sub работает в Redis Cluster
+    client = redis.StrictRedis()
+
+    channels = await client.pubsub_shardchannels()
+    print([ch.decode() for ch in channels])
+    # ['orders:shard1', 'payments:shard2']
+
+    # С фильтрацией
+    order_channels = await client.pubsub_shardchannels("orders:*")
+    print([ch.decode() for ch in order_channels])
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.pubsub_shardnumsub(*channels)",
+    description:
+      "Возвращает количество подписчиков для каждого из указанных shard-каналов шардированного Pub/Sub. Аналог pubsub_numsub, но для каналов, созданных через ssubscribe. Доступно с Redis 7.0.",
+    syntax: "await client.pubsub_shardnumsub(*channels)",
+    arguments: [
+      {
+        name: "*channels",
+        description: "Имена shard-каналов, для которых нужно узнать количество подписчиков.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    stats = await client.pubsub_shardnumsub("orders", "payments")
+    for channel, count in stats.items():
+        print(f"{channel.decode()}: {count} подписчиков")
+    # orders: 3 подписчиков
+    # payments: 1 подписчиков
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.quit()",
+    description:
+      "Вежливо закрывает соединение с сервером Redis, отправив команду QUIT. После выполнения сервер закрывает соединение со своей стороны. В redis-py, как правило, достаточно вызвать aclose() — quit используется редко и в основном при ручном управлении соединением.",
+    syntax: "await client.quit()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("key", "value")
+    print(await client.get("key"))  # b'value'
+
+    # Вежливое завершение соединения
+    await client.quit()
+
+    # Рекомендуемый способ закрытия
+    client2 = redis.StrictRedis()
+    await client2.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.randomkey()",
+    description:
+      "Возвращает случайный ключ из текущей базы данных. Если база данных пуста — возвращает None. Каждый вызов возвращает разный ключ. Используется в основном для отладки и диагностики.",
+    syntax: "await client.randomkey()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.mset({"alpha": "1", "beta": "2", "gamma": "3"})
+
+    key = await client.randomkey()
+    print(key.decode())  # например: 'beta'
+
+    # Пустая БД
+    await client.flushdb()
+    print(await client.randomkey())  # None
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.rename(src, dst)",
+    description:
+      "Переименовывает ключ src в dst. Если dst уже существует — перезаписывает его. Если src не существует — возвращает ошибку. TTL исходного ключа сохраняется после переименования.",
+    syntax: "await client.rename(src, dst)",
+    arguments: [
+      { name: "src", description: "Текущее имя ключа." },
+      { name: "dst", description: "Новое имя ключа." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("old_name", "some_value")
+
+    await client.rename("old_name", "new_name")
+
+    print(await client.get("new_name"))  # b'some_value'
+    print(await client.exists("old_name"))  # 0
+
+    # Если src не существует — ошибка
+    try:
+        await client.rename("ghost", "target")
+    except redis.ResponseError as e:
+        print(e)  # ERR no such key
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.renamenx(src, dst)",
+    description:
+      "Переименовывает ключ src в dst только если dst ещё не существует. Возвращает True при успешном переименовании и False, если dst уже существует. Если src не существует — возвращает ошибку.",
+    syntax: "await client.renamenx(src, dst)",
+    arguments: [
+      { name: "src", description: "Текущее имя ключа." },
+      { name: "dst", description: "Новое имя ключа (только если не существует)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("key_a", "value_a")
+    await client.set("key_b", "value_b")
+
+    # dst существует — переименование не выполняется
+    result = await client.renamenx("key_a", "key_b")
+    print(result)  # False
+
+    # dst не существует — успешно
+    result = await client.renamenx("key_a", "key_c")
+    print(result)  # True
+    print(await client.get("key_c"))  # b'value_a'
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.replicaof(host=None, port=None)",
+    description:
+      "Управляет репликацией текущего сервера. При передаче host и port — превращает сервер в реплику указанного мастера. Без аргументов (или с host='NO', port='ONE') — переводит реплику в режим мастера. Команда REPLICAOF заменила устаревшую SLAVEOF.",
+    syntax: "await client.replicaof(host=None, port=None)",
+    arguments: [
+      { name: "host", description: "Хост мастер-сервера. None или 'NO' — перевести в мастер." },
+      { name: "port", description: "Порт мастер-сервера. None или 'ONE' — перевести в мастер." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    replica = redis.StrictRedis(host="replica-host")
+
+    # Сделать реплику мастера
+    await replica.replicaof("master-host", 6379)
+    print("Репликация настроена")
+
+    # Перевести в режим независимого мастера
+    await replica.replicaof()
+    print("Теперь независимый мастер")
+
+    await replica.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.restore(name, ttl, value, replace=False, absttl=False, idletime=None, freq=None)",
+    description:
+      "Десериализует ключ из бинарного дампа, полученного через dump(). Используется для восстановления или переноса ключей между серверами. При replace=True перезаписывает существующий ключ. TTL задаётся в миллисекундах (0 — без срока жизни).",
+    syntax:
+      "await client.restore(name, ttl, value, replace=False, absttl=False, idletime=None, freq=None)",
+    arguments: [
+      { name: "name", description: "Имя ключа, который нужно восстановить." },
+      { name: "ttl", description: "Время жизни в миллисекундах. 0 — без TTL." },
+      { name: "value", description: "Бинарные данные дампа из dump()." },
+      { name: "replace", description: "Если True — перезаписывает существующий ключ." },
+      { name: "absttl", description: "Если True — ttl интерпретируется как абсолютная Unix-метка в мс." },
+      { name: "idletime", description: "Устанавливает время простоя (для LRU политики)." },
+      { name: "freq", description: "Устанавливает частоту доступа (для LFU политики)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    source = redis.StrictRedis(host="source-host")
+    target = redis.StrictRedis(host="target-host")
+
+    await source.set("config", '{"debug": true}')
+
+    # Сериализуем ключ
+    dump_data = await source.dump("config")
+    ttl_ms = await source.pttl("config")  # -1 если нет TTL
+
+    # Восстанавливаем на другом сервере
+    await target.restore(
+        "config",
+        0 if ttl_ms < 0 else ttl_ms,
+        dump_data,
+        replace=True
+    )
+
+    print(await target.get("config"))  # b'{"debug": true}'
+
+    await source.aclose()
+    await target.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.role()",
+    description:
+      "Возвращает информацию о роли текущего сервера Redis в контексте репликации: 'master' (с данными о репликах), 'slave' (с данными о мастере) или 'sentinel'.",
+    syntax: "await client.role()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    info = await client.role()
+    role = info[0]
+
+    if role == b"master":
+        print(f"Мастер. Реплик: {len(info[2])}")
+        for replica in info[2]:
+            ip, port, offset = replica
+            print(f"  Реплика {ip.decode()}:{port.decode()}, offset={offset}")
+    elif role == b"slave":
+        master_ip, master_port, state, offset = info[1], info[2], info[3], info[4]
+        print(f"Реплика мастера {master_ip.decode()}:{master_port}")
+        print(f"Статус: {state.decode()}, offset={offset}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.rpop(name, count=None)",
+    description:
+      "Удаляет и возвращает один или несколько элементов с правого конца списка. Без count возвращает один элемент (или None, если список пуст). При count — возвращает список элементов (или None, если список пуст).",
+    syntax: "await client.rpop(name, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ списка." },
+      { name: "count", description: "Необязательно. Количество элементов для извлечения с правого конца." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("stack", "a", "b", "c", "d", "e")
+
+    # Один элемент с конца (стек)
+    item = await client.rpop("stack")
+    print(item.decode())  # e
+
+    # Несколько элементов
+    items = await client.rpop("stack", count=2)
+    print([i.decode() for i in items])  # ['d', 'c']
+
+    print([x.decode() for x in await client.lrange("stack", 0, -1)])
+    # ['a', 'b']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.rpoplpush(src, dst)",
+    description:
+      "Устаревший метод (deprecated с Redis 6.2). Атомарно извлекает последний элемент из src и помещает его в начало dst. Возвращает перемещённый элемент. Рекомендуется использовать lmove(src, dst, srcout='RIGHT', dstin='LEFT').",
+    syntax: "await client.rpoplpush(src, dst)",
+    arguments: [
+      { name: "src", description: "Ключ исходного списка (элемент извлекается с правого конца)." },
+      { name: "dst", description: "Ключ целевого списка (элемент помещается в левый конец)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("queue", "task1", "task2", "task3")
+
+    # Атомарно перемещаем последний элемент в другой список
+    item = await client.rpoplpush("queue", "processing")
+    print(item.decode())  # task3
+
+    print([x.decode() for x in await client.lrange("queue", 0, -1)])
+    # ['task1', 'task2']
+    print([x.decode() for x in await client.lrange("processing", 0, -1)])
+    # ['task3']
+
+    # Современная альтернатива
+    await client.lmove("queue", "processing", srcout="RIGHT", dstin="LEFT")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.rpush(name, *values)",
+    description:
+      "Добавляет одно или несколько значений в конец (правый конец) списка. Если список не существует — создаётся. Возвращает новую длину списка. Несколько значений вставляются в переданном порядке.",
+    syntax: "await client.rpush(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ списка." },
+      { name: "*values", description: "Одно или несколько значений для добавления в конец списка." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Очередь задач
+    await client.rpush("tasks", "task1")
+    await client.rpush("tasks", "task2")
+    length = await client.rpush("tasks", "task3")
+    print(length)  # 3
+
+    # Добавляем несколько за раз
+    await client.rpush("tasks", "task4", "task5")
+
+    items = await client.lrange("tasks", 0, -1)
+    print([i.decode() for i in items])
+    # ['task1', 'task2', 'task3', 'task4', 'task5']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.rpushx(name, *values)",
+    description:
+      "Добавляет значения в конец списка только если список уже существует. Если ключа нет — операция игнорируется и возвращает 0. Гарантирует, что элементы добавляются только к заранее созданному списку.",
+    syntax: "await client.rpushx(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ существующего списка." },
+      { name: "*values", description: "Значения для добавления в конец списка." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Список не существует — игнорируется
+    result = await client.rpushx("mylist", "orphan")
+    print(result)  # 0
+
+    # Создаём список явно
+    await client.rpush("mylist", "first")
+
+    # Теперь rpushx работает
+    length = await client.rpushx("mylist", "second", "third")
+    print(length)  # 3
+
+    items = await client.lrange("mylist", 0, -1)
+    print([i.decode() for i in items])  # ['first', 'second', 'third']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sadd(name, *values)",
+    description:
+      "Добавляет одно или несколько значений в множество. Дублирующиеся значения игнорируются — множество хранит только уникальные элементы. Возвращает количество фактически добавленных новых элементов.",
+    syntax: "await client.sadd(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ множества." },
+      { name: "*values", description: "Одно или несколько значений для добавления." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Добавляем уникальные теги
+    added = await client.sadd("tags", "python", "redis", "async")
+    print(added)  # 3
+
+    # Дублирующиеся значения игнорируются
+    added = await client.sadd("tags", "python", "docker")
+    print(added)  # 1 — только 'docker' новый
+
+    # Все элементы множества
+    tags = await client.smembers("tags")
+    print({t.decode() for t in tags})
+    # {'python', 'redis', 'async', 'docker'}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.save()",
+    description:
+      "Выполняет синхронное сохранение базы данных Redis на диск (создаёт RDB-снимок). Блокирует сервер на время записи — для продакшна используйте bgsave(). Возвращает True после успешного сохранения.",
+    syntax: "await client.save()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Синхронное сохранение (блокирует сервер)
+    result = await client.save()
+    print(result)  # True
+
+    last = await client.lastsave()
+    print(f"Последнее сохранение: {last}")
+
+    # Для продакшна предпочтительнее bgsave()
+    await client.bgsave()
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.scan(cursor=0, match=None, count=None, _type=None)",
+    description:
+      "Инкрементально итерирует ключи базы данных без блокировки сервера. Возвращает кортеж (новый_cursor, список_ключей). Итерация завершена, когда cursor возвращается как 0. Для удобного обхода в цикле используйте scan_iter.",
+    syntax: "await client.scan(cursor=0, match=None, count=None, _type=None)",
+    arguments: [
+      { name: "cursor", description: "Курсор итерации. Начинается с 0, продолжается до возврата 0." },
+      { name: "match", description: "Glob-шаблон для фильтрации ключей, например 'user:*'." },
+      { name: "count", description: "Приблизительное количество элементов на итерацию (подсказка)." },
+      { name: "_type", description: "Фильтр по типу ключа: 'string', 'list', 'hash', 'set', 'zset'." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.mset({f"user:{i}": f"name_{i}" for i in range(50)})
+
+    cursor = 0
+    all_keys = []
+    while True:
+        cursor, keys = await client.scan(cursor=cursor, match="user:*", count=10)
+        all_keys.extend(keys)
+        if cursor == 0:
+            break
+
+    print(f"Найдено ключей: {len(all_keys)}")  # 50
+
+    # Фильтрация по типу
+    cursor, keys = await client.scan(cursor=0, _type="string", count=100)
+    print(f"Строковых ключей: {len(keys)}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.scan_iter(match=None, count=None, _type=None)",
+    description:
+      "Асинхронный генератор для итерации по всем ключам базы данных. Автоматически управляет курсором scan, позволяя обходить ключи в цикле async for. Безопасен для больших баз — не загружает все ключи в память сразу.",
+    syntax: "async for key in client.scan_iter(match=None, count=None, _type=None)",
+    arguments: [
+      { name: "match", description: "Glob-шаблон для фильтрации ключей." },
+      { name: "count", description: "Количество ключей на один внутренний вызов scan." },
+      { name: "_type", description: "Фильтр по типу: 'string', 'list', 'hash', 'set', 'zset'." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Создаём тестовые данные
+    await client.mset({f"session:{i}": f"user_{i}" for i in range(100)})
+    await client.lpush("mylist", "a", "b")
+
+    # Итерация по сессиям
+    count = 0
+    async for key in client.scan_iter("session:*"):
+        count += 1
+    print(f"Сессий: {count}")  # 100
+
+    # Только хэши
+    async for key in client.scan_iter(_type="list"):
+        print(key.decode())  # mylist
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.scard(name)",
+    description:
+      "Возвращает количество элементов в множестве (мощность множества). Если ключ не существует — возвращает 0. Выполняется за O(1).",
+    syntax: "await client.scard(name)",
+    arguments: [
+      { name: "name", description: "Ключ множества, размер которого нужно получить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("fruits", "apple", "banana", "cherry", "apple")
+    # 'apple' добавляется один раз
+
+    count = await client.scard("fruits")
+    print(count)  # 3
+
+    print(await client.scard("missing"))  # 0
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.script_debug(mode)",
+    description:
+      "Управляет режимом отладки Lua-скриптов. Режимы: 'YES' — синхронная отладка (блокирует), 'SYNC' — синхронная без форка, 'NO' — отключить отладку. Используется совместно с redis-cli в режиме --ldb.",
+    syntax: "await client.script_debug(mode)",
+    arguments: [
+      {
+        name: "mode",
+        description: "'YES' — включить отладку, 'SYNC' — синхронная отладка, 'NO' — отключить.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Включить синхронный режим отладки (для разработки)
+    await client.script_debug("SYNC")
+
+    script = """
+    local val = redis.call('GET', KEYS[1])
+    return val
+    """
+    result = await client.eval(script, 1, "mykey")
+    print(result)
+
+    # Отключить отладку
+    await client.script_debug("NO")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.script_exists(*scripts)",
+    description:
+      "Проверяет, загружены ли Lua-скрипты в кэш сервера по их SHA1-хэшам. Возвращает список булевых значений: True, если скрипт с данным хэшем присутствует в кэше, False — если нет.",
+    syntax: "await client.script_exists(*scripts)",
+    arguments: [
+      {
+        name: "*scripts",
+        description: "Один или несколько SHA1-хэшей Lua-скриптов для проверки.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    script = "return redis.call('GET', KEYS[1])"
+    sha = await client.script_load(script)
+    print(f"SHA1: {sha}")
+
+    # Проверяем наличие в кэше
+    results = await client.script_exists(sha, "nonexistent_sha1")
+    print(results)  # [True, False]
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.script_flush(asynchronous=False)",
+    description:
+      "Удаляет все Lua-скрипты из кэша сервера. При asynchronous=True очистка выполняется в фоновом потоке, не блокируя сервер. После очистки все сохранённые SHA1-хэши становятся недействительными.",
+    syntax: "await client.script_flush(asynchronous=False)",
+    arguments: [
+      {
+        name: "asynchronous",
+        description: "Если True — очистка выполняется в фоновом потоке. По умолчанию False (синхронно).",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    sha = await client.script_load("return 1")
+    print(await client.script_exists(sha))  # [True]
+
+    # Очищаем кэш скриптов
+    await client.script_flush()
+    print(await client.script_exists(sha))  # [False]
+
+    # Асинхронная очистка (не блокирует сервер)
+    await client.script_flush(asynchronous=True)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.script_kill()",
+    description:
+      "Прерывает выполнение текущего долго выполняющегося Lua-скрипта. Работает только если скрипт не производил операций записи — иначе для прерывания необходимо выполнить RESET. Возвращает ошибку, если нет активного скрипта.",
+    syntax: "await client.script_kill()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+import asyncio
+
+async def main():
+    client = redis.StrictRedis()
+    admin  = redis.StrictRedis()
+
+    async def run_infinite():
+        try:
+            # Бесконечный скрипт (только чтение)
+            await client.eval("while true do end", 0)
+        except redis.ResponseError:
+            pass  # убит командой script_kill
+
+    task = asyncio.create_task(run_infinite())
+    await asyncio.sleep(0.3)
+
+    # Прерываем выполнение
+    await admin.script_kill()
+    await task
+
+    await client.aclose()
+    await admin.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.script_load(script)",
+    description:
+      "Загружает Lua-скрипт в кэш сервера и возвращает его SHA1-хэш. После загрузки скрипт можно вызывать через evalsha по хэшу — без повторной передачи кода. Позволяет уменьшить трафик при частом исполнении одного скрипта.",
+    syntax: "await client.script_load(script)",
+    arguments: [
+      {
+        name: "script",
+        description: "Lua-скрипт в виде строки для загрузки в кэш.",
+      },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Загружаем скрипт один раз
+    script = """
+    local current = redis.call('GET', KEYS[1])
+    if current == false then
+        return redis.call('SET', KEYS[1], ARGV[1])
+    end
+    return current
+    """
+    sha = await client.script_load(script)
+    print(f"SHA1: {sha.decode()}")
+
+    # Вызываем по хэшу — без передачи кода
+    result = await client.evalsha(sha, 1, "mykey", "default_value")
+    print(result)  # b'default_value'
+
+    result = await client.evalsha(sha, 1, "mykey", "other")
+    print(result)  # b'default_value' — уже существует
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sdiff(keys, *args)",
+    description:
+      "Возвращает разность множеств: элементы, которые есть в первом множестве, но отсутствуют во всех остальных. Принимает список ключей или несколько ключей через запятую. Результат не сохраняется — для сохранения используйте sdiffstore.",
+    syntax: "await client.sdiff(keys, *args)",
+    arguments: [
+      { name: "keys", description: "Список ключей множеств или несколько ключей через запятую." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("skills_alice", "python", "redis", "docker", "sql")
+    await client.sadd("skills_bob",   "python", "java", "sql")
+
+    # Навыки Алисы, которых нет у Боба
+    diff = await client.sdiff("skills_alice", "skills_bob")
+    print({d.decode() for d in diff})  # {'redis', 'docker'}
+
+    # Навыки Боба, которых нет у Алисы
+    diff = await client.sdiff("skills_bob", "skills_alice")
+    print({d.decode() for d in diff})  # {'java'}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sdiffstore(dest, keys, *args)",
+    description:
+      "Вычисляет разность множеств (как sdiff) и сохраняет результат в ключ dest. Если dest уже существует — перезаписывает его. Возвращает количество элементов в результирующем множестве.",
+    syntax: "await client.sdiffstore(dest, keys, *args)",
+    arguments: [
+      { name: "dest", description: "Ключ, в который сохраняется результат разности." },
+      { name: "keys", description: "Список ключей множеств или несколько ключей через запятую." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("all_users",    "alice", "bob", "carol", "dave")
+    await client.sadd("active_users", "alice", "carol")
+
+    # Неактивные пользователи = все минус активные
+    count = await client.sdiffstore("inactive_users", "all_users", "active_users")
+    print(count)  # 2
+
+    inactive = await client.smembers("inactive_users")
+    print({u.decode() for u in inactive})  # {'bob', 'dave'}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.select(db)",
+    description:
+      "Переключает текущее соединение на указанную базу данных Redis (0–15). По умолчанию используется БД 0. В redis-py рекомендуется задавать номер БД при создании клиента через параметр db, а не вызывать select вручную.",
+    syntax: "await client.select(db)",
+    arguments: [
+      { name: "db", description: "Номер базы данных для переключения (целое число, обычно 0–15)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    # Рекомендуемый способ — задать БД при создании
+    client_db2 = redis.StrictRedis(db=2)
+    await client_db2.set("key", "in_db2")
+    await client_db2.aclose()
+
+    # Переключение вручную (не рекомендуется в async)
+    client = redis.StrictRedis()
+    await client.select(1)
+    await client.set("key", "in_db1")
+    await client.select(0)
+    print(await client.exists("key"))  # 0 — в БД 0 нет этого ключа
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.set(name, value, ex=None, px=None, nx=False, xx=False, keepttl=False, get=False, exat=None, pxat=None)",
+    description:
+      "Устанавливает значение ключа. Самая универсальная команда записи: поддерживает TTL в секундах (ex) или миллисекундах (px), абсолютные временные метки (exat, pxat), условную запись (nx — только если не существует, xx — только если существует), сохранение текущего TTL (keepttl) и возврат старого значения (get).",
+    syntax:
+      "await client.set(name, value, ex=None, px=None, nx=False, xx=False, keepttl=False, get=False, exat=None, pxat=None)",
+    arguments: [
+      { name: "name", description: "Ключ для записи." },
+      { name: "value", description: "Значение для сохранения." },
+      { name: "ex", description: "TTL в секундах." },
+      { name: "px", description: "TTL в миллисекундах." },
+      { name: "exat", description: "Абсолютная Unix-метка истечения в секундах." },
+      { name: "pxat", description: "Абсолютная Unix-метка истечения в миллисекундах." },
+      { name: "nx", description: "Записать только если ключ не существует." },
+      { name: "xx", description: "Записать только если ключ уже существует." },
+      { name: "keepttl", description: "Сохранить текущий TTL ключа при обновлении значения." },
+      { name: "get", description: "Если True — вернуть старое значение ключа (Redis 6.2+)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Простая запись
+    await client.set("greeting", "Hello")
+
+    # С TTL 60 секунд
+    await client.set("token", "abc123", ex=60)
+
+    # Только если не существует (атомарная блокировка)
+    acquired = await client.set("lock:job1", "worker1", nx=True, ex=30)
+    print(acquired)  # True
+
+    # Только если существует
+    await client.set("greeting", "Hi!", xx=True)
+
+    # Получить старое значение при обновлении
+    old = await client.set("greeting", "Hey!", get=True)
+    print(old.decode())  # Hi!
+
+    # Обновить значение, сохранив TTL
+    await client.set("token", "newtoken", keepttl=True)
+    print(await client.ttl("token"))  # ≈ 60
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.setbit(name, offset, value)",
+    description:
+      "Устанавливает бит по заданному смещению в строковом значении ключа. Значение должно быть 0 или 1. Возвращает исходное значение бита. Если строка недостаточно длинная — автоматически дополняется нулевыми байтами.",
+    syntax: "await client.setbit(name, offset, value)",
+    arguments: [
+      { name: "name", description: "Ключ, в строковом значении которого устанавливается бит." },
+      { name: "offset", description: "Позиция бита (0-based, начиная со старшего бита первого байта)." },
+      { name: "value", description: "Новое значение бита: 0 или 1." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Битовый массив для флагов
+    # Отмечаем, что пользователь 7 прочитал сообщение
+    old_bit = await client.setbit("read_flags", 7, 1)
+    print(f"Было: {old_bit}")  # 0
+
+    print(await client.getbit("read_flags", 7))  # 1
+    print(await client.getbit("read_flags", 0))  # 0
+
+    # Подсчёт установленных флагов
+    count = await client.bitcount("read_flags")
+    print(f"Прочитали: {count}")  # 1
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.setex(name, time, value)",
+    description:
+      "Устанавливает значение ключа с TTL в секундах за один атомарный запрос. Эквивалент set(name, value, ex=time). Если ключ уже существует — перезаписывает его вместе с TTL.",
+    syntax: "await client.setex(name, time, value)",
+    arguments: [
+      { name: "name", description: "Ключ для записи." },
+      { name: "time", description: "Время жизни в секундах (целое число или timedelta)." },
+      { name: "value", description: "Значение для сохранения." },
+    ],
+    example: `import redis.asyncio as redis
+from datetime import timedelta
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Сессия живёт 30 минут
+    await client.setex("session:user42", 1800, "eyJhbGciOi...")
+
+    print(await client.ttl("session:user42"))  # 1800
+
+    # Можно передать timedelta
+    await client.setex("cache:result", timedelta(minutes=5), "cached_data")
+    print(await client.ttl("cache:result"))  # 300
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.setnx(name, value)",
+    description:
+      "Устаревший метод (deprecated). Устанавливает значение ключа только если ключ не существует. Возвращает True при успехе и False, если ключ уже был. Рекомендуется использовать set(name, value, nx=True).",
+    syntax: "await client.setnx(name, value)",
+    arguments: [
+      { name: "name", description: "Ключ для записи." },
+      { name: "value", description: "Значение для установки." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Ключа нет — записывается
+    result = await client.setnx("lock", "worker1")
+    print(result)  # True
+
+    # Ключ уже есть — игнорируется
+    result = await client.setnx("lock", "worker2")
+    print(result)  # False
+
+    print(await client.get("lock"))  # b'worker1'
+
+    # Современная альтернатива
+    result = await client.set("lock2", "worker1", nx=True)
+    print(bool(result))  # True
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.setrange(name, offset, value)",
+    description:
+      "Перезаписывает часть строкового значения ключа, начиная с байтового смещения offset. Если строка короче offset — дополняется нулевыми байтами. Если ключ не существует — создаётся. Возвращает новую длину строки.",
+    syntax: "await client.setrange(name, offset, value)",
+    arguments: [
+      { name: "name", description: "Ключ, значение которого нужно изменить." },
+      { name: "offset", description: "Байтовое смещение, с которого начинается запись." },
+      { name: "value", description: "Строка для вставки." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("greeting", "Hello World!")
+
+    # Заменяем 'World' на 'Redis'
+    new_len = await client.setrange("greeting", 6, "Redis")
+    print(new_len)  # 12
+
+    print(await client.get("greeting"))  # b'Hello Redis!'
+
+    # Дополняет нулями если строка короче
+    await client.set("short", "Hi")
+    await client.setrange("short", 10, "!")
+    print(await client.strlen("short"))  # 11
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.shutdown(save=False, nosave=False, now=False, force=False, abort=False)",
+    description:
+      "Останавливает сервер Redis. При save=True — выполняет сохранение перед остановкой; nosave=True — останавливает без сохранения. now=True — немедленная остановка без ожидания реплик. force=True — принудительная остановка. abort=True — отменяет запланированную остановку (Redis 7.0+).",
+    syntax:
+      "await client.shutdown(save=False, nosave=False, now=False, force=False, abort=False)",
+    arguments: [
+      { name: "save", description: "Сохранить данные на диск перед остановкой." },
+      { name: "nosave", description: "Остановить без сохранения (возможна потеря данных)." },
+      { name: "now", description: "Немедленная остановка без ожидания реплик." },
+      { name: "force", description: "Принудительная остановка даже при ошибках сохранения." },
+      { name: "abort", description: "Отменить запланированную остановку (Redis 7.0+)." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Плановая остановка с сохранением данных
+    try:
+        await client.shutdown(save=True)
+    except redis.ConnectionError:
+        print("Сервер остановлен")
+
+    # Остановка без сохранения (для тестовых сред)
+    try:
+        await client.shutdown(nosave=True)
+    except redis.ConnectionError:
+        print("Сервер остановлен без сохранения")`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sinter(keys, *args)",
+    description:
+      "Возвращает пересечение множеств: элементы, присутствующие во всех указанных множествах одновременно. Для сохранения результата используйте sinterstore. Если одно из множеств пустое — результат всегда пустой.",
+    syntax: "await client.sinter(keys, *args)",
+    arguments: [
+      { name: "keys", description: "Список ключей множеств или несколько ключей через запятую." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("python_devs", "alice", "bob", "carol", "dave")
+    await client.sadd("redis_devs",  "alice", "carol", "eve")
+    await client.sadd("docker_devs", "alice", "dave", "eve")
+
+    # Знают и Python, и Redis
+    result = await client.sinter("python_devs", "redis_devs")
+    print({r.decode() for r in result})  # {'alice', 'carol'}
+
+    # Знают все три технологии
+    result = await client.sinter("python_devs", "redis_devs", "docker_devs")
+    print({r.decode() for r in result})  # {'alice'}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sinterstore(dest, keys, *args)",
+    description:
+      "Вычисляет пересечение множеств (как sinter) и сохраняет результат в ключ dest. Если dest уже существует — перезаписывает его. Возвращает количество элементов в результирующем множестве.",
+    syntax: "await client.sinterstore(dest, keys, *args)",
+    arguments: [
+      { name: "dest", description: "Ключ для сохранения результата пересечения." },
+      { name: "keys", description: "Список ключей множеств или несколько ключей через запятую." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("plan_a", "feature1", "feature2", "feature3")
+    await client.sadd("plan_b", "feature2", "feature3", "feature4")
+
+    # Функции, доступные в обоих тарифах
+    count = await client.sinterstore("common_features", "plan_a", "plan_b")
+    print(count)  # 2
+
+    common = await client.smembers("common_features")
+    print({f.decode() for f in common})  # {'feature2', 'feature3'}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sismember(name, value)",
+    description:
+      "Проверяет, является ли значение элементом множества. Возвращает True если элемент присутствует, False если нет или если ключ не существует. Выполняется за O(1).",
+    syntax: "await client.sismember(name, value)",
+    arguments: [
+      { name: "name", description: "Ключ множества." },
+      { name: "value", description: "Значение для проверки принадлежности." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("banned_ips", "192.168.1.100", "10.0.0.5")
+
+    ip = "192.168.1.100"
+    if await client.sismember("banned_ips", ip):
+        print(f"{ip} заблокирован")  # 192.168.1.100 заблокирован
+
+    print(await client.sismember("banned_ips", "8.8.8.8"))  # False
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.slaveof(host=None, port=None)",
+    description:
+      "Устаревший метод (deprecated). Управляет репликацией. Аналог replicaof — рекомендуется использовать его вместо slaveof. Без аргументов переводит сервер в режим независимого мастера.",
+    syntax: "await client.slaveof(host=None, port=None)",
+    arguments: [
+      { name: "host", description: "Хост мастер-сервера." },
+      { name: "port", description: "Порт мастер-сервера." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    replica = redis.StrictRedis(host="replica-host")
+
+    # Устаревший способ (работает, но не рекомендуется)
+    await replica.slaveof("master-host", 6379)
+
+    # Современная альтернатива
+    await replica.replicaof("master-host", 6379)
+
+    # Перевести в независимый мастер
+    await replica.replicaof()
+
+    await replica.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.slowlog_get(num=None)",
+    description:
+      "Возвращает записи из лога медленных запросов Redis. Каждая запись содержит: id, timestamp, время выполнения в микросекундах, команду и аргументы. Порог фиксации настраивается через slowlog-log-slower-than в конфигурации.",
+    syntax: "await client.slowlog_get(num=None)",
+    arguments: [
+      { name: "num", description: "Максимальное количество записей для возврата. По умолчанию — все." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Порог: логировать запросы дольше 10 мс
+    await client.config_set("slowlog-log-slower-than", 10000)
+
+    entries = await client.slowlog_get(10)
+    for entry in entries:
+        print(f"ID: {entry['id']}")
+        print(f"Время: {entry['duration']} мкс")
+        print(f"Команда: {entry['command'].decode()}")
+        print()
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.slowlog_len()",
+    description:
+      "Возвращает количество записей в логе медленных запросов. Используется для мониторинга: если значение растёт — стоит проверить slowlog_get для анализа проблемных команд.",
+    syntax: "await client.slowlog_len()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    count = await client.slowlog_len()
+    print(f"Записей в slowlog: {count}")
+
+    if count > 100:
+        print("Много медленных запросов — запускаем анализ")
+        entries = await client.slowlog_get(10)
+        for e in entries:
+            print(f"  {e['duration']} мкс: {e['command'].decode()}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.slowlog_reset()",
+    description:
+      "Очищает лог медленных запросов Redis. После вызова slowlog_len() вернёт 0. Используется для сброса накопленных данных после анализа или после изменения конфигурации порога.",
+    syntax: "await client.slowlog_reset()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    print(await client.slowlog_len())  # например, 42
+    await client.slowlog_reset()
+    print(await client.slowlog_len())  # 0
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.smembers(name)",
+    description:
+      "Возвращает все элементы множества в виде Python-множества (set). Если ключ не существует — возвращает пустое множество. При большом размере множества используйте sscan_iter для постепенного обхода без загрузки всех данных в память.",
+    syntax: "await client.smembers(name)",
+    arguments: [
+      { name: "name", description: "Ключ множества, элементы которого нужно получить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("roles", "admin", "editor", "viewer", "moderator")
+
+    roles = await client.smembers("roles")
+    print({r.decode() for r in roles})
+    # {'admin', 'editor', 'viewer', 'moderator'}
+
+    print(await client.smembers("ghost"))  # set()
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.smismember(name, values, *args)",
+    description:
+      "Проверяет принадлежность нескольких значений к множеству за один запрос. Возвращает список булевых значений в том же порядке, что и переданные значения. Доступно с Redis 6.2.",
+    syntax: "await client.smismember(name, values, *args)",
+    arguments: [
+      { name: "name", description: "Ключ множества." },
+      { name: "values", description: "Список значений или несколько значений через запятую для проверки." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("premium_users", "alice", "carol", "eve")
+
+    users = ["alice", "bob", "carol", "dave"]
+    results = await client.smismember("premium_users", users)
+
+    for user, is_premium in zip(users, results):
+        status = "Premium" if is_premium else "Free"
+        print(f"{user}: {status}")
+    # alice: Premium
+    # bob: Free
+    # carol: Premium
+    # dave: Free
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.smove(src, dst, value)",
+    description:
+      "Атомарно перемещает элемент из одного множества в другое. Если элемент не существует в src — возвращает False. Если dst не существует — создаётся. Возвращает True при успехе.",
+    syntax: "await client.smove(src, dst, value)",
+    arguments: [
+      { name: "src", description: "Ключ исходного множества." },
+      { name: "dst", description: "Ключ целевого множества." },
+      { name: "value", description: "Значение для перемещения." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("pending", "task1", "task2", "task3")
+
+    # Переводим задачу в выполненные
+    moved = await client.smove("pending", "done", "task1")
+    print(moved)  # True
+
+    print({x.decode() for x in await client.smembers("pending")})
+    # {'task2', 'task3'}
+    print({x.decode() for x in await client.smembers("done")})
+    # {'task1'}
+
+    # Элемента нет — False
+    moved = await client.smove("pending", "done", "ghost")
+    print(moved)  # False
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sort(name, start=None, num=None, by=None, get=None, desc=False, alpha=False, store=None, groups=False)",
+    description:
+      "Сортирует элементы списка, множества или отсортированного множества. Поддерживает числовую и алфавитную (alpha=True) сортировку, пагинацию (start, num), внешние ключи для сортировки (by) и получения значений (get), сохранение результата (store).",
+    syntax:
+      "await client.sort(name, start=None, num=None, by=None, get=None, desc=False, alpha=False, store=None, groups=False)",
+    arguments: [
+      { name: "name", description: "Ключ списка, множества или ZSET для сортировки." },
+      { name: "start", description: "Смещение для пагинации (LIMIT offset)." },
+      { name: "num", description: "Количество элементов (LIMIT count)." },
+      { name: "by", description: "Шаблон внешнего ключа для сортировки, например 'weight_*'." },
+      { name: "get", description: "Шаблон или список шаблонов внешних ключей для получения данных." },
+      { name: "desc", description: "Если True — сортировка по убыванию." },
+      { name: "alpha", description: "Если True — алфавитная сортировка строк." },
+      { name: "store", description: "Ключ для сохранения результата." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("scores", "85", "42", "97", "13", "60")
+
+    # Числовая сортировка по возрастанию
+    result = await client.sort("scores")
+    print([x.decode() for x in result])  # ['13', '42', '60', '85', '97']
+
+    # По убыванию, первые 3
+    result = await client.sort("scores", desc=True, start=0, num=3)
+    print([x.decode() for x in result])  # ['97', '85', '60']
+
+    # Алфавитная сортировка
+    await client.sadd("words", "banana", "apple", "cherry")
+    result = await client.sort("words", alpha=True)
+    print([x.decode() for x in result])  # ['apple', 'banana', 'cherry']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sort_ro(name, start=None, num=None, by=None, get=None, desc=False, alpha=False, groups=False)",
+    description:
+      "Доступная только для чтения версия команды sort. Не поддерживает сохранение результата (store). Безопасна для использования на репликах. Доступно с Redis 7.0.",
+    syntax:
+      "await client.sort_ro(name, start=None, num=None, by=None, get=None, desc=False, alpha=False, groups=False)",
+    arguments: [
+      { name: "name", description: "Ключ для сортировки." },
+      { name: "start", description: "Смещение пагинации." },
+      { name: "num", description: "Количество результатов." },
+      { name: "desc", description: "Если True — по убыванию." },
+      { name: "alpha", description: "Если True — алфавитная сортировка." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.rpush("temps", "23", "17", "31", "9", "25")
+
+    # Сортировка только для чтения (безопасна на репликах)
+    result = await client.sort_ro("temps")
+    print([x.decode() for x in result])  # ['9', '17', '23', '25', '31']
+
+    result = await client.sort_ro("temps", desc=True, start=0, num=3)
+    print([x.decode() for x in result])  # ['31', '25', '23']
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.spop(name, count=None)",
+    description:
+      "Удаляет и возвращает один или несколько случайных элементов из множества. Без count возвращает один элемент (или None если пусто). С count — возвращает список из count случайных уникальных элементов.",
+    syntax: "await client.spop(name, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ множества." },
+      { name: "count", description: "Необязательно. Количество случайных элементов для извлечения." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("lottery", "Alice", "Bob", "Carol", "Dave", "Eve")
+
+    # Один победитель
+    winner = await client.spop("lottery")
+    print(f"Победитель: {winner.decode()}")
+
+    # Несколько призёров
+    runners_up = await client.spop("lottery", count=2)
+    print(f"Призёры: {[r.decode() for r in runners_up]}")
+
+    remaining = await client.scard("lottery")
+    print(f"Оставшихся участников: {remaining}")  # 2
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.srandmember(name, count=None)",
+    description:
+      "Возвращает один или несколько случайных элементов из множества без удаления. Без count — один элемент. Положительный count — до count уникальных элементов. Отрицательный count — |count| элементов, возможно с повторениями.",
+    syntax: "await client.srandmember(name, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ множества." },
+      { name: "count", description: "Количество элементов. Положительное — уникальные, отрицательное — с повторениями." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("colors", "red", "green", "blue", "yellow", "purple")
+
+    # Один случайный элемент (без удаления)
+    color = await client.srandmember("colors")
+    print(color.decode())  # например: 'green'
+
+    # Три уникальных случайных
+    picks = await client.srandmember("colors", count=3)
+    print([p.decode() for p in picks])  # ['blue', 'red', 'yellow']
+
+    # Отрицательный count — возможны повторения
+    picks = await client.srandmember("colors", count=-7)
+    print(len(picks))  # 7, могут быть дубли
+
+    # Множество не изменилось
+    print(await client.scard("colors"))  # 5
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.srem(name, *values)",
+    description:
+      "Удаляет одно или несколько значений из множества. Игнорирует несуществующие значения. Возвращает количество фактически удалённых элементов. Если после удаления множество становится пустым — ключ автоматически удаляется.",
+    syntax: "await client.srem(name, *values)",
+    arguments: [
+      { name: "name", description: "Ключ множества." },
+      { name: "*values", description: "Одно или несколько значений для удаления." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("permissions", "read", "write", "delete", "admin")
+
+    # Удаляем права
+    removed = await client.srem("permissions", "delete", "admin")
+    print(removed)  # 2
+
+    # Несуществующее значение игнорируется
+    removed = await client.srem("permissions", "ghost")
+    print(removed)  # 0
+
+    remaining = await client.smembers("permissions")
+    print({r.decode() for r in remaining})  # {'read', 'write'}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sscan(name, cursor=0, match=None, count=None)",
+    description:
+      "Инкрементально итерирует элементы множества без блокировки сервера. Возвращает кортеж (новый_cursor, список_элементов). Итерация завершена, когда cursor возвращается как 0. Для удобного обхода в цикле используйте sscan_iter.",
+    syntax: "await client.sscan(name, cursor=0, match=None, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ множества для итерации." },
+      { name: "cursor", description: "Курсор итерации. Начинается с 0, продолжается до возврата 0." },
+      { name: "match", description: "Glob-шаблон для фильтрации элементов." },
+      { name: "count", description: "Приблизительное количество элементов на итерацию." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("big_set", *[f"item:{i}" for i in range(200)])
+
+    cursor = 0
+    all_items = []
+    while True:
+        cursor, items = await client.sscan("big_set", cursor=cursor, count=50)
+        all_items.extend(items)
+        if cursor == 0:
+            break
+
+    print(f"Всего элементов: {len(all_items)}")  # 200
+
+    # С фильтрацией
+    cursor, items = await client.sscan("big_set", cursor=0, match="item:1*")
+    print(f"Совпадений: {len(items)}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sscan_iter(name, match=None, count=None)",
+    description:
+      "Асинхронный генератор для итерации по всем элементам множества. Автоматически управляет курсором sscan, позволяя обходить множество в цикле async for без ручной работы с курсором и без загрузки всех данных в память.",
+    syntax: "async for item in client.sscan_iter(name, match=None, count=None)",
+    arguments: [
+      { name: "name", description: "Ключ множества для итерации." },
+      { name: "match", description: "Glob-шаблон для фильтрации элементов." },
+      { name: "count", description: "Количество элементов на один внутренний вызов sscan." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("emails", *[f"user{i}@example.com" for i in range(100)])
+    await client.sadd("emails", *[f"admin{i}@corp.com" for i in range(10)])
+
+    # Все email-адреса корпоративных пользователей
+    corp_emails = []
+    async for email in client.sscan_iter("emails", match="*@corp.com"):
+        corp_emails.append(email.decode())
+
+    print(f"Корпоративных: {len(corp_emails)}")  # 10
+    print(corp_emails[:3])
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.stralgo(algo, event, key, arg, modifier)",
+    description:
+      "Устаревший метод (deprecated с Redis 7.0, удалён в 7.2). Выполнял алгоритмы над строками Redis (например, LCS — наибольшая общая подпоследовательность). Замена: используйте lcs() для вычисления LCS начиная с Redis 7.0.",
+    syntax: "await client.stralgo(algo, event, key, arg, modifier)",
+    arguments: [
+      { name: "algo", description: "Алгоритм: 'LCS' — наибольшая общая подпоследовательность." },
+      { name: "event", description: "'KEYS' — работать с ключами Redis, 'STRINGS' — со строками напрямую." },
+      { name: "key", description: "Кортеж ключей или строк для обработки." },
+      { name: "arg", description: "Дополнительные аргументы (len, idx, withmatchlen)." },
+      { name: "modifier", description: "Модификатор поведения алгоритма." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # stralgo удалён в Redis 7.2 — используйте lcs()
+    await client.set("str1", "ohmytext")
+    await client.set("str2", "mynewtext")
+
+    # Современный способ (Redis 7.0+)
+    result = await client.lcs("str1", "str2")
+    print(result.decode())  # mytext
+
+    # С длиной
+    result = await client.lcs("str1", "str2", len=True)
+    print(result)  # 6
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.strlen(name)",
+    description:
+      "Возвращает длину строкового значения ключа в байтах. Если ключ не существует — возвращает 0. Если значение не является строкой — возвращает ошибку.",
+    syntax: "await client.strlen(name)",
+    arguments: [
+      { name: "name", description: "Ключ, длину значения которого нужно получить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("message", "Hello, Redis!")
+
+    length = await client.strlen("message")
+    print(length)  # 13
+
+    # Несуществующий ключ
+    print(await client.strlen("missing"))  # 0
+
+    # После изменения
+    await client.append("message", " How are you?")
+    print(await client.strlen("message"))  # 26
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.subcommand(subcommand, *args, **options)",
+    description:
+      "Низкоуровневый метод для выполнения подкоманд Redis, не имеющих отдельной обёртки в redis-py. Используется редко — как правило, все стандартные подкоманды уже представлены отдельными методами клиента.",
+    syntax: "await client.subcommand(subcommand, *args, **options)",
+    arguments: [
+      { name: "subcommand", description: "Имя подкоманды Redis." },
+      { name: "*args", description: "Аргументы подкоманды." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Пример: вызов XAUTOCLAIM через subcommand (если нет обёртки)
+    # В большинстве случаев лучше использовать специализированные методы
+
+    # Вместо subcommand используйте execute_command для нестандартных команд
+    result = await client.execute_command("DEBUG", "SLEEP", 0)
+    print(result)
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sunion(keys, *args)",
+    description:
+      "Возвращает объединение множеств: все уникальные элементы из всех указанных множеств. Дублирующиеся элементы включаются только один раз. Результат не сохраняется — для сохранения используйте sunionstore.",
+    syntax: "await client.sunion(keys, *args)",
+    arguments: [
+      { name: "keys", description: "Список ключей множеств или несколько ключей через запятую." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("team_a", "alice", "bob", "carol")
+    await client.sadd("team_b", "carol", "dave", "eve")
+    await client.sadd("team_c", "eve", "frank")
+
+    # Все участники всех команд
+    all_members = await client.sunion("team_a", "team_b", "team_c")
+    print({m.decode() for m in all_members})
+    # {'alice', 'bob', 'carol', 'dave', 'eve', 'frank'}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sunionstore(dest, keys, *args)",
+    description:
+      "Вычисляет объединение множеств (как sunion) и сохраняет результат в ключ dest. Если dest уже существует — перезаписывает его. Возвращает количество элементов в результирующем множестве.",
+    syntax: "await client.sunionstore(dest, keys, *args)",
+    arguments: [
+      { name: "dest", description: "Ключ для сохранения результата объединения." },
+      { name: "keys", description: "Список ключей множеств или несколько ключей через запятую." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.sadd("subscribers_email",   "alice", "bob")
+    await client.sadd("subscribers_sms",     "bob", "carol")
+    await client.sadd("subscribers_push",    "carol", "dave", "alice")
+
+    # Все уникальные подписчики хотя бы одного канала
+    count = await client.sunionstore(
+        "all_subscribers",
+        "subscribers_email", "subscribers_sms", "subscribers_push"
+    )
+    print(f"Всего подписчиков: {count}")  # 4
+
+    all_subs = await client.smembers("all_subscribers")
+    print({s.decode() for s in all_subs})
+    # {'alice', 'bob', 'carol', 'dave'}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.swapdb(db1, db2)",
+    description:
+      "Атомарно обменивает содержимое двух баз данных Redis местами. Все ключи из db1 оказываются в db2 и наоборот. Операция выполняется мгновенно и не блокирует клиентов на продолжительное время.",
+    syntax: "await client.swapdb(db1, db2)",
+    arguments: [
+      { name: "db1", description: "Номер первой базы данных." },
+      { name: "db2", description: "Номер второй базы данных." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    # Подготовка: заполняем БД 0 и БД 1
+    db0 = redis.StrictRedis(db=0)
+    db1 = redis.StrictRedis(db=1)
+
+    await db0.set("env", "production")
+    await db1.set("env", "staging")
+
+    # Переключаем окружения атомарно
+    await db0.swapdb(0, 1)
+
+    print(await db0.get("env"))  # b'staging'
+    print(await db1.get("env"))  # b'production'
+
+    await db0.aclose()
+    await db1.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.sync()",
+    description:
+      "Инициирует полную синхронизацию реплики с мастером. Команда используется в контексте репликации — отправляет SYNC-запрос, после чего мастер передаёт дамп своих данных. Как правило, вызывается автоматически при подключении реплики.",
+    syntax: "await client.sync()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    # sync() используется при ручном управлении репликацией
+    replica = redis.StrictRedis(host="replica-host")
+
+    try:
+        await replica.sync()
+        print("Синхронизация инициирована")
+    except Exception as e:
+        print(f"Ошибка: {e}")
+
+    await replica.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.time()",
+    description:
+      "Возвращает текущее время сервера Redis в виде кортежа (секунды Unix, микросекунды). Позволяет получить точное серверное время независимо от часового пояса клиента. Полезно для синхронизации временных меток в распределённых системах.",
+    syntax: "await client.time()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+from datetime import datetime
+
+async def main():
+    client = redis.StrictRedis()
+
+    seconds, microseconds = await client.time()
+    print(f"Unix-секунды: {seconds}")
+    print(f"Микросекунды: {microseconds}")
+
+    # Полная временная метка в микросекундах
+    full_ts = seconds * 1_000_000 + microseconds
+    print(f"Метка (мкс): {full_ts}")
+
+    # Перевод в datetime
+    dt = datetime.fromtimestamp(seconds)
+    print(f"Серверное время: {dt}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.touch(*names)",
+    description:
+      "Обновляет время последнего доступа для одного или нескольких ключей (используется в LRU/LFU политиках вытеснения). Не изменяет значения ключей. Возвращает количество ключей, которые существуют.",
+    syntax: "await client.touch(*names)",
+    arguments: [
+      { name: "*names", description: "Один или несколько ключей для обновления времени доступа." },
+    ],
+    example: `import redis.asyncio as redis
+import asyncio
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("hot_key", "important_data")
+    await client.set("warm_key", "other_data")
+
+    await asyncio.sleep(1)
+
+    # Обновляем idle-время для hot_key
+    touched = await client.touch("hot_key", "warm_key", "missing_key")
+    print(f"Существующих ключей: {touched}")  # 2
+
+    # hot_key теперь имеет idletime = 0
+    print(await client.object("idletime", "hot_key"))  # 0
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.ttl(name)",
+    description:
+      "Возвращает оставшееся время жизни ключа в секундах. -1 — ключ существует, но без TTL (постоянный). -2 — ключ не существует. Для точности до миллисекунды используйте pttl.",
+    syntax: "await client.ttl(name)",
+    arguments: [
+      { name: "name", description: "Ключ, TTL которого нужно проверить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("session", "data", ex=300)
+
+    secs = await client.ttl("session")
+    print(f"Осталось: {secs} сек")   # ≈ 300
+
+    # Без TTL
+    await client.set("permanent", "x")
+    print(await client.ttl("permanent"))  # -1
+
+    # Несуществующий
+    print(await client.ttl("ghost"))      # -2
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.type(name)",
+    description:
+      "Возвращает тип значения, хранящегося по указанному ключу. Возможные значения: 'string', 'list', 'set', 'zset' (отсортированное множество), 'hash', 'stream'. Если ключ не существует — возвращает 'none'.",
+    syntax: "await client.type(name)",
+    arguments: [
+      { name: "name", description: "Ключ, тип значения которого нужно определить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("str_key",    "hello")
+    await client.lpush("list_key", "a", "b")
+    await client.sadd("set_key",   "x", "y")
+    await client.hset("hash_key",  "f", "v")
+    await client.zadd("zset_key",  {"member": 1.0})
+
+    for key in ["str_key", "list_key", "set_key", "hash_key", "zset_key", "ghost"]:
+        t = await client.type(key)
+        print(f"{key}: {t.decode()}")
+    # str_key: string
+    # list_key: list
+    # set_key: set
+    # hash_key: hash
+    # zset_key: zset
+    # ghost: none
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.unwatch()",
+    description:
+      "Отменяет наблюдение за всеми ключами, ранее установленное командой watch(). После вызова unwatch транзакция может быть выполнена без ограничений — изменения наблюдаемых ключей больше не приведут к её отмене. Как правило, используется при отказе от транзакции.",
+    syntax: "await client.unwatch()",
+    arguments: [],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("balance", 1000)
+
+    async with client.pipeline() as pipe:
+        while True:
+            try:
+                await pipe.watch("balance")
+                balance = int(await pipe.get("balance"))
+
+                if balance < 500:
+                    # Отменяем транзакцию — недостаточно средств
+                    await pipe.unwatch()
+                    print("Недостаточно средств, транзакция отменена")
+                    break
+
+                pipe.multi()
+                pipe.decrby("balance", 500)
+                await pipe.execute()
+                print("Транзакция выполнена")
+                break
+            except redis.WatchError:
+                continue
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.wait(numreplicas, timeout)",
+    description:
+      "Блокирует выполнение до тех пор, пока указанное количество реплик не подтвердит получение всех предыдущих команд записи, или до истечения таймаута. Возвращает количество реплик, которые успели синхронизироваться. Гарантирует согласованность данных при репликации.",
+    syntax: "await client.wait(numreplicas, timeout)",
+    arguments: [
+      { name: "numreplicas", description: "Желаемое количество реплик, подтвердивших синхронизацию." },
+      { name: "timeout", description: "Максимальное время ожидания в миллисекундах. 0 — ждать бесконечно." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("critical_data", "important_value")
+
+    # Ждём, пока хотя бы 1 реплика подтвердит запись (таймаут 1 сек)
+    synced = await client.wait(1, 1000)
+    print(f"Синхронизировано реплик: {synced}")
+
+    if synced < 1:
+        print("Внимание: данные не реплицированы за отведённое время")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.waitaof(numlocal, numreplicas, timeout)",
+    description:
+      "Блокирует выполнение до подтверждения записи в AOF-журнал локально и на репликах. numlocal=1 гарантирует запись в локальный AOF, numreplicas — количество реплик, подтвердивших запись в свои AOF. Возвращает кортеж (local_ok, replicas_ok). Доступно с Redis 7.2.",
+    syntax: "await client.waitaof(numlocal, numreplicas, timeout)",
+    arguments: [
+      { name: "numlocal", description: "Количество локальных AOF-подтверждений (обычно 0 или 1)." },
+      { name: "numreplicas", description: "Желаемое количество реплик с AOF-подтверждением." },
+      { name: "timeout", description: "Максимальное время ожидания в миллисекундах. 0 — ждать бесконечно." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.set("payment", "processed")
+
+    # Ждём подтверждения записи в локальный AOF и 1 реплику
+    local_ok, replicas_ok = await client.waitaof(1, 1, 2000)
+    print(f"Локальный AOF: {local_ok}")
+    print(f"Реплики с AOF: {replicas_ok}")
+
+    if local_ok and replicas_ok >= 1:
+        print("Данные надёжно записаны")
+    else:
+        print("Предупреждение: не все подтверждения получены")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.watch(*names)",
+    description:
+      "Устанавливает наблюдение за одним или несколькими ключами для реализации оптимистичной блокировки (CAS — Compare And Swap). Если наблюдаемый ключ изменится до выполнения транзакции (execute), транзакция будет отменена. Используется внутри pipeline как контекстного менеджера.",
+    syntax: "await client.watch(*names)",
+    arguments: [
+      { name: "*names", description: "Один или несколько ключей для наблюдения." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+    await client.set("balance", 1000)
+
+    async with client.pipeline() as pipe:
+        while True:
+            try:
+                # Начинаем наблюдение
+                await pipe.watch("balance")
+                balance = int(await pipe.get("balance"))
+
+                if balance < 200:
+                    await pipe.unwatch()
+                    print("Недостаточно средств")
+                    break
+
+                # Запускаем транзакцию
+                pipe.multi()
+                pipe.decrby("balance", 200)
+                await pipe.execute()
+                print(f"Списано 200, остаток: {balance - 200}")
+                break
+            except redis.WatchError:
+                # Ключ изменился — повторяем
+                continue
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xack(name, group, *ids)",
+    description:
+      "Подтверждает обработку одного или нескольких сообщений из потока (Stream) в рамках группы потребителей. После подтверждения сообщения удаляются из PEL (Pending Entries List). Возвращает количество подтверждённых сообщений.",
+    syntax: "await client.xack(name, group, *ids)",
+    arguments: [
+      { name: "name", description: "Ключ потока (Stream)." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "*ids", description: "Один или несколько ID сообщений для подтверждения." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.xgroup_create("events", "workers", id="0", mkstream=True)
+
+    # Добавляем сообщение
+    msg_id = await client.xadd("events", {"type": "order", "id": "42"})
+
+    # Читаем как потребитель
+    msgs = await client.xreadgroup("workers", "consumer1", {"events": ">"}, count=1)
+    event_id = msgs[0][1][0][0]
+
+    # Обрабатываем...
+
+    # Подтверждаем обработку
+    acked = await client.xack("events", "workers", event_id)
+    print(f"Подтверждено: {acked}")  # 1
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xadd(name, fields, id='*', maxlen=None, approximate=True, nomkstream=False, minid=None)",
+    description:
+      "Добавляет запись (сообщение) в поток (Stream). ID генерируется автоматически при id='*' в формате миллисекунды-порядковый_номер. Поддерживает ограничение длины потока (maxlen) и минимального ID (minid). Возвращает ID добавленного сообщения.",
+    syntax:
+      "await client.xadd(name, fields, id='*', maxlen=None, approximate=True, nomkstream=False, minid=None)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "fields", description: "Словарь {поле: значение} — содержимое сообщения." },
+      { name: "id", description: "ID записи. '*' — автогенерация (по умолчанию), или явный '1000-0'." },
+      { name: "maxlen", description: "Максимальная длина потока. Старые записи удаляются." },
+      { name: "approximate", description: "Если True — maxlen применяется приблизительно (~) для производительности." },
+      { name: "nomkstream", description: "Если True — не создавать поток, если он не существует." },
+      { name: "minid", description: "Удалять записи с ID меньше указанного." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Добавление с автогенерацией ID
+    msg_id = await client.xadd("user_events", {
+        "user_id": "42",
+        "action": "login",
+        "ip": "192.168.1.1"
+    })
+    print(f"ID сообщения: {msg_id.decode()}")
+    # 1718000000000-0
+
+    # Ограничиваем поток последними 1000 записями
+    await client.xadd("logs", {"level": "ERROR", "msg": "DB timeout"},
+                       maxlen=1000)
+
+    # Явный ID
+    await client.xadd("events", {"data": "x"}, id="1000-0")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xautoclaim(name, group, consumer, min_idle_time, start_id='0-0', count=None, justid=False)",
+    description:
+      "Автоматически перехватывает зависшие сообщения из PEL (Pending Entries List), которые не были подтверждены дольше min_idle_time миллисекунд, и передаёт их указанному потребителю. Доступно с Redis 6.2. Возвращает кортеж (next_id, messages, deleted_ids).",
+    syntax:
+      "await client.xautoclaim(name, group, consumer, min_idle_time, start_id='0-0', count=None, justid=False)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "consumer", description: "Имя потребителя, которому передаются зависшие сообщения." },
+      { name: "min_idle_time", description: "Минимальное время простоя в миллисекундах." },
+      { name: "start_id", description: "ID, с которого начинать поиск в PEL (по умолчанию '0-0')." },
+      { name: "count", description: "Максимальное количество сообщений для перехвата." },
+      { name: "justid", description: "Если True — возвращать только ID без содержимого." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.xgroup_create("jobs", "workers", id="0", mkstream=True)
+    await client.xadd("jobs", {"task": "process_file", "file": "data.csv"})
+
+    # consumer1 читает, но не подтверждает
+    await client.xreadgroup("workers", "consumer1", {"jobs": ">"})
+
+    # consumer2 перехватывает зависшие задачи (простой > 5 сек)
+    next_id, messages, deleted = await client.xautoclaim(
+        "jobs", "workers", "consumer2",
+        min_idle_time=5000, count=10
+    )
+    print(f"Перехвачено: {len(messages)}")
+    print(f"Следующий cursor: {next_id.decode()}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xclaim(name, group, consumer, min_idle_time, ids, idle=None, retrycount=None, force=False, justid=False)",
+    description:
+      "Передаёт владение конкретными сообщениями из PEL другому потребителю. В отличие от xautoclaim, требует явного указания ID сообщений. Перехватывает только сообщения, простоявшие дольше min_idle_time миллисекунд.",
+    syntax:
+      "await client.xclaim(name, group, consumer, min_idle_time, ids, idle=None, retrycount=None, force=False, justid=False)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "consumer", description: "Имя нового потребителя-владельца." },
+      { name: "min_idle_time", description: "Минимальное время простоя сообщения в миллисекундах." },
+      { name: "ids", description: "Список ID сообщений для перехвата." },
+      { name: "idle", description: "Явно задать время простоя для перехваченных сообщений (мс)." },
+      { name: "retrycount", description: "Установить счётчик попыток доставки." },
+      { name: "force", description: "Если True — перехватить даже если время простоя меньше min_idle_time." },
+      { name: "justid", description: "Если True — вернуть только ID без содержимого." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.xgroup_create("tasks", "pool", id="0", mkstream=True)
+    msg_id = await client.xadd("tasks", {"work": "heavy_computation"})
+
+    # worker1 читает задачу
+    await client.xreadgroup("pool", "worker1", {"tasks": ">"})
+
+    # Перехватываем задачу у worker1 для worker2
+    claimed = await client.xclaim(
+        "tasks", "pool", "worker2",
+        min_idle_time=0,  # 0 — немедленно
+        ids=[msg_id],
+        force=True
+    )
+    print(f"Перехвачено сообщений: {len(claimed)}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xdel(name, *ids)",
+    description:
+      "Удаляет одно или несколько сообщений из потока по их ID. Удалённые сообщения не восстанавливаются. Не удаляет записи из PEL — для очистки PEL используйте xack перед удалением. Возвращает количество фактически удалённых записей.",
+    syntax: "await client.xdel(name, *ids)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "*ids", description: "Один или несколько ID сообщений для удаления." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    id1 = await client.xadd("stream", {"event": "A"})
+    id2 = await client.xadd("stream", {"event": "B"})
+    id3 = await client.xadd("stream", {"event": "C"})
+
+    print(await client.xlen("stream"))  # 3
+
+    # Удаляем два сообщения
+    deleted = await client.xdel("stream", id1, id3)
+    print(f"Удалено: {deleted}")  # 2
+
+    print(await client.xlen("stream"))  # 1
+
+    # Оставшееся сообщение
+    msgs = await client.xrange("stream")
+    print(msgs[0][1])  # {b'event': b'B'}
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xgroup_create(name, group, id='$', mkstream=False)",
+    description:
+      "Создаёт группу потребителей для потока. id='$' — группа получает только новые сообщения после создания. id='0' — группа получает все сообщения с начала потока. При mkstream=True создаёт поток, если он не существует.",
+    syntax: "await client.xgroup_create(name, group, id='$', mkstream=False)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя создаваемой группы потребителей." },
+      { name: "id", description: "Стартовый ID: '$' — с последнего сообщения, '0' — с начала потока." },
+      { name: "mkstream", description: "Если True — создаёт поток автоматически, если он отсутствует." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    # Создаём поток и группу одновременно
+    await client.xgroup_create("orders", "processors", id="0", mkstream=True)
+
+    # Группа для новых сообщений (начиная с момента создания)
+    await client.xadd("notifications", {"type": "email"})
+    await client.xgroup_create("notifications", "senders", id="$")
+
+    await client.xadd("notifications", {"type": "sms"})
+
+    # "senders" получит только сообщение 'sms'
+    msgs = await client.xreadgroup("senders", "worker1", {"notifications": ">"})
+    print(len(msgs[0][1]))  # 1
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xgroup_createconsumer(name, group, consumer)",
+    description:
+      "Явно создаёт потребителя в группе потребителей без чтения сообщений. Как правило, потребители создаются автоматически при первом вызове xreadgroup. Полезно для предварительной инициализации потребителей. Доступно с Redis 6.2.",
+    syntax: "await client.xgroup_createconsumer(name, group, consumer)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "consumer", description: "Имя создаваемого потребителя." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.xgroup_create("tasks", "workers", id="0", mkstream=True)
+
+    # Предварительно создаём потребителей
+    await client.xgroup_createconsumer("tasks", "workers", "worker-1")
+    await client.xgroup_createconsumer("tasks", "workers", "worker-2")
+
+    consumers = await client.xinfo_consumers("tasks", "workers")
+    print(f"Потребителей: {len(consumers)}")  # 2
+    for c in consumers:
+        print(f"  {c['name'].decode()}: pending={c['pending']}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xgroup_delconsumer(name, group, consumer)",
+    description:
+      "Удаляет потребителя из группы потребителей. Все ожидающие сообщения (PEL) этого потребителя также удаляются. Возвращает количество сообщений, удалённых из PEL.",
+    syntax: "await client.xgroup_delconsumer(name, group, consumer)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "consumer", description: "Имя удаляемого потребителя." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.xgroup_create("jobs", "pool", id="0", mkstream=True)
+    await client.xadd("jobs", {"task": "render"})
+
+    # worker читает, но не подтверждает
+    await client.xreadgroup("pool", "retired_worker", {"jobs": ">"})
+
+    # Удаляем вышедшего из строя потребителя
+    pending_deleted = await client.xgroup_delconsumer("jobs", "pool", "retired_worker")
+    print(f"Удалено необработанных сообщений: {pending_deleted}")  # 1
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xgroup_destroy(name, group)",
+    description:
+      "Полностью удаляет группу потребителей, включая всех потребителей и PEL. Сам поток и его сообщения не удаляются. Возвращает 1 при успехе, 0 если группа не существовала.",
+    syntax: "await client.xgroup_destroy(name, group)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя удаляемой группы потребителей." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.xgroup_create("events", "old_group", id="0", mkstream=True)
+
+    result = await client.xgroup_destroy("events", "old_group")
+    print(result)  # 1 — успешно удалена
+
+    result = await client.xgroup_destroy("events", "nonexistent")
+    print(result)  # 0 — не существовала
+
+    # Поток всё ещё существует
+    print(await client.exists("events"))  # 1
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xgroup_setid(name, group, id='$')",
+    description:
+      "Изменяет позицию (last-delivered-id) группы потребителей в потоке. Сообщения с ID меньше или равным новому значению будут считаться уже доставленными. Используется для перемотки группы вперёд или назад.",
+    syntax: "await client.xgroup_setid(name, group, id='$')",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+      { name: "id", description: "Новый last-delivered-id: '$' — конец потока, '0' — начало, явный ID." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.xgroup_create("logs", "readers", id="$", mkstream=True)
+
+    id1 = await client.xadd("logs", {"msg": "first"})
+    id2 = await client.xadd("logs", {"msg": "second"})
+    id3 = await client.xadd("logs", {"msg": "third"})
+
+    # Перематываем группу на начало потока
+    await client.xgroup_setid("logs", "readers", "0")
+
+    # Теперь группа прочитает все сообщения
+    msgs = await client.xreadgroup("readers", "worker", {"logs": ">"})
+    print(len(msgs[0][1]))  # 3
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xinfo_consumers(name, group)",
+    description:
+      "Возвращает информацию о потребителях в указанной группе потока: имя, количество ожидающих сообщений (pending), время простоя (idle) и время последней активности. Полезно для мониторинга состояния обработчиков.",
+    syntax: "await client.xinfo_consumers(name, group)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "group", description: "Имя группы потребителей." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.xgroup_create("tasks", "workers", id="0", mkstream=True)
+    await client.xadd("tasks", {"job": "task1"})
+    await client.xadd("tasks", {"job": "task2"})
+    await client.xreadgroup("workers", "w1", {"tasks": ">"}, count=1)
+    await client.xreadgroup("workers", "w2", {"tasks": ">"}, count=1)
+
+    consumers = await client.xinfo_consumers("tasks", "workers")
+    for c in consumers:
+        print(f"Потребитель: {c['name'].decode()}")
+        print(f"  Ожидающих: {c['pending']}")
+        print(f"  Простой:   {c['idle']} мс")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xinfo_groups(name)",
+    description:
+      "Возвращает информацию обо всех группах потребителей потока: имя группы, количество потребителей, ожидающих сообщений и последний доставленный ID. Используется для мониторинга состояния обработки потока.",
+    syntax: "await client.xinfo_groups(name)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.xgroup_create("events", "group_a", id="0", mkstream=True)
+    await client.xgroup_create("events", "group_b", id="$")
+
+    groups = await client.xinfo_groups("events")
+    for g in groups:
+        print(f"Группа: {g['name'].decode()}")
+        print(f"  Потребителей: {g['consumers']}")
+        print(f"  Ожидающих:    {g['pending']}")
+        print(f"  Последний ID: {g['last-delivered-id'].decode()}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xinfo_stream(name, full=False)",
+    description:
+      "Возвращает общую информацию о потоке: длину, первую и последнюю запись, количество групп, радикс-дерево. При full=True возвращает расширенную информацию, включая детали всех групп и PEL.",
+    syntax: "await client.xinfo_stream(name, full=False)",
+    arguments: [
+      { name: "name", description: "Ключ потока." },
+      { name: "full", description: "Если True — возвращает полную информацию о группах и PEL." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    await client.xgroup_create("orders", "handlers", id="0", mkstream=True)
+    await client.xadd("orders", {"order_id": "1001", "amount": "99.99"})
+    await client.xadd("orders", {"order_id": "1002", "amount": "49.50"})
+
+    info = await client.xinfo_stream("orders")
+    print(f"Записей: {info['length']}")
+    print(f"Групп:   {info['groups']}")
+    print(f"Первый:  {info['first-entry'][0].decode()}")
+    print(f"Последний: {info['last-entry'][0].decode()}")
+
+    # Полная информация
+    full_info = await client.xinfo_stream("orders", full=True)
+    print(f"Групп (full): {len(full_info['groups'])}")
+
+    await client.aclose()`,
+  },
+  {
+    name: "redis.asyncio.StrictRedis.xlen(name)",
+    description:
+      "Возвращает количество записей в потоке (Stream). Если ключ не существует — возвращает 0. Выполняется за O(1). Не учитывает удалённые записи в потоках с maxlen.",
+    syntax: "await client.xlen(name)",
+    arguments: [
+      { name: "name", description: "Ключ потока, длину которого нужно получить." },
+    ],
+    example: `import redis.asyncio as redis
+
+async def main():
+    client = redis.StrictRedis()
+
+    print(await client.xlen("mystream"))  # 0 — поток не существует
+
+    await client.xadd("mystream", {"event": "login",  "user": "alice"})
+    await client.xadd("mystream", {"event": "logout", "user": "alice"})
+    await client.xadd("mystream", {"event": "login",  "user": "bob"})
+
+    print(await client.xlen("mystream"))  # 3
+
+    # С ограничением длины
+    for i in range(10):
+        await client.xadd("mystream", {"i": str(i)}, maxlen=5, approximate=False)
+
+    print(await client.xlen("mystream"))  # 5
+
+    await client.aclose()`,
+  },
 ];
