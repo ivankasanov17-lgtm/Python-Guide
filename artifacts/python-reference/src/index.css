@@ -290,5 +290,8 @@
   .flex-1.overflow-y-auto.p-3 button .truncate{
     overflow: visible;
   }
+  .border.overflow-hidden.bg-card.shadow-sm{
+  overflow: auto
+  }
 }
 
