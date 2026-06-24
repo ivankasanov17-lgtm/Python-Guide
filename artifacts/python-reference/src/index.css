@@ -279,5 +279,16 @@
       overflow: scroll;
       max-height: 75vh;
   }
+  .flex-1.overflow-y-auto.p-3{
+    padding-left:0;
+    padding-right: 0;
+  }
+  .flex-1.overflow-y-auto.p-3 button{
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+  .flex-1.overflow-y-auto.p-3 button .truncate{
+    overflow: visible;
+  }
 }
 
