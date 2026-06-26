@@ -73,6 +73,24 @@ function NavItem({ href, label, icon, onClose }: NavLink & { onClose: () => void
   );
 }
 
+function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+  const isDark = theme === "dark";
+
+  return (
+    <button
+      onClick={toggle}
+      aria-label={isDark ? "Включить светлую тему" : "Включить тёмную тему"}
+      className={cn(
+        "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md transition-colors",
+        "text-muted-foreground hover:text-foreground hover:bg-accent"
+      )}
+    >
+      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+    </button>
+  );
+}
+
 function ActivePageLabel() {
   const [location] = useLocation();
   if (location === "/review") {
@@ -134,6 +152,9 @@ export function Navbar() {
               Python Docs
             </span>
           </Link>
+        <div className="flex-shrink-0 ml-4">
+          <ThemeToggle />
+        </div>
 
           {/* Active page breadcrumb */}
           <ActivePageLabel />
