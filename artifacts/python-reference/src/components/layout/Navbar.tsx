@@ -1,6 +1,7 @@
 import { Link, useRoute, useLocation } from "wouter";
 import { BookOpen, Code2, Layers, Zap, GraduationCap, Menu, X, Cpu, Brain } from "lucide-react";
 import { clsx } from "clsx";
+import { useTheme } from "../../lib/theme";
 import { twMerge } from "tailwind-merge";
 import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
