@@ -153,12 +153,14 @@ export function Navbar() {
               Python Docs
             </span>
           </Link>
-        <div className="flex-shrink-0 ml-4">
-          <ThemeToggle />
-        </div>
 
           {/* Active page breadcrumb */}
           <ActivePageLabel />
+
+        <div className="flex-shrink-0 mr-4">
+          <ThemeToggle />
+        </div>
+
 
           {/* Menu button */}
           <button
