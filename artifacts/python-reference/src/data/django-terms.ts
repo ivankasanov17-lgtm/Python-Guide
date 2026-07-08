@@ -29679,4 +29679,10768 @@ STATICFILES_FINDERS = [
     "npm.finders.NpmFinder",  # сторонний пакет django-npm
 ]`,
   },
+   {
+    name: "asgiref.sync",
+    category: "asgiref.sync",
+    description:
+      "Модуль библиотеки asgiref, предоставляющий инструменты для взаимодействия синхронного и асинхронного кода. Является основой поддержки async в Django: позволяет вызывать блокирующий (синхронный) код из async-контекста и наоборот — вызывать корутины из обычных синхронных функций. Используется внутри Django ORM, middleware, view-обёрток и WSGI/ASGI мостов.",
+    syntax: "import asgiref.sync",
+    arguments: [],
+    example: `import asgiref.sync
+
+# Модуль предоставляет:
+# - sync_to_async(func)   — обернуть синхронную функцию для вызова из async
+# - async_to_sync(coro)   — обернуть корутину для вызова из sync-кода
+# - iscoroutinefunction(obj)     — проверка, является ли объект корутиной
+# - markcoroutinefunction(func)  — пометить функцию как "асинхронную" для инспекции
+
+from asgiref.sync import sync_to_async, async_to_sync
+
+def blocking_db_query():
+    # синхронный код, например Django ORM
+    return "результат из БД"
+
+async def async_view(request):
+    # Вызов синхронной функции из async-контекста:
+    result = await sync_to_async(blocking_db_query)()
+    return result
+
+async def fetch_data():
+    return "данные из API"
+
+def sync_caller():
+    # Вызов корутины из синхронного кода:
+    data = async_to_sync(fetch_data)()
+    return data`,
+  },
+  {
+    name: "asgiref.sync.sync_to_async(func, thread_sensitive=True, executor=None)",
+    category: "asgiref.sync",
+    description:
+      "Оборачивает синхронную (блокирующую) функцию так, чтобы её можно было вызвать через await из асинхронного кода. Django использует эту функцию для вызова ORM-запросов, работы с файлами и другого блокирующего кода внутри async-view. По умолчанию выполняет функцию в специальном 'sync-потоке', чтобы избежать проблем с thread-local состоянием Django (например, соединениями с БД).",
+    syntax: "sync_to_async(func, thread_sensitive=True, executor=None)(*args, **kwargs) → Awaitable",
+    arguments: [
+      {
+        name: "func",
+        description:
+          "Синхронная функция (обычная, не async def), которую нужно сделать вызываемой из асинхронного кода. Может быть обычной функцией, методом или lambda.",
+      },
+      {
+        name: "thread_sensitive",
+        description:
+          "Если True (по умолчанию) — функция выполняется в единственном выделенном потоке (том же для всех sync_to_async-вызовов в рамках event loop), что критично для Django ORM, где соединения с БД привязаны к потоку. Если False — выполняется в отдельном потоке из пула ThreadPoolExecutor, параллельно с другими вызовами.",
+      },
+      {
+        name: "executor",
+        description:
+          "Кастомный concurrent.futures.Executor для выполнения функции, если thread_sensitive=False. Если None — используется executor по умолчанию (обычно ThreadPoolExecutor event loop'а).",
+      },
+    ],
+    example: `from asgiref.sync import sync_to_async
+from django.contrib.auth.models import User
+
+# Использование как декоратора:
+@sync_to_async
+def get_user_count():
+    return User.objects.count()   # синхронный ORM-запрос
+
+async def async_view(request):
+    count = await get_user_count()
+    return count
+
+# Использование как обёртки для вызова:
+async def get_user_by_id(user_id: int):
+    user = await sync_to_async(User.objects.get)(id=user_id)
+    return user
+
+# thread_sensitive=False — для CPU-bound задач без привязки к БД:
+import time
+
+def slow_computation(n: int) -> int:
+    time.sleep(1)   # имитация тяжёлой синхронной операции
+    return n * n
+
+async def compute():
+    # Выполняется в отдельном потоке из пула, не блокируя event loop:
+    result = await sync_to_async(slow_computation, thread_sensitive=False)(10)
+    return result
+
+# Использование метода класса (например, в Django-моделях):
+class Report:
+    def generate(self):
+        return "отчёт готов"
+
+async def make_report():
+    report = Report()
+    result = await sync_to_async(report.generate)()
+    return result`,
+  },
+  {
+    name: "asgiref.sync.async_to_sync(awaitable, force_new_loop=False)",
+    category: "asgiref.sync",
+    description:
+      "Оборачивает асинхронную функцию (корутину) так, чтобы её можно было вызвать как обычную синхронную функцию из sync-кода. Используется, когда синхронный код (например, классический Django view, management-команда или Celery-задача) должен вызвать async-функцию: устанавливает временный event loop, выполняет корутину до завершения и возвращает результат.",
+    syntax: "async_to_sync(awaitable, force_new_loop=False)(*args, **kwargs) → Any",
+    arguments: [
+      {
+        name: "awaitable",
+        description:
+          "Асинхронная функция (async def) или другой awaitable-объект, который нужно вызвать синхронно. При вызове обёртки создаётся корутина, которая выполняется до полного завершения.",
+      },
+      {
+        name: "force_new_loop",
+        description:
+          "Если True — принудительно создаётся новый event loop для каждого вызова, независимо от того, есть ли уже работающий loop в текущем потоке. Полезно для изоляции при работе в многопоточной среде. По умолчанию False — переиспользует существующий loop потока, если он доступен.",
+      },
+    ],
+    example: `from asgiref.sync import async_to_sync
+import httpx
+
+# Использование как декоратора:
+@async_to_sync
+async def fetch_url(url: str) -> str:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        return response.text
+
+def sync_view(request):
+    # Вызов "изнутри" синхронного Django view:
+    content = fetch_url("https://example.com")
+    return content
+
+# Использование как обёртки для вызова:
+async def send_notification(user_id: int, message: str):
+    # например, отправка через Django Channels group_send
+    return f"Уведомление отправлено пользователю {user_id}"
+
+def celery_task_handler(user_id, message):
+    # Celery-задачи синхронные — оборачиваем async-вызов:
+    result = async_to_sync(send_notification)(user_id, message)
+    return result
+
+# Типичный пример — Django Channels:
+from channels.layers import get_channel_layer
+
+def notify_group(group_name: str, data: dict):
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        group_name,
+        {"type": "notification.message", "data": data},
+    )`,
+  },
+  {
+    name: "asgiref.sync.iscoroutinefunction(obj)",
+    category: "asgiref.sync",
+    description:
+      "Проверяет, является ли переданный объект асинхронной функцией (корутинной функцией). Расширяет стандартный inspect.iscoroutinefunction(), дополнительно распознавая функции, обёрнутые через sync_to_async/async_to_sync, а также функции, помеченные через markcoroutinefunction(). Используется внутри Django для определения, нужно ли await-ить view или middleware.",
+    syntax: "iscoroutinefunction(obj) → bool",
+    arguments: [
+      {
+        name: "obj",
+        description:
+          "Проверяемый объект: функция, метод, класс с __call__ или любой другой callable. Функция определяет, ведёт ли себя объект как async def при вызове.",
+      },
+    ],
+    example: `from asgiref.sync import iscoroutinefunction, sync_to_async, markcoroutinefunction
+
+def sync_view(request):
+    return "sync response"
+
+async def async_view(request):
+    return "async response"
+
+print(iscoroutinefunction(sync_view))    # False
+print(iscoroutinefunction(async_view))   # True
+
+# Обёрнутая через sync_to_async функция считается корутинной:
+wrapped = sync_to_async(sync_view)
+print(iscoroutinefunction(wrapped))      # True
+
+# Django использует это для определения ASGI/WSGI-совместимости view:
+class MyMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+        # Определяем: async- или sync-стиль middleware:
+        self.async_capable = iscoroutinefunction(self.get_response)
+        self.sync_capable = not self.async_capable
+
+    def __call__(self, request):
+        if self.async_capable:
+            return self.__acall__(request)
+        return self.get_response(request)
+
+    async def __acall__(self, request):
+        response = await self.get_response(request)
+        return response`,
+  },
+  {
+    name: "asgiref.sync.markcoroutinefunction(func)",
+    category: "asgiref.sync",
+    description:
+      "Помечает обычную (не async def) функцию как 'асинхронную' для целей интроспекции, устанавливая на ней специальный атрибут. После пометки iscoroutinefunction() будет возвращать True для этой функции, хотя фактически она не является корутиной. Используется в редких случаях, когда функция ведёт себя как async (например, возвращает awaitable) и её нужно правильно распознавать в фреймворке.",
+    syntax: "markcoroutinefunction(func) → Callable",
+    arguments: [
+      {
+        name: "func",
+        description:
+          "Функция, которую нужно пометить как асинхронную для целей интроспекции. Функция возвращается без изменения поведения — модифицируется только метаданные для iscoroutinefunction().",
+      },
+    ],
+    example: `from asgiref.sync import markcoroutinefunction, iscoroutinefunction
+
+def returns_awaitable(*args, **kwargs):
+    # Функция сама по себе не async def,
+    # но возвращает awaitable-объект (например, через async_to_sync-мост):
+    async def inner():
+        return "результат"
+    return inner()
+
+print(iscoroutinefunction(returns_awaitable))   # False — без пометки
+
+# Помечаем функцию как "асинхронную":
+marked = markcoroutinefunction(returns_awaitable)
+print(iscoroutinefunction(marked))   # True
+
+# Django использует это внутри для describing view-функций,
+# созданных динамически (например, class-based views с async-методами):
+class AsyncCapableView:
+    @classmethod
+    def as_view(cls):
+        def view(request, *args, **kwargs):
+            self = cls()
+            return self.dispatch(request, *args, **kwargs)
+
+        if hasattr(cls, "dispatch") and iscoroutinefunction(cls.dispatch):
+            view = markcoroutinefunction(view)
+        return view`,
+  },
+  {
+    name: "asgiref.sync.SyncToAsync",
+    category: "asgiref.sync",
+    description:
+      "Класс, реализующий обёртку синхронной функции для вызова из асинхронного кода. Функция sync_to_async() является фабрикой, создающей экземпляры этого класса. SyncToAsync управляет выполнением функции в отдельном потоке (или выделенном 'sync-потоке' при thread_sensitive=True) и возвращает awaitable, совместимый с async/await.",
+    syntax: "asgiref.sync.SyncToAsync(func, thread_sensitive=True, executor=None)",
+    arguments: [
+      {
+        name: "func",
+        description:
+          "Синхронная функция, оборачиваемая классом. Хранится как атрибут экземпляра и вызывается при каждом обращении через __call__.",
+      },
+      {
+        name: "thread_sensitive",
+        description:
+          "Управляет стратегией выполнения: True — выделенный единый поток для всех sync_to_async вызовов (безопасно для Django ORM); False — пул потоков ThreadPoolExecutor.",
+      },
+      {
+        name: "executor",
+        description:
+          "Executor для выполнения функции при thread_sensitive=False. Если не задан, используется executor по умолчанию.",
+      },
+    ],
+    example: `from asgiref.sync import SyncToAsync, sync_to_async
+
+def sync_function(x: int) -> int:
+    return x * 2
+
+# sync_to_async — это фабричная функция, создающая SyncToAsync:
+wrapper = sync_to_async(sync_function)
+print(type(wrapper))   # <class 'asgiref.sync.SyncToAsync'>
+
+# Прямое создание экземпляра класса (эквивалентно):
+wrapper2 = SyncToAsync(sync_function, thread_sensitive=True)
+
+import asyncio
+
+async def main():
+    result = await wrapper(21)
+    print(result)   # 42
+
+    result2 = await wrapper2(10)
+    print(result2)  # 20
+
+asyncio.run(main())
+
+# SyncToAsync поддерживает использование как декоратор класса:
+class DataProcessor:
+    def process(self, data):
+        return f"processed: {data}"
+
+processor = DataProcessor()
+# Атрибут-метод оборачивается через __get__ (дескрипторный протокол):
+async_process = SyncToAsync(processor.process)`,
+  },
+  {
+    name: "asgiref.sync.SyncToAsync.__init__(func, thread_sensitive=True, executor=None)",
+    category: "asgiref.sync",
+    description:
+      "Конструктор класса SyncToAsync. Сохраняет обёртываемую функцию и параметры стратегии выполнения (thread_sensitive, executor) в атрибутах экземпляра. Также определяет, использовать ли единый 'sync-поток' приложения (single thread executor) или обычный пул потоков для запуска функции.",
+    syntax: "SyncToAsync.__init__(self, func, thread_sensitive=True, executor=None)",
+    arguments: [
+      {
+        name: "func",
+        description:
+          "Синхронная функция для оборачивания. Сохраняется в self.func и используется при вызове через __call__.",
+      },
+      {
+        name: "thread_sensitive",
+        description:
+          "Флаг, сохраняемый в self._thread_sensitive. При True класс использует общий выделенный поток для всех thread_sensitive-вызовов в приложении, что гарантирует последовательное выполнение и сохранение thread-local состояния (критично для Django ORM connections).",
+      },
+      {
+        name: "executor",
+        description:
+          "Executor, сохраняемый в self._executor. Используется только при thread_sensitive=False; при None берётся executor по умолчанию текущего event loop.",
+      },
+    ],
+    example: `from asgiref.sync import SyncToAsync
+
+def query_database(query: str) -> list:
+    # имитация синхронного ORM-запроса
+    return [f"row for {query}"]
+
+# Инициализация с настройками по умолчанию (thread_sensitive=True):
+default_wrapper = SyncToAsync(query_database)
+print(default_wrapper.func)               # <function query_database>
+print(default_wrapper._thread_sensitive)  # True
+
+# Инициализация с явным контролем потоков:
+from concurrent.futures import ThreadPoolExecutor
+
+custom_executor = ThreadPoolExecutor(max_workers=4)
+custom_wrapper = SyncToAsync(
+    query_database,
+    thread_sensitive=False,
+    executor=custom_executor,
+)
+print(custom_wrapper._thread_sensitive)   # False
+print(custom_wrapper._executor)           # <ThreadPoolExecutor ...>
+
+import asyncio
+
+async def main():
+    result = await default_wrapper("SELECT * FROM users")
+    print(result)   # ['row for SELECT * FROM users']
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.sync.SyncToAsync.__call__(*args, **kwargs)",
+    category: "asgiref.sync",
+    description:
+      "Делает экземпляр SyncToAsync вызываемым (callable) через await. При вызове запускает обёрнутую синхронную функцию в соответствующем потоке (выделенном sync-потоке или пуле, в зависимости от thread_sensitive) и возвращает результат как awaitable, который можно ожидать в асинхронном коде.",
+    syntax: "await instance(*args, **kwargs) → Any",
+    arguments: [
+      {
+        name: "args",
+        description:
+          "Позиционные аргументы, передаваемые в обёрнутую синхронную функцию при вызове.",
+      },
+      {
+        name: "kwargs",
+        description:
+          "Именованные аргументы, передаваемые в обёрнутую синхронную функцию при вызове.",
+      },
+    ],
+    example: `from asgiref.sync import SyncToAsync
+import asyncio
+
+def add(a: int, b: int, multiplier: int = 1) -> int:
+    return (a + b) * multiplier
+
+wrapper = SyncToAsync(add)
+
+async def main():
+    # __call__ возвращает awaitable — можно await:
+    result = await wrapper(2, 3)
+    print(result)   # 5
+
+    # С именованными аргументами:
+    result2 = await wrapper(2, 3, multiplier=10)
+    print(result2)  # 50
+
+    # Несколько параллельных вызовов (каждый через event loop):
+    results = await asyncio.gather(
+        wrapper(1, 1),
+        wrapper(2, 2),
+        wrapper(3, 3),
+    )
+    print(results)   # [2, 4, 6]
+
+asyncio.run(main())
+
+# Внутри __call__ SyncToAsync определяет текущий event loop,
+# запускает func через run_in_executor (или выделенный поток
+# при thread_sensitive=True) и await-ит Future с результатом.
+# Исключения, возникшие в func, пробрасываются наружу как обычно:
+
+def failing_func():
+    raise ValueError("что-то пошло не так")
+
+failing_wrapper = SyncToAsync(failing_func)
+
+async def try_call():
+    try:
+        await failing_wrapper()
+    except ValueError as e:
+        print(f"Поймано исключение: {e}")
+
+asyncio.run(try_call())`,
+  },
+  {
+    name: "asgiref.sync.SyncToAsync.__get__(parent, objtype)",
+    category: "asgiref.sync",
+    description:
+      "Реализует протокол дескриптора, позволяя использовать SyncToAsync как декоратор метода класса. Когда SyncToAsync применяется к методу экземпляра, __get__ гарантирует, что self корректно привязывается при обращении через экземпляр класса (аналогично поведению обычных функций-методов в Python).",
+    syntax: "SyncToAsync.__get__(self, parent, objtype) → BoundMethod-like Callable",
+    arguments: [
+      {
+        name: "parent",
+        description:
+          "Экземпляр класса, через который происходит доступ к обёрнутому методу (self объекта). Если None — метод запрашивается через сам класс, а не через экземпляр.",
+      },
+      {
+        name: "objtype",
+        description:
+          "Тип (класс), к которому принадлежит метод. Используется для определения контекста доступа, аналогично стандартному дескрипторному протоколу Python (__get__ в обычных функциях).",
+      },
+    ],
+    example: `from asgiref.sync import SyncToAsync
+import asyncio
+
+class Repository:
+    def __init__(self, name: str):
+        self.name = name
+
+    def fetch(self, item_id: int) -> str:
+        # Обычный синхронный метод, использующий self:
+        return f"{self.name}: item #{item_id}"
+
+    # Оборачиваем метод через SyncToAsync — благодаря __get__
+    # self привязывается корректно при доступе через экземпляр:
+    fetch_async = SyncToAsync(fetch)
+
+repo = Repository("users_db")
+
+async def main():
+    # __get__ гарантирует, что 'repo' передаётся как self внутри fetch:
+    result = await repo.fetch_async(42)
+    print(result)   # "users_db: item #42"
+
+asyncio.run(main())
+
+# Без корректной реализации __get__ SyncToAsync не знал бы,
+# какому экземпляру принадлежит self — дескрипторный протокол
+# решает эту проблему так же, как для обычных методов-функций:
+print(type(Repository.__dict__["fetch_async"]))
+# <class 'asgiref.sync.SyncToAsync'>
+print(type(repo.fetch_async))
+# после __get__ — bound-обёртка, привязанная к repo`,
+  },
+  {
+    name: "asgiref.sync.AsyncToSync",
+    category: "asgiref.sync",
+    description:
+      "Класс, реализующий обёртку асинхронной функции (корутины) для вызова из синхронного кода. Функция async_to_sync() является фабрикой, создающей экземпляры этого класса. AsyncToSync запускает event loop (или переиспользует существующий loop 'главного' потока через специальный механизм передачи задач) и блокирует выполнение до завершения корутины, возвращая её результат.",
+    syntax: "asgiref.sync.AsyncToSync(awaitable, force_new_loop=False)",
+    arguments: [
+      {
+        name: "awaitable",
+        description:
+          "Асинхронная функция или другой awaitable, оборачиваемый классом. Хранится как атрибут экземпляра и выполняется при каждом обращении через __call__.",
+      },
+      {
+        name: "force_new_loop",
+        description:
+          "Если True — для каждого вызова принудительно создаётся новый event loop, независимо от того, работает ли уже loop в текущем потоке. Если False (по умолчанию) — по возможности переиспользует существующий loop через межпоточный механизм 'main_wrap'.",
+      },
+    ],
+    example: `from asgiref.sync import AsyncToSync, async_to_sync
+import asyncio
+
+async def fetch_remote_data(url: str) -> str:
+    await asyncio.sleep(0.1)   # имитация сетевого запроса
+    return f"данные с {url}"
+
+# async_to_sync — фабричная функция, создающая AsyncToSync:
+wrapper = async_to_sync(fetch_remote_data)
+print(type(wrapper))   # <class 'asgiref.sync.AsyncToSync'>
+
+# Прямое создание экземпляра класса (эквивалентно):
+wrapper2 = AsyncToSync(fetch_remote_data, force_new_loop=True)
+
+# Вызов из полностью синхронного кода (без async/await):
+def sync_view(request):
+    result = wrapper("https://api.example.com/data")
+    return result
+
+print(sync_view(None))   # "данные с https://api.example.com/data"
+
+# Типичный сценарий — вызов async-кода Django Channels
+# из синхронной management-команды или Celery-задачи:
+from channels.layers import get_channel_layer
+
+def notify_from_celery_task(group: str, message: dict):
+    channel_layer = get_channel_layer()
+    send = AsyncToSync(channel_layer.group_send)
+    send(group, message)`,
+  },
+  {
+    name: "asgiref.sync.AsyncToSync.__init__(awaitable, force_new_loop=False)",
+    category: "asgiref.sync",
+    description:
+      "Конструктор класса AsyncToSync. Сохраняет обёртываемую корутинную функцию и флаг force_new_loop в атрибутах экземпляра. Также инициализирует внутренние структуры для передачи задачи между потоками (если вызов происходит из потока, отличного от того, где работает event loop).",
+    syntax: "AsyncToSync.__init__(self, awaitable, force_new_loop=False)",
+    arguments: [
+      {
+        name: "awaitable",
+        description:
+          "Асинхронная функция для оборачивания. Сохраняется в self.awaitable и вызывается для получения корутины при каждом обращении через __call__.",
+      },
+      {
+        name: "force_new_loop",
+        description:
+          "Флаг, сохраняемый в self.force_new_loop. Управляет тем, создаётся ли новый event loop при каждом вызове или используется существующий/общий loop приложения через механизм main_wrap.",
+      },
+    ],
+    example: `from asgiref.sync import AsyncToSync
+
+async def process_order(order_id: int) -> str:
+    return f"Заказ #{order_id} обработан"
+
+# Инициализация с настройками по умолчанию:
+default_wrapper = AsyncToSync(process_order)
+print(default_wrapper.awaitable)         # <function process_order>
+print(default_wrapper.force_new_loop)    # False
+
+# Инициализация с принудительным новым loop:
+isolated_wrapper = AsyncToSync(process_order, force_new_loop=True)
+print(isolated_wrapper.force_new_loop)   # True
+
+# Вызов синхронно:
+result = default_wrapper(42)
+print(result)   # "Заказ #42 обработан"
+
+# force_new_loop=True полезен, когда нужно гарантировать
+# полностью изолированное выполнение, например в тестах,
+# где не должно быть побочных эффектов от предыдущего event loop:
+def test_process_order():
+    isolated = AsyncToSync(process_order, force_new_loop=True)
+    assert isolated(1) == "Заказ #1 обработан"`,
+  },
+  {
+    name: "asgiref.sync.AsyncToSync.__call__(*args, **kwargs)",
+    category: "asgiref.sync",
+    description:
+      "Делает экземпляр AsyncToSync вызываемым как обычную синхронную функцию. При вызове создаёт корутину из обёрнутого awaitable с переданными аргументами, запускает её на выполнение (в новом event loop, существующем loop главного потока, или через межпоточную передачу с помощью main_wrap) и блокирует текущий поток до получения результата.",
+    syntax: "instance(*args, **kwargs) → Any",
+    arguments: [
+      {
+        name: "args",
+        description:
+          "Позиционные аргументы, передаваемые в обёрнутую корутинную функцию при вызове.",
+      },
+      {
+        name: "kwargs",
+        description:
+          "Именованные аргументы, передаваемые в обёрнутую корутинную функцию при вызове.",
+      },
+    ],
+    example: `from asgiref.sync import AsyncToSync
+import asyncio
+
+async def compute(a: int, b: int, operation: str = "add") -> int:
+    await asyncio.sleep(0.01)
+    if operation == "add":
+        return a + b
+    elif operation == "multiply":
+        return a * b
+    raise ValueError(f"Неизвестная операция: {operation}")
+
+wrapper = AsyncToSync(compute)
+
+# __call__ блокирует поток и возвращает результат синхронно:
+result = wrapper(2, 3)
+print(result)   # 5
+
+# С именованными аргументами:
+result2 = wrapper(2, 3, operation="multiply")
+print(result2)  # 6
+
+# Исключения из корутины пробрасываются наружу как обычно:
+try:
+    wrapper(1, 1, operation="unknown")
+except ValueError as e:
+    print(f"Поймано исключение: {e}")
+
+# Вызов из потока, где уже работает event loop (например,
+# другой async-контекст) — AsyncToSync через main_wrap
+# передаёт выполнение в поток с loop и дожидается результата,
+# избегая ошибки "event loop is already running":
+def called_from_thread():
+    return wrapper(10, 20)
+
+import threading
+thread = threading.Thread(target=called_from_thread)
+thread.start()
+thread.join()`,
+  },
+  {
+    name: "asgiref.sync.AsyncToSync.__get__(parent, objtype)",
+    category: "asgiref.sync",
+    description:
+      "Реализует протокол дескриптора, позволяя использовать AsyncToSync как декоратор асинхронного метода класса. Гарантирует, что при обращении через экземпляр класса self корректно привязывается к обёрнутой корутинной функции, аналогично поведению обычных bound-методов Python.",
+    syntax: "AsyncToSync.__get__(self, parent, objtype) → BoundMethod-like Callable",
+    arguments: [
+      {
+        name: "parent",
+        description:
+          "Экземпляр класса, через который происходит доступ к обёрнутому асинхронному методу (self объекта). Если None — метод запрашивается через сам класс.",
+      },
+      {
+        name: "objtype",
+        description:
+          "Тип (класс), к которому принадлежит метод. Используется для определения контекста доступа согласно дескрипторному протоколу Python.",
+      },
+    ],
+    example: `from asgiref.sync import AsyncToSync
+
+class NotificationService:
+    def __init__(self, channel: str):
+        self.channel = channel
+
+    async def send(self, message: str) -> str:
+        # Асинхронный метод, использующий self.channel:
+        return f"[{self.channel}] {message}"
+
+    # Оборачиваем корутинный метод — __get__ гарантирует
+    # корректную привязку self при доступе через экземпляр:
+    send_sync = AsyncToSync(send)
+
+service = NotificationService("alerts")
+
+# Вызывается синхронно, но self.channel привязан корректно:
+result = service.send_sync("Сервер перегружен")
+print(result)   # "[alerts] Сервер перегружен"
+
+# Без __get__ AsyncToSync не знал бы, какому экземпляру
+# принадлежит self — протокол дескриптора решает эту задачу
+# так же, как для обычных функций-методов:
+print(type(NotificationService.__dict__["send_sync"]))
+# <class 'asgiref.sync.AsyncToSync'>
+
+# Типичное применение — Django Channels consumer,
+# где async-методы канала нужно вызывать из sync-кода:
+class ChatConsumer:
+    async def broadcast(self, text: str) -> None:
+        print(f"broadcast: {text}")
+
+    broadcast_sync = AsyncToSync(broadcast)
+
+consumer = ChatConsumer()
+consumer.broadcast_sync("Новое сообщение в чате")`,
+  },
+  {
+    name: "asgiref.sync.AsyncToSync.main_wrap(args, kwargs, call_result, source_task, cancel_on_exit, executor)",
+    category: "asgiref.sync",
+    description:
+      "Внутренний метод AsyncToSync, выполняющийся ВНУТРИ event loop главного (или целевого) потока приложения. Отвечает за фактический запуск обёрнутой корутины с переданными аргументами, отслеживание её задачи (Task) для возможности отмены при выходе из потока-вызывающего, и запись результата в call_result — объект, через который результат передаётся обратно в поток, инициировавший вызов через __call__.",
+    syntax: "async def main_wrap(self, args, kwargs, call_result, source_task, cancel_on_exit, executor)",
+    arguments: [
+      {
+        name: "args / kwargs",
+        description:
+          "Позиционные и именованные аргументы, с которыми должна быть вызвана обёрнутая корутинная функция (переданы изначально в __call__).",
+      },
+      {
+        name: "call_result",
+        description:
+          "Объект (обычно concurrent.futures.Future или его аналог), в который main_wrap записывает результат выполнения корутины (значение или исключение). Именно через него поток-инициатор вызова получает итоговый результат.",
+      },
+      {
+        name: "source_task",
+        description:
+          "Ссылка на задачу (asyncio.Task) исходного потока/контекста, из которого был инициирован вызов. Используется для корректной синхронизации отмены и контекстных переменных (contextvars) между потоками.",
+      },
+      {
+        name: "cancel_on_exit",
+        description:
+          "Если True — при отмене или завершении вызывающего контекста (например, отмене source_task) корутина внутри main_wrap также будет отменена, чтобы избежать 'зависших' фоновых задач.",
+      },
+      {
+        name: "executor",
+        description:
+          "Executor, в контексте которого может понадобиться запускать дополнительные синхронные операции внутри корутины (проброс для вложенных sync_to_async вызовов).",
+      },
+    ],
+    example: `# main_wrap — внутренний метод, не предназначенный для прямого
+# вызова из пользовательского кода. Он иллюстрирует, как AsyncToSync
+# организует работу под капотом:
+
+import asyncio
+from asgiref.sync import AsyncToSync
+
+async def long_running_task(seconds: float) -> str:
+    await asyncio.sleep(seconds)
+    return "задача завершена"
+
+wrapper = AsyncToSync(long_running_task)
+
+# При вызове wrapper(2) под капотом происходит примерно следующее:
+# 1. __call__ создаёт call_result (Future) и планирует
+#    выполнение self.main_wrap(...) в event loop главного потока
+#    через loop.call_soon_threadsafe(...).
+# 2. main_wrap await-ит корутину long_running_task(2),
+#    оборачивая её в asyncio.Task (source_task).
+# 3. Результат (или исключение) записывается в call_result.
+# 4. __call__, блокирующий вызывающий поток, дожидается
+#    call_result.result() и возвращает значение синхронно.
+
+result = wrapper(0.1)
+print(result)   # "задача завершена" — получено через call_result
+
+# Если во время ожидания вызывающий поток прерывается
+# (например, KeyboardInterrupt) и cancel_on_exit=True,
+# main_wrap отменяет source_task, чтобы не оставлять
+# "висящую" корутину в event loop после выхода из __call__.`,
+  },
+  {
+    name: "asgiref.sync.ThreadSensitiveContext",
+    category: "asgiref.sync",
+    description:
+      "Асинхронный контекстный менеджер, ограничивающий область действия 'sync-потока' (thread_sensitive-executor) конкретным блоком кода. По умолчанию все sync_to_async(thread_sensitive=True) вызовы во всём приложении используют один общий поток. ThreadSensitiveContext позволяет создать отдельный, изолированный sync-поток для группы операций внутри одной задачи — полезно для тестов и параллельных запросов, где нужна независимость между sync-вызовами разных задач.",
+    syntax: "async with ThreadSensitiveContext():\n    ...",
+    arguments: [],
+    example: `import asyncio
+from asgiref.sync import sync_to_async, ThreadSensitiveContext
+
+def blocking_operation(label: str) -> str:
+    return f"выполнено: {label}"
+
+async def handle_request(request_id: int):
+    # Каждый вызов handle_request получает СВОЙ изолированный
+    # sync-поток благодаря ThreadSensitiveContext:
+    async with ThreadSensitiveContext():
+        result = await sync_to_async(blocking_operation)(f"запрос {request_id}")
+        return result
+
+async def main():
+    # Без ThreadSensitiveContext все вызовы использовали бы
+    # ОДИН общий sync-поток на всё приложение (последовательно).
+    # С контекстом каждая задача изолирована:
+    results = await asyncio.gather(
+        handle_request(1),
+        handle_request(2),
+        handle_request(3),
+    )
+    print(results)
+    # ['выполнено: запрос 1', 'выполнено: запрос 2', 'выполнено: запрос 3']
+
+asyncio.run(main())
+
+# Типичное применение — тестирование Django ORM в async-тестах,
+# где каждый тест должен иметь независимый sync-контекст:
+import pytest
+
+@pytest.mark.asyncio
+async def test_user_creation():
+    async with ThreadSensitiveContext():
+        from django.contrib.auth.models import User
+        user = await sync_to_async(User.objects.create)(username="alice")
+        assert user.username == "alice"`,
+  },
+  {
+    name: "asgiref.sync.ThreadSensitiveContext.__init__()",
+    category: "asgiref.sync",
+    description:
+      "Конструктор класса ThreadSensitiveContext. Не принимает параметров — инициализирует внутреннее состояние (ссылку на выделенный exit-стек и executor), которое будет заполнено при входе в контекст через __aenter__/__enter__.",
+    syntax: "ThreadSensitiveContext.__init__(self)",
+    arguments: [],
+    example: `from asgiref.sync import ThreadSensitiveContext
+
+# Создание экземпляра — параметров не требуется:
+context = ThreadSensitiveContext()
+print(context)   # <asgiref.sync.ThreadSensitiveContext object at ...>
+
+# На этапе __init__ executor ещё не создан —
+# он появляется только при входе в контекст:
+print(getattr(context, "_context_stack", None))
+
+import asyncio
+
+async def main():
+    ctx = ThreadSensitiveContext()
+    async with ctx:
+        # Внутри блока — выделенный sync-поток активен
+        print("внутри изолированного контекста")
+    # После выхода — executor контекста завершён
+
+asyncio.run(main())
+
+# Обычно ThreadSensitiveContext создаётся и используется сразу
+# в конструкции 'async with', без сохранения в отдельную переменную:
+async def isolated_task():
+    async with ThreadSensitiveContext():
+        pass  # операции внутри изолированы от других задач`,
+  },
+  {
+    name: "asgiref.sync.ThreadSensitiveContext.__enter__()",
+    category: "asgiref.sync",
+    description:
+      "Метод входа в асинхронный контекстный менеджер (фактически реализован как __aenter__, но описывается по аналогии с синхронным протоколом). При входе создаёт новый выделенный executor (sync-поток) и регистрирует его в contextvar, так что все sync_to_async(thread_sensitive=True) вызовы внутри блока будут использовать именно этот executor, а не общий executor приложения.",
+    syntax: "async def __aenter__(self) → ThreadSensitiveContext",
+    arguments: [],
+    example: `import asyncio
+from asgiref.sync import sync_to_async, ThreadSensitiveContext
+
+def get_thread_name() -> str:
+    import threading
+    return threading.current_thread().name
+
+async def task_a():
+    async with ThreadSensitiveContext():
+        # __aenter__ создаёт отдельный executor для этого блока:
+        name = await sync_to_async(get_thread_name)()
+        return name
+
+async def task_b():
+    async with ThreadSensitiveContext():
+        # Другой, независимый executor:
+        name = await sync_to_async(get_thread_name)()
+        return name
+
+async def main():
+    # task_a и task_b выполняются в РАЗНЫХ выделенных потоках,
+    # благодаря независимым вызовам __aenter__:
+    name_a, name_b = await asyncio.gather(task_a(), task_b())
+    print(name_a, name_b)   # разные имена потоков
+    print(name_a != name_b) # True
+
+asyncio.run(main())
+
+# Без ThreadSensitiveContext оба вызова использовали бы
+# ОДИН и тот же общий sync-поток приложения:
+async def without_context():
+    name1 = await sync_to_async(get_thread_name)()
+    name2 = await sync_to_async(get_thread_name)()
+    print(name1 == name2)   # True — один и тот же поток`,
+  },
+  {
+    name: "asgiref.sync.ThreadSensitiveContext.__exit__(exc, value, tb)",
+    category: "asgiref.sync",
+    description:
+      "Метод выхода из асинхронного контекстного менеджера (реализован как __aexit__). Завершает работу выделенного executor'а, созданного при входе в контекст, освобождает ресурсы потока и снимает привязку contextvar, возвращая поведение sync_to_async к использованию общего executor'а приложения (или executor'а внешнего контекста, если контексты вложены).",
+    syntax: "async def __aexit__(self, exc_type, exc_value, traceback) → None",
+    arguments: [
+      {
+        name: "exc / exc_type",
+        description:
+          "Тип исключения, если оно возникло внутри блока 'async with'. None, если выход произошёл штатно, без исключений.",
+      },
+      {
+        name: "value / exc_value",
+        description:
+          "Экземпляр исключения с деталями ошибки, если оно возникло внутри блока. None при штатном завершении.",
+      },
+      {
+        name: "tb / traceback",
+        description:
+          "Объект traceback с трассировкой стека на момент исключения. None при штатном завершении. __aexit__ не подавляет исключение (возвращает falsy), поэтому оно продолжает распространяться после завершения контекста.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.sync import sync_to_async, ThreadSensitiveContext
+
+def risky_operation() -> str:
+    raise ValueError("операция завершилась с ошибкой")
+
+async def task_with_error():
+    async with ThreadSensitiveContext():
+        # __aexit__ вызывается даже при исключении внутри блока —
+        # executor корректно завершается, ресурсы освобождаются:
+        result = await sync_to_async(risky_operation)()
+        return result
+
+async def main():
+    try:
+        await task_with_error()
+    except ValueError as e:
+        print(f"Исключение поймано после выхода из контекста: {e}")
+    # Executor контекста уже корректно завершён благодаря __aexit__,
+    # несмотря на то что исключение пробрасывается наружу
+
+asyncio.run(main())
+
+# Штатное завершение без исключений:
+async def clean_task():
+    async with ThreadSensitiveContext():
+        pass   # exc=None, value=None, tb=None при выходе
+    print("Контекст закрыт без ошибок")
+
+asyncio.run(clean_task())`,
+  },
+  {
+    name: "asgiref.local",
+    category: "asgiref.local",
+    description:
+      "Модуль библиотеки asgiref, предоставляющий класс Local — асинхронно-совместимую альтернативу threading.local(). В отличие от стандартного threading.local, asgiref.local.Local корректно работает как в потоках, так и внутри отдельных asyncio-задач (Task), обеспечивая изоляцию данных на уровне задачи, а не только потока. Используется Django для хранения контекстных данных запроса в async-режиме.",
+    syntax: "import asgiref.local",
+    arguments: [],
+    example: `import asgiref.local
+import asyncio
+
+# Модуль предоставляет единственный публичный класс — Local
+storage = asgiref.local.Local()
+
+async def handler(request_id: int):
+    # Каждая asyncio-задача видит СВОЙ независимый storage.value,
+    # даже если задачи выполняются в одном потоке:
+    storage.value = f"данные запроса {request_id}"
+    await asyncio.sleep(0.01)
+    print(f"Задача {request_id}: {storage.value}")
+
+async def main():
+    # Параллельные задачи не влияют друг на друга через storage:
+    await asyncio.gather(
+        handler(1),
+        handler(2),
+        handler(3),
+    )
+    # Вывод (порядок может отличаться):
+    # Задача 1: данные запроса 1
+    # Задача 2: данные запроса 2
+    # Задача 3: данные запроса 3
+
+asyncio.run(main())
+
+# В отличие от threading.local(), где все asyncio-задачи
+# в одном потоке делили бы ОДНО значение и перезаписывали его:
+import threading
+thread_local = threading.local()
+
+async def broken_handler(request_id: int):
+    thread_local.value = f"данные запроса {request_id}"
+    await asyncio.sleep(0.01)
+    # К этому моменту thread_local.value могло быть перезаписано
+    # другой задачей в том же потоке!
+    print(f"Задача {request_id}: {thread_local.value}")`,
+  },
+  {
+    name: "asgiref.local.Local",
+    category: "asgiref.local",
+    description:
+      "Класс, реализующий контейнер данных, изолированных по потоку выполнения ИЛИ по asyncio-задаче (в зависимости от параметра thread_critical). Используется Django для хранения request-контекста, соединений с базой данных и другого состояния, которое не должно 'протекать' между параллельными задачами в async-режиме, но должно оставаться доступным на протяжении всей обработки одного запроса.",
+    syntax: "asgiref.local.Local(thread_critical=False)",
+    arguments: [
+      {
+        name: "thread_critical",
+        description:
+          "Если False (по умолчанию) — данные изолируются на уровне asyncio-задачи (Task): каждая задача видит собственную копию атрибутов, независимо от потока. Если True — данные изолируются строго на уровне потока (как threading.local), что нужно для данных, которые НЕ должны 'путешествовать' между задачами при их передаче между потоками (например, соединения с БД, привязанные к потоку).",
+      },
+    ],
+    example: `from asgiref.local import Local
+import asyncio
+
+# thread_critical=False (по умолчанию) — изоляция по задаче:
+task_local = Local()
+
+async def per_task_handler(task_id: int):
+    task_local.data = f"task-{task_id}"
+    await asyncio.sleep(0.01)
+    return task_local.data
+
+async def main():
+    results = await asyncio.gather(
+        per_task_handler(1),
+        per_task_handler(2),
+    )
+    print(results)   # ['task-1', 'task-2'] — независимые значения
+
+asyncio.run(main())
+
+# thread_critical=True — изоляция строго по потоку,
+# используется для ресурсов, привязанных к ОС-потоку
+# (например, соединений с БД в Django):
+db_connections = Local(thread_critical=True)
+
+def sync_worker():
+    db_connections.connection = "conn-for-this-thread"
+    return db_connections.connection
+
+import threading
+t1 = threading.Thread(target=sync_worker)
+t1.start()
+t1.join()
+
+# Django ORM использует Local(thread_critical=True) внутри
+# django.db.connections, чтобы соединения не "перепутывались"
+# между async-задачами, выполняющимися в одном потоке через
+# sync_to_async(thread_sensitive=True).`,
+  },
+  {
+    name: "asgiref.local.Local.__init__(thread_critical=False)",
+    category: "asgiref.local",
+    description:
+      "Конструктор класса Local. Инициализирует внутреннее хранилище (обычно на основе WeakKeyDictionary, привязанного к текущему потоку или asyncio-задаче) и сохраняет флаг thread_critical, определяющий стратегию изоляции данных.",
+    syntax: "Local.__init__(self, thread_critical=False)",
+    arguments: [
+      {
+        name: "thread_critical",
+        description:
+          "Сохраняется в self._thread_critical. Определяет, будет ли Local искать текущий 'контекст изоляции' через asyncio.current_task() (при False) или через threading.get_ident() (при True).",
+      },
+    ],
+    example: `from asgiref.local import Local
+
+# Инициализация с настройками по умолчанию (изоляция по задаче):
+task_scoped = Local()
+print(task_scoped._thread_critical)   # False
+
+# Инициализация со строгой привязкой к потоку:
+thread_scoped = Local(thread_critical=True)
+print(thread_scoped._thread_critical)   # True
+
+# Множественные независимые экземпляры Local
+# для разных целей — например, в Django:
+request_context = Local()          # изоляция по asyncio-задаче
+db_connection_storage = Local(thread_critical=True)  # изоляция по потоку
+
+import asyncio
+
+async def process(request_id: int):
+    request_context.id = request_id
+    await asyncio.sleep(0.01)
+    print(f"Обработка запроса: {request_context.id}")
+
+async def main():
+    await asyncio.gather(process(1), process(2))
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.local.Local.__getattr__(key)",
+    category: "asgiref.local",
+    description:
+      "Возвращает значение атрибута, сохранённое для текущего контекста изоляции (asyncio-задачи или потока, в зависимости от thread_critical). Если атрибут не был установлен в текущем контексте, выбрасывает AttributeError — аналогично поведению обычных объектов Python.",
+    syntax: "local_instance.key  →  вызывает __getattr__(self, 'key')",
+    arguments: [
+      {
+        name: "key",
+        description:
+          "Имя атрибута, значение которого нужно получить. Ищется в хранилище, соответствующем текущей asyncio-задаче (или потоку при thread_critical=True).",
+      },
+    ],
+    example: `from asgiref.local import Local
+import asyncio
+
+storage = Local()
+
+async def task_one():
+    storage.value = "значение из task_one"
+    await asyncio.sleep(0.01)
+    # __getattr__ возвращает значение, установленное ЭТОЙ задачей:
+    print(storage.value)   # "значение из task_one"
+
+async def task_two():
+    # Другая задача не видит storage.value, установленный task_one,
+    # если сама его не задавала — AttributeError:
+    try:
+        print(storage.value)
+    except AttributeError:
+        print("task_two: атрибут 'value' не установлен в этом контексте")
+
+async def main():
+    await asyncio.gather(task_one(), task_two())
+
+asyncio.run(main())
+# Вывод:
+# task_two: атрибут 'value' не установлен в этом контексте
+# значение из task_one
+
+# Обращение к несуществующему атрибуту:
+empty_storage = Local()
+try:
+    print(empty_storage.missing_key)
+except AttributeError as e:
+    print(f"Ошибка: {e}")`,
+  },
+  {
+    name: "asgiref.local.Local.__setattr__(key, value)",
+    category: "asgiref.local",
+    description:
+      "Устанавливает значение атрибута в хранилище, привязанном к текущему контексту изоляции (asyncio-задаче или потоку). Значение будет видно только в том же контексте при последующих обращениях через __getattr__ — другие параллельные задачи (или потоки) не увидят это значение.",
+    syntax: "local_instance.key = value  →  вызывает __setattr__(self, 'key', value)",
+    arguments: [
+      {
+        name: "key",
+        description:
+          "Имя устанавливаемого атрибута. Служебные имена, начинающиеся с '_' (например, _thread_critical, _storage), обрабатываются особым образом и сохраняются на уровне самого объекта Local, а не в изолированном хранилище.",
+      },
+      {
+        name: "value",
+        description:
+          "Значение, сохраняемое для текущего контекста (asyncio-задачи или потока). Может быть любым Python-объектом.",
+      },
+    ],
+    example: `from asgiref.local import Local
+import asyncio
+
+connection_pool = Local()
+
+async def handle_connection(conn_id: int):
+    # __setattr__ сохраняет значение ТОЛЬКО для текущей задачи:
+    connection_pool.current_id = conn_id
+    connection_pool.status = "active"
+
+    await asyncio.sleep(0.01)
+
+    # Значения видны только внутри этой же задачи:
+    print(f"Соединение {connection_pool.current_id}: {connection_pool.status}")
+
+async def main():
+    await asyncio.gather(
+        handle_connection(1),
+        handle_connection(2),
+        handle_connection(3),
+    )
+    # Каждая задача печатает СВОЙ id и статус, без смешивания:
+    # Соединение 1: active
+    # Соединение 2: active
+    # Соединение 3: active
+
+asyncio.run(main())
+
+# Перезапись значения в рамках той же задачи:
+async def update_value():
+    local_obj = Local()
+    local_obj.counter = 1
+    local_obj.counter = local_obj.counter + 1
+    print(local_obj.counter)   # 2
+
+asyncio.run(update_value())`,
+  },
+  {
+    name: "asgiref.local.Local.__delattr__(key)",
+    category: "asgiref.local",
+    description:
+      "Удаляет атрибут из хранилища, привязанного к текущему контексту изоляции (asyncio-задаче или потоку). Если атрибут не был установлен в текущем контексте, выбрасывает AttributeError. После удаления последующее обращение через __getattr__ также вызовет AttributeError, пока атрибут не будет установлен заново.",
+    syntax: "del local_instance.key  →  вызывает __delattr__(self, 'key')",
+    arguments: [
+      {
+        name: "key",
+        description:
+          "Имя атрибута, который нужно удалить из хранилища текущего контекста (asyncio-задачи или потока).",
+      },
+    ],
+    example: `from asgiref.local import Local
+import asyncio
+
+session_data = Local()
+
+async def request_lifecycle():
+    session_data.user_id = 42
+    session_data.authenticated = True
+
+    print(session_data.user_id)   # 42
+
+    # Очистка данных сессии по завершении обработки запроса:
+    del session_data.user_id
+    del session_data.authenticated
+
+    try:
+        print(session_data.user_id)
+    except AttributeError:
+        print("user_id удалён — доступ вызывает AttributeError")
+
+asyncio.run(request_lifecycle())
+
+# Попытка удалить несуществующий атрибут:
+empty = Local()
+try:
+    del empty.nonexistent
+except AttributeError as e:
+    print(f"Ошибка при удалении: {e}")
+
+# Типичный паттерн — очистка контекста после обработки запроса
+# в Django middleware, чтобы избежать утечки данных между запросами:
+request_context = Local()
+
+async def middleware_cleanup(request_id: int):
+    request_context.id = request_id
+    try:
+        # ... обработка запроса ...
+        pass
+    finally:
+        del request_context.id   # гарантированная очистка`,
+  },
+  {
+    name: "asgiref.wsgi",
+    category: "asgiref.wsgi",
+    description:
+      "Модуль библиотеки asgiref, предоставляющий мост между WSGI и ASGI протоколами. Позволяет запускать классические синхронные WSGI-приложения (например, старые Flask/Django-проекты) внутри ASGI-сервера (Daphne, Uvicorn, Hypercorn). Основной класс модуля — WsgiToAsgi, который оборачивает WSGI-приложение и предоставляет ASGI-совместимый интерфейс.",
+    syntax: "import asgiref.wsgi",
+    arguments: [],
+    example: `import asgiref.wsgi
+from asgiref.wsgi import WsgiToAsgi
+
+# Классическое WSGI-приложение (например, Flask):
+def simple_wsgi_app(environ, start_response):
+    status = "200 OK"
+    headers = [("Content-Type", "text/plain")]
+    start_response(status, headers)
+    return [b"Hello from WSGI!"]
+
+# Оборачиваем WSGI-приложение в ASGI-совместимый интерфейс:
+asgi_app = WsgiToAsgi(simple_wsgi_app)
+
+# Теперь asgi_app можно запускать через ASGI-сервер:
+# uvicorn module:asgi_app
+
+# Типичное применение — интеграция Flask в Django Channels
+# или запуск legacy WSGI-приложения на ASGI-инфраструктуре:
+from flask import Flask
+
+flask_app = Flask(__name__)
+
+@flask_app.route("/")
+def index():
+    return "Flask работает через ASGI-сервер"
+
+asgi_flask_app = WsgiToAsgi(flask_app)
+# asgi_flask_app теперь можно смонтировать в ASGI-роутер Django/Starlette`,
+  },
+  {
+    name: "asgiref.wsgi.WsgiToAsgi",
+    category: "asgiref.wsgi",
+    description:
+      "Класс-адаптер, оборачивающий синхронное WSGI-приложение в вызываемый ASGI-объект. При каждом входящем ASGI-запросе (scope, receive, send) создаёт экземпляр WsgiToAsgiInstance, который непосредственно обрабатывает конкретное соединение: строит WSGI environ, вызывает WSGI-приложение в отдельном потоке (через sync_to_async) и передаёт ответ обратно через ASGI-протокол send.",
+    syntax: "asgiref.wsgi.WsgiToAsgi(wsgi_application)",
+    arguments: [
+      {
+        name: "wsgi_application",
+        description:
+          "Вызываемый объект, реализующий WSGI-интерфейс: функция или объект с сигнатурой application(environ, start_response) -> Iterable[bytes]. Именно это приложение будет вызываться для обработки каждого HTTP-запроса.",
+      },
+    ],
+    example: `from asgiref.wsgi import WsgiToAsgi
+
+def django_wsgi_app(environ, start_response):
+    # Например, django.core.wsgi.get_wsgi_application()
+    status = "200 OK"
+    headers = [("Content-Type", "application/json")]
+    start_response(status, headers)
+    return [b'{"message": "ok"}']
+
+# Создание ASGI-адаптера:
+application = WsgiToAsgi(django_wsgi_app)
+
+# application — вызываемый ASGI-объект: application(scope, receive, send)
+print(callable(application))   # True
+
+# Использование с настоящим Django WSGI-приложением:
+import os
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "myproject.settings")
+
+from django.core.wsgi import get_wsgi_application
+django_app = get_wsgi_application()
+
+# Запуск Django (WSGI) поверх ASGI-сервера:
+application = WsgiToAsgi(django_app)
+# Команда запуска: uvicorn myproject.asgi_wsgi_bridge:application
+
+# Каждый запрос обрабатывается созданием WsgiToAsgiInstance:
+async def example_asgi_call(scope, receive, send):
+    await application(scope, receive, send)`,
+  },
+  {
+    name: "asgiref.wsgi.WsgiToAsgi.__init__(wsgi_application)",
+    category: "asgiref.wsgi",
+    description:
+      "Конструктор класса WsgiToAsgi. Сохраняет переданное WSGI-приложение в атрибуте экземпляра для последующего использования при обработке запросов через __call__.",
+    syntax: "WsgiToAsgi.__init__(self, wsgi_application)",
+    arguments: [
+      {
+        name: "wsgi_application",
+        description:
+          "WSGI-приложение (callable с сигнатурой environ/start_response), сохраняемое в self.wsgi_application. Используется при каждом вызове __call__ для создания WsgiToAsgiInstance.",
+      },
+    ],
+    example: `from asgiref.wsgi import WsgiToAsgi
+
+def my_wsgi_app(environ, start_response):
+    start_response("200 OK", [("Content-Type", "text/plain")])
+    return [b"OK"]
+
+adapter = WsgiToAsgi(my_wsgi_app)
+
+# После __init__ приложение сохранено внутри адаптера:
+print(adapter.wsgi_application is my_wsgi_app)   # True
+
+# Можно создать несколько независимых адаптеров
+# для разных WSGI-приложений:
+def app_v1(environ, start_response):
+    start_response("200 OK", [("Content-Type", "text/plain")])
+    return [b"version 1"]
+
+def app_v2(environ, start_response):
+    start_response("200 OK", [("Content-Type", "text/plain")])
+    return [b"version 2"]
+
+adapter_v1 = WsgiToAsgi(app_v1)
+adapter_v2 = WsgiToAsgi(app_v2)
+
+print(adapter_v1.wsgi_application is app_v1)   # True
+print(adapter_v2.wsgi_application is app_v2)   # True`,
+  },
+  {
+    name: "asgiref.wsgi.WsgiToAsgi.__call__(scope, receive, send)",
+    category: "asgiref.wsgi",
+    description:
+      "Делает экземпляр WsgiToAsgi вызываемым как стандартное ASGI-приложение. При каждом вызове создаёт новый экземпляр WsgiToAsgiInstance с сохранённым WSGI-приложением и делегирует ему полную обработку запроса — построение WSGI environ, чтение тела запроса через receive, вызов WSGI-приложения и отправку ответа через send.",
+    syntax: "await instance(scope, receive, send) → None",
+    arguments: [
+      {
+        name: "scope",
+        description:
+          "Словарь ASGI-scope с метаданными соединения: тип (http/websocket), метод, путь, заголовки, query string и т.д. WsgiToAsgi поддерживает только scope['type'] == 'http'.",
+      },
+      {
+        name: "receive",
+        description:
+          "Асинхронная функция без аргументов, возвращающая awaitable с очередным ASGI-событием (например, телом запроса частями). Используется для сборки полного тела HTTP-запроса перед передачей в WSGI environ.",
+      },
+      {
+        name: "send",
+        description:
+          "Асинхронная функция, принимающая ASGI-событие (словарь) для отправки клиенту: 'http.response.start' с заголовками и статусом, затем 'http.response.body' с телом ответа.",
+      },
+    ],
+    example: `from asgiref.wsgi import WsgiToAsgi
+import asyncio
+
+def echo_wsgi_app(environ, start_response):
+    method = environ["REQUEST_METHOD"]
+    path = environ["PATH_INFO"]
+    body = f"Method: {method}, Path: {path}".encode()
+    start_response("200 OK", [("Content-Type", "text/plain")])
+    return [body]
+
+adapter = WsgiToAsgi(echo_wsgi_app)
+
+# Симуляция ASGI-вызова (обычно делает сервер: Uvicorn, Daphne):
+async def simulate_request():
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/hello",
+        "query_string": b"",
+        "headers": [(b"host", b"example.com")],
+    }
+
+    events = [{"type": "http.request", "body": b"", "more_body": False}]
+
+    async def receive():
+        return events.pop(0) if events else {"type": "http.disconnect"}
+
+    sent_messages = []
+    async def send(message):
+        sent_messages.append(message)
+
+    await adapter(scope, receive, send)
+
+    for msg in sent_messages:
+        print(msg["type"])
+        if msg["type"] == "http.response.body":
+            print(msg["body"])   # b'Method: GET, Path: /hello'
+
+asyncio.run(simulate_request())`,
+  },
+  {
+    name: "asgiref.wsgi.WsgiToAsgiInstance",
+    category: "asgiref.wsgi",
+    description:
+      "Класс, обрабатывающий одно конкретное HTTP-соединение при использовании моста WSGI→ASGI. Создаётся заново для каждого запроса классом WsgiToAsgi. Инкапсулирует всю логику одного цикла запрос-ответ: сборку тела запроса из ASGI-событий, построение WSGI environ, вызов WSGI-приложения в отдельном потоке через sync_to_async и трансляцию WSGI-ответа обратно в ASGI-события.",
+    syntax: "asgiref.wsgi.WsgiToAsgiInstance(wsgi_application)",
+    arguments: [
+      {
+        name: "wsgi_application",
+        description:
+          "WSGI-приложение, унаследованное от родительского WsgiToAsgi, которое будет вызвано для обработки конкретного запроса, обслуживаемого этим экземпляром.",
+      },
+    ],
+    example: `from asgiref.wsgi import WsgiToAsgi, WsgiToAsgiInstance
+
+def my_app(environ, start_response):
+    start_response("200 OK", [("Content-Type", "text/plain")])
+    return [b"response body"]
+
+# WsgiToAsgiInstance обычно создаётся ВНУТРИ WsgiToAsgi.__call__,
+# а не напрямую пользователем, но можно инстанцировать вручную:
+instance = WsgiToAsgiInstance(my_app)
+print(instance.wsgi_application is my_app)   # True
+
+# Жизненный цикл в реальном приложении:
+adapter = WsgiToAsgi(my_app)
+
+# При каждом входящем HTTP-запросе ASGI-сервер вызывает adapter(...),
+# а adapter.__call__ создаёт НОВЫЙ WsgiToAsgiInstance для этого запроса:
+#
+# async def __call__(self, scope, receive, send):
+#     instance = WsgiToAsgiInstance(self.wsgi_application)
+#     await instance(scope, receive, send)
+#
+# Благодаря созданию нового экземпляра для каждого запроса,
+# параллельные запросы не разделяют состояние друг с другом.`,
+  },
+  {
+    name: "asgiref.wsgi.WsgiToAsgiInstance.__init__(wsgi_application)",
+    category: "asgiref.wsgi",
+    description:
+      "Конструктор класса WsgiToAsgiInstance. Сохраняет WSGI-приложение для последующего вызова и инициализирует внутренние буферы состояния: накопитель тела запроса, флаг завершения приёма данных и место для хранения статуса/заголовков ответа, заполняемых через start_response.",
+    syntax: "WsgiToAsgiInstance.__init__(self, wsgi_application)",
+    arguments: [
+      {
+        name: "wsgi_application",
+        description:
+          "WSGI-приложение, сохраняемое в self.wsgi_application. Будет вызвано внутри __call__ после построения полного WSGI environ.",
+      },
+    ],
+    example: `from asgiref.wsgi import WsgiToAsgiInstance
+
+def app(environ, start_response):
+    start_response("200 OK", [])
+    return [b"ok"]
+
+instance = WsgiToAsgiInstance(app)
+
+# После __init__:
+print(instance.wsgi_application is app)   # True
+
+# Внутреннее состояние (примерная структура, зависит от версии asgiref):
+# self.response_started — флаг, был ли уже вызван start_response
+# self.response_content_length — Content-Length из заголовков ответа
+# self.headers — заголовки ответа, переданные в start_response
+
+# Каждый новый запрос создаёт НОВЫЙ WsgiToAsgiInstance,
+# поэтому состояние никогда не переиспользуется между запросами:
+instance_1 = WsgiToAsgiInstance(app)
+instance_2 = WsgiToAsgiInstance(app)
+print(instance_1 is instance_2)   # False — независимые объекты`,
+  },
+  {
+    name: "asgiref.wsgi.WsgiToAsgiInstance.__call__(scope, receive, send)",
+    category: "asgiref.wsgi",
+    description:
+      "Основной метод, выполняющий полный цикл обработки одного HTTP-запроса через WSGI-приложение. Последовательно: принимает тело запроса через receive() (может прийти несколькими частями), строит WSGI environ методом build_environ, вызывает WSGI-приложение в отдельном потоке (через sync_to_async), собирает статус и заголовки через start_response, и отправляет итоговый ответ клиенту через send().",
+    syntax: "await instance(scope, receive, send) → None",
+    arguments: [
+      {
+        name: "scope",
+        description:
+          "ASGI-scope конкретного HTTP-соединения: метод, путь, заголовки, query string, используемые для построения WSGI environ.",
+      },
+      {
+        name: "receive",
+        description:
+          "Асинхронная функция для получения ASGI-событий тела запроса ('http.request' с body и флагом more_body). Вызывается в цикле, пока не будет получено полное тело.",
+      },
+      {
+        name: "send",
+        description:
+          "Асинхронная функция для отправки ASGI-событий ответа: сначала 'http.response.start' (статус + заголовки, полученные из start_response), затем 'http.response.body' (тело ответа от WSGI-приложения).",
+      },
+    ],
+    example: `from asgiref.wsgi import WsgiToAsgiInstance
+import asyncio
+
+def greeting_app(environ, start_response):
+    name = environ.get("QUERY_STRING", "").replace("name=", "") or "мир"
+    body = f"Привет, {name}!".encode("utf-8")
+    start_response("200 OK", [
+        ("Content-Type", "text/plain; charset=utf-8"),
+        ("Content-Length", str(len(body))),
+    ])
+    return [body]
+
+async def simulate():
+    instance = WsgiToAsgiInstance(greeting_app)
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/greet",
+        "query_string": b"name=Alice",
+        "headers": [(b"host", b"localhost")],
+    }
+
+    events = [{"type": "http.request", "body": b"", "more_body": False}]
+    async def receive():
+        return events.pop(0) if events else {"type": "http.disconnect"}
+
+    responses = []
+    async def send(message):
+        responses.append(message)
+
+    await instance(scope, receive, send)
+
+    for r in responses:
+        if r["type"] == "http.response.body":
+            print(r["body"].decode())   # "Привет, Alice!"
+
+asyncio.run(simulate())`,
+  },
+  {
+    name: "asgiref.wsgi.WsgiToAsgiInstance.build_environ(scope, body)",
+    category: "asgiref.wsgi",
+    description:
+      "Строит словарь WSGI environ на основе ASGI-scope и полностью собранного тела запроса. Заполняет стандартные WSGI CGI-переменные (REQUEST_METHOD, PATH_INFO, QUERY_STRING, CONTENT_TYPE, HTTP_-заголовки и т.д.) и служебные ключи (wsgi.input, wsgi.errors, wsgi.version), чтобы полученный environ можно было передать в обычное WSGI-приложение без изменений.",
+    syntax: "instance.build_environ(scope, body) → dict",
+    arguments: [
+      {
+        name: "scope",
+        description:
+          "ASGI-scope с данными HTTP-запроса: method, path, query_string, headers и т.д. Используется как источник данных для заполнения WSGI environ.",
+      },
+      {
+        name: "body",
+        description:
+          "Полностью собранное тело запроса в виде bytes (объединённое из всех ASGI-событий 'http.request'). Оборачивается в io.BytesIO и помещается в environ['wsgi.input'].",
+      },
+    ],
+    example: `from asgiref.wsgi import WsgiToAsgiInstance
+
+def dummy_app(environ, start_response):
+    start_response("200 OK", [])
+    return [b""]
+
+instance = WsgiToAsgiInstance(dummy_app)
+
+scope = {
+    "type": "http",
+    "method": "POST",
+    "path": "/api/users",
+    "query_string": b"page=2&limit=10",
+    "headers": [
+        (b"host", b"example.com"),
+        (b"content-type", b"application/json"),
+        (b"authorization", b"Bearer token123"),
+    ],
+    "server": ("example.com", 443),
+    "scheme": "https",
+}
+
+body = b'{"name": "Alice"}'
+
+environ = instance.build_environ(scope, body)
+
+print(environ["REQUEST_METHOD"])     # "POST"
+print(environ["PATH_INFO"])          # "/api/users"
+print(environ["QUERY_STRING"])       # "page=2&limit=10"
+print(environ["CONTENT_TYPE"])       # "application/json"
+print(environ["HTTP_AUTHORIZATION"]) # "Bearer token123"
+print(environ["wsgi.url_scheme"])    # "https"
+
+# Тело запроса доступно как файлоподобный объект:
+print(environ["wsgi.input"].read())  # b'{"name": "Alice"}'`,
+  },
+  {
+    name: "asgiref.wsgi.WsgiToAsgiInstance.start_response(status, response_headers, exc_info=None)",
+    category: "asgiref.wsgi",
+    description:
+      "Callable, передаваемый в WSGI-приложение в качестве стандартного параметра start_response согласно спецификации WSGI (PEP 3333). WSGI-приложение вызывает его для сообщения статуса ответа и заголовков ДО возврата тела ответа. WsgiToAsgiInstance сохраняет эти данные, чтобы позже отправить их клиенту через ASGI-событие 'http.response.start'.",
+    syntax: "start_response(status: str, response_headers: list[tuple[str, str]], exc_info=None) → Callable",
+    arguments: [
+      {
+        name: "status",
+        description:
+          "Строка статуса HTTP-ответа в WSGI-формате, например '200 OK' или '404 Not Found'. Парсится для извлечения числового статус-кода при отправке ASGI-события.",
+      },
+      {
+        name: "response_headers",
+        description:
+          "Список кортежей (имя_заголовка, значение) в виде строк. Конвертируется в список байтовых кортежей для ASGI-события 'http.response.start'.",
+      },
+      {
+        name: "exc_info",
+        description:
+          "Опциональный кортеж информации об исключении (sys.exc_info()), передаваемый WSGI-приложением, если start_response вызывается повторно после того, как ответ уже начал отправляться (например, при ошибке после частичной отправки). Используется для корректной обработки повторного вызова.",
+      },
+    ],
+    example: `from asgiref.wsgi import WsgiToAsgiInstance
+import asyncio
+
+captured_status = None
+captured_headers = None
+
+def app_with_error_handling(environ, start_response):
+    global captured_status, captured_headers
+    try:
+        # Обычный успешный путь:
+        start_response("200 OK", [("Content-Type", "text/plain")])
+        return [b"success"]
+    except Exception:
+        import sys
+        # Повторный вызов start_response с exc_info при ошибке:
+        start_response(
+            "500 Internal Server Error",
+            [("Content-Type", "text/plain")],
+            exc_info=sys.exc_info(),
+        )
+        return [b"error"]
+
+async def simulate():
+    instance = WsgiToAsgiInstance(app_with_error_handling)
+
+    scope = {
+        "type": "http", "method": "GET", "path": "/",
+        "query_string": b"", "headers": [],
+    }
+    events = [{"type": "http.request", "body": b"", "more_body": False}]
+    async def receive():
+        return events.pop(0) if events else {"type": "http.disconnect"}
+
+    responses = []
+    async def send(message):
+        responses.append(message)
+
+    await instance(scope, receive, send)
+
+    start_event = next(r for r in responses if r["type"] == "http.response.start")
+    print(start_event["status"])    # 200
+    print(start_event["headers"])   # [(b'content-type', b'text/plain')]
+
+asyncio.run(simulate())`,
+  },
+  {
+    name: "asgiref.testing",
+    category: "asgiref",
+    description:
+      "Модуль для тестирования ASGI-приложений. Предоставляет инструменты для отправки сообщений в приложение и получения ответов без запуска реального HTTP-сервера. Позволяет тестировать любые ASGI-приложения (Django Channels, Starlette, FastAPI и др.) в синхронном тестовом коде через asyncio.",
+    syntax: "import asgiref.testing",
+    arguments: [],
+    example: `import asyncio
+from asgiref.testing import ApplicationCommunicator
+
+# Простое ASGI-приложение для теста
+async def simple_app(scope, receive, send):
+    await send({
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [[b"content-type", b"text/plain"]],
+    })
+    await send({
+        "type": "http.response.body",
+        "body": b"Hello, ASGI!",
+    })
+
+# Тестирование через ApplicationCommunicator
+scope = {"type": "http", "method": "GET", "path": "/"}
+communicator = ApplicationCommunicator(simple_app, scope)
+asyncio.run(communicator.send_input({"type": "http.request"}))`,
+  },
+  {
+    name: "asgiref.testing.ApplicationCommunicator",
+    category: "asgiref",
+    description:
+      "Класс для тестирования ASGI-приложений. Создаёт изолированный канал связи с приложением: позволяет отправлять входные сообщения через send_input() и получать исходящие через receive_output(). Запускает приложение как asyncio-задачу. Используется в тестах для проверки HTTP, WebSocket и других ASGI-соединений без реального сервера.",
+    syntax: "ApplicationCommunicator(application, scope)",
+    arguments: [
+      {
+        name: "application",
+        description:
+          "ASGI-приложение — вызываемый объект с сигнатурой async def app(scope, receive, send).",
+      },
+      {
+        name: "scope",
+        description:
+          "Словарь scope соединения. Должен содержать поле 'type' (например, 'http', 'websocket'). Для HTTP — также 'method', 'path', 'headers' и др.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.testing import ApplicationCommunicator
+
+async def echo_app(scope, receive, send):
+    event = await receive()
+    body = event.get("body", b"")
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": body})
+
+async def test():
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/echo",
+        "headers": [],
+    }
+    comm = ApplicationCommunicator(echo_app, scope)
+    await comm.send_input({"type": "http.request", "body": b"hello"})
+
+    response_start = await comm.receive_output(timeout=1)
+    print(response_start["status"])  # 200
+
+    response_body = await comm.receive_output(timeout=1)
+    print(response_body["body"])     # b"hello"
+
+asyncio.run(test())`,
+  },
+  {
+    name: "asgiref.testing.ApplicationCommunicator.__init__",
+    category: "asgiref",
+    description:
+      "Инициализирует коммуникатор: сохраняет приложение и scope, создаёт две asyncio.Queue — input_queue для сообщений в приложение и output_queue для сообщений от приложения. Немедленно запускает приложение как asyncio.Task через asyncio.ensure_future(). Приложение начинает выполнение и ждёт первого сообщения из input_queue.",
+    syntax: "ApplicationCommunicator.__init__(application, scope)",
+    arguments: [
+      {
+        name: "application",
+        description:
+          "ASGI-приложение с сигнатурой async def app(scope, receive, send).",
+      },
+      {
+        name: "scope",
+        description:
+          "Словарь scope соединения: тип, метод, путь, заголовки и прочие метаданные соединения.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.testing import ApplicationCommunicator
+
+async def my_app(scope, receive, send):
+    await receive()  # ждёт send_input()
+    await send({"type": "http.response.start", "status": 204, "headers": []})
+    await send({"type": "http.response.body", "body": b""})
+
+async def test():
+    scope = {"type": "http", "method": "GET", "path": "/", "headers": []}
+
+    # __init__: создаёт очереди и запускает app как asyncio.Task
+    comm = ApplicationCommunicator(my_app, scope)
+
+    # Сразу после создания приложение уже запущено и ждёт input
+    print(type(comm.future))  # <class '_asyncio.Task'>
+    print(type(comm.input_queue))   # asyncio.Queue
+    print(type(comm.output_queue))  # asyncio.Queue
+
+asyncio.run(test())`,
+  },
+  {
+    name: "asgiref.testing.ApplicationCommunicator.send_input",
+    category: "asgiref",
+    description:
+      "Отправляет сообщение в приложение через input_queue. Приложение получает его при очередном вызове receive(). Метод является корутиной (await обязателен). Используется для имитации входящих событий: HTTP-запроса, WebSocket-сообщения, сигнала отключения и любых других ASGI-событий.",
+    syntax: "await communicator.send_input(message)",
+    arguments: [
+      {
+        name: "message",
+        description:
+          "Словарь ASGI-сообщения. Должен содержать поле 'type'. Например: {'type': 'http.request', 'body': b'data'} или {'type': 'websocket.receive', 'text': 'hello'}.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.testing import ApplicationCommunicator
+
+async def ws_app(scope, receive, send):
+    # Принимаем соединение
+    await receive()  # websocket.connect
+    await send({"type": "websocket.accept"})
+    # Принимаем сообщение
+    msg = await receive()  # websocket.receive
+    # Отправляем эхо
+    await send({"type": "websocket.send", "text": msg.get("text", "")})
+
+async def test():
+    scope = {"type": "websocket", "path": "/ws", "headers": []}
+    comm = ApplicationCommunicator(ws_app, scope)
+
+    # Имитируем установку WebSocket-соединения
+    await comm.send_input({"type": "websocket.connect"})
+    await comm.receive_output()  # websocket.accept
+
+    # Отправляем текстовое сообщение
+    await comm.send_input({"type": "websocket.receive", "text": "ping"})
+    response = await comm.receive_output()
+    print(response["text"])  # "ping"
+
+asyncio.run(test())`,
+  },
+  {
+    name: "asgiref.testing.ApplicationCommunicator.receive_output",
+    category: "asgiref",
+    description:
+      "Ждёт и возвращает следующее сообщение, отправленное приложением через send(). Если приложение не отправило сообщение в течение timeout секунд — бросает asyncio.TimeoutError. Метод является корутиной. Используется для проверки ответов приложения: статуса HTTP, тела ответа, WebSocket-сообщений.",
+    syntax: "await communicator.receive_output(timeout=1)",
+    arguments: [
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания в секундах (float). По умолчанию 1 секунда. При превышении — asyncio.TimeoutError.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.testing import ApplicationCommunicator
+
+async def json_app(scope, receive, send):
+    await receive()
+    import json
+    await send({
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [[b"content-type", b"application/json"]],
+    })
+    await send({
+        "type": "http.response.body",
+        "body": json.dumps({"ok": True}).encode(),
+    })
+
+async def test():
+    scope = {"type": "http", "method": "GET", "path": "/api", "headers": []}
+    comm = ApplicationCommunicator(json_app, scope)
+    await comm.send_input({"type": "http.request", "body": b""})
+
+    # Получаем http.response.start
+    start = await comm.receive_output(timeout=2)
+    assert start["status"] == 200
+
+    # Получаем http.response.body
+    body = await comm.receive_output(timeout=2)
+    import json
+    data = json.loads(body["body"])
+    assert data["ok"] is True
+
+asyncio.run(test())`,
+  },
+  {
+    name: "asgiref.testing.ApplicationCommunicator.receive_nothing",
+    category: "asgiref",
+    description:
+      "Проверяет, что приложение не отправило ни одного сообщения за указанное время. Возвращает True если output_queue пуста по истечении timeout, False если сообщение всё же поступило. Используется в тестах для проверки отсутствия нежелательных ответов — например, что сервер не отправляет данные раньше времени или не посылает лишних сообщений.",
+    syntax: "await communicator.receive_nothing(timeout=0.1)",
+    arguments: [
+      {
+        name: "timeout",
+        description:
+          "Время ожидания в секундах (float). По умолчанию 0.1. Должно быть достаточным чтобы убедиться в отсутствии сообщений, но не слишком большим чтобы не замедлять тесты.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.testing import ApplicationCommunicator
+
+async def slow_app(scope, receive, send):
+    await receive()
+    await asyncio.sleep(5)  # долгая обработка
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b""})
+
+async def test():
+    scope = {"type": "http", "method": "GET", "path": "/", "headers": []}
+    comm = ApplicationCommunicator(slow_app, scope)
+    await comm.send_input({"type": "http.request", "body": b""})
+
+    # Убеждаемся, что за 0.5 секунды ответа ещё нет
+    nothing = await comm.receive_nothing(timeout=0.5)
+    assert nothing is True, "App responded too early!"
+
+    # Ждём реального ответа
+    # start = await comm.receive_output(timeout=10)
+
+asyncio.run(test())`,
+  },
+  {
+    name: "asgiref.testing.ApplicationCommunicator.wait",
+    category: "asgiref",
+    description:
+      "Ждёт завершения asyncio.Task приложения (корутина app(scope, receive, send) вернула управление). Если приложение не завершилось за timeout секунд — бросает asyncio.TimeoutError. Используется в конце теста для проверки что приложение корректно завершило обработку без зависания или необработанных исключений.",
+    syntax: "await communicator.wait(timeout=1)",
+    arguments: [
+      {
+        name: "timeout",
+        description:
+          "Максимальное время ожидания завершения приложения в секундах. По умолчанию 1 секунда.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.testing import ApplicationCommunicator
+
+async def complete_app(scope, receive, send):
+    await receive()
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"done"})
+    # Корутина возвращает управление — приложение завершено
+
+async def test():
+    scope = {"type": "http", "method": "GET", "path": "/", "headers": []}
+    comm = ApplicationCommunicator(complete_app, scope)
+
+    await comm.send_input({"type": "http.request", "body": b""})
+    await comm.receive_output(timeout=1)  # http.response.start
+    await comm.receive_output(timeout=1)  # http.response.body
+
+    # Убеждаемся что приложение завершилось без исключений
+    await comm.wait(timeout=1)
+    print("App completed cleanly")
+
+    # Если приложение зависло — TimeoutError через 1 секунду
+    # Если бросило исключение — оно будет проброшено здесь
+
+asyncio.run(test())`,
+  },
+  {
+    name: "asgiref.server",
+    category: "asgiref",
+    description:
+      "Модуль с базовыми классами для построения ASGI-серверов. Предоставляет StatelessServer — абстрактный класс для создания серверов, управляющих жизненным циклом нескольких ASGI-приложений (по одному на соединение или область видимости). Используется как основа для реализации собственных ASGI-серверов и протоколов.",
+    syntax: "import asgiref.server",
+    arguments: [],
+    example: `from asgiref.server import StatelessServer
+
+# StatelessServer — абстрактный базовый класс.
+# Для использования необходимо переопределить метод handle():
+
+class MyServer(StatelessServer):
+    async def handle(self):
+        """Обрабатывает входящее соединение."""
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [],
+        }
+        instance = await self.get_or_create_application_instance(
+            scope_id="conn-1",
+            scope=scope,
+        )
+        # Взаимодействуем с приложением через instance...
+
+async def my_app(scope, receive, send):
+    await receive()
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"OK"})
+
+server = MyServer(my_app)`,
+  },
+  {
+    name: "asgiref.server.StatelessServer",
+    category: "asgiref",
+    description:
+      "Абстрактный базовый класс для ASGI-серверов без состояния соединения. Управляет пулом экземпляров приложения: создаёт по одному экземпляру на каждый уникальный scope_id, переиспользует их для keep-alive соединений (до max_keepalives раз), удаляет завершившиеся. Подклассы должны реализовать метод handle() для обработки входящих соединений.",
+    syntax: "StatelessServer(application, max_keepalives=5)",
+    arguments: [
+      {
+        name: "application",
+        description: "ASGI-приложение с сигнатурой async def app(scope, receive, send).",
+      },
+      {
+        name: "max_keepalives",
+        description:
+          "Максимальное количество keep-alive переиспользований одного экземпляра приложения. По умолчанию 5. После превышения — экземпляр удаляется и создаётся новый.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.server import StatelessServer
+
+async def my_app(scope, receive, send):
+    while True:
+        event = await receive()
+        if event["type"] == "http.request":
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [],
+            })
+            await send({
+                "type": "http.response.body",
+                "body": b"Hello",
+            })
+        elif event["type"] == "http.disconnect":
+            break
+
+class EchoServer(StatelessServer):
+    async def handle(self):
+        # Реализация обработки одного соединения
+        pass
+
+server = EchoServer(my_app, max_keepalives=10)
+# server.application         — хранит ASGI-приложение
+# server.max_keepalives      — лимит переиспользований
+# server.application_instances — dict активных экземпляров`,
+  },
+  {
+    name: "asgiref.server.StatelessServer.__init__",
+    category: "asgiref",
+    description:
+      "Инициализирует сервер: сохраняет приложение и max_keepalives, создаёт словарь application_instances для хранения активных экземпляров приложения по scope_id. Запускает фоновую задачу application_checker для периодической очистки завершившихся экземпляров.",
+    syntax: "StatelessServer.__init__(application, max_keepalives=5)",
+    arguments: [
+      {
+        name: "application",
+        description: "ASGI-приложение с сигнатурой async def app(scope, receive, send).",
+      },
+      {
+        name: "max_keepalives",
+        description:
+          "Максимальное число keep-alive переиспользований экземпляра. По умолчанию 5.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.server import StatelessServer
+
+async def app(scope, receive, send):
+    pass
+
+class MyServer(StatelessServer):
+    async def handle(self):
+        pass
+
+async def main():
+    server = MyServer(app, max_keepalives=3)
+
+    # После инициализации доступны:
+    print(server.application)           # ASGI-приложение
+    print(server.max_keepalives)        # 3
+    print(server.application_instances) # {} — пустой словарь
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.server.StatelessServer.handle",
+    category: "asgiref",
+    description:
+      "Абстрактный метод — точка входа для обработки одного входящего соединения. Должен быть переопределён в подклассе. Вызывается сервером для каждого нового соединения. Внутри реализации используйте get_or_create_application_instance() для получения экземпляра приложения и взаимодействуйте с ним через очереди сообщений.",
+    syntax: "await server.handle()",
+    arguments: [],
+    example: `import asyncio
+from asgiref.server import StatelessServer
+
+async def chat_app(scope, receive, send):
+    event = await receive()
+    if event["type"] == "websocket.connect":
+        await send({"type": "websocket.accept"})
+    while True:
+        msg = await receive()
+        if msg["type"] == "websocket.disconnect":
+            break
+        await send({"type": "websocket.send", "text": msg.get("text", "")})
+
+class WebSocketServer(StatelessServer):
+    async def handle(self):
+        """Обрабатывает одно WebSocket-соединение."""
+        conn_id = "ws-001"
+        scope = {
+            "type": "websocket",
+            "path": "/chat",
+            "headers": [],
+        }
+        input_queue, output_queue = await self.get_or_create_application_instance(
+            conn_id, scope
+        )
+        # Отправляем connect
+        await input_queue.put({"type": "websocket.connect"})
+        # Читаем accept
+        response = await output_queue.get()
+        print(response["type"])  # websocket.accept`,
+  },
+  {
+    name: "asgiref.server.StatelessServer.application_checker",
+    category: "asgiref",
+    description:
+      "Фоновая корутина, периодически проверяющая завершившиеся экземпляры приложения и удаляющая их из application_instances. Запускается автоматически при создании сервера. Предотвращает утечку памяти при большом количестве соединений. Работает в бесконечном цикле с небольшой задержкой между итерациями.",
+    syntax: "await server.application_checker()",
+    arguments: [],
+    example: `import asyncio
+from asgiref.server import StatelessServer
+
+async def app(scope, receive, send):
+    event = await receive()
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b""})
+
+class MyServer(StatelessServer):
+    async def handle(self):
+        pass
+
+async def main():
+    server = MyServer(app)
+
+    # application_checker запускается автоматически в __init__
+    # через asyncio.ensure_future(self.application_checker())
+    # Вручную вызывать не нужно.
+
+    # Можно переопределить для добавления метрик:
+    # async def application_checker(self):
+    #     while True:
+    #         await asyncio.sleep(1)
+    #         dead = [sid for sid, (_, fut) in self.application_instances.items()
+    #                 if fut.done()]
+    #         for sid in dead:
+    #             await self.delete_application_instance(sid)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.server.StatelessServer.get_or_create_application_instance",
+    category: "asgiref",
+    description:
+      "Возвращает существующий или создаёт новый экземпляр приложения для данного scope_id. Каждый экземпляр — это запущенная asyncio.Task с парой очередей (input_queue, output_queue) для обмена сообщениями. Если экземпляр с таким scope_id уже существует — возвращает его очереди. Если нет — запускает новый экземпляр приложения.",
+    syntax: "await server.get_or_create_application_instance(scope_id, scope)",
+    arguments: [
+      {
+        name: "scope_id",
+        description:
+          "Уникальный идентификатор соединения или сессии (строка). Используется как ключ для переиспользования экземпляра при keep-alive.",
+      },
+      {
+        name: "scope",
+        description:
+          "Словарь scope ASGI-соединения, передаваемый приложению при его создании.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.server import StatelessServer
+
+async def stateful_app(scope, receive, send):
+    counter = 0
+    while True:
+        event = await receive()
+        if event["type"] == "http.disconnect":
+            break
+        counter += 1
+        await send({
+            "type": "http.response.start",
+            "status": 200,
+            "headers": [],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": f"Request #{counter}".encode(),
+        })
+
+class MyServer(StatelessServer):
+    async def handle(self):
+        scope = {"type": "http", "method": "GET", "path": "/", "headers": []}
+
+        # Первый вызов — создаёт экземпляр
+        input_q, output_q = await self.get_or_create_application_instance(
+            "client-1", scope
+        )
+        await input_q.put({"type": "http.request", "body": b""})
+        start = await output_q.get()
+        body  = await output_q.get()
+        print(body["body"])  # b"Request #1"
+
+        # Второй вызов с тем же scope_id — переиспользует экземпляр
+        input_q, output_q = await self.get_or_create_application_instance(
+            "client-1", scope
+        )
+        await input_q.put({"type": "http.request", "body": b""})
+        await output_q.get()
+        body = await output_q.get()
+        print(body["body"])  # b"Request #2"`,
+  },
+  {
+    name: "asgiref.server.StatelessServer.delete_application_instance",
+    category: "asgiref",
+    description:
+      "Удаляет экземпляр приложения из application_instances по scope_id. Отменяет asyncio.Task приложения если оно ещё выполняется. Вызывается автоматически из application_checker() когда задача завершилась, или вручную для принудительного завершения соединения. После удаления следующий вызов get_or_create_application_instance с тем же scope_id создаст новый экземпляр.",
+    syntax: "await server.delete_application_instance(scope_id)",
+    arguments: [
+      {
+        name: "scope_id",
+        description:
+          "Идентификатор экземпляра приложения для удаления. Если scope_id не существует в application_instances — метод завершается без ошибки.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.server import StatelessServer
+
+async def long_running_app(scope, receive, send):
+    await receive()
+    await asyncio.sleep(60)  # долгая обработка
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b""})
+
+class MyServer(StatelessServer):
+    async def handle(self):
+        scope = {"type": "http", "method": "GET", "path": "/", "headers": []}
+
+        input_q, output_q = await self.get_or_create_application_instance(
+            "conn-1", scope
+        )
+        await input_q.put({"type": "http.request", "body": b""})
+
+        # Клиент отключился — принудительно завершаем экземпляр
+        await asyncio.sleep(1)
+        print("Active instances:", list(self.application_instances.keys()))
+        # ['conn-1']
+
+        await self.delete_application_instance("conn-1")
+        print("After delete:", list(self.application_instances.keys()))
+        # []
+
+        # Несуществующий scope_id — без ошибки
+        await self.delete_application_instance("nonexistent")`,
+  },
+
+  {
+    name: "asgiref.timeout",
+    category: "asgiref",
+    description:
+      "Модуль для управления таймаутами в asyncio-коде. Предоставляет класс timeout — асинхронный контекстный менеджер, отменяющий блок кода по истечении заданного времени. Аналог asyncio.timeout (Python 3.11+), но совместимый с более ранними версиями. Бросает asyncio.TimeoutError при превышении лимита.",
+    syntax: "import asgiref.timeout",
+    arguments: [],
+    example: `import asyncio
+from asgiref.timeout import timeout
+
+async def main():
+    # Блок завершится с asyncio.TimeoutError если займёт > 2 секунды
+    async with timeout(2.0):
+        await asyncio.sleep(1)  # успевает
+        print("Done in time")
+
+    try:
+        async with timeout(0.5):
+            await asyncio.sleep(5)  # не успевает
+    except asyncio.TimeoutError:
+        print("Timed out!")
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.timeout.timeout",
+    category: "asgiref",
+    description:
+      "Асинхронный контекстный менеджер для ограничения времени выполнения блока кода. При входе в блок (async with) устанавливает таймер; если блок не завершился за timeout секунд — отменяет текущую задачу и бросает asyncio.TimeoutError. Поддерживает вложенность, динамическое обновление через update() и проверку состояния через свойства expired и remaining.",
+    syntax: "async with timeout(delay)",
+    arguments: [
+      {
+        name: "delay",
+        description:
+          "Время ожидания в секундах (float) или None для отключения таймаута. При None ведёт себя как обычный блок без ограничений.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.timeout import timeout
+
+async def fetch_data(url: str) -> bytes:
+    async with timeout(5.0):
+        await asyncio.sleep(1)
+        return b"data"
+
+async def main():
+    data = await fetch_data("https://example.com")
+    print(data)  # b"data"
+
+    try:
+        async with timeout(0.1):
+            await asyncio.sleep(1)
+    except asyncio.TimeoutError:
+        print("Request timed out")
+
+    async with timeout(None):
+        await asyncio.sleep(0.01)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.timeout.timeout.expired",
+    category: "asgiref",
+    description:
+      "Свойство (property). Возвращает True если таймаут истёк, False если блок завершился вовремя или таймаут ещё не истёк. Доступно после выхода из блока async with. Позволяет в обработчике исключений определить причину: истёк таймаут или произошла другая ошибка.",
+    syntax: "timeout_instance.expired",
+    arguments: [],
+    example: `import asyncio
+from asgiref.timeout import timeout
+
+async def main():
+    t = timeout(0.2)
+    try:
+        async with t:
+            await asyncio.sleep(5)
+    except asyncio.TimeoutError:
+        if t.expired:
+            print("Причина: истёк таймаут")
+        else:
+            print("Причина: другая ошибка")
+
+    t2 = timeout(5.0)
+    async with t2:
+        await asyncio.sleep(0.01)
+    print(t2.expired)  # False
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.timeout.timeout.remaining",
+    category: "asgiref",
+    description:
+      "Свойство (property). Возвращает оставшееся время до истечения таймаута в секундах (float). Если таймаут истёк — возвращает 0.0 или отрицательное значение. Если таймаут не установлен (delay=None) — возвращает None. Полезно для мониторинга и для решения — стоит ли начинать следующую операцию.",
+    syntax: "timeout_instance.remaining",
+    arguments: [],
+    example: `import asyncio
+from asgiref.timeout import timeout
+
+async def main():
+    async with timeout(3.0) as t:
+        print(f"Started, remaining: {t.remaining:.2f}s")
+        await asyncio.sleep(1)
+        print(f"After 1s, remaining: {t.remaining:.2f}s")
+
+        if t.remaining and t.remaining > 0.5:
+            await asyncio.sleep(0.1)
+            print("Expensive op done")
+
+    async with timeout(None) as t2:
+        print(t2.remaining)  # None
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.timeout.timeout.__init__",
+    category: "asgiref",
+    description:
+      "Инициализирует объект таймаута. Сохраняет задержку и event loop. Таймер не запускается в __init__ — он активируется при входе в блок async with (в методе __enter__). Параметр loop устарел и игнорируется в современных версиях Python — event loop определяется автоматически при входе в блок.",
+    syntax: "timeout.__init__(timeout, *, loop=None)",
+    arguments: [
+      {
+        name: "timeout",
+        description:
+          "Задержка в секундах (float) или None. None отключает таймаут — блок выполняется без ограничений по времени.",
+      },
+      {
+        name: "loop",
+        description:
+          "Устаревший параметр. В современных версиях игнорируется — event loop определяется через asyncio.get_event_loop() при входе в блок.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.timeout import timeout
+
+async def main():
+    t = timeout(5.0)
+    print(t._timeout)   # 5.0
+    print(t.expired)    # False
+
+    async with t:
+        await asyncio.sleep(0.1)
+
+    t2 = timeout(None)
+    async with t2:
+        await asyncio.sleep(0.01)
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.timeout.timeout.__enter__",
+    category: "asgiref",
+    description:
+      "Вызывается при входе в блок async with. Запускает таймер: планирует отмену текущей asyncio.Task через delay секунд с помощью loop.call_later(). Возвращает сам объект timeout, доступный как переменная блока (async with timeout(5) as t). Если delay равен None — таймер не устанавливается.",
+    syntax: "await timeout.__enter__()",
+    arguments: [],
+    example: `import asyncio
+from asgiref.timeout import timeout
+
+async def main():
+    t = timeout(2.0)
+    async with t as ctx:
+        print(ctx is t)        # True
+        print(ctx.remaining)   # ~2.0
+        await asyncio.sleep(0.1)
+    print(t.expired)  # False
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.timeout.timeout.__exit__",
+    category: "asgiref",
+    description:
+      "Вызывается при выходе из блока async with — как при нормальном завершении, так и при исключении. Отменяет запланированный таймер через handle.cancel(). Если блок завершился из-за отмены Task (asyncio.CancelledError) и таймаут истёк — перехватывает CancelledError и бросает asyncio.TimeoutError. Устанавливает свойство expired в True при истечении таймаута.",
+    syntax: "timeout.__exit__(exc_type, exc_val, exc_tb)",
+    arguments: [
+      {
+        name: "exc_type",
+        description: "Тип исключения или None при нормальном завершении.",
+      },
+      {
+        name: "exc_val",
+        description: "Экземпляр исключения или None.",
+      },
+      {
+        name: "exc_tb",
+        description: "Traceback исключения или None.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.timeout import timeout
+
+async def main():
+    # Нормальный выход
+    async with timeout(5.0):
+        await asyncio.sleep(0.01)
+
+    # Выход по таймауту:
+    # 1. loop.call_later истекает -> task.cancel()
+    # 2. CancelledError внутри блока
+    # 3. __exit__ ловит CancelledError, ставит expired=True
+    # 4. Бросает asyncio.TimeoutError
+    try:
+        async with timeout(0.1):
+            await asyncio.sleep(10)
+    except asyncio.TimeoutError as e:
+        print(f"Caught: {e}")
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.timeout.timeout.update",
+    category: "asgiref",
+    description:
+      "Динамически обновляет deadline таймаута внутри активного блока async with. Принимает абсолютное время (не относительное смещение): loop.time() + желаемое_смещение. Полезно для продления или сокращения таймаута в зависимости от хода выполнения.",
+    syntax: "timeout_instance.update(value)",
+    arguments: [
+      {
+        name: "value",
+        description:
+          "Новый deadline — абсолютное время event loop (loop.time() + смещение_в_секундах). Не относительные секунды.",
+      },
+    ],
+    example: `import asyncio
+from asgiref.timeout import timeout
+
+async def main():
+    loop = asyncio.get_event_loop()
+
+    async with timeout(1.0) as t:
+        print(f"Initial remaining: {t.remaining:.2f}s")
+        await asyncio.sleep(0.3)
+
+        # Продлеваем на 5 секунд
+        t.update(loop.time() + 5.0)
+        print(f"After update: {t.remaining:.2f}s")  # ~5.0
+
+        await asyncio.sleep(0.3)
+
+        # Сокращаем до 0.1 секунды
+        t.update(loop.time() + 0.1)
+        await asyncio.sleep(0.05)  # успевает
+        print("Completed")
+
+asyncio.run(main())`,
+  },
+  {
+    name: "asgiref.current_thread_executor",
+    category: "asgiref",
+    description:
+      "Модуль, предоставляющий CurrentThreadExecutor — исполнитель задач (Executor), запускающий переданные callable в текущем потоке, а не в пуле потоков. Используется в asgiref для синхронного выполнения задач внутри того же потока, откуда они были отправлены. Ключевой компонент механизма sync_to_async и async_to_sync.",
+    syntax: "import asgiref.current_thread_executor",
+    arguments: [],
+    example: `from asgiref.current_thread_executor import CurrentThreadExecutor
+import threading
+
+executor = CurrentThreadExecutor()
+
+def sync_task():
+    print(f"Running in: {threading.current_thread().name}")
+    return 42
+
+# submit() ставит задачу в очередь
+future = executor.submit(sync_task)
+
+# run_until_future() выполняет очередь в текущем потоке
+executor.run_until_future(future)
+print(future.result())  # 42`,
+  },
+  {
+    name: "asgiref.current_thread_executor.CurrentThreadExecutor",
+    category: "asgiref",
+    description:
+      "Реализация concurrent.futures.Executor, выполняющая задачи строго в том потоке, из которого вызван run_until_future(). В отличие от ThreadPoolExecutor, не создаёт новые потоки — задачи исполняются в вызывающем потоке во время ожидания future. Это позволяет sync-коду безопасно вызывать async-корутины через async_to_sync и получать результат в том же потоке.",
+    syntax: "CurrentThreadExecutor()",
+    arguments: [],
+    example: `import threading
+from asgiref.current_thread_executor import CurrentThreadExecutor
+
+main_thread = threading.current_thread().name
+executor = CurrentThreadExecutor()
+
+def task():
+    current = threading.current_thread().name
+    print(f"Same thread as creator: {current == main_thread}")
+    return "result"
+
+f = executor.submit(task)
+executor.run_until_future(f)
+print(f.result())  # "result"`,
+  },
+  {
+    name: "asgiref.current_thread_executor.CurrentThreadExecutor.__init__",
+    category: "asgiref",
+    description:
+      "Инициализирует исполнитель: создаёт внутреннюю очередь задач (queue.SimpleQueue) и флаг активности. Не запускает потоков — всё выполнение происходит в вызывающем потоке при вызове run_until_future(). Объект должен создаваться в том потоке, в котором будет вызываться run_until_future().",
+    syntax: "CurrentThreadExecutor.__init__()",
+    arguments: [],
+    example: `from asgiref.current_thread_executor import CurrentThreadExecutor
+import threading
+
+# Создание в главном потоке
+executor = CurrentThreadExecutor()
+
+# Внутри создаётся queue.SimpleQueue — без фоновых потоков
+print(type(executor))
+# <class 'asgiref.current_thread_executor.CurrentThreadExecutor'>
+
+def worker():
+    # Каждый поток создаёт свой экземпляр
+    local_executor = CurrentThreadExecutor()
+    print(f"Executor in {threading.current_thread().name}")
+
+t = threading.Thread(target=worker)
+t.start(); t.join()`,
+  },
+  {
+    name: "asgiref.current_thread_executor.CurrentThreadExecutor.submit",
+    category: "asgiref",
+    description:
+      "Добавляет callable в очередь задач и возвращает Future. Метод не выполняет задачу немедленно — она выполнится только когда в текущем потоке будет вызван run_until_future(). Сигнатура соответствует concurrent.futures.Executor.submit(): первый аргумент — функция, остальные — её позиционные и именованные аргументы.",
+    syntax: "executor.submit(fn, *args, **kwargs)",
+    arguments: [
+      {
+        name: "fn",
+        description: "Callable (функция или метод) для выполнения в текущем потоке.",
+      },
+      {
+        name: "*args",
+        description: "Позиционные аргументы, передаваемые в fn.",
+      },
+      {
+        name: "**kwargs",
+        description: "Именованные аргументы, передаваемые в fn.",
+      },
+    ],
+    example: `from asgiref.current_thread_executor import CurrentThreadExecutor
+
+executor = CurrentThreadExecutor()
+
+def multiply(a, b, *, factor=1):
+    return a * b * factor
+
+# submit() кладёт задачу в очередь, сразу возвращает Future
+future = executor.submit(multiply, 3, 4, factor=2)
+print(future.done())   # False — задача ещё не выполнена
+
+# run_until_future() выполняет все задачи из очереди
+executor.run_until_future(future)
+
+print(future.done())   # True
+print(future.result()) # 24`,
+  },
+  {
+    name: "asgiref.current_thread_executor.CurrentThreadExecutor.run_until_future",
+    category: "asgiref",
+    description:
+      "Запускает цикл обработки очереди задач в текущем потоке: выполняет все поступающие задачи до тех пор, пока указанный future не завершится. Блокирует поток. Именно этот метод реализует суть CurrentThreadExecutor — задачи из submit() выполняются в данном конкретном потоке. Ключевой механизм для async_to_sync в asgiref.",
+    syntax: "executor.run_until_future(future)",
+    arguments: [
+      {
+        name: "future",
+        description:
+          "concurrent.futures.Future или asyncio.Future, при завершении которого цикл остановится. Обычно это Future, возвращённый submit().",
+      },
+    ],
+    example: `import threading
+from asgiref.current_thread_executor import CurrentThreadExecutor
+
+executor = CurrentThreadExecutor()
+results = []
+
+def task_a():
+    results.append(f"task_a in {threading.current_thread().name}")
+    return "A"
+
+def task_b():
+    results.append(f"task_b in {threading.current_thread().name}")
+    return "B"
+
+# submit из другого потока
+import queue
+submitted = queue.Queue()
+
+def submitter():
+    f1 = executor.submit(task_a)
+    f2 = executor.submit(task_b)
+    submitted.put(f2)
+
+t = threading.Thread(target=submitter)
+t.start(); t.join()
+
+last_future = submitted.get()
+
+# run_until_future выполняет ВСЕ задачи из очереди
+# строго в текущем (главном) потоке
+executor.run_until_future(last_future)
+
+print(results)
+# ["task_a in MainThread", "task_b in MainThread"]
+print(last_future.result())  # "B"`,
+  },
+
+
+  {
+    name: "asgiref.typing",
+    category: "asgiref",
+    description:
+      "Модуль аннотаций типов для ASGI-протокола. Содержит TypedDict-классы, Protocol-классы и псевдонимы типов, описывающие структуры данных ASGI: scope, сообщения событий (HTTP, WebSocket, lifespan), а также callable-типы для receive и send. Используется для статической типизации ASGI-приложений с помощью mypy или pyright.",
+    syntax: "import asgiref.typing",
+    arguments: [],
+    example: `from asgiref.typing import (
+    ASGI3Application,
+    HTTPScope,
+    HTTPRequestEvent,
+    HTTPResponseStartEvent,
+    HTTPResponseBodyEvent,
+    Receive,
+    Send,
+)
+
+# Типизированное ASGI3-приложение
+async def typed_app(
+    scope: HTTPScope,
+    receive: Receive,
+    send: Send,
+) -> None:
+    assert scope["type"] == "http"
+    event: HTTPRequestEvent = await receive()
+
+    await send(HTTPResponseStartEvent(
+        type="http.response.start",
+        status=200,
+        headers=[],
+        trailers=False,
+    ))
+    await send(HTTPResponseBodyEvent(
+        type="http.response.body",
+        body=b"Hello",
+        more_body=False,
+    ))`,
+  },
+  {
+    name: "asgiref.typing.Scope",
+    category: "asgiref",
+    description:
+      "TypeAlias (псевдоним типа). Объединяет все возможные scope-словари ASGI: HTTPScope, WebSocketScope, LifespanScope. Используется как тип аргумента scope в функции ASGI3Application. Представляет собой Union-тип: Scope = HTTPScope | WebSocketScope | LifespanScope.",
+    syntax: "scope: Scope",
+    arguments: [],
+    example: `from asgiref.typing import Scope, HTTPScope, WebSocketScope
+
+def get_path(scope: Scope) -> str:
+    """Извлекает путь из любого типа scope."""
+    if scope["type"] == "http":
+        # Здесь scope — HTTPScope
+        return scope["path"]
+    elif scope["type"] == "websocket":
+        # Здесь scope — WebSocketScope
+        return scope["path"]
+    return "/"
+
+# Пример HTTP scope
+http_scope: HTTPScope = {
+    "type": "http",
+    "asgi": {"version": "3.0", "spec_version": "2.3"},
+    "http_version": "1.1",
+    "method": "GET",
+    "headers": [],
+    "path": "/api/data",
+    "query_string": b"",
+    "root_path": "",
+    "scheme": "http",
+}
+print(get_path(http_scope))  # "/api/data"`,
+  },
+  {
+    name: "asgiref.typing.Message",
+    category: "asgiref",
+    description:
+      "TypeAlias (псевдоним типа). Объединяет все возможные ASGI-сообщения: HTTPRequestEvent, HTTPResponseStartEvent, HTTPResponseBodyEvent, HTTPDisconnectEvent, WebSocketConnectEvent, WebSocketAcceptEvent, WebSocketReceiveEvent, WebSocketSendEvent, WebSocketDisconnectEvent, WebSocketCloseEvent, LifespanStartupEvent и др. Тип сообщений, передаваемых через receive() и send().",
+    syntax: "message: Message",
+    arguments: [],
+    example: `from asgiref.typing import Message, HTTPRequestEvent, WebSocketReceiveEvent
+
+def handle_message(message: Message) -> str:
+    """Обработчик любого ASGI-сообщения."""
+    msg_type = message["type"]
+
+    if msg_type == "http.request":
+        # mypy знает, что это HTTPRequestEvent
+        return f"HTTP body: {message.get('body', b'')!r}"
+    elif msg_type == "websocket.receive":
+        return f"WS text: {message.get('text', '')!r}"
+    else:
+        return f"Unknown: {msg_type}"
+
+# Пример использования
+request: HTTPRequestEvent = {
+    "type": "http.request",
+    "body": b"hello",
+    "more_body": False,
+}
+print(handle_message(request))  # "HTTP body: b'hello'"`,
+  },
+  {
+    name: "asgiref.typing.Receive",
+    category: "asgiref",
+    description:
+      "TypeAlias для callable receive в ASGI3-приложениях. Определяется как ASGIReceiveCallable. Это асинхронный callable без аргументов, возвращающий Message: async def receive() -> Message. Именно этот тип передаётся вторым аргументом в ASGI3-приложение. Используется для аннотации аргумента receive.",
+    syntax: "receive: Receive",
+    arguments: [],
+    example: `from asgiref.typing import Receive, Send, HTTPScope, HTTPRequestEvent
+
+async def read_body(receive: Receive) -> bytes:
+    """Читает тело HTTP-запроса, собирая все чанки."""
+    body = b""
+    more_body = True
+
+    while more_body:
+        # receive() — корутина, возвращает Message
+        chunk: HTTPRequestEvent = await receive()
+        body += chunk.get("body", b"")
+        more_body = chunk.get("more_body", False)
+
+    return body
+
+async def app(scope: HTTPScope, receive: Receive, send: Send) -> None:
+    body = await read_body(receive)
+    print(f"Received {len(body)} bytes")`,
+  },
+  {
+    name: "asgiref.typing.Send",
+    category: "asgiref",
+    description:
+      "TypeAlias для callable send в ASGI3-приложениях. Определяется как ASGISendCallable. Это асинхронный callable, принимающий один аргумент Message и возвращающий None: async def send(message: Message) -> None. Именно этот тип передаётся третьим аргументом в ASGI3-приложение. Используется для аннотации аргумента send.",
+    syntax: "send: Send",
+    arguments: [],
+    example: `from asgiref.typing import Send, HTTPResponseStartEvent, HTTPResponseBodyEvent
+
+async def send_json_response(send: Send, data: bytes, status: int = 200) -> None:
+    """Отправляет JSON-ответ через ASGI send callable."""
+    start: HTTPResponseStartEvent = {
+        "type": "http.response.start",
+        "status": status,
+        "headers": [
+            [b"content-type", b"application/json"],
+            [b"content-length", str(len(data)).encode()],
+        ],
+        "trailers": False,
+    }
+    await send(start)
+
+    body: HTTPResponseBodyEvent = {
+        "type": "http.response.body",
+        "body": data,
+        "more_body": False,
+    }
+    await send(body)`,
+  },
+  {
+    name: "asgiref.typing.ASGIReceiveCallable",
+    category: "asgiref",
+    description:
+      "Protocol-класс, описывающий тип receive callable в ASGI3. Определяет протокол: объект, у которого есть метод __call__(self) -> Awaitable[Message]. Используется как более точный тип чем простой Callable — позволяет статическим анализаторам проверять совместимость объектов, реализующих протокол receive.",
+    syntax: "receive: ASGIReceiveCallable",
+    arguments: [],
+    example: `from asgiref.typing import ASGIReceiveCallable, Message
+import asyncio
+
+# Класс, реализующий протокол ASGIReceiveCallable
+class QueueReceive:
+    def __init__(self) -> None:
+        self._queue: asyncio.Queue[Message] = asyncio.Queue()
+
+    async def __call__(self) -> Message:
+        return await self._queue.get()
+
+    async def put(self, message: Message) -> None:
+        await self._queue.put(message)
+
+# QueueReceive совместим с ASGIReceiveCallable
+receive: ASGIReceiveCallable = QueueReceive()
+
+async def test() -> None:
+    q = QueueReceive()
+    await q.put({"type": "http.request", "body": b"test", "more_body": False})
+    msg = await q()
+    print(msg["type"])  # "http.request"
+
+asyncio.run(test())`,
+  },
+  {
+    name: "asgiref.typing.ASGISendCallable",
+    category: "asgiref",
+    description:
+      "Protocol-класс, описывающий тип send callable в ASGI3. Определяет протокол: объект с методом __call__(self, message: Message) -> Awaitable[None]. Используется как тип аргумента send и для создания middleware, оборачивающих send. Позволяет статическим анализаторам проверять корректность передачи сообщений.",
+    syntax: "send: ASGISendCallable",
+    arguments: [],
+    example: `from asgiref.typing import ASGISendCallable, Message
+import asyncio
+
+# Middleware-обёртка вокруг send
+class LoggingSend:
+    def __init__(self, inner: ASGISendCallable) -> None:
+        self._inner = inner
+
+    async def __call__(self, message: Message) -> None:
+        print(f"Sending: {message['type']}")
+        await self._inner(message)
+
+# Пример использования в middleware
+async def logging_middleware(app, scope, receive, send: ASGISendCallable):
+    wrapped_send = LoggingSend(send)
+    await app(scope, receive, wrapped_send)
+
+# Простой send для тестов
+class MockSend:
+    def __init__(self):
+        self.sent = []
+
+    async def __call__(self, message: Message) -> None:
+        self.sent.append(message)
+
+async def test():
+    mock = MockSend()
+    logging_send = LoggingSend(mock)
+    await logging_send({"type": "http.response.start", "status": 200, "headers": []})
+    print(mock.sent)
+
+asyncio.run(test())`,
+  },
+  {
+    name: "asgiref.typing.ASGI2Protocol",
+    category: "asgiref",
+    description:
+      "Protocol-класс для ASGI2-протокола (устаревший стандарт). Описывает двухфазный интерфейс: __init__(scope) и __call__(receive, send). В ASGI2 приложение — это класс, экземпляр которого создаётся для каждого запроса с scope, затем вызывается как callable с receive и send. Заменён ASGI3 (одна функция с тремя аргументами). Поддерживается asgiref для обратной совместимости.",
+    syntax: "class MyASGI2App(ASGI2Protocol): ...",
+    arguments: [],
+    example: `from asgiref.typing import ASGI2Protocol, Scope, Receive, Send
+
+# ASGI2 — устаревший двухфазный интерфейс
+class LegacyApp:
+    """Реализует ASGI2Protocol."""
+
+    def __init__(self, scope: Scope) -> None:
+        # Фаза 1: получаем scope при создании
+        self.scope = scope
+
+    async def __call__(self, receive: Receive, send: Send) -> None:
+        # Фаза 2: обрабатываем запрос
+        await receive()
+        await send({
+            "type": "http.response.start",
+            "status": 200,
+            "headers": [],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": b"ASGI2 response",
+        })
+
+# Современный ASGI3 предпочтительнее:
+# async def app(scope, receive, send): ...`,
+  },
+  {
+    name: "asgiref.typing.ASGI2Application",
+    category: "asgiref",
+    description:
+      "TypeAlias для ASGI2-приложения (устаревший протокол). Определяется как callable, принимающий Scope и возвращающий ASGI2Protocol: Callable[[Scope], ASGI2Protocol]. Это фабрика — вызов приложения со scope создаёт объект, реализующий двухфазный протокол ASGI2. Используется только при работе с legacy ASGI2-кодом.",
+    syntax: "app: ASGI2Application",
+    arguments: [],
+    example: `from asgiref.typing import ASGI2Application, ASGI2Protocol, Scope, Receive, Send
+
+class LegacyApp:
+    def __init__(self, scope: Scope) -> None:
+        self.scope = scope
+
+    async def __call__(self, receive: Receive, send: Send) -> None:
+        await receive()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"OK"})
+
+# LegacyApp как фабрика — совместима с ASGI2Application
+app: ASGI2Application = LegacyApp
+
+# Использование:
+# scope = {"type": "http", ...}
+# instance = app(scope)       # создаёт экземпляр
+# await instance(receive, send)  # вызывает обработчик`,
+  },
+  {
+    name: "asgiref.typing.ASGI3Application",
+    category: "asgiref",
+    description:
+      "TypeAlias для современного ASGI3-приложения. Определяется как async callable с тремя аргументами: Callable[[Scope, Receive, Send], Awaitable[None]]. Это основной тип ASGI-приложений, используемый в Django, FastAPI, Starlette и других современных фреймворках. Все ASGI-совместимые серверы (Uvicorn, Hypercorn, Daphne) ожидают этот тип.",
+    syntax: "app: ASGI3Application",
+    arguments: [],
+    example: `from asgiref.typing import ASGI3Application, Scope, Receive, Send
+
+# Типизированное ASGI3-приложение
+async def hello_app(scope: Scope, receive: Receive, send: Send) -> None:
+    if scope["type"] != "http":
+        return
+
+    await receive()  # http.request
+    await send({
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [[b"content-type", b"text/plain"]],
+    })
+    await send({
+        "type": "http.response.body",
+        "body": b"Hello, ASGI3!",
+        "more_body": False,
+    })
+
+# Явная аннотация типа
+app: ASGI3Application = hello_app
+
+# Функция, принимающая любое ASGI3-приложение
+def run_server(application: ASGI3Application) -> None:
+    print(f"Starting server with app: {application.__name__}")`,
+  },
+  {
+    name: "asgiref.typing.HTTPRequestEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие входящего HTTP-запроса. Получается из receive() внутри HTTP ASGI-приложения. Поле type всегда равно 'http.request'. Поле body содержит тело запроса (может быть частичным при chunked-передаче). Поле more_body указывает, ожидаются ли ещё чанки (True) или это последний (False).",
+    syntax: "event: HTTPRequestEvent = await receive()",
+    arguments: [],
+    example: `from asgiref.typing import HTTPRequestEvent, Receive
+
+async def read_full_body(receive: Receive) -> bytes:
+    """Читает полное тело запроса, собирая все чанки."""
+    chunks: list[bytes] = []
+
+    while True:
+        event: HTTPRequestEvent = await receive()
+
+        # Тип всегда "http.request" для тела запроса
+        assert event["type"] == "http.request"
+
+        body_chunk = event.get("body", b"")
+        if body_chunk:
+            chunks.append(body_chunk)
+
+        # more_body=False — последний чанк
+        if not event.get("more_body", False):
+            break
+
+    return b"".join(chunks)
+
+# Структура HTTPRequestEvent:
+# {
+#   "type": "http.request",
+#   "body": b"...",       # тело (может быть пустым)
+#   "more_body": False,   # True если ещё есть чанки
+# }`,
+  },
+  {
+    name: "asgiref.typing.HTTPResponseStartEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие начала HTTP-ответа. Отправляется первым через send() при формировании HTTP-ответа. Должно быть отправлено до HTTPResponseBodyEvent. Поля: type ('http.response.start'), status (HTTP-код), headers (список пар [name, value] в байтах), trailers (bool, поддержка HTTP trailers).",
+    syntax: "await send(HTTPResponseStartEvent(type='http.response.start', status=200, headers=[]))",
+    arguments: [],
+    example: `from asgiref.typing import HTTPResponseStartEvent, Send
+
+async def send_response_start(send: Send, status: int, content_type: str) -> None:
+    event: HTTPResponseStartEvent = {
+        "type": "http.response.start",
+        "status": status,
+        "headers": [
+            [b"content-type", content_type.encode()],
+            [b"x-custom-header", b"value"],
+        ],
+        "trailers": False,  # HTTP trailers не используются
+    }
+    await send(event)
+
+# Структура HTTPResponseStartEvent:
+# {
+#   "type": "http.response.start",
+#   "status": 200,             # HTTP-статус (int)
+#   "headers": [               # заголовки в байтах
+#     [b"content-type", b"application/json"],
+#   ],
+#   "trailers": False,         # поддержка HTTP trailers
+# }`,
+  },
+  {
+    name: "asgiref.typing.HTTPResponseBodyEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие тела HTTP-ответа. Отправляется через send() после HTTPResponseStartEvent. Поле body содержит байты тела ответа. Поле more_body=True означает, что будут ещё чанки (streaming); more_body=False (по умолчанию) — это последний или единственный чанк. Сервер закрывает соединение после получения more_body=False.",
+    syntax: "await send(HTTPResponseBodyEvent(type='http.response.body', body=b'...', more_body=False))",
+    arguments: [],
+    example: `from asgiref.typing import HTTPResponseBodyEvent, Send
+import asyncio
+
+async def stream_response(send: Send) -> None:
+    """Отправляет ответ потоком в несколько чанков."""
+    chunks = [b"Hello, ", b"streaming ", b"world!"]
+
+    for i, chunk in enumerate(chunks):
+        is_last = (i == len(chunks) - 1)
+        event: HTTPResponseBodyEvent = {
+            "type": "http.response.body",
+            "body": chunk,
+            "more_body": not is_last,  # False только для последнего
+        }
+        await send(event)
+        await asyncio.sleep(0.1)  # имитация задержки
+
+# Минимальный одночанковый ответ:
+# {
+#   "type": "http.response.body",
+#   "body": b"Hello",
+#   "more_body": False,
+# }`,
+  },
+  {
+    name: "asgiref.typing.HTTPDisconnectEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие отключения HTTP-клиента. Получается из receive() когда клиент закрыл соединение до получения полного ответа. Поле type всегда равно 'http.disconnect'. Не содержит дополнительных полей. Используется для прерывания обработки при потере соединения и освобождения ресурсов.",
+    syntax: "event: HTTPDisconnectEvent = await receive()",
+    arguments: [],
+    example: `from asgiref.typing import HTTPRequestEvent, HTTPDisconnectEvent, Receive, Send
+import asyncio
+
+async def long_request_handler(receive: Receive, send: Send) -> None:
+    """Обработчик с отменой при отключении клиента."""
+
+    # Запускаем параллельно: ждём disconnect и выполняем работу
+    async def wait_for_disconnect():
+        while True:
+            event = await receive()
+            if event["type"] == "http.disconnect":
+                return True
+
+    async def do_work():
+        await asyncio.sleep(10)  # долгая обработка
+        return False
+
+    disconnect_task = asyncio.create_task(wait_for_disconnect())
+    work_task = asyncio.create_task(do_work())
+
+    done, pending = await asyncio.wait(
+        [disconnect_task, work_task],
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+
+    for task in pending:
+        task.cancel()
+
+    if disconnect_task in done:
+        print("Client disconnected, aborting")
+        return
+
+    # Отправляем ответ если работа завершена
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"Done"})`,
+  },
+
+
+  {
+    name: "asgiref.typing.WebSocketConnectEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие установки WebSocket-соединения. Получается из receive() в момент, когда клиент инициирует WebSocket-handshake. Поле type всегда равно 'websocket.connect'. Не содержит дополнительных данных. Приложение должно ответить WebSocketAcceptEvent или WebSocketCloseEvent.",
+    syntax: "event: WebSocketConnectEvent = await receive()",
+    arguments: [],
+    example: `from asgiref.typing import (
+    WebSocketConnectEvent,
+    WebSocketAcceptEvent,
+    WebSocketCloseEvent,
+    Receive,
+    Send,
+)
+
+async def ws_handler(receive: Receive, send: Send) -> None:
+    # Ждём событие подключения
+    event: WebSocketConnectEvent = await receive()
+    assert event["type"] == "websocket.connect"
+
+    # Решаем: принять или отклонить соединение
+    user_authenticated = True
+
+    if user_authenticated:
+        await send(WebSocketAcceptEvent(
+            type="websocket.accept",
+            subprotocol=None,
+            headers=[],
+        ))
+    else:
+        await send(WebSocketCloseEvent(
+            type="websocket.close",
+            code=4001,
+            reason="Unauthorized",
+        ))`,
+  },
+  {
+    name: "asgiref.typing.WebSocketAcceptEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие принятия WebSocket-соединения. Отправляется через send() в ответ на WebSocketConnectEvent для завершения WebSocket-handshake. Поля: type ('websocket.accept'), subprotocol (согласованный подпротокол или None), headers (дополнительные HTTP-заголовки ответа handshake в байтах).",
+    syntax: "await send(WebSocketAcceptEvent(type='websocket.accept', subprotocol=None, headers=[]))",
+    arguments: [],
+    example: `from asgiref.typing import WebSocketAcceptEvent, Send
+
+async def accept_websocket(send: Send, subprotocol: str | None = None) -> None:
+    event: WebSocketAcceptEvent = {
+        "type": "websocket.accept",
+        "subprotocol": subprotocol,  # None или согласованный протокол
+        "headers": [
+            # Дополнительные заголовки handshake-ответа
+            [b"x-session-id", b"abc123"],
+        ],
+    }
+    await send(event)
+
+# Простое принятие без подпротокола
+async def simple_accept(send: Send) -> None:
+    await send({
+        "type": "websocket.accept",
+        "subprotocol": None,
+        "headers": [],
+    })`,
+  },
+  {
+    name: "asgiref.typing.WebSocketReceiveEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие получения сообщения от WebSocket-клиента. Получается из receive() когда клиент отправил фрейм данных. Поле type равно 'websocket.receive'. Поле bytes содержит бинарные данные (или None для текстового фрейма). Поле text содержит строку (или None для бинарного фрейма). Ровно одно из двух полей содержит данные.",
+    syntax: "event: WebSocketReceiveEvent = await receive()",
+    arguments: [],
+    example: `from asgiref.typing import WebSocketReceiveEvent, Receive, Send
+
+async def echo_handler(receive: Receive, send: Send) -> None:
+    while True:
+        event: WebSocketReceiveEvent = await receive()
+
+        if event["type"] == "websocket.disconnect":
+            break
+
+        assert event["type"] == "websocket.receive"
+
+        if event["text"] is not None:
+            # Текстовый фрейм
+            print(f"Text: {event['text']}")
+            await send({
+                "type": "websocket.send",
+                "text": event["text"],
+                "bytes": None,
+            })
+        elif event["bytes"] is not None:
+            # Бинарный фрейм
+            print(f"Binary: {len(event['bytes'])} bytes")
+            await send({
+                "type": "websocket.send",
+                "bytes": event["bytes"],
+                "text": None,
+            })`,
+  },
+  {
+    name: "asgiref.typing.WebSocketSendEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие отправки сообщения WebSocket-клиенту. Передаётся через send(). Поле type равно 'websocket.send'. Поле bytes содержит бинарные данные для отправки (или None). Поле text содержит строку для отправки (или None). Должно быть заполнено ровно одно из двух полей: либо text, либо bytes.",
+    syntax: "await send(WebSocketSendEvent(type='websocket.send', text='...', bytes=None))",
+    arguments: [],
+    example: `from asgiref.typing import WebSocketSendEvent, Send
+import json
+
+async def send_json(send: Send, data: dict) -> None:
+    """Отправляет JSON как текстовый WebSocket-фрейм."""
+    event: WebSocketSendEvent = {
+        "type": "websocket.send",
+        "text": json.dumps(data),
+        "bytes": None,  # не бинарный фрейм
+    }
+    await send(event)
+
+async def send_binary(send: Send, data: bytes) -> None:
+    """Отправляет бинарные данные как WebSocket-фрейм."""
+    event: WebSocketSendEvent = {
+        "type": "websocket.send",
+        "bytes": data,
+        "text": None,  # не текстовый фрейм
+    }
+    await send(event)
+
+# Пример использования
+async def broadcaster(send: Send) -> None:
+    await send_json(send, {"event": "connected", "id": 42})
+    await send_binary(send, b"")`,
+  },
+  {
+    name: "asgiref.typing.WebSocketResponseStartEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий начало HTTP-ответа в рамках WebSocket-handshake (нестандартное расширение). Используется серверами, поддерживающими отклонение WebSocket-соединения с произвольным HTTP-кодом и заголовками (не 101 Switching Protocols). Поля: type ('websocket.http.response.start'), status (HTTP-код), headers (заголовки ответа в байтах).",
+    syntax: "await send(WebSocketResponseStartEvent(type='websocket.http.response.start', status=403, headers=[]))",
+    arguments: [],
+    example: `from asgiref.typing import (
+    WebSocketConnectEvent,
+    WebSocketResponseStartEvent,
+    WebSocketResponseBodyEvent,
+    Receive,
+    Send,
+)
+
+async def reject_with_http(receive: Receive, send: Send) -> None:
+    """Отклоняет WebSocket-соединение с HTTP 403."""
+    event: WebSocketConnectEvent = await receive()
+    assert event["type"] == "websocket.connect"
+
+    # Отправляем HTTP-ответ вместо WebSocket-accept
+    # (поддерживается не всеми серверами)
+    await send({
+        "type": "websocket.http.response.start",
+        "status": 403,
+        "headers": [
+            [b"content-type", b"text/plain"],
+            [b"content-length", b"12"],
+        ],
+    })
+    await send({
+        "type": "websocket.http.response.body",
+        "body": b"Forbidden",
+        "more_body": False,
+    })`,
+  },
+  {
+    name: "asgiref.typing.WebSocketResponseBodyEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий тело HTTP-ответа при отклонении WebSocket-соединения (нестандартное расширение). Отправляется после WebSocketResponseStartEvent. Поля: type ('websocket.http.response.body'), body (байты тела ответа), more_body (True если будут ещё чанки, False для последнего). Аналогичен HTTPResponseBodyEvent, но в контексте WebSocket-handshake.",
+    syntax: "await send(WebSocketResponseBodyEvent(type='websocket.http.response.body', body=b'...', more_body=False))",
+    arguments: [],
+    example: `from asgiref.typing import WebSocketResponseBodyEvent, Send
+
+async def send_rejection_body(send: Send, message: str) -> None:
+    """Отправляет тело HTTP-ответа при отклонении WebSocket."""
+    body = message.encode()
+
+    # Единственный чанк — more_body=False
+    event: WebSocketResponseBodyEvent = {
+        "type": "websocket.http.response.body",
+        "body": body,
+        "more_body": False,
+    }
+    await send(event)
+
+# Потоковая отправка нескольких чанков
+async def send_streaming_rejection(send: Send, chunks: list[bytes]) -> None:
+    for i, chunk in enumerate(chunks):
+        await send({
+            "type": "websocket.http.response.body",
+            "body": chunk,
+            "more_body": i < len(chunks) - 1,
+        })`,
+  },
+  {
+    name: "asgiref.typing.WebSocketDisconnectEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие отключения WebSocket-клиента. Получается из receive() когда клиент закрыл соединение или соединение было разорвано. Поле type равно 'websocket.disconnect'. Поле code содержит WebSocket close code (RFC 6455): 1000 — нормальное закрытие, 1001 — клиент ушёл, 1006 — аномальное закрытие без close-фрейма.",
+    syntax: "event: WebSocketDisconnectEvent = await receive()",
+    arguments: [],
+    example: `from asgiref.typing import WebSocketDisconnectEvent, WebSocketReceiveEvent, Receive, Send
+
+WS_CLOSE_CODES = {
+    1000: "Normal Closure",
+    1001: "Going Away",
+    1006: "Abnormal Closure",
+    1011: "Server Error",
+}
+
+async def chat_handler(receive: Receive, send: Send) -> None:
+    while True:
+        event = await receive()
+
+        if event["type"] == "websocket.receive":
+            msg: WebSocketReceiveEvent = event
+            print(f"Message: {msg.get('text')}")
+
+        elif event["type"] == "websocket.disconnect":
+            disconnect: WebSocketDisconnectEvent = event
+            code = disconnect.get("code", 1000)
+            reason = WS_CLOSE_CODES.get(code, "Unknown")
+            print(f"Client disconnected: {code} ({reason})")
+            # Освобождаем ресурсы и завершаем обработчик
+            break`,
+  },
+  {
+    name: "asgiref.typing.WebSocketCloseEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие закрытия WebSocket-соединения со стороны сервера. Отправляется через send() для явного закрытия соединения. Поле type равно 'websocket.close'. Поле code — WebSocket close code (по умолчанию 1000). Поле reason — строка с причиной закрытия (опционально, до 123 байт по RFC 6455).",
+    syntax: "await send(WebSocketCloseEvent(type='websocket.close', code=1000, reason=''))",
+    arguments: [],
+    example: `from asgiref.typing import WebSocketCloseEvent, Send
+
+async def close_connection(
+    send: Send,
+    code: int = 1000,
+    reason: str = "",
+) -> None:
+    """Явно закрывает WebSocket-соединение."""
+    event: WebSocketCloseEvent = {
+        "type": "websocket.close",
+        "code": code,
+        "reason": reason,
+    }
+    await send(event)
+
+# Стандартные сценарии закрытия:
+# close_connection(send, 1000, "Session ended")     # нормальное
+# close_connection(send, 4001, "Unauthorized")       # кастомный код
+# close_connection(send, 1011, "Internal error")    # ошибка сервера`,
+  },
+  {
+    name: "asgiref.typing.LifespanStartupEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие запуска приложения (lifespan). Получается из receive() в lifespan-обработчике при старте ASGI-сервера. Поле type равно 'lifespan.startup'. Сигнализирует о том, что сервер готов — приложение должно инициализировать ресурсы (БД-пулы, кэши, фоновые задачи) и ответить LifespanStartupCompleteEvent или LifespanStartupFailedEvent.",
+    syntax: "event: LifespanStartupEvent = await receive()",
+    arguments: [],
+    example: `from asgiref.typing import (
+    LifespanStartupEvent,
+    LifespanStartupCompleteEvent,
+    LifespanStartupFailedEvent,
+    Scope,
+    Receive,
+    Send,
+)
+
+async def lifespan_app(scope: Scope, receive: Receive, send: Send) -> None:
+    assert scope["type"] == "lifespan"
+
+    event: LifespanStartupEvent = await receive()
+    assert event["type"] == "lifespan.startup"
+
+    try:
+        # Инициализация при запуске сервера
+        await init_database_pool()
+        await init_cache_connection()
+        print("Startup complete")
+
+        await send({"type": "lifespan.startup.complete"})
+
+    except Exception as exc:
+        await send({
+            "type": "lifespan.startup.failed",
+            "message": str(exc),
+        })
+
+async def init_database_pool(): pass
+async def init_cache_connection(): pass`,
+  },
+  {
+    name: "asgiref.typing.LifespanShutdownEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие остановки приложения (lifespan). Получается из receive() в lifespan-обработчике при штатной остановке ASGI-сервера. Поле type равно 'lifespan.shutdown'. Приложение должно освободить все ресурсы (закрыть БД-пулы, отменить фоновые задачи) и ответить LifespanShutdownCompleteEvent или LifespanShutdownFailedEvent.",
+    syntax: "event: LifespanShutdownEvent = await receive()",
+    arguments: [],
+    example: `from asgiref.typing import (
+    LifespanStartupEvent,
+    LifespanShutdownEvent,
+    Scope,
+    Receive,
+    Send,
+)
+
+db_pool = None
+
+async def lifespan_app(scope: Scope, receive: Receive, send: Send) -> None:
+    global db_pool
+    assert scope["type"] == "lifespan"
+
+    startup: LifespanStartupEvent = await receive()
+    assert startup["type"] == "lifespan.startup"
+    db_pool = await create_db_pool()
+    await send({"type": "lifespan.startup.complete"})
+
+    # Ждём сигнала остановки
+    shutdown: LifespanShutdownEvent = await receive()
+    assert shutdown["type"] == "lifespan.shutdown"
+
+    # Освобождаем ресурсы
+    if db_pool:
+        await db_pool.close()
+    await send({"type": "lifespan.shutdown.complete"})
+    print("Server stopped gracefully")
+
+async def create_db_pool(): return object()`,
+  },
+  {
+    name: "asgiref.typing.LifespanStartupCompleteEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие успешного завершения инициализации приложения. Отправляется через send() после успешного выполнения всех startup-операций в ответ на LifespanStartupEvent. Поле type равно 'lifespan.startup.complete'. После получения этого события сервер начинает принимать HTTP/WebSocket-запросы.",
+    syntax: "await send(LifespanStartupCompleteEvent(type='lifespan.startup.complete'))",
+    arguments: [],
+    example: `from asgiref.typing import LifespanStartupCompleteEvent, Send
+
+async def report_startup_success(send: Send) -> None:
+    """Сообщает серверу об успешном запуске приложения."""
+    event: LifespanStartupCompleteEvent = {
+        "type": "lifespan.startup.complete",
+    }
+    await send(event)
+
+# Типичный паттерн lifespan-обработчика:
+async def startup_sequence(receive, send: Send) -> bool:
+    await receive()  # LifespanStartupEvent
+
+    try:
+        # ... инициализация ...
+        await report_startup_success(send)
+        return True
+    except Exception as exc:
+        await send({
+            "type": "lifespan.startup.failed",
+            "message": f"Init failed: {exc}",
+        })
+        return False`,
+  },
+  {
+    name: "asgiref.typing.LifespanStartupFailedEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие ошибки при инициализации приложения. Отправляется через send() если startup-операции завершились с ошибкой. Поле type равно 'lifespan.startup.failed'. Поле message — строка с описанием ошибки (выводится в лог сервера). Сервер не принимает запросы и завершает работу после получения этого события.",
+    syntax: "await send(LifespanStartupFailedEvent(type='lifespan.startup.failed', message='...'))",
+    arguments: [],
+    example: `from asgiref.typing import LifespanStartupFailedEvent, Send
+
+async def fail_startup(send: Send, reason: str) -> None:
+    """Сигнализирует серверу о провале инициализации."""
+    event: LifespanStartupFailedEvent = {
+        "type": "lifespan.startup.failed",
+        "message": reason,
+    }
+    await send(event)
+
+# Реальный сценарий — не удалось подключиться к БД
+async def startup_with_db(receive, send: Send) -> None:
+    await receive()  # lifespan.startup
+
+    try:
+        conn = await connect_to_db(timeout=5)
+        await conn.execute("SELECT 1")  # проверка связи
+        await send({"type": "lifespan.startup.complete"})
+
+    except ConnectionRefusedError:
+        await fail_startup(send, "Database unreachable on startup")
+    except Exception as exc:
+        await fail_startup(send, f"Unexpected error: {exc}")
+
+async def connect_to_db(timeout): raise ConnectionRefusedError`,
+  },
+  {
+    name: "asgiref.typing.LifespanShutdownCompleteEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие успешного завершения остановки приложения. Отправляется через send() после корректного освобождения всех ресурсов в ответ на LifespanShutdownEvent. Поле type равно 'lifespan.shutdown.complete'. После получения этого события сервер завершает процесс. Сервер ждёт это событие перед финальным выходом.",
+    syntax: "await send(LifespanShutdownCompleteEvent(type='lifespan.shutdown.complete'))",
+    arguments: [],
+    example: `from asgiref.typing import LifespanShutdownCompleteEvent, Send
+
+async def report_shutdown_complete(send: Send) -> None:
+    """Сообщает серверу об успешной остановке приложения."""
+    event: LifespanShutdownCompleteEvent = {
+        "type": "lifespan.shutdown.complete",
+    }
+    await send(event)
+
+# Полный цикл lifespan с корректной остановкой
+async def full_lifespan(receive, send: Send, resources: dict) -> None:
+    # Startup
+    await receive()
+    resources["db"] = await open_db()
+    await send({"type": "lifespan.startup.complete"})
+
+    # Ждём shutdown-сигнала
+    await receive()
+
+    # Cleanup
+    await resources["db"].close()
+    resources.clear()
+
+    # Сообщаем об успехе — сервер завершится
+    await report_shutdown_complete(send)
+
+async def open_db(): return object()`,
+  },
+  {
+    name: "asgiref.typing.LifespanShutdownFailedEvent",
+    category: "asgiref",
+    description:
+      "TypedDict, описывающий ASGI-событие ошибки при остановке приложения. Отправляется через send() если shutdown-операции завершились с ошибкой (не удалось закрыть соединения, тайм-аут при завершении задач и т.п.). Поле type равно 'lifespan.shutdown.failed'. Поле message — строка с описанием ошибки. Сервер логирует ошибку и всё равно завершает процесс.",
+    syntax: "await send(LifespanShutdownFailedEvent(type='lifespan.shutdown.failed', message='...'))",
+    arguments: [],
+    example: `from asgiref.typing import LifespanShutdownFailedEvent, Send
+import asyncio
+
+async def shutdown_with_timeout(send: Send, resources: dict) -> None:
+    """Завершает ресурсы с таймаутом; сигнализирует об ошибке при провале."""
+    try:
+        # Пробуем закрыть ресурсы за 5 секунд
+        async with asyncio.timeout(5):
+            for name, resource in resources.items():
+                await resource.close()
+                print(f"Closed: {name}")
+
+        await send({"type": "lifespan.shutdown.complete"})
+
+    except asyncio.TimeoutError:
+        await send({
+            "type": "lifespan.shutdown.failed",
+            "message": "Shutdown timed out after 5s — some resources may not be released",
+        })
+
+    except Exception as exc:
+        await send({
+            "type": "lifespan.shutdown.failed",
+            "message": f"Shutdown error: {exc}",
+        })`,
+  },
+
+
+  {
+    name: "django.db.models.base",
+    category: "django.db",
+    description:
+      "Модуль, содержащий базовый класс Model для всех Django-моделей. Определяет метакласс ModelBase, управляющий созданием классов-моделей: регистрацию полей, менеджеров, Meta-параметров, связей. При определении подкласса ModelBase автоматически создаёт менеджер objects, добавляет поле pk, регистрирует модель в реестре приложений.",
+    syntax: "from django.db.models.base import Model",
+    arguments: [],
+    example: `# django.db.models.base.Model — основа всех моделей Django
+from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "blog"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+# При определении класса ModelBase:
+# 1. Собирает все поля (Field-экземпляры) в _meta
+# 2. Создаёт менеджер objects = Manager()
+# 3. Добавляет автоинкрементный pk если нет явного primary_key
+# 4. Регистрирует в Apps-реестре`,
+  },
+  {
+    name: "django.db.models.Model",
+    category: "django.db",
+    description:
+      "Базовый класс всех Django-моделей. Каждый подкласс соответствует таблице в базе данных: поля класса → столбцы таблицы, экземпляр → строка. Предоставляет ORM-интерфейс: save(), delete(), refresh_from_db(), валидацию. Менеджер objects даёт доступ к QuerySet API. Класс Meta внутри модели задаёт метаданные: имя таблицы, порядок сортировки, индексы, ограничения.",
+    syntax: "class MyModel(models.Model): ...",
+    arguments: [],
+    example: `from django.db import models
+
+class Product(models.Model):
+    name = models.CharField(max_length=255)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    stock = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "shop_products"
+        ordering = ["name"]
+        verbose_name = "Product"
+        verbose_name_plural = "Products"
+
+    def __str__(self):
+        return f"{self.name} ({self.price})'
+
+# CRUD-операции
+p = Product(name="Widget", price="9.99", stock=100)
+p.save()                         # INSERT
+p.price = "12.99"
+p.save(update_fields=["price"]) # UPDATE только price
+Product.objects.filter(is_active=True).count()
+p.delete()                       # DELETE`,
+  },
+  {
+    name: "django.db.models.Model.pk",
+    category: "django.db",
+    description:
+      "Псевдоним (alias) для первичного ключа модели. Всегда указывает на поле, помеченное primary_key=True. Если в модели не определено явного primary_key, Django автоматически добавляет поле id = AutoField(primary_key=True) и pk указывает на него. До первого save() pk равен None для новых объектов. После сохранения содержит значение первичного ключа.",
+    syntax: "instance.pk",
+    arguments: [],
+    example: `from django.db import models
+
+class Order(models.Model):
+    total = models.DecimalField(max_digits=10, decimal_places=2)
+
+# Новый объект — pk ещё не присвоен
+order = Order(total="100.00")
+print(order.pk)    # None
+print(order.id)    # None  (то же самое)
+
+order.save()
+print(order.pk)    # 1 (или другой автоинкремент)
+print(order.id)    # 1 (pk и id — псевдонимы)
+
+# Получение по pk
+same_order = Order.objects.get(pk=order.pk)
+
+# Явный primary_key
+class Invoice(models.Model):
+    number = models.CharField(max_length=20, primary_key=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+inv = Invoice(number="INV-001", amount="500.00")
+inv.save()
+print(inv.pk)   # "INV-001"`,
+  },
+  {
+    name: "django.db.models.Model._state",
+    category: "django.db",
+    description:
+      "Внутренний атрибут экземпляра модели, хранящий состояние ORM. Экземпляр класса ModelState с двумя полями: adding (bool) — True если объект новый и ещё не сохранён в БД (будет INSERT при save()), False если объект уже существует в БД (будет UPDATE); db (str или None) — имя базы данных из которой загружен объект, или None для несохранённых.",
+    syntax: "instance._state.adding  /  instance._state.db",
+    arguments: [],
+    example: `from django.db import models
+
+class Post(models.Model):
+    title = models.CharField(max_length=200)
+
+# Новый объект
+post = Post(title="Hello")
+print(post._state.adding)  # True  — будет INSERT
+print(post._state.db)      # None  — не привязан к БД
+
+post.save()
+print(post._state.adding)  # False — будет UPDATE
+print(post._state.db)      # "default"
+
+# Загруженный из БД
+fetched = Post.objects.get(pk=post.pk)
+print(fetched._state.adding)  # False
+print(fetched._state.db)      # "default"
+
+# Использование для условной логики
+def upsert(instance):
+    if instance._state.adding:
+        print("Creating new record")
+    else:
+        print(f"Updating record in db={instance._state.db}")`,
+  },
+  {
+    name: "django.db.models.Model.DoesNotExist",
+    category: "django.db",
+    description:
+      "Исключение, автоматически создаваемое для каждого подкласса Model. Наследует django.core.exceptions.ObjectDoesNotExist. Бросается методами get() и get_or_create() когда запрос не вернул ни одной записи. Каждая модель имеет своё собственное исключение: Article.DoesNotExist, User.DoesNotExist и т.д. — что позволяет точечно обрабатывать ошибки конкретного типа.",
+    syntax: "Model.DoesNotExist",
+    arguments: [],
+    example: `from django.db import models
+from django.core.exceptions import ObjectDoesNotExist
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+
+# Обработка отдельной модели
+try:
+    article = Article.objects.get(slug="nonexistent")
+except Article.DoesNotExist:
+    print("Article not found")
+
+# Обработка любой модели через базовый класс
+try:
+    article = Article.objects.get(slug="nonexistent")
+except ObjectDoesNotExist:
+    print("Object not found")
+
+# get_or_create тоже может бросить DoesNotExist
+# в некоторых race-condition сценариях
+article, created = Article.objects.get_or_create(
+    slug="my-article",
+    defaults={"title": "My Article"},
+)`,
+  },
+  {
+    name: "django.db.models.Model.MultipleObjectsReturned",
+    category: "django.db",
+    description:
+      "Исключение, автоматически создаваемое для каждого подкласса Model. Наследует django.core.exceptions.MultipleObjectsReturned. Бросается методом get() когда запрос вернул более одной записи. Сигнализирует о нарушении ожидаемой уникальности: данные в БД не соответствуют предположению что условие фильтра однозначно идентифицирует запись.",
+    syntax: "Model.MultipleObjectsReturned",
+    arguments: [],
+    example: `from django.db import models
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50)  # не уникальное поле!
+
+# Создаём несколько тегов с одинаковым именем
+Tag.objects.create(name="python")
+Tag.objects.create(name="python")
+
+try:
+    tag = Tag.objects.get(name="python")
+except Tag.MultipleObjectsReturned:
+    # Ожидали одну запись — нашли несколько
+    print("Multiple tags named 'python' exist")
+    # Используем first() или filter()
+    tag = Tag.objects.filter(name="python").first()
+
+# Защита: добавить unique=True на поле
+# name = models.CharField(max_length=50, unique=True)`,
+  },
+  {
+    name: "django.db.models.Model.__init__",
+    category: "django.db",
+    description:
+      "Конструктор экземпляра модели. Принимает значения полей как позиционные или именованные аргументы. Позиционные аргументы назначаются полям в порядке их определения в классе (включая поля родителей). Именованные аргументы назначаются по имени поля. Устанавливает _state.adding=True и _state.db=None. Не выполняет запрос к БД — объект создаётся только в памяти.",
+    syntax: "Model(*args, **kwargs)",
+    arguments: [
+      {
+        name: "*args",
+        description:
+          "Позиционные значения полей в порядке их определения в классе. Использование не рекомендуется — при изменении порядка полей код сломается.",
+      },
+      {
+        name: "**kwargs",
+        description:
+          "Именованные значения полей. Предпочтительный способ. Можно передавать только часть полей — остальные получат значения по умолчанию.",
+      },
+    ],
+    example: `from django.db import models
+
+class Event(models.Model):
+    name = models.CharField(max_length=100)
+    date = models.DateField()
+    capacity = models.PositiveIntegerField(default=100)
+
+# Именованные аргументы (рекомендуется)
+e1 = Event(name="PyCon", date="2026-09-01")
+print(e1.pk)        # None — не сохранён
+print(e1.capacity)  # 100 — значение по умолчанию
+
+# Можно передать и FK-объект, и его id
+class Ticket(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    holder = models.CharField(max_length=100)
+
+t = Ticket(event=e1, holder="Alice")   # объект
+t2 = Ticket(event_id=1, holder="Bob") # id напрямую`,
+  },
+  {
+    name: "django.db.models.Model.__str__",
+    category: "django.db",
+    description:
+      "Строковое представление экземпляра модели. Вызывается при str(instance), print(instance) и в интерфейсе администратора Django. По умолчанию возвращает 'ModelName object (pk)'. Рекомендуется всегда переопределять для удобной идентификации объектов в логах, shell и admin. Должен возвращать строку (str), не bytes.",
+    syntax: "def __str__(self) -> str: ...",
+    arguments: [],
+    example: `from django.db import models
+
+class Author(models.Model):
+    first_name = models.CharField(max_length=50)
+    last_name = models.CharField(max_length=50)
+    email = models.EmailField()
+
+    def __str__(self):
+        return f"{self.last_name}, {self.first_name}"
+
+class Book(models.Model):
+    title = models.CharField(max_length=200)
+    author = models.ForeignKey(Author, on_delete=models.CASCADE)
+    year = models.PositiveIntegerField()
+
+    def __str__(self):
+        return f"{self.title} ({self.year}) — {self.author}"
+
+# Использование
+author = Author(first_name="Linus", last_name="Torvalds", email="l@kernel.org")
+print(author)   # "Torvalds, Linus"
+print(str(author))  # "Torvalds, Linus"
+
+# В Django admin отображается результат __str__`,
+  },
+  {
+    name: "django.db.models.Model.__eq__",
+    category: "django.db",
+    description:
+      "Оператор равенства для экземпляров модели. Два экземпляра считаются равными если: они принадлежат одному классу модели (или одной иерархии с прокси) И их первичные ключи равны и не None. Несохранённые объекты (pk=None) не равны ничему, даже друг другу. Сравнение по идентичности (is) и по значению (==) ведут себя по-разному.",
+    syntax: "instance == other",
+    arguments: [
+      {
+        name: "other",
+        description: "Объект для сравнения. Если не экземпляр той же модели — возвращает NotImplemented.",
+      },
+    ],
+    example: `from django.db import models
+
+class City(models.Model):
+    name = models.CharField(max_length=100)
+
+# Сохранённые объекты сравниваются по pk
+c1 = City.objects.create(name="Moscow")
+c2 = City.objects.get(pk=c1.pk)
+
+print(c1 == c2)    # True  — одинаковый pk
+print(c1 is c2)    # False — разные объекты в памяти
+
+# Несохранённые объекты
+a = City(name="London")
+b = City(name="London")
+print(a == b)      # False — pk=None у обоих
+print(a == a)      # False — pk=None
+
+# Разные классы — не равны
+class Town(models.Model):
+    name = models.CharField(max_length=100)
+
+print(c1 == Town(pk=c1.pk))  # False — разные классы`,
+  },
+  {
+    name: "django.db.models.Model.__hash__",
+    category: "django.db",
+    description:
+      "Хэш-функция для экземпляров модели. Возвращает hash(instance.pk). Позволяет использовать экземпляры модели как ключи в dict и элементы set. Несохранённые объекты (pk=None) не хэшируемы — бросают TypeError. Согласован с __eq__: если a == b, то hash(a) == hash(b). Хэш неизменен в течение жизни объекта при условии что pk не меняется.",
+    syntax: "hash(instance)",
+    arguments: [],
+    example: `from django.db import models
+
+class Label(models.Model):
+    name = models.CharField(max_length=50)
+
+l1 = Label.objects.create(name="urgent")
+l2 = Label.objects.get(pk=l1.pk)
+
+# Использование в set
+labels_set = {l1, l2}
+print(len(labels_set))   # 1 — одинаковый hash, одинаковый ==
+
+# Использование как ключ dict
+cache = {l1: "cached_data"}
+print(cache[l2])   # "cached_data" — l2 найден по hash(l1.pk)
+
+# Несохранённый объект — TypeError
+unsaved = Label(name="new")
+try:
+    hash(unsaved)
+except TypeError as e:
+    print(e)  # unhashable type (pk=None)`,
+  },
+  {
+    name: "django.db.models.Model.save",
+    category: "django.db",
+    description:
+      "Сохраняет объект в базу данных. Если объект новый (_state.adding=True) — выполняет INSERT; если существующий — UPDATE. Перед сохранением вызывает pre_save сигнал, после — post_save. Параметр update_fields позволяет обновить только указанные поля (оптимизация). force_insert/force_update принудительно задают тип операции. При использовании нескольких БД параметр using указывает целевую.",
+    syntax: "instance.save(force_insert=False, force_update=False, using=None, update_fields=None)",
+    arguments: [
+      {
+        name: "force_insert",
+        description: "bool. Принудительно выполнить INSERT, даже если объект существует. Бросает IntegrityError при конфликте pk.",
+      },
+      {
+        name: "force_update",
+        description: "bool. Принудительно выполнить UPDATE. Если запись не существует — не создаст новую; ничего не произойдёт.",
+      },
+      {
+        name: "using",
+        description: "Имя базы данных из DATABASES в settings.py. По умолчанию None — используется маршрутизатор БД.",
+      },
+      {
+        name: "update_fields",
+        description: "Iterable имён полей для обновления. Только эти столбцы попадут в UPDATE. Оптимизирует запрос при частичном обновлении.",
+      },
+    ],
+    example: `from django.db import models
+
+class Profile(models.Model):
+    username = models.CharField(max_length=50)
+    bio = models.TextField(blank=True)
+    score = models.IntegerField(default=0)
+
+# INSERT
+p = Profile(username="alice", bio="Developer")
+p.save()
+print(p.pk)   # присвоен после INSERT
+
+# UPDATE всех полей
+p.score = 100
+p.save()
+
+# UPDATE только score (оптимизировано)
+p.score += 10
+p.save(update_fields=["score"])
+
+# Другая БД
+p.save(using="replica")
+
+# Принудительный INSERT (дублирование с новым pk — если pk=None)
+new_p = Profile(username="bob")
+new_p.save(force_insert=True)`,
+  },
+  {
+    name: "django.db.models.Model.delete",
+    category: "django.db",
+    description:
+      "Удаляет объект из базы данных. Выполняет DELETE-запрос. Предварительно обрабатывает связанные объекты согласно on_delete политикам ForeignKey (CASCADE, SET_NULL, PROTECT и др.). Отправляет сигналы pre_delete и post_delete. Возвращает кортеж: (количество удалённых объектов, словарь {model_label: count}). После удаления pk объекта сохраняется в атрибуте, но _state.adding становится True.",
+    syntax: "instance.delete(using=None, keep_parents=False)",
+    arguments: [
+      {
+        name: "using",
+        description: "Имя базы данных. По умолчанию None — используется БД из _state.db объекта.",
+      },
+      {
+        name: "keep_parents",
+        description: "bool. Для моделей с мульти-табличным наследованием: True — удаляет только дочернюю таблицу, оставляя запись родителя.",
+      },
+    ],
+    example: `from django.db import models
+
+class Comment(models.Model):
+    post = models.ForeignKey("Post", on_delete=models.CASCADE)
+    text = models.TextField()
+
+class Post(models.Model):
+    title = models.CharField(max_length=200)
+
+post = Post.objects.create(title="Hello")
+Comment.objects.create(post=post, text="Great!")
+Comment.objects.create(post=post, text="Nice!")
+
+# Удаление с каскадом
+count, details = post.delete()
+print(count)    # 3 (1 post + 2 comments)
+print(details)
+# {"blog.Post": 1, "blog.Comment": 2}
+
+# pk после удаления сохраняется
+print(post.pk)             # 1 (значение есть)
+print(post._state.adding)  # True (объект «новый» снова)`,
+  },
+  {
+    name: "django.db.models.Model.refresh_from_db",
+    category: "django.db",
+    description:
+      "Перечитывает данные объекта из базы данных, обновляя атрибуты. Выполняет SELECT-запрос по первичному ключу. Полезно после изменения данных в другом потоке, процессе или через update() (который не обновляет объект в памяти). Параметр fields позволяет обновить только указанные поля. Сбрасывает кэши отложенных полей и связанных объектов.",
+    syntax: "instance.refresh_from_db(using=None, fields=None)",
+    arguments: [
+      {
+        name: "using",
+        description: "Имя базы данных для перечитывания. По умолчанию None — используется _state.db объекта.",
+      },
+      {
+        name: "fields",
+        description: "Список имён полей для обновления. Только эти поля перечитываются из БД. Остальные атрибуты в памяти не затрагиваются.",
+      },
+    ],
+    example: `from django.db import models
+
+class Counter(models.Model):
+    name = models.CharField(max_length=50)
+    value = models.IntegerField(default=0)
+
+c = Counter.objects.create(name="hits", value=0)
+
+# update() изменяет БД, но не объект в памяти
+Counter.objects.filter(pk=c.pk).update(value=42)
+print(c.value)   # 0 — объект устарел
+
+# refresh_from_db синхронизирует объект с БД
+c.refresh_from_db()
+print(c.value)   # 42
+
+# Обновить только одно поле
+c.refresh_from_db(fields=["value"])
+
+# Типичный паттерн с F-выражениями
+from django.db.models import F
+Counter.objects.filter(pk=c.pk).update(value=F("value") + 1)
+c.refresh_from_db()
+print(c.value)   # 43`,
+  },
+  {
+    name: "django.db.models.Model.get_deferred_fields",
+    category: "django.db",
+    description:
+      "Возвращает множество (set) имён полей, которые не были загружены при текущем запросе к БД. Поля откладываются при использовании QuerySet.defer() или only(). Обращение к отложенному полю автоматически вызывает дополнительный SELECT-запрос для его загрузки. get_deferred_fields() позволяет проверить, какие поля ещё не загружены.",
+    syntax: "instance.get_deferred_fields()",
+    arguments: [],
+    example: `from django.db import models
+
+class Document(models.Model):
+    title = models.CharField(max_length=200)
+    content = models.TextField()   # большое поле
+    summary = models.TextField()
+
+# Загружаем без тяжёлых полей
+doc = Document.objects.defer("content", "summary").get(pk=1)
+
+# Проверяем отложенные поля
+deferred = doc.get_deferred_fields()
+print(deferred)   # {"content", "summary"}
+
+print("content" in deferred)   # True — не загружено
+print("title" in deferred)     # False — загружено
+
+# Обращение к отложенному полю → дополнительный SELECT
+_ = doc.content  # выполняет SELECT content FROM ...
+
+deferred_after = doc.get_deferred_fields()
+print("content" in deferred_after)   # False — теперь загружено
+print("summary" in deferred_after)   # True — всё ещё отложено`,
+  },
+  {
+    name: "django.db.models.Model.clean",
+    category: "django.db",
+    description:
+      "Метод для пользовательской валидации модели на уровне объекта. Вызывается из full_clean(). Предназначен для межполевой валидации — проверок, затрагивающих несколько полей одновременно, или бизнес-правил. При ошибке должен бросать ValidationError. По умолчанию ничего не делает — переопределяется в подклассах. Не вызывается автоматически при save().",
+    syntax: "def clean(self) -> None: ...",
+    arguments: [],
+    example: `from django.db import models
+from django.core.exceptions import ValidationError
+
+class Event(models.Model):
+    name = models.CharField(max_length=100)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    max_capacity = models.PositiveIntegerField()
+    min_capacity = models.PositiveIntegerField()
+
+    def clean(self):
+        # Межполевая валидация
+        if self.end_date < self.start_date:
+            raise ValidationError(
+                "end_date must be after start_date"
+            )
+
+        if self.min_capacity > self.max_capacity:
+            raise ValidationError({
+                "min_capacity": "min_capacity cannot exceed max_capacity",
+            })
+
+# Явный вызов валидации
+event = Event(
+    name="Conf",
+    start_date="2026-09-01",
+    end_date="2026-08-01",  # раньше start_date!
+    max_capacity=100,
+    min_capacity=10,
+)
+event.full_clean()  # бросит ValidationError`,
+  },
+  {
+    name: "django.db.models.Model.clean_fields",
+    category: "django.db",
+    description:
+      "Запускает встроенную валидацию каждого поля модели: проверяет тип данных, max_length, blank, null и другие ограничения поля. Собирает ошибки всех полей и бросает единый ValidationError со словарём {field_name: [errors]}. Вызывается из full_clean() перед clean(). Параметр exclude позволяет пропустить указанные поля.",
+    syntax: "instance.clean_fields(exclude=None)",
+    arguments: [
+      {
+        name: "exclude",
+        description: "Список (list) имён полей, которые нужно пропустить при валидации. Например, поля, управляемые формой или заполняемые позже.",
+      },
+    ],
+    example: `from django.db import models
+from django.core.exceptions import ValidationError
+
+class Person(models.Model):
+    name = models.CharField(max_length=50)
+    age = models.PositiveIntegerField()
+    email = models.EmailField()
+
+p = Person(
+    name="A" * 100,  # превышает max_length=50
+    age=-1,           # PositiveIntegerField — только >= 0
+    email="not-an-email",
+)
+
+try:
+    p.clean_fields()
+except ValidationError as e:
+    print(e.message_dict)
+    # {
+    #   "name": ["Ensure this value has at most 50 characters."],
+    #   "age": ["Ensure this value is greater than or equal to 0."],
+    #   "email": ["Enter a valid email address."],
+    # }
+
+# Пропуск поля email
+p.clean_fields(exclude=["email"])`,
+  },
+  {
+    name: "django.db.models.Model.validate_unique",
+    category: "django.db",
+    description:
+      "Проверяет ограничения уникальности модели: поля с unique=True, unique_together в Meta, UniqueConstraint без условий. Выполняет SELECT-запросы к БД для каждого уникального ограничения. При нарушении бросает ValidationError со словарём {field_name: [error]} или NON_FIELD_ERRORS для unique_together. Вызывается из full_clean(). Не проверяет ограничения с условием (condition=).",
+    syntax: "instance.validate_unique(exclude=None)",
+    arguments: [
+      {
+        name: "exclude",
+        description: "Список имён полей, исключаемых из проверки уникальности. Поля из этого списка и ограничения, их затрагивающие, пропускаются.",
+      },
+    ],
+    example: `from django.db import models
+from django.core.exceptions import ValidationError
+
+class Username(models.Model):
+    value = models.CharField(max_length=50, unique=True)
+
+class Team(models.Model):
+    name = models.CharField(max_length=100)
+    city = models.CharField(max_length=100)
+
+    class Meta:
+        unique_together = [("name", "city")]
+
+# Создаём существующую запись
+Username.objects.create(value="alice")
+
+# Проверяем дублирующийся username
+new_user = Username(value="alice")
+try:
+    new_user.validate_unique()
+except ValidationError as e:
+    print(e.message_dict)
+    # {"value": ["Username with this Value already exists."]}
+
+# При save() validate_unique не вызывается автоматически
+# — используйте full_clean() явно или форму Django`,
+  },
+  {
+    name: "django.db.models.Model.validate_constraints",
+    category: "django.db",
+    description:
+      "Проверяет программные ограничения модели, заданные в Meta.constraints (CheckConstraint, UniqueConstraint с условиями). Вызывается из full_clean(). В отличие от validate_unique, работает с условными UniqueConstraint (condition=Q(...)). Бросает ValidationError при нарушении. Не все ограничения БД (например, CHECK CONSTRAINT) можно проверить на уровне Python.",
+    syntax: "instance.validate_constraints(exclude=None)",
+    arguments: [
+      {
+        name: "exclude",
+        description: "Список имён полей для исключения из проверки ограничений.",
+      },
+    ],
+    example: `from django.db import models
+from django.db.models import Q, CheckConstraint, UniqueConstraint
+from django.core.exceptions import ValidationError
+
+class Product(models.Model):
+    name = models.CharField(max_length=100)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    discount_price = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            CheckConstraint(
+                check=Q(price__gt=0),
+                name="price_positive",
+            ),
+            UniqueConstraint(
+                fields=["name"],
+                condition=Q(is_active=True),
+                name="unique_active_name",
+            ),
+        ]
+
+p = Product(name="Widget", price=-10)  # нарушает price_positive
+try:
+    p.validate_constraints()
+except ValidationError as e:
+    print(e)`,
+  },
+  {
+    name: "django.db.models.Model.full_clean",
+    category: "django.db",
+    description:
+      "Выполняет полную валидацию объекта модели в три этапа: (1) clean_fields() — валидирует каждое поле, (2) clean() — пользовательская межполевая валидация, (3) validate_unique() — проверяет уникальность, (4) validate_constraints() — проверяет Meta.constraints. Собирает все ошибки и бросает ValidationError. Не вызывается автоматически при save() — нужно вызывать явно или через форму.",
+    syntax: "instance.full_clean(exclude=None, validate_unique=True, validate_constraints=True)",
+    arguments: [
+      {
+        name: "exclude",
+        description: "Список полей, исключаемых из всех этапов валидации.",
+      },
+      {
+        name: "validate_unique",
+        description: "bool. Если False — пропускает этап validate_unique(). По умолчанию True.",
+      },
+      {
+        name: "validate_constraints",
+        description: "bool. Если False — пропускает этап validate_constraints(). По умолчанию True.",
+      },
+    ],
+    example: `from django.db import models
+from django.core.exceptions import ValidationError
+
+class Subscription(models.Model):
+    email = models.EmailField(unique=True)
+    plan = models.CharField(max_length=20, choices=[("free","Free"),("pro","Pro")])
+    start = models.DateField()
+    end = models.DateField()
+
+    def clean(self):
+        if self.end <= self.start:
+            raise ValidationError("end must be after start")
+
+# Ручная валидация перед сохранением
+sub = Subscription(
+    email="not-valid",
+    plan="unknown",
+    start="2026-09-01",
+    end="2026-08-01",
+)
+
+try:
+    sub.full_clean()
+except ValidationError as e:
+    for field, errors in e.message_dict.items():
+        print(f"{field}: {errors}")
+
+# Если всё ок — сохраняем
+# sub.full_clean()
+# sub.save()`,
+  },
+  {
+    name: "django.db.models.Model.get_absolute_url",
+    category: "django.db",
+    description:
+      "Метод-соглашение, возвращающий канонический URL объекта. Не определён в базовом Model — должен быть реализован в каждой модели, для которой существует детальная страница. Используется в Django admin (кнопка 'View on site'), шаблонах ({{ object.get_absolute_url }}), картах сайта (sitemap). Рекомендуется реализовывать через reverse() для сохранения единой точки изменения URL.",
+    syntax: "def get_absolute_url(self) -> str: ...",
+    arguments: [],
+    example: `from django.db import models
+from django.urls import reverse
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    slug = models.SlugField(unique=True)
+    published = models.BooleanField(default=False)
+
+    def get_absolute_url(self):
+        # Рекомендуемый паттерн через reverse()
+        return reverse("article-detail", kwargs={"slug": self.slug})
+
+class Product(models.Model):
+    name = models.CharField(max_length=200)
+    pk_field = models.AutoField(primary_key=True)
+
+    def get_absolute_url(self):
+        return reverse("product-detail", args=[self.pk])
+
+# Использование в шаблоне:
+# <a href="{{ article.get_absolute_url }}">Read more</a>
+
+# Использование в коде:
+article = Article.objects.get(slug="my-post")
+url = article.get_absolute_url()   # "/articles/my-post/"`,
+  },
+  {
+    name: "django.db.models.Model.from_db",
+    category: "django.db",
+    description:
+      "Классовый метод (classmethod), вызываемый Django ORM при создании экземпляра из результата SELECT-запроса. Создаёт экземпляр с _state.adding=False и _state.db=db. Устанавливает DEFERRED-маркеры для незагруженных полей (при использовании defer()/only()). Переопределяется для кастомной инициализации при загрузке из БД — например, для кэширования оригинальных значений.",
+    syntax: "Model.from_db(db, field_names, values)",
+    arguments: [
+      {
+        name: "db",
+        description: "Имя базы данных, из которой загружается объект (строка из DATABASES).",
+      },
+      {
+        name: "field_names",
+        description: "Список имён полей, значения которых возвращены запросом.",
+      },
+      {
+        name: "values",
+        description: "Список значений полей в том же порядке что field_names. Незагруженные поля помечаются DEFERRED-маркером.",
+      },
+    ],
+    example: `from django.db import models
+from django.db.models.base import DEFERRED
+
+class AuditedModel(models.Model):
+    name = models.CharField(max_length=100)
+    status = models.CharField(max_length=20)
+
+    class Meta:
+        abstract = True
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        # Сохраняем оригинальные значения при загрузке из БД
+        # для последующего отслеживания изменений
+        instance._loaded_values = {
+            name: val
+            for name, val in zip(field_names, values)
+            if val is not DEFERRED
+        }
+        return instance
+
+    def get_changed_fields(self):
+        """Возвращает поля, изменённые с момента загрузки."""
+        if not hasattr(self, "_loaded_values"):
+            return {}
+        return {
+            field: getattr(self, field)
+            for field in self._loaded_values
+            if getattr(self, field) != self._loaded_values[field]
+        }`,
+  },
+  {
+    name: "django.db.models.Model.check",
+    category: "django.db",
+    description:
+      "Классовый метод системы проверок (System Checks Framework). Вызывается командой manage.py check при запуске Django для обнаружения ошибок конфигурации модели: некорректных полей, отсутствующих зависимостей, неверных Meta-параметров. Возвращает список объектов Error/Warning/Info/Debug. Может быть переопределён для добавления пользовательских проверок модели.",
+    syntax: "Model.check(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Дополнительные параметры контекста проверки, передаваемые фреймворком. Обычно содержит databases — список имён БД для проверки.",
+      },
+    ],
+    example: `from django.db import models
+from django.core.checks import Error, Warning
+
+class SafeModel(models.Model):
+    name = models.CharField(max_length=100)
+    ref_code = models.CharField(max_length=10)
+
+    class Meta:
+        app_label = "myapp"
+
+    @classmethod
+    def check(cls, **kwargs):
+        errors = super().check(**kwargs)
+
+        # Пользовательская проверка: поле ref_code должно быть unique
+        if not cls._meta.get_field("ref_code").unique:
+            errors.append(
+                Warning(
+                    "ref_code should be unique for reliable lookups.",
+                    hint="Add unique=True to ref_code field.",
+                    obj=cls,
+                    id="myapp.W001",
+                )
+            )
+
+        return errors
+
+# Запуск проверок:
+# python manage.py check
+# Или программно:
+# errors = SafeModel.check()`,
+  },
+
+
+  {
+    name: "django.db.models.options",
+    category: "django.db",
+    description:
+      "Модуль, содержащий класс Options — внутреннее API метаданных модели, доступное через Model._meta. Хранит всю информацию о конфигурации модели: имя таблицы, поля, связи, индексы, ограничения, права доступа, verbose-имена. Заполняется метаклассом ModelBase при определении класса. Используется Django ORM, миграциями, admin-интерфейсом и сторонними пакетами.",
+    syntax: "from django.db.models.options import Options  # или: MyModel._meta",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+
+    class Meta:
+        db_table = "news_articles"
+        verbose_name = "Article"
+        verbose_name_plural = "Articles"
+        ordering = ["-id"]
+
+# Доступ через _meta
+meta = Article._meta
+
+print(meta.db_table)           # "news_articles"
+print(meta.verbose_name)       # "Article"
+print(meta.app_label)          # "myapp"
+print(meta.model_name)         # "article"
+print([f.name for f in meta.get_fields()])
+# ["id", "title", "body"]`,
+  },
+  {
+    name: "django.db.models.options.Options",
+    category: "django.db",
+    description:
+      "Класс метаданных модели. Экземпляр создаётся метаклассом ModelBase для каждого подкласса Model и доступен как Model._meta. Агрегирует параметры из вложенного класса Meta модели, добавляет вычисляемые атрибуты (app_label, model_name, pk) и предоставляет методы для доступа к полям (get_fields, get_field, fields). Не инстанцируется напрямую.",
+    syntax: "Model._meta  # экземпляр Options",
+    arguments: [],
+    example: `from django.db import models
+
+class Order(models.Model):
+    number = models.CharField(max_length=20, unique=True)
+    total = models.DecimalField(max_digits=10, decimal_places=2)
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created"]
+        verbose_name = "Order"
+
+opts = Order._meta
+
+print(opts.app_label)         # "myapp"
+print(opts.model_name)        # "order"
+print(opts.db_table)          # "myapp_order"
+print(opts.verbose_name)      # "Order"
+print(opts.ordering)          # ["-created"]
+print(opts.pk.name)           # "id"
+
+all_fields = opts.get_fields()
+field = opts.get_field("total")
+print(field.max_digits)        # 10`,
+  },
+  {
+    name: "django.db.models.options.Options.app_label",
+    category: "django.db",
+    description:
+      "Строка — имя Django-приложения, которому принадлежит модель. Определяется автоматически из имени пакета (папки приложения) или явно через Meta.app_label. Используется в миграциях, реестре моделей, ссылках ForeignKey ('app.Model'), manage.py командах и в методе ContentType.get_for_model(). Важен при использовании моделей вне их родного приложения.",
+    syntax: "Model._meta.app_label",
+    arguments: [],
+    example: `from django.db import models
+
+class Review(models.Model):
+    text = models.TextField()
+
+    class Meta:
+        app_label = "reviews"
+
+print(Review._meta.app_label)   # "reviews"
+
+# Без явного app_label — берётся из имени пакета:
+# myproject/blog/models.py → app_label = "blog"
+
+class Article(models.Model):
+    review = models.ForeignKey(
+        "reviews.Review",
+        on_delete=models.SET_NULL,
+        null=True,
+    )
+
+    class Meta:
+        app_label = "blog"`,
+  },
+  {
+    name: "django.db.models.options.Options.model_name",
+    category: "django.db",
+    description:
+      "Строка — имя класса модели в нижнем регистре. Вычисляется автоматически как MyModel.__name__.lower(). Неизменяемо — нельзя задать через Meta. Используется в URL-конфигурациях, ContentType, системе прав (permission codename: 'app.add_modelname'), в admin и миграциях. Всегда в нижнем регистре независимо от регистра имени класса.",
+    syntax: "Model._meta.model_name",
+    arguments: [],
+    example: `from django.db import models
+
+class BlogPost(models.Model):
+    title = models.CharField(max_length=200)
+
+    class Meta:
+        app_label = "blog"
+
+print(BlogPost._meta.model_name)   # "blogpost"
+
+app  = BlogPost._meta.app_label
+name = BlogPost._meta.model_name
+
+add_perm    = f"{app}.add_{name}"      # "blog.add_blogpost"
+change_perm = f"{app}.change_{name}"   # "blog.change_blogpost"
+delete_perm = f"{app}.delete_{name}"   # "blog.delete_blogpost"
+view_perm   = f"{app}.view_{name}"     # "blog.view_blogpost"`,
+  },
+  {
+    name: "django.db.models.options.Options.verbose_name",
+    category: "django.db",
+    description:
+      "Человекочитаемое имя модели в единственном числе. Задаётся через Meta.verbose_name. Если не задано — автоматически генерируется из имени класса: CamelCase → 'camel case'. Используется в Django admin (заголовки, кнопки), сообщениях валидации, шаблонных фильтрах. Тип: строка или ленивый перевод (gettext_lazy).",
+    syntax: "Model._meta.verbose_name",
+    arguments: [],
+    example: `from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+class ProductCategory(models.Model):
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        verbose_name = _("product category")
+        verbose_name_plural = _("product categories")
+
+print(ProductCategory._meta.verbose_name)
+# "product category"
+
+# Без verbose_name — генерируется автоматически:
+class BlogPost(models.Model):
+    title = models.CharField(max_length=200)
+
+print(BlogPost._meta.verbose_name)
+# "blog post"  (CamelCase -> слова через пробел)`,
+  },
+  {
+    name: "django.db.models.options.Options.verbose_name_plural",
+    category: "django.db",
+    description:
+      "Человекочитаемое имя модели во множественном числе. Задаётся через Meta.verbose_name_plural. Если не задано — автоматически генерируется добавлением 's' к verbose_name (что не всегда корректно для русских и нестандартных английских слов). Используется в Django admin (навигация, заголовки списков) и шаблонах.",
+    syntax: "Model._meta.verbose_name_plural",
+    arguments: [],
+    example: `from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+class Category(models.Model):
+    name = models.CharField(max_length=100)
+
+    class Meta:
+        verbose_name = "category"
+        verbose_name_plural = "categories"   # не "categorys"
+
+print(Category._meta.verbose_name_plural)   # "categories"
+
+# Автогенерация (добавляет 's')
+class Tag(models.Model):
+    name = models.CharField(max_length=50)
+
+print(Tag._meta.verbose_name_plural)   # "tags"
+
+class Person(models.Model):
+    class Meta:
+        verbose_name = _("person")
+        verbose_name_plural = _("people")`,
+  },
+  {
+    name: "django.db.models.options.Options.db_table",
+    category: "django.db",
+    description:
+      "Имя таблицы в базе данных для данной модели. Если не задано через Meta.db_table — генерируется автоматически как 'applabel_modelname' (в нижнем регистре). Изменение db_table для существующей модели требует ручной миграции (переименование таблицы). Используется во всех SQL-запросах ORM, raw()-запросах и при построении JOIN.",
+    syntax: "Model._meta.db_table",
+    arguments: [],
+    example: `from django.db import models
+
+class UserProfile(models.Model):
+    bio = models.TextField()
+
+    class Meta:
+        app_label = "accounts"
+        # Без db_table — будет "accounts_userprofile"
+
+print(UserProfile._meta.db_table)   # "accounts_userprofile"
+
+# Явное имя — для legacy БД
+class LegacyOrder(models.Model):
+    order_num = models.CharField(max_length=20)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        db_table = "tbl_orders"
+        managed = False
+
+print(LegacyOrder._meta.db_table)   # "tbl_orders"`,
+  },
+  {
+    name: "django.db.models.options.Options.db_table_comment",
+    category: "django.db",
+    description:
+      "Строка — комментарий к таблице в базе данных (TABLE COMMENT). Задаётся через Meta.db_table_comment. Добавлен в Django 4.2. Поддерживается PostgreSQL, MySQL, Oracle; SQLite не поддерживает. Отображается в инструментах управления БД (pgAdmin, DBeaver). Полезен для документирования схемы прямо в БД без внешних документов.",
+    syntax: "Model._meta.db_table_comment",
+    arguments: [],
+    example: `from django.db import models
+
+class Payment(models.Model):
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "payments"
+        db_table_comment = (
+            "Stores all payment transactions. "
+            "amount in USD. "
+            "status: pending|completed|failed|refunded."
+        )
+
+print(Payment._meta.db_table_comment)
+# "Stores all payment transactions..."
+
+# В PostgreSQL создаёт:
+# COMMENT ON TABLE payments IS 'Stores all payment transactions...'
+
+# Доступно начиная с Django 4.2`,
+  },
+  {
+    name: "django.db.models.options.Options.ordering",
+    category: "django.db",
+    description:
+      "Список строк — порядок сортировки по умолчанию для QuerySet этой модели. Задаётся через Meta.ordering. Строка без префикса — сортировка по возрастанию (ASC); с префиксом '-' — по убыванию (DESC); '?' — случайный порядок (медленно). Можно использовать F-выражения с nulls_first/nulls_last. Применяется ко всем QuerySet если не переопределено через .order_by().",
+    syntax: "Model._meta.ordering",
+    arguments: [],
+    example: `from django.db import models
+from django.db.models import F
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    published_at = models.DateTimeField(null=True)
+    priority = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = [
+            "-priority",
+            F("published_at").desc(nulls_last=True),
+            "title",
+        ]
+
+print(Article._meta.ordering)
+# ["-priority", ..., "title"]
+
+# Все QuerySet используют ordering по умолчанию:
+# SELECT ... ORDER BY priority DESC, published_at DESC NULLS LAST, title ASC
+
+# Переопределить:
+articles = Article.objects.order_by("title")
+
+# Убрать ordering:
+articles = Article.objects.order_by()`,
+  },
+  {
+    name: "django.db.models.options.Options.permissions",
+    category: "django.db",
+    description:
+      "Список дополнительных пользовательских прав доступа для модели. Задаётся через Meta.permissions как список кортежей (codename, description). Django автоматически создаёт 4 базовых права (add, change, delete, view); permissions добавляет произвольные. Создаются в БД через migrate и доступны через систему auth (user.has_perm). Используются для тонкого управления доступом.",
+    syntax: "Model._meta.permissions",
+    arguments: [],
+    example: `from django.db import models
+
+class Document(models.Model):
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    is_published = models.BooleanField(default=False)
+
+    class Meta:
+        permissions = [
+            ("publish_document", "Can publish document"),
+            ("archive_document", "Can archive document"),
+            ("export_document", "Can export document to PDF"),
+        ]
+
+print(Document._meta.permissions)
+# [("publish_document", "Can publish document"), ...]
+
+# После migrate права в таблице auth_permission.
+# Проверка:
+# request.user.has_perm("myapp.publish_document")`,
+  },
+  {
+    name: "django.db.models.options.Options.default_permissions",
+    category: "django.db",
+    description:
+      "Кортеж строк — набор автоматически создаваемых прав доступа для модели. По умолчанию: ('add', 'change', 'delete', 'view'). Задаётся через Meta.default_permissions для изменения или отключения стандартных прав. Пустой кортеж () — Django не создаст никаких автоматических прав. Изменение после первой миграции требует ручного управления правами в БД.",
+    syntax: "Model._meta.default_permissions",
+    arguments: [],
+    example: `from django.db import models
+
+class Invoice(models.Model):
+    number = models.CharField(max_length=20)
+
+print(Invoice._meta.default_permissions)
+# ('add', 'change', 'delete', 'view')
+
+# Только просмотр
+class ReadOnlyLog(models.Model):
+    message = models.TextField()
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        default_permissions = ("view",)
+        # Только: myapp.view_readonlylog
+
+# Полностью отключить стандартные права
+class SystemConfig(models.Model):
+    key = models.CharField(max_length=100)
+    value = models.TextField()
+
+    class Meta:
+        default_permissions = ()
+        permissions = [
+            ("manage_config", "Can manage system config"),
+        ]`,
+  },
+  {
+    name: "django.db.models.options.Options.get_latest_by",
+    category: "django.db",
+    description:
+      "Имя поля (строка) или список полей для методов QuerySet.latest() и earliest() по умолчанию. Задаётся через Meta.get_latest_by. Если не задано — latest() и earliest() требуют явного указания поля. Поля с префиксом '-' — убывающий порядок для earliest(). Обычно DateField, DateTimeField или AutoField.",
+    syntax: "Model._meta.get_latest_by",
+    arguments: [],
+    example: `from django.db import models
+
+class NewsItem(models.Model):
+    headline = models.CharField(max_length=200)
+    pub_date = models.DateTimeField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        get_latest_by = ["-pub_date", "-updated_at"]
+
+print(NewsItem._meta.get_latest_by)   # ["-pub_date", "-updated_at"]
+
+latest_news = NewsItem.objects.latest()
+# SELECT ... ORDER BY pub_date DESC, updated_at DESC LIMIT 1
+
+oldest_news = NewsItem.objects.earliest()
+# SELECT ... ORDER BY pub_date ASC, updated_at ASC LIMIT 1
+
+# Без get_latest_by — поле обязательно
+class Log(models.Model):
+    created = models.DateTimeField(auto_now_add=True)
+
+Log.objects.latest("created")`,
+  },
+  {
+    name: "django.db.models.options.Options.order_with_respect_to",
+    category: "django.db",
+    description:
+      "Строка — имя ForeignKey-поля, относительно которого объекты имеют пользовательский порядок. Задаётся через Meta.order_with_respect_to. Добавляет в таблицу скрытое поле _order для хранения позиции. Автоматически генерирует методы get_RELATED_order(), set_RELATED_order(), get_next_in_order(), get_previous_in_order(). Используется для ручной сортировки (меню, слайды, вопросы).",
+    syntax: "Model._meta.order_with_respect_to",
+    arguments: [],
+    example: `from django.db import models
+
+class Quiz(models.Model):
+    title = models.CharField(max_length=200)
+
+class Question(models.Model):
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE)
+    text = models.TextField()
+
+    class Meta:
+        order_with_respect_to = "quiz"
+        # Добавляет поле _order в таблицу
+
+quiz = Quiz.objects.create(title="Python Basics")
+q1 = Question.objects.create(quiz=quiz, text="What is Python?")
+q2 = Question.objects.create(quiz=quiz, text="What is a list?")
+q3 = Question.objects.create(quiz=quiz, text="What is a dict?")
+
+# Текущий порядок (список pk)
+order = quiz.get_question_order()   # [1, 2, 3]
+
+# Изменить порядок
+quiz.set_question_order([3, 1, 2])  # dict -> Python -> list
+
+next_q = q1.get_next_in_order()
+prev_q = q2.get_previous_in_order()`,
+  },
+  {
+    name: "django.db.models.options.Options.app_config",
+    category: "django.db",
+    description:
+      "Экземпляр AppConfig приложения, которому принадлежит модель. Ссылка устанавливается при регистрации модели в реестре Apps. Предоставляет доступ к конфигурации приложения: name (полное имя), path (директория), verbose_name и др. Используется сторонними пакетами для интроспекции структуры проекта.",
+    syntax: "Model._meta.app_config",
+    arguments: [],
+    example: `from django.db import models
+
+class Post(models.Model):
+    title = models.CharField(max_length=200)
+
+    class Meta:
+        app_label = "blog"
+
+cfg = Post._meta.app_config
+
+print(cfg.name)           # "blog"
+print(cfg.verbose_name)   # "Blog"
+print(cfg.path)           # "/path/to/blog"
+print(cfg.label)          # "blog"
+
+# Перебор всех моделей приложения
+for model in cfg.get_models():
+    print(model._meta.model_name)`,
+  },
+  {
+    name: "django.db.models.options.Options.auto_created",
+    category: "django.db",
+    description:
+      "Атрибут — указывает была ли модель создана автоматически Django, а не явно разработчиком. False для обычных моделей. Для автоматически созданных промежуточных таблиц ManyToManyField (без через through=) содержит ссылку на модель, породившую её. Используется ORM и миграциями для определения нужно ли создавать отдельные миграции для модели.",
+    syntax: "Model._meta.auto_created",
+    arguments: [],
+    example: `from django.db import models
+
+class Author(models.Model):
+    name = models.CharField(max_length=100)
+
+class Book(models.Model):
+    title = models.CharField(max_length=200)
+    authors = models.ManyToManyField(Author)
+
+# Обычные модели
+print(Book._meta.auto_created)    # False
+print(Author._meta.auto_created)  # False
+
+# Автосозданная промежуточная таблица M2M
+through_model = Book.authors.through
+print(through_model._meta.auto_created)   # <class 'Book'>
+print(through_model._meta.db_table)       # "myapp_book_authors"
+
+# Явная промежуточная модель
+class Authorship(models.Model):
+    book = models.ForeignKey(Book, on_delete=models.CASCADE)
+    author = models.ForeignKey(Author, on_delete=models.CASCADE)
+    role = models.CharField(max_length=50)
+
+print(Authorship._meta.auto_created)   # False`,
+  },
+
+
+  {
+    name: "django.db.models.options.Options.auto_field",
+    category: "django.db",
+    description:
+      "Класс поля автоинкремента для данной модели — тип первичного ключа, создаваемого автоматически если явный primary_key не задан. Определяется настройкой DEFAULT_AUTO_FIELD в settings.py или через Meta.default_auto_field приложения. Возможные значения: AutoField (32-бит int), BigAutoField (64-бит int), SmallAutoField (16-бит int). Влияет на тип столбца id в базе данных.",
+    syntax: "Model._meta.auto_field",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+
+# Тип поля pk — зависит от DEFAULT_AUTO_FIELD в settings.py
+print(Article._meta.auto_field)
+# <class 'django.db.models.fields.BigAutoField'>
+
+# Настройка в settings.py:
+# DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"  # Django 3.2+ default
+# DEFAULT_AUTO_FIELD = "django.db.models.AutoField"     # 32-бит
+# DEFAULT_AUTO_FIELD = "django.db.models.SmallAutoField" # 16-бит
+
+# Переопределение на уровне приложения (apps.py):
+# class BlogConfig(AppConfig):
+#     default_auto_field = "django.db.models.BigAutoField"
+
+# Явный pk — auto_field не используется
+class Invoice(models.Model):
+    number = models.CharField(max_length=20, primary_key=True)
+
+print(Invoice._meta.auto_field)   # None (pk задан явно)`,
+  },
+  {
+    name: "django.db.models.options.Options.swapped",
+    category: "django.db",
+    description:
+      "Строка или None — указывает была ли модель заменена (swapped) другой через настройку AUTH_USER_MODEL или аналогичную. Если модель заменена — содержит строку 'app.ModelName' замещающей модели. Если не заменена — None. Используется для проверки перед использованием стандартных моделей Django (User и др.), которые могут быть подменены кастомными.",
+    syntax: "Model._meta.swapped",
+    arguments: [],
+    example: `# Механизм swappable_dependency в Django
+# Позволяет заменять стандартные модели кастомными
+
+# В settings.py:
+# AUTH_USER_MODEL = "accounts.CustomUser"
+
+# Проверка в коде
+from django.contrib.auth import get_user_model
+User = get_user_model()
+
+from django.contrib.auth.models import AbstractUser
+print(AbstractUser._meta.swapped)
+# "accounts.CustomUser" — если AUTH_USER_MODEL переопределён
+# None — если используется стандартный User
+
+# Защита в коде от использования заменённой модели:
+from django.contrib.auth.models import User as AuthUser
+if AuthUser._meta.swapped:
+    raise RuntimeError(
+        f"Use get_user_model() instead — "
+        f"User is swapped to {AuthUser._meta.swapped}"
+    )`,
+  },
+  {
+    name: "django.db.models.options.Options.abstract",
+    category: "django.db",
+    description:
+      "Булево значение — True если модель является абстрактной (Meta.abstract = True). Абстрактные модели не создают таблиц в БД и не могут быть инстанцированы напрямую. Служат базовыми классами для общих полей и методов. При наследовании поля абстрактной модели копируются в подкласс. Миграции игнорируют абстрактные модели.",
+    syntax: "Model._meta.abstract",
+    arguments: [],
+    example: `from django.db import models
+
+class TimestampedModel(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True   # нет таблицы в БД
+
+class Post(TimestampedModel):
+    title = models.CharField(max_length=200)
+
+class Comment(TimestampedModel):
+    text = models.TextField()
+
+# Проверка
+print(TimestampedModel._meta.abstract)   # True
+print(Post._meta.abstract)              # False
+print(Comment._meta.abstract)           # False
+
+# Post и Comment имеют поля created_at и updated_at
+# TimestampedModel — нет таблицы, нельзя сделать:
+# TimestampedModel.objects.all()  -> AttributeError`,
+  },
+  {
+    name: "django.db.models.options.Options.managed",
+    category: "django.db",
+    description:
+      "Булево значение — управляет ли Django схемой таблицы этой модели. True по умолчанию: Django создаёт, изменяет и удаляет таблицу через makemigrations/migrate. False (Meta.managed = False): Django не трогает таблицу — она управляется внешней системой, legacy-кодом или создана вручную. При managed=False ORM-запросы (SELECT, INSERT, UPDATE, DELETE) работают в обычном режиме.",
+    syntax: "Model._meta.managed",
+    arguments: [],
+    example: `from django.db import models
+
+# managed=True (по умолчанию) — Django управляет схемой
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+
+print(Article._meta.managed)   # True
+
+# managed=False — таблица существует независимо от Django
+class LegacyProduct(models.Model):
+    product_id = models.IntegerField(primary_key=True)
+    name = models.CharField(max_length=255)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        managed = False
+        db_table = "erp_products"   # существующая таблица в БД
+
+print(LegacyProduct._meta.managed)   # False
+
+# ORM-запросы работают нормально
+# products = LegacyProduct.objects.filter(price__lt=100)
+
+# makemigrations НЕ создаст миграцию для LegacyProduct`,
+  },
+  {
+    name: "django.db.models.options.Options.proxy",
+    category: "django.db",
+    description:
+      "Булево значение — True если модель является прокси-моделью (Meta.proxy = True). Прокси-модели не создают новых таблиц: используют таблицу родительской модели. Позволяют добавлять методы, менеджеры, изменять ordering и verbose_name без изменения схемы БД. Данные прокси и оригинала хранятся в одной таблице и взаимодоступны.",
+    syntax: "Model._meta.proxy",
+    arguments: [],
+    example: `from django.db import models
+
+class Person(models.Model):
+    first_name = models.CharField(max_length=50)
+    last_name = models.CharField(max_length=50)
+    is_staff = models.BooleanField(default=False)
+
+# Прокси — та же таблица, другие методы/менеджер
+class StaffMember(Person):
+    class Meta:
+        proxy = True
+        ordering = ["last_name"]
+        verbose_name = "Staff Member"
+
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}"
+
+print(Person._meta.proxy)       # False
+print(StaffMember._meta.proxy)  # True
+
+# Одна таблица для обеих моделей
+print(Person._meta.db_table)       # "myapp_person"
+print(StaffMember._meta.db_table)  # "myapp_person" — та же!
+
+# Данные синхронизированы
+p = Person.objects.create(first_name="Alice", last_name="Smith", is_staff=True)
+s = StaffMember.objects.get(pk=p.pk)
+print(s.full_name())   # "Alice Smith"`,
+  },
+  {
+    name: "django.db.models.options.Options.proxy_for_model",
+    category: "django.db",
+    description:
+      "Конкретная (не прокси) модель, для которой данная модель является прокси. Для обычных и абстрактных моделей — None. Для прокси-модели — класс конкретной модели в иерархии. При многоуровневом наследовании прокси-цепочки указывает на первую конкретную модель в основании. Используется ORM для определения таблицы БД.",
+    syntax: "Model._meta.proxy_for_model",
+    arguments: [],
+    example: `from django.db import models
+
+class Animal(models.Model):
+    name = models.CharField(max_length=100)
+    sound = models.CharField(max_length=50)
+
+# Прокси первого уровня
+class Dog(Animal):
+    class Meta:
+        proxy = True
+
+    def speak(self):
+        return f"{self.name} says {self.sound}"
+
+# Прокси второго уровня
+class GuideDog(Dog):
+    class Meta:
+        proxy = True
+
+print(Animal._meta.proxy_for_model)    # None (конкретная модель)
+print(Dog._meta.proxy_for_model)       # <class 'Animal'>
+print(GuideDog._meta.proxy_for_model)  # <class 'Animal'>  (первая конкретная)
+
+# Все три используют таблицу Animal
+print(Dog._meta.db_table)       # "myapp_animal"
+print(GuideDog._meta.db_table)  # "myapp_animal"`,
+  },
+  {
+    name: "django.db.models.options.Options.parents",
+    category: "django.db",
+    description:
+      "Словарь {ParentModel: OneToOneField} — родительские модели при мульти-табличном наследовании. Ключ — класс родительской модели, значение — OneToOneField-ссылка на родительскую таблицу (или None для первого уровня). Для моделей без наследования — пустой словарь. Для прокси-моделей — родитель есть, но поле None (общая таблица). Используется ORM при JOIN-запросах наследования.",
+    syntax: "Model._meta.parents",
+    arguments: [],
+    example: `from django.db import models
+
+class Place(models.Model):
+    name = models.CharField(max_length=100)
+    address = models.CharField(max_length=200)
+
+# Мульти-табличное наследование — отдельная таблица
+class Restaurant(Place):
+    cuisine = models.CharField(max_length=50)
+    serves_hot_dogs = models.BooleanField(default=False)
+
+# Прокси-наследование — та же таблица
+class FancyRestaurant(Restaurant):
+    class Meta:
+        proxy = True
+
+print(Place._meta.parents)
+# {}  — нет родителей
+
+print(Restaurant._meta.parents)
+# {Place: <OneToOneField: place_ptr>}
+# Django создаёт таблицу myapp_restaurant с FK на myapp_place
+
+print(FancyRestaurant._meta.parents)
+# {Restaurant: None}  — прокси, нет нового поля`,
+  },
+  {
+    name: "django.db.models.options.Options.pk",
+    category: "django.db",
+    description:
+      "Экземпляр поля первичного ключа модели. Указывает на поле с primary_key=True — автосгенерированный AutoField/BigAutoField или явно заданное поле. Используется ORM для построения WHERE pk = %s в SELECT/UPDATE/DELETE запросах. Позволяет получить имя, тип и параметры pk-поля через стандартный Field API.",
+    syntax: "Model._meta.pk",
+    arguments: [],
+    example: `from django.db import models
+
+class Order(models.Model):
+    total = models.DecimalField(max_digits=10, decimal_places=2)
+
+# Автосгенерированный pk
+pk_field = Order._meta.pk
+print(pk_field.name)           # "id"
+print(pk_field.__class__.__name__)  # "BigAutoField"
+print(pk_field.primary_key)    # True
+
+# Явный primary_key
+class Invoice(models.Model):
+    number = models.CharField(max_length=20, primary_key=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+pk_field = Invoice._meta.pk
+print(pk_field.name)           # "number"
+print(pk_field.__class__.__name__)  # "CharField"
+print(pk_field.max_length)     # 20
+
+# Применение: универсальный код для любой модели
+def get_pk_name(model):
+    return model._meta.pk.name
+
+print(get_pk_name(Order))    # "id"
+print(get_pk_name(Invoice))  # "number"`,
+  },
+  {
+    name: "django.db.models.options.Options.indexes",
+    category: "django.db",
+    description:
+      "Список объектов Index, определённых в Meta.indexes модели. Каждый элемент — экземпляр models.Index с полями fields, name и опциональными параметрами (condition, include, opclasses). Django создаёт эти индексы в БД через makemigrations/migrate. Не включает индексы, создаваемые автоматически для unique=True и unique_together.",
+    syntax: "Model._meta.indexes",
+    arguments: [],
+    example: `from django.db import models
+from django.db.models import Index, Q
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    author = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+    published_at = models.DateTimeField(null=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        indexes = [
+            Index(fields=["author", "-published_at"],
+                  name="article_author_date_idx"),
+            Index(
+                fields=["title"],
+                name="article_active_title_idx",
+                condition=Q(is_active=True),  # частичный индекс
+            ),
+        ]
+
+for idx in Article._meta.indexes:
+    print(idx.name, idx.fields)
+# article_author_date_idx  ['author_id', '-published_at']
+# article_active_title_idx ['title']`,
+  },
+  {
+    name: "django.db.models.options.Options.constraints",
+    category: "django.db",
+    description:
+      "Список объектов ограничений, определённых в Meta.constraints. Поддерживаемые типы: UniqueConstraint (уникальность, в т.ч. условная), CheckConstraint (проверка значений через Q-выражение). Создаются в БД через migrate. Проверяются методом validate_constraints() при вызове full_clean(). UniqueConstraint с condition — частичное уникальное ограничение.",
+    syntax: "Model._meta.constraints",
+    arguments: [],
+    example: `from django.db import models
+from django.db.models import Q, CheckConstraint, UniqueConstraint
+
+class Booking(models.Model):
+    room = models.ForeignKey("Room", on_delete=models.CASCADE)
+    guest = models.CharField(max_length=100)
+    check_in = models.DateField()
+    check_out = models.DateField()
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=20, default="active")
+
+    class Meta:
+        constraints = [
+            CheckConstraint(
+                check=Q(check_out__gt=models.F("check_in")),
+                name="checkout_after_checkin",
+            ),
+            CheckConstraint(
+                check=Q(price__gte=0),
+                name="price_non_negative",
+            ),
+            UniqueConstraint(
+                fields=["room", "check_in"],
+                condition=Q(status="active"),
+                name="unique_active_room_checkin",
+            ),
+        ]
+
+for c in Booking._meta.constraints:
+    print(type(c).__name__, c.name)`,
+  },
+  {
+    name: "django.db.models.options.Options.get_field",
+    category: "django.db",
+    description:
+      "Метод — возвращает объект поля по его имени. Бросает FieldDoesNotExist если поле не найдено. Находит как прямые поля (CharField, ForeignKey и др.), так и обратные отношения (related_name). Возвращает экземпляр соответствующего класса Field — можно проверить тип, параметры, связанную модель. Используется для интроспекции схемы модели.",
+    syntax: "Model._meta.get_field(field_name)",
+    arguments: [
+      {
+        name: "field_name",
+        description:
+          "Строка — имя поля. Для ForeignKey: имя поля (например 'author'), не 'author_id'. Для обратных отношений — related_name или автогенерированное 'modelname_set'.",
+      },
+    ],
+    example: `from django.db import models
+from django.core.exceptions import FieldDoesNotExist
+
+class Author(models.Model):
+    name = models.CharField(max_length=100)
+
+class Post(models.Model):
+    title = models.CharField(max_length=200)
+    author = models.ForeignKey(Author, on_delete=models.CASCADE)
+    tags = models.ManyToManyField("Tag")
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50)
+
+# Получение прямого поля
+title_field = Post._meta.get_field("title")
+print(title_field.__class__.__name__)   # "CharField"
+print(title_field.max_length)           # 200
+
+# ForeignKey
+author_field = Post._meta.get_field("author")
+print(author_field.related_model)       # <class 'Author'>
+
+# Несуществующее поле
+try:
+    Post._meta.get_field("nonexistent")
+except FieldDoesNotExist as e:
+    print(e)  # Post has no field named 'nonexistent'`,
+  },
+  {
+    name: "django.db.models.options.Options.get_fields",
+    category: "django.db",
+    description:
+      "Метод — возвращает все поля модели как кортеж объектов Field. По умолчанию включает: прямые поля (id, CharField, ForeignKey и др.), обратные отношения (OneToOneRel, ManyToOneRel), ManyToManyField и обратные M2M. Параметр include_parents=False — только поля конкретного класса без родителей. include_hidden=True — включает скрытые поля (с именем, начинающимся на '+').",
+    syntax: "Model._meta.get_fields(include_parents=True, include_hidden=False)",
+    arguments: [
+      {
+        name: "include_parents",
+        description:
+          "bool или константа PROXY_PARENTS. True (по умолчанию) — включает поля родительских моделей. False — только поля данного класса. PROXY_PARENTS — только поля прокси-родителей.",
+      },
+      {
+        name: "include_hidden",
+        description:
+          "bool. False (по умолчанию) — исключает скрытые обратные отношения (related_name='+' или автогенерированные с префиксом '+'). True — включает все.",
+      },
+    ],
+    example: `from django.db import models
+
+class Category(models.Model):
+    name = models.CharField(max_length=100)
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    category = models.ForeignKey(Category, on_delete=models.CASCADE)
+    tags = models.ManyToManyField("Tag")
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50)
+
+# Все поля Article (прямые + обратные)
+for field in Article._meta.get_fields():
+    print(f"{field.__class__.__name__:25} {field.name}")
+# AutoField             id
+# CharField             title
+# TextField             body
+# ForeignKey            category
+# ManyToManyField       tags
+
+# Только прямые поля (без обратных отношений)
+direct = [f for f in Article._meta.get_fields()
+          if not f.is_relation or f.many_to_one or f.one_to_one]`,
+  },
+  {
+    name: "django.db.models.options.Options.get_base_manager",
+    category: "django.db",
+    description:
+      "Метод — возвращает базовый менеджер модели. Базовый менеджер используется Django ORM для внутренних операций: загрузки связанных объектов в select_related(), prefetch_related(), при каскадном удалении. В отличие от default-менеджера, базовый менеджер не должен фильтровать записи — иначе ORM может пропускать объекты при загрузке связей.",
+    syntax: "Model._meta.get_base_manager()",
+    arguments: [],
+    example: `from django.db import models
+
+class PublishedManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_published=True)
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    is_published = models.BooleanField(default=False)
+
+    # Кастомный менеджер как default
+    objects = PublishedManager()
+
+    # Базовый менеджер — без фильтрации
+    all_objects = models.Manager()
+
+    class Meta:
+        base_manager_name = "all_objects"
+
+# get_base_manager — менеджер для внутренних операций ORM
+base_mgr = Article._meta.get_base_manager()
+print(base_mgr.__class__.__name__)   # "Manager" (all_objects)
+
+# get_default_manager — для Article.objects
+default_mgr = Article._meta.get_default_manager()
+print(default_mgr.__class__.__name__)  # "PublishedManager"`,
+  },
+  {
+    name: "django.db.models.options.Options.get_default_manager",
+    category: "django.db",
+    description:
+      "Метод — возвращает менеджер по умолчанию модели. Это первый менеджер в списке или менеджер, помеченный Meta.default_manager_name. Доступен как Model.objects если имя не переопределено. Используется при обращении через Model.objects и в QuerySet-операциях пользовательского кода. В отличие от базового менеджера, может фильтровать записи.",
+    syntax: "Model._meta.get_default_manager()",
+    arguments: [],
+    example: `from django.db import models
+
+class ActiveManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(is_active=True)
+
+class Product(models.Model):
+    name = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+
+    # Порядок объявления определяет default-менеджер
+    objects = ActiveManager()       # первый -> default
+    all_objects = models.Manager()  # второй
+
+default_mgr = Product._meta.get_default_manager()
+print(default_mgr.__class__.__name__)  # "ActiveManager"
+
+# Явное указание через Meta
+class Order(models.Model):
+    status = models.CharField(max_length=20)
+
+    pending = models.Manager()
+    completed = models.Manager()
+
+    class Meta:
+        default_manager_name = "completed"  # переопределяем
+
+print(Order._meta.get_default_manager().__class__.__name__)
+# "Manager" (completed)`,
+  },
+  // ─── QuerySet ──────────────────────────────────────────────────────────────
+  {
+    name: "django.db.models.query",
+    category: "QuerySet",
+    description:
+      "Модуль Django ORM, содержащий реализацию **QuerySet**, а также вспомогательные классы `Q`, `F`, `Prefetch` и `RawQuerySet`. Именно здесь сосредоточена вся логика ленивых SQL-запросов: построение AST (компилятор запросов), кэширование результатов (`_result_cache`), итерация, срезы и клонирование цепочек фильтров. Прямой импорт модуля нужен редко — обычно используют `django.db.models.QuerySet` или менеджер модели `Model.objects`.",
+    syntax: "import django.db.models.query",
+    arguments: [],
+    example: `from django.db.models.query import QuerySet
+
+# Проверить, является ли объект QuerySet-ом
+qs = Article.objects.all()
+print(isinstance(qs, QuerySet))  # True
+
+# QuerySet ленивый — SQL выполняется только при итерации
+qs = Article.objects.filter(published=True)  # SQL ещё не выполнен
+articles = list(qs)                           # SQL выполнен здесь
+
+# Клонирование: каждый метод возвращает новый QuerySet
+qs2 = qs.order_by("-created_at")  # qs не изменён`,
+  },
+  {
+    name: "django.db.models.query.QuerySet",
+    category: "QuerySet",
+    description:
+      "Центральный класс Django ORM — ленивый, цепочечный объект запроса к базе данных. Хранит состояние запроса (фильтры, аннотации, ordering, LIMIT/OFFSET) и выполняет SQL только при обращении к данным: итерации, `list()`, срезе, `bool()`, `len()`. Каждый метод фильтрации возвращает **новый клон** QuerySet, не изменяя исходный — это позволяет безопасно переиспользовать базовые запросы. Поддерживает кэш (`_result_cache`): после первой оценки результаты хранятся в памяти.",
+    syntax: "Model.objects.all()  # возвращает QuerySet",
+    arguments: [],
+    example: `from django.db.models import QuerySet
+
+# QuerySet можно переиспользовать как «базу»
+base_qs: QuerySet = Article.objects.filter(published=True)
+
+recent   = base_qs.order_by("-created_at")[:10]
+featured = base_qs.filter(featured=True)
+
+# Оценка QuerySet:
+count   = base_qs.count()        # SELECT COUNT(*) — не загружает объекты
+exists  = base_qs.exists()       # SELECT 1 — самый дешёвый способ проверки
+first   = base_qs.first()        # LIMIT 1
+as_list = list(base_qs)          # загружает все объекты в _result_cache
+
+# После оценки повторное обращение не делает новый SQL:
+for art in base_qs:   # SQL только при первом проходе
+    pass
+for art in base_qs:   # берёт из кэша
+    pass`,
+  },
+  {
+    name: "QuerySet.filter(*args, **kwargs)",
+    category: "QuerySet",
+    description:
+      "Возвращает новый QuerySet, содержащий только объекты, удовлетворяющие условиям. Несколько аргументов объединяются через **AND**. Для сложных условий (OR, NOT, вложенность) передаются объекты `Q`. Условия записываются в виде `field__lookup=value` (`__exact`, `__icontains`, `__gte`, `__in`, `__isnull`, `__date` и т.д.). Несколько вызовов `.filter()` эквивалентны одному с несколькими условиями — SQL JOIN для связанных полей выполняется один раз.",
+    syntax: "QuerySet.filter(*args, **kwargs)",
+    arguments: [
+      {
+        name: "*args",
+        description: "Объекты Q для сложных булевых условий (OR, NOT, вложенность).",
+      },
+      {
+        name: "**kwargs",
+        description: "Условия вида `field__lookup=value`. Несколько условий объединяются через AND.",
+      },
+    ],
+    example: `from django.db.models import Q
+
+# Простой фильтр
+Article.objects.filter(published=True)
+
+# Несколько условий (AND)
+Article.objects.filter(published=True, author__is_active=True)
+
+# lookup-суффиксы
+Article.objects.filter(title__icontains="django")
+Article.objects.filter(created_at__year=2024)
+Article.objects.filter(status__in=["draft", "review"])
+Article.objects.filter(deleted_at__isnull=True)
+
+# Q-объекты для OR
+Article.objects.filter(Q(featured=True) | Q(views__gte=10_000))
+
+# NOT через ~Q
+Article.objects.filter(~Q(status="deleted"))
+
+# Фильтр по связанным полям (JOIN)
+Article.objects.filter(
+    author__department__name="Engineering",
+    tags__name="python",
+)`,
+  },
+  {
+    name: "QuerySet.exclude(*args, **kwargs)",
+    category: "QuerySet",
+    description:
+      "Возвращает новый QuerySet, **исключая** объекты, удовлетворяющие условиям (SQL `NOT (...)`). Семантически эквивалентен `.filter(~Q(...))`, но читается нагляднее. Несколько условий в одном `.exclude()` объединяются через AND **внутри NOT** (т.е. `NOT (A AND B)`), что отличается от цепочки `.exclude(A).exclude(B)` (`NOT A AND NOT B`).",
+    syntax: "QuerySet.exclude(*args, **kwargs)",
+    arguments: [
+      {
+        name: "*args",
+        description: "Объекты Q. Несколько Q объединяются согласно их логическим операторам внутри NOT.",
+      },
+      {
+        name: "**kwargs",
+        description: "Условия вида `field__lookup=value`. Все условия объединяются через AND внутри NOT.",
+      },
+    ],
+    example: `# Исключить удалённые статьи
+Article.objects.exclude(status="deleted")
+
+# Исключить черновики И статьи без тегов (NOT (draft AND no tags))
+Article.objects.exclude(status="draft", tags__isnull=True)
+
+# Цепочка exclude — NOT draft AND NOT archived
+Article.objects.exclude(status="draft").exclude(status="archived")
+
+# exclude + filter
+Article.objects.filter(published=True).exclude(author__is_active=False)
+
+# Разница семантики:
+# NOT (status=draft AND featured=False) — некоторые черновики пройдут
+qs1 = Article.objects.exclude(status="draft", featured=False)
+# NOT status=draft AND NOT featured=False — строже
+qs2 = Article.objects.exclude(status="draft").exclude(featured=False)`,
+  },
+  {
+    name: "QuerySet.annotate(*args, **kwargs)",
+    category: "QuerySet",
+    description:
+      "Добавляет **вычисляемые поля** к каждому объекту QuerySet через SQL-выражения (агрегаты, оконные функции, `F`-выражения, `Case/When` и т.д.). Аннотации доступны как атрибуты экземпляра модели и могут использоваться в последующих `.filter()`, `.order_by()`, `.values()`. При аннотации агрегатами Django автоматически добавляет `GROUP BY` по первичному ключу модели.",
+    syntax: "QuerySet.annotate(*args, **kwargs)",
+    arguments: [
+      {
+        name: "*args",
+        description: "Именованные выражения, переданные позиционно (редко).",
+      },
+      {
+        name: "**kwargs",
+        description: "Именованные выражения: `имя=Выражение`. Имя становится атрибутом объекта.",
+      },
+    ],
+    example: `from django.db.models import Count, Avg, F, Value, Case, When, IntegerField
+from django.db.models.functions import Coalesce
+
+# Количество комментариев к каждой статье
+articles = Article.objects.annotate(comment_count=Count("comments"))
+for a in articles:
+    print(a.title, a.comment_count)
+
+# Несколько аннотаций сразу
+Article.objects.annotate(
+    comment_count=Count("comments", distinct=True),
+    avg_rating=Avg("ratings__score"),
+    days_since=F("created_at") - F("updated_at"),
+)
+
+# Фильтрация по аннотации
+Article.objects.annotate(
+    comment_count=Count("comments")
+).filter(comment_count__gte=10)
+
+# Условная аннотация (CASE WHEN)
+Article.objects.annotate(
+    priority=Case(
+        When(featured=True, then=Value(1)),
+        When(views__gte=1000, then=Value(2)),
+        default=Value(3),
+        output_field=IntegerField(),
+    )
+).order_by("priority")`,
+  },
+  {
+    name: "QuerySet.alias(*args, **kwargs)",
+    category: "QuerySet",
+    description:
+      "Создаёт **именованное SQL-выражение** (псевдоним), которое можно использовать в последующих `.filter()`, `.exclude()`, `.order_by()` и `.annotate()`, но **не** добавляет его как атрибут к объектам и **не** включает в `SELECT`. Появился в Django 3.2 как более эффективная альтернатива `.annotate()` в случаях, когда вычисляемое значение нужно только для фильтрации/сортировки, а не для отображения.",
+    syntax: "QuerySet.alias(*args, **kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Именованные SQL-выражения, аналогично annotate(). Не попадают в SELECT.",
+      },
+    ],
+    example: `from django.db.models import Count, Avg
+
+# annotate добавит comment_count в SELECT — лишние данные
+# alias вычислит только для фильтра, без SELECT
+Article.objects.alias(
+    comment_count=Count("comments")
+).filter(comment_count__gte=5)
+
+# Сравнение: alias vs annotate
+# annotate — поле есть у каждого объекта:
+qs_annotate = Article.objects.annotate(c=Count("comments"))
+print(qs_annotate[0].c)   # работает
+
+# alias — поля нет у объекта:
+qs_alias = Article.objects.alias(c=Count("comments")).filter(c__gte=5)
+# print(qs_alias[0].c)    # AttributeError!
+
+# alias → annotate: сначала alias, потом добавить в SELECT при необходимости
+Article.objects.alias(
+    avg_score=Avg("ratings__score")
+).filter(avg_score__gte=4.0).annotate(
+    avg_score=Avg("ratings__score")  # теперь и в SELECT
+)`,
+  },
+  {
+    name: "QuerySet.order_by(*field_names)",
+    category: "QuerySet",
+    description:
+      "Задаёт порядок сортировки QuerySet (SQL `ORDER BY`). Префикс `-` означает убывание. Без аргументов (`order_by()`) **сбрасывает** сортировку, заданную в `Meta.ordering` или предыдущем `.order_by()`. Можно сортировать по полям связанных моделей через `__`, по аннотациям и по случайному порядку (`?`). Несколько полей — приоритет слева направо.",
+    syntax: "QuerySet.order_by(*field_names)",
+    arguments: [
+      {
+        name: "*field_names",
+        description: "Имена полей. Префикс `-` — убывание. `?` — случайный порядок (RANDOM(), медленно). Без аргументов — сброс сортировки.",
+      },
+    ],
+    example: `# Сортировка по возрастанию
+Article.objects.order_by("created_at")
+
+# Убывание
+Article.objects.order_by("-created_at")
+
+# Несколько полей: сначала по статусу, затем по дате
+Article.objects.order_by("status", "-created_at")
+
+# По полю связанной модели
+Article.objects.order_by("author__last_name")
+
+# По аннотации
+Article.objects.annotate(
+    comment_count=Count("comments")
+).order_by("-comment_count")
+
+# Сброс Meta.ordering
+Article.objects.order_by()  # убирает всю сортировку
+
+# Случайный порядок (осторожно на больших таблицах — полный скан)
+Article.objects.order_by("?")[:5]
+
+# F-выражение с NULLS LAST
+from django.db.models import F
+Article.objects.order_by(F("updated_at").desc(nulls_last=True))`,
+  },
+  {
+    name: "QuerySet.reverse()",
+    category: "QuerySet",
+    description:
+      "Инвертирует порядок сортировки QuerySet. Работает **только** если QuerySet имеет определённый `ORDER BY` — либо через `.order_by()`, либо через `Meta.ordering`. Вызов `.reverse()` на QuerySet без сортировки не гарантирует никакого конкретного порядка (поведение определяется БД). Чаще используется для получения «последних N» элементов в сочетании с `[:N]`.",
+    syntax: "QuerySet.reverse()",
+    arguments: [],
+    example: `# Meta.ordering = ["-created_at"]  →  reverse() даёт возрастание
+Article.objects.all().reverse()[:5]   # 5 самых старых
+
+# Цепочка с order_by
+Article.objects.order_by("created_at").reverse()
+# эквивалентно:
+Article.objects.order_by("-created_at")
+
+# Паттерн: последние N элементов без среза отрицательного индекса
+# (Django не поддерживает qs[-1], но поддерживает reverse + срез)
+last_10 = Article.objects.order_by("id").reverse()[:10]
+
+# Без сортировки — результат непредсказуем (не делайте так):
+# Article.objects.filter(published=True).reverse()  # опасно`,
+  },
+  {
+    name: "QuerySet.distinct(*field_names)",
+    category: "QuerySet",
+    description:
+      "Добавляет `SELECT DISTINCT` к запросу, устраняя дублирующиеся строки. Без аргументов работает на всех БД. С аргументами (`*field_names`) использует `DISTINCT ON (...)` — **только PostgreSQL**. Дубли чаще возникают при JOIN через многозначные связи (M2M, обратные FK). Важно: при использовании `.order_by()` вместе с `.distinct()` поля ORDER BY должны входить в SELECT, иначе БД может вернуть ошибку или неожиданный результат.",
+    syntax: "QuerySet.distinct(*field_names)",
+    arguments: [
+      {
+        name: "*field_names",
+        description: "Поля для DISTINCT ON (...). Только PostgreSQL. Без аргументов — обычный SELECT DISTINCT.",
+      },
+    ],
+    example: `# Устранить дубли при JOIN через M2M
+Article.objects.filter(tags__name="python").distinct()
+
+# DISTINCT ON — только PostgreSQL
+# Получить последнюю статью каждого автора
+Article.objects.order_by(
+    "author_id", "-created_at"
+).distinct("author_id")
+
+# Без аргументов — DISTINCT по всем колонкам SELECT
+Article.objects.values("status").distinct()
+
+# Частая ловушка: order_by добавляет колонки в SELECT
+# и нарушает distinct() без аргументов
+# Решение: явно указать нужные поля через values() + distinct()
+Article.objects.values("author_id").distinct()
+
+# Подсчёт уникальных авторов
+from django.db.models import Count
+Article.objects.aggregate(unique_authors=Count("author", distinct=True))`,
+  },
+  {
+    name: "QuerySet.values(*fields, **expressions)",
+    category: "QuerySet",
+    description:
+      "Возвращает QuerySet, содержащий **словари** (`dict`) вместо объектов модели. Каждый словарь содержит только указанные поля. Без аргументов включает все поля модели. Используется для: проекции (выбрать только нужные колонки), группировки (`values()` + `annotate()` → `GROUP BY`), экономии памяти (словари легче ORM-объектов). Поддерживает `__` для полей связанных моделей и именованные выражения через `**expressions`.",
+    syntax: "QuerySet.values(*fields, **expressions)",
+    arguments: [
+      {
+        name: "*fields",
+        description: "Имена полей для включения в словарь. Поддерживает `field__related_field`.",
+      },
+      {
+        name: "**expressions",
+        description: "Именованные SQL-выражения (аналог annotate), добавляемые в каждый словарь.",
+      },
+    ],
+    example: `# Только нужные поля — экономия памяти
+Article.objects.values("id", "title", "status")
+# [{"id": 1, "title": "...", "status": "published"}, ...]
+
+# Поле связанной модели
+Article.objects.values("id", "author__email")
+
+# GROUP BY: количество статей по статусу
+from django.db.models import Count
+Article.objects.values("status").annotate(total=Count("id"))
+# [{"status": "published", "total": 42}, ...]
+
+# Именованное выражение
+from django.db.models.functions import Upper
+Article.objects.values(
+    "id",
+    upper_title=Upper("title"),
+)
+
+# values() в подзапросе
+from django.db.models import OuterRef, Subquery
+latest = Article.objects.filter(
+    author=OuterRef("pk")
+).order_by("-created_at").values("title")[:1]
+authors_with_latest = Author.objects.annotate(latest_title=Subquery(latest))`,
+  },
+  {
+    name: "QuerySet.values_list(*fields, flat=False, named=False)",
+    category: "QuerySet",
+    description:
+      "Возвращает QuerySet, содержащий **кортежи** вместо объектов. При `flat=True` (только одно поле) — плоский список значений. При `named=True` — именованные кортежи (`namedtuple`). Быстрее и легче `.values()` для случаев, когда нужен только список значений одной колонки (например, список ID для `__in`-фильтра).",
+    syntax: "QuerySet.values_list(*fields, flat=False, named=False)",
+    arguments: [
+      {
+        name: "*fields",
+        description: "Поля для включения в кортеж. Поддерживает `__` для связанных моделей.",
+      },
+      {
+        name: "flat",
+        description: "Если True — возвращает плоский список значений. Допустимо только при одном поле.",
+      },
+      {
+        name: "named",
+        description: "Если True — возвращает namedtuple вместо обычного tuple. Несовместимо с flat=True.",
+      },
+    ],
+    example: `# Список кортежей
+Article.objects.values_list("id", "title")
+# [(1, "First"), (2, "Second"), ...]
+
+# flat=True — плоский список значений одной колонки
+ids = list(Article.objects.values_list("id", flat=True))
+# [1, 2, 3, ...]
+
+# Использование для __in-фильтра (эффективный подзапрос)
+active_author_ids = User.objects.filter(
+    is_active=True
+).values_list("id", flat=True)
+Article.objects.filter(author_id__in=active_author_ids)
+
+# named=True — namedtuple
+for row in Article.objects.values_list("id", "title", named=True):
+    print(row.id, row.title)   # удобнее, чем row[0], row[1]
+
+# Одно значение без flat — кортеж из одного элемента:
+Article.objects.values_list("status")
+# [("published",), ("draft",), ...]
+
+# Поле связанной модели
+Article.objects.values_list("author__email", flat=True)`,
+  },
+  {
+    name: "QuerySet.dates(field_name, kind, order='ASC')",
+    category: "QuerySet",
+    description:
+      "Возвращает QuerySet с отсортированными уникальными объектами `datetime.date`, усечёнными до заданной гранулярности. Используется для построения архивных навигаций (по годам, месяцам, дням). Работает только с `DateField` и `DateTimeField`; для `DateTimeField` обрезает до даты без учёта часового пояса.",
+    syntax: "QuerySet.dates(field_name, kind, order='ASC')",
+    arguments: [
+      {
+        name: "field_name",
+        description: "Имя DateField или DateTimeField.",
+      },
+      {
+        name: "kind",
+        description: "Гранулярность усечения: `'year'`, `'month'`, `'week'`, `'day'`.",
+      },
+      {
+        name: "order",
+        description: "Порядок сортировки: `'ASC'` (по умолчанию) или `'DESC'`.",
+      },
+    ],
+    example: `import datetime
+
+# Все уникальные годы публикаций
+Article.objects.filter(published=True).dates("published_at", "year")
+# <QuerySet [datetime.date(2022, 1, 1), datetime.date(2023, 1, 1), ...]>
+
+# По месяцам, убывание — для архива блога
+months = Article.objects.dates("published_at", "month", order="DESC")
+for d in months:
+    print(d.strftime("%B %Y"))  # January 2024, December 2023, ...
+
+# По дням
+days = Article.objects.filter(
+    author=request.user
+).dates("created_at", "day")
+
+# Типичное применение: построение навигации по архиву
+archive = {}
+for d in Article.objects.dates("published_at", "month"):
+    archive.setdefault(d.year, []).append(d.month)`,
+  },
+  {
+    name: "QuerySet.datetimes(field_name, kind, order='ASC', tzinfo=None)",
+    category: "QuerySet",
+    description:
+      "Аналог `.dates()`, но возвращает уникальные объекты `datetime.datetime` с поддержкой **часовых поясов**. Работает только с `DateTimeField`. Аргумент `tzinfo` задаёт временну́ю зону для усечения — если не передан, используется текущая зона Django (`USE_TZ=True` + `TIME_ZONE`). Позволяет строить архивы с корректной локализацией дат.",
+    syntax: "QuerySet.datetimes(field_name, kind, order='ASC', tzinfo=None)",
+    arguments: [
+      {
+        name: "field_name",
+        description: "Имя DateTimeField.",
+      },
+      {
+        name: "kind",
+        description: "Гранулярность: `'year'`, `'month'`, `'week'`, `'day'`, `'hour'`, `'minute'`, `'second'`.",
+      },
+      {
+        name: "order",
+        description: "Порядок: `'ASC'` или `'DESC'`.",
+      },
+      {
+        name: "tzinfo",
+        description: "Объект `datetime.tzinfo` для локализации. Если None — используется TIME_ZONE из settings.",
+      },
+    ],
+    example: `import zoneinfo
+import datetime
+
+# По месяцам в московском времени
+moscow_tz = zoneinfo.ZoneInfo("Europe/Moscow")
+Article.objects.datetimes("created_at", "month", tzinfo=moscow_tz)
+# <QuerySet [datetime.datetime(2024, 1, 1, 0, 0, tzinfo=...), ...]>
+
+# По часам — для аналитики активности
+Article.objects.datetimes("created_at", "hour", order="DESC")
+
+# Сравнение с dates():
+# dates()     → datetime.date  — без TZ, только DateField / DateTimeField
+# datetimes() → datetime.datetime — с TZ, только DateTimeField
+
+# Практический пример: архив с учётом TZ пользователя
+def get_archive_months(user_tz: str):
+    tz = zoneinfo.ZoneInfo(user_tz)
+    return Article.objects.filter(
+        published=True
+    ).datetimes("published_at", "month", order="DESC", tzinfo=tz)`,
+  },
+  {
+    name: "QuerySet.none()",
+    category: "QuerySet",
+    description:
+      "Возвращает пустой QuerySet того же типа — `EmptyQuerySet`. SQL **не выполняется** ни при каких операциях над ним: итерация даёт пустой список, `.count()` возвращает 0, `.exists()` — False. Полезен для условных запросов, заглушек и тестов, а также когда нужно вернуть «ничего» без изменения сигнатуры, ожидающей QuerySet.",
+    syntax: "QuerySet.none()",
+    arguments: [],
+    example: `# Условный QuerySet: возвращаем пустой при определённом условии
+def get_articles(user):
+    if not user.is_authenticated:
+        return Article.objects.none()   # SQL не выполняется
+    return Article.objects.filter(published=True)
+
+# Тест: проверить что view корректно обрабатывает пустой QS
+qs = Article.objects.none()
+assert list(qs) == []
+assert qs.count() == 0
+assert qs.exists() is False
+
+# none() сохраняет тип модели — можно chain-ить (всё равно пусто)
+qs = Article.objects.none().filter(published=True)
+assert list(qs) == []
+
+# union с none() — эффективный способ начать накапливать QS
+result = Article.objects.none()
+for tag in active_tags:
+    result = result | Article.objects.filter(tags=tag)`,
+  },
+  {
+    name: "QuerySet.all()",
+    category: "QuerySet",
+    description:
+      "Возвращает **копию** текущего QuerySet. На уровне SQL ничего не меняет — это чистый clone. Основной сценарий использования: получить свежий (не кэшированный) QuerySet из менеджера или из переменной, в которой неизвестно, был ли уже вычислен `_result_cache`. Часто вызывается в представлениях и сериализаторах, чтобы гарантировать «чистый» QuerySet без побочных состояний.",
+    syntax: "QuerySet.all()",
+    arguments: [],
+    example: `# Базовый вызов — получить все объекты
+Article.objects.all()
+
+# Клон QuerySet без кэша — безопасная копия для дальнейшей фильтрации
+base = Article.objects.filter(published=True)
+copy = base.all()   # clone; base._result_cache не затрагивается
+
+# Типичный паттерн в generic views и DRF:
+class ArticleViewSet(ModelViewSet):
+    queryset = Article.objects.all()   # «заготовка»; реально выполнится в get_queryset()
+
+# Сброс кэша: если QS уже был итерирован, .all() даёт чистый клон
+articles = list(base)       # _result_cache заполнен
+fresh = base.all()          # новый клон без _result_cache → новый SQL при итерации`,
+  },
+  {
+    name: "QuerySet.union(*other_qs, all=False)",
+    category: "QuerySet",
+    description:
+      "Объединяет несколько QuerySet через SQL `UNION`. По умолчанию (`all=False`) — `UNION` (уникальные строки); при `all=True` — `UNION ALL` (с дублями, быстрее). Все QuerySet должны возвращать **одинаковый набор колонок** (одинаковые типы в одинаковом порядке). После `union()` доступны только `.order_by()`, `.values()`, `.values_list()`, срезы и итерация — большинство методов фильтрации недоступны.",
+    syntax: "QuerySet.union(*other_qs, all=False)",
+    arguments: [
+      {
+        name: "*other_qs",
+        description: "Один или несколько QuerySet с совместимой структурой колонок.",
+      },
+      {
+        name: "all",
+        description: "Если True — UNION ALL (сохраняет дубли, быстрее). По умолчанию False — UNION (уникальные строки).",
+      },
+    ],
+    example: `# Объединить статьи двух авторов
+qs1 = Article.objects.filter(author__id=1).values("id", "title")
+qs2 = Article.objects.filter(author__id=2).values("id", "title")
+combined = qs1.union(qs2)
+
+# UNION ALL — сохранить дубли (быстрее, без DISTINCT)
+combined_all = qs1.union(qs2, all=True)
+
+# Несколько QuerySet сразу
+q_active   = Product.objects.filter(status="active").values("id", "name")
+q_featured = Product.objects.filter(featured=True).values("id", "name")
+q_new      = Product.objects.filter(is_new=True).values("id", "name")
+result = q_active.union(q_featured, q_new)
+
+# Сортировка результата union (по позиции колонки или имени)
+result.order_by("title")
+
+# Ограничение: после union нельзя filter/exclude
+# result.filter(published=True)  # ошибка!`,
+  },
+  {
+    name: "QuerySet.intersection(*other_qs)",
+    category: "QuerySet",
+    description:
+      "Возвращает QuerySet из строк, которые присутствуют **во всех** переданных QuerySet — SQL `INTERSECT`. Поддерживается PostgreSQL, SQLite (≥ 3.25), MariaDB (≥ 10.3), Oracle. **MySQL не поддерживает `INTERSECT`** — на нём вызов упадёт с ошибкой. После `intersection()` доступны только `.order_by()`, `.values()`, `.values_list()` и срезы.",
+    syntax: "QuerySet.intersection(*other_qs)",
+    arguments: [
+      {
+        name: "*other_qs",
+        description: "Один или несколько QuerySet с совместимой структурой колонок.",
+      },
+    ],
+    example: `# Статьи, которые одновременно published И featured
+published = Article.objects.filter(published=True).values("id", "title")
+featured  = Article.objects.filter(featured=True).values("id", "title")
+both = published.intersection(featured)
+
+# Тег + категория одновременно
+tagged   = Article.objects.filter(tags__slug="django").values("id")
+category = Article.objects.filter(category__slug="backend").values("id")
+result   = tagged.intersection(category)
+
+# Три множества
+qs1 = Article.objects.filter(author__team="A").values("id")
+qs2 = Article.objects.filter(published=True).values("id")
+qs3 = Article.objects.filter(views__gte=1000).values("id")
+popular_team_a = qs1.intersection(qs2, qs3)
+
+# Альтернатива на MySQL (intersection не поддерживается):
+# Article.objects.filter(published=True, featured=True)`,
+  },
+  {
+    name: "QuerySet.difference(*other_qs)",
+    category: "QuerySet",
+    description:
+      "Возвращает QuerySet из строк, которые есть в исходном QuerySet, но **отсутствуют** в переданных — SQL `EXCEPT`. Поддержка БД аналогична `intersection()`: PostgreSQL, SQLite ≥ 3.25, MariaDB ≥ 10.3, Oracle; **MySQL не поддерживает `EXCEPT`**. После `difference()` доступны только `.order_by()`, `.values()`, `.values_list()` и срезы.",
+    syntax: "QuerySet.difference(*other_qs)",
+    arguments: [
+      {
+        name: "*other_qs",
+        description: "Один или несколько QuerySet, строки из которых нужно исключить.",
+      },
+    ],
+    example: `# Статьи без тегов
+all_articles = Article.objects.values("id", "title")
+tagged       = Article.objects.filter(tags__isnull=False).values("id", "title").distinct()
+untagged     = all_articles.difference(tagged)
+
+# Пользователи, не оставившие ни одного комментария
+all_users      = User.objects.values("id")
+commented_users = Comment.objects.values("author_id").distinct()
+# difference требует совместимые колонки:
+silent_users = all_users.difference(
+    User.objects.filter(comments__isnull=False).values("id").distinct()
+)
+
+# Альтернатива через exclude (работает на всех БД):
+Article.objects.exclude(tags__isnull=False).distinct()`,
+  },
+  {
+    name: "QuerySet.select_related(*fields)",
+    category: "QuerySet",
+    description:
+      "Выполняет SQL `JOIN` для загрузки связанных объектов **ForeignKey** и **OneToOneField** в одном запросе, устраняя проблему N+1. Без аргументов следует по всем не-null FK-связям (осторожно: может дать очень широкий JOIN). С аргументами — только по указанным путям через `__`. Работает только для одиночных связей (FK, O2O); для M2M и обратных FK используйте `prefetch_related()`.",
+    syntax: "QuerySet.select_related(*fields)",
+    arguments: [
+      {
+        name: "*fields",
+        description: "Пути к связанным полям через `__`. Без аргументов — все FK/O2O-связи.",
+      },
+    ],
+    example: `# Проблема N+1 без select_related:
+articles = Article.objects.all()
+for a in articles:
+    print(a.author.name)   # +1 SQL на каждую итерацию!
+
+# Решение: один JOIN
+articles = Article.objects.select_related("author")
+for a in articles:
+    print(a.author.name)   # данные уже загружены — SQL не выполняется
+
+# Глубокий путь
+Article.objects.select_related("author__profile__department")
+
+# Несколько связей
+Article.objects.select_related("author", "category", "editor")
+
+# Без аргументов — все FK (осторожно с широкими схемами)
+Article.objects.select_related()
+
+# Комбинация с filter — JOIN применяется до WHERE
+Article.objects.select_related("author").filter(
+    author__is_active=True,
+    published=True,
+)`,
+  },
+  {
+    name: "QuerySet.prefetch_related(*lookups)",
+    category: "QuerySet",
+    description:
+      "Загружает связанные объекты **отдельными SQL-запросами** и соединяет их в Python. Подходит для M2M, обратных FK и любых связей, где `select_related` (JOIN) неприменим или неэффективен. Поддерживает объект `Prefetch` для кастомного QuerySet (собственный фильтр/сортировка/аннотация) на предзагруженный набор. Несколько `prefetch_related()` в цепочке объединяются.",
+    syntax: "QuerySet.prefetch_related(*lookups)",
+    arguments: [
+      {
+        name: "*lookups",
+        description: "Строки с путями (`'tags'`, `'comments__author'`) или объекты `Prefetch` для кастомизации.",
+      },
+    ],
+    example: `from django.db.models import Prefetch
+
+# Простой prefetch M2M
+Article.objects.prefetch_related("tags")
+
+# Обратный FK
+Article.objects.prefetch_related("comments")
+
+# Глубокий путь
+Article.objects.prefetch_related("comments__author__profile")
+
+# Кастомный Prefetch: только одобренные комментарии, отсортированные
+approved_comments = Comment.objects.filter(
+    approved=True
+).select_related("author").order_by("-created_at")
+
+Article.objects.prefetch_related(
+    Prefetch("comments", queryset=approved_comments, to_attr="approved_comments")
+)
+# Доступ: article.approved_comments — list, не QuerySet
+
+# Комбинация select_related + prefetch_related
+Article.objects.select_related("author").prefetch_related("tags", "comments")
+
+# Аннотация внутри Prefetch
+from django.db.models import Count
+Article.objects.prefetch_related(
+    Prefetch(
+        "comments",
+        queryset=Comment.objects.annotate(like_count=Count("likes")),
+        to_attr="comments_with_likes",
+    )
+)`,
+  },
+  {
+    name: "QuerySet.extra(select=None, where=None, params=None, tables=None, order_by=None, select_params=None)",
+    category: "QuerySet",
+    description:
+      "Устаревший (deprecated) механизм добавления **сырого SQL** в QuerySet: дополнительные колонки SELECT, условия WHERE, таблицы FROM и сортировка ORDER BY. Использовать только если невозможно выразить запрос через ORM или `RawSQL`. Уязвим к SQL-инъекциям при неправильном использовании — параметры **всегда** передавать через `params`/`select_params`, не форматированием строк. Предпочтительная альтернатива — `annotate(RawSQL(...))` или `.raw()`.",
+    syntax: "QuerySet.extra(select=None, where=None, params=None, tables=None, order_by=None, select_params=None)",
+    arguments: [
+      { name: "select", description: "Словарь `{alias: sql_fragment}` — дополнительные колонки в SELECT." },
+      { name: "where", description: "Список SQL-строк для WHERE (объединяются через AND)." },
+      { name: "params", description: "Параметры для where-условий (защита от инъекций)." },
+      { name: "tables", description: "Список таблиц для добавления в FROM (нужен явный WHERE-JOIN)." },
+      { name: "order_by", description: "Список колонок/псевдонимов для ORDER BY." },
+      { name: "select_params", description: "Параметры для select-выражений." },
+    ],
+    example: `# Дополнительная колонка через сырой SQL
+Article.objects.extra(
+    select={"word_count": "LENGTH(body) / 5"},
+)
+# article.word_count доступен на каждом объекте
+
+# WHERE с параметрами (безопасно)
+Article.objects.extra(
+    where=["published_at > %s", "views > %s"],
+    params=["2024-01-01", 1000],
+)
+
+# Современная альтернатива через annotate + RawSQL:
+from django.db.models.expressions import RawSQL
+Article.objects.annotate(
+    word_count=RawSQL("LENGTH(body) / 5", ())
+)
+
+# extra() с таблицей и кастомным JOIN
+Article.objects.extra(
+    tables=["analytics_pageview"],
+    where=["analytics_pageview.article_id = articles_article.id"],
+    select={"view_count": "COUNT(analytics_pageview.id)"},
+)`,
+  },
+  {
+    name: "QuerySet.defer(*fields)",
+    category: "QuerySet",
+    description:
+      "Исключает указанные поля из `SELECT`, **откладывая** их загрузку. При обращении к отложенному атрибуту Django выполняет дополнительный SQL-запрос (`SELECT field FROM ... WHERE pk=...`). Полезно для таблиц с тяжёлыми колонками (большой `TextField`, `BinaryField`, `JSONField`), которые не нужны в большинстве мест. Первичный ключ всегда загружается. Метод `.only()` — противоположность: указывает только нужные поля.",
+    syntax: "QuerySet.defer(*fields)",
+    arguments: [
+      {
+        name: "*fields",
+        description: "Имена полей для откладывания. Поддерживает `__` для связанных моделей через select_related.",
+      },
+    ],
+    example: `# Не загружать тяжёлое поле body
+articles = Article.objects.defer("body", "raw_html")
+for a in articles:
+    print(a.title)    # OK — загружено
+    # print(a.body)   # вызовет дополнительный SQL-запрос на каждый объект!
+
+# Часто используется со списочными представлениями
+Article.objects.filter(published=True).defer("body").order_by("-created_at")[:20]
+
+# Отложить поля связанной модели (через select_related)
+Article.objects.select_related("author").defer("author__bio", "author__avatar")
+
+# Проверить, какие поля отложены
+qs = Article.objects.defer("body")
+print(qs.query)   # в SQL не будет колонки body
+
+# Снять откладывание — передать имя поля через only() или убрать defer
+Article.objects.defer("body").only("id", "title", "body")  # body снова загружается`,
+  },
+  {
+    name: "QuerySet.only(*fields)",
+    category: "QuerySet",
+    description:
+      "Противоположность `.defer()` — загружает **только** указанные поля (плюс первичный ключ всегда). Все остальные поля откладываются: при обращении к ним Django делает отдельный SQL. Полезно, когда нужны 2–3 поля из широкой таблицы. Если нужны словари или кортежи — используйте `.values()` / `.values_list()` (они не создают объектов модели и не делают доп. запросов).",
+    syntax: "QuerySet.only(*fields)",
+    arguments: [
+      {
+        name: "*fields",
+        description: "Поля, которые нужно загрузить. Все остальные будут отложены.",
+      },
+    ],
+    example: `# Загрузить только id и title (+ pk всегда)
+articles = Article.objects.only("title", "slug", "published_at")
+for a in articles:
+    print(a.title)         # OK
+    # print(a.body)        # дополнительный SQL!
+
+# Разница only() vs values()
+# only() → объекты модели (доступны методы, свойства)
+# values() → словари (быстрее, без ORM-объектов)
+
+# Комбинация с select_related
+Article.objects.select_related("author").only(
+    "title", "slug",
+    "author__first_name", "author__last_name",
+)
+
+# only() переопределяет предыдущий only()/defer()
+qs = Article.objects.defer("body")
+qs = qs.only("title", "body")   # body теперь загружается, остальное отложено
+
+# Когда использовать only():
+# ✓ Нужны объекты модели с методами
+# ✓ Таблица очень широкая, нужно 2-3 поля
+# ✗ Нужны просто данные — лучше values()/values_list()`,
+  },
+  {
+    name: "QuerySet.using(alias)",
+    category: "QuerySet",
+    description:
+      "Указывает, какое соединение с БД использовать для этого QuerySet. `alias` — ключ из словаря `DATABASES` в `settings.py`. Используется в проектах с **несколькими базами данных**: основная + реплика для чтения, шардинг, отдельная аналитическая БД. Также полезен в тестах для работы с конкретной тестовой базой.",
+    syntax: "QuerySet.using(alias)",
+    arguments: [
+      {
+        name: "alias",
+        description: "Строка — ключ из settings.DATABASES (например, 'default', 'replica', 'analytics').",
+      },
+    ],
+    example: `# settings.py
+DATABASES = {
+    "default": {...},          # primary (запись)
+    "replica": {...},          # реплика (чтение)
+    "analytics": {...},        # аналитическая БД
+}
+
+# Чтение из реплики
+Article.objects.using("replica").filter(published=True)
+
+# Запись в default, чтение из реплики
+article = Article.objects.using("default").create(title="New")
+articles = Article.objects.using("replica").all()
+
+# В custom router можно автоматизировать:
+class PrimaryReplicaRouter:
+    def db_for_read(self, model, **hints):
+        return "replica"
+    def db_for_write(self, model, **hints):
+        return "default"
+
+# Явный using() перекрывает роутер
+Article.objects.using("analytics").aggregate(total=Count("id"))`,
+  },
+  {
+    name: "QuerySet.select_for_update(nowait=False, skip_locked=False, of=(), no_key=False)",
+    category: "QuerySet",
+    description:
+      "Добавляет `SELECT ... FOR UPDATE` — **пессимистичная блокировка** строк до конца транзакции. Другие транзакции, пытающиеся получить те же строки через `FOR UPDATE`, будут ждать (или получат ошибку/пропустят строку при `nowait`/`skip_locked`). Обязательно вызывать внутри `transaction.atomic()`. Используется для предотвращения гонок при конкурентном изменении одной записи (списания баланса, резервирование мест и т.п.).",
+    syntax: "QuerySet.select_for_update(nowait=False, skip_locked=False, of=(), no_key=False)",
+    arguments: [
+      { name: "nowait", description: "Если True — вместо ожидания бросает DatabaseError при уже заблокированной строке." },
+      { name: "skip_locked", description: "Если True — пропускает заблокированные строки (SELECT ... FOR UPDATE SKIP LOCKED)." },
+      { name: "of", description: "Кортеж строк — блокировать только указанные таблицы при JOIN (PostgreSQL)." },
+      { name: "no_key", description: "Если True — SELECT FOR NO KEY UPDATE: более мягкая блокировка (PostgreSQL)." },
+    ],
+    example: `from django.db import transaction
+
+# Безопасное списание баланса без гонки
+def withdraw(account_id: int, amount: Decimal):
+    with transaction.atomic():
+        account = Account.objects.select_for_update().get(pk=account_id)
+        if account.balance < amount:
+            raise ValueError("Недостаточно средств")
+        account.balance -= amount
+        account.save()
+
+# nowait — не ждать, сразу упасть с ошибкой
+from django.db import DatabaseError
+with transaction.atomic():
+    try:
+        order = Order.objects.select_for_update(nowait=True).get(pk=order_id)
+    except DatabaseError:
+        return "Заказ обрабатывается, попробуйте позже"
+
+# skip_locked — очередь задач: взять незанятую задачу
+with transaction.atomic():
+    task = Task.objects.select_for_update(
+        skip_locked=True
+    ).filter(status="pending").first()
+    if task:
+        task.status = "processing"
+        task.save()
+
+# of — блокировать только родительскую таблицу при JOIN (PostgreSQL)
+with transaction.atomic():
+    Article.objects.select_related("author").select_for_update(of=("self",))`,
+  },
+  {
+    name: "QuerySet.raw(raw_query, params=(), translations=None, using=None)",
+    category: "QuerySet",
+    description:
+      "Выполняет **сырой SQL-запрос** и возвращает `RawQuerySet` — итерируемый набор объектов модели. Запрос должен возвращать первичный ключ модели. Остальные колонки маппятся в атрибуты объекта; несуществующие в модели колонки добавляются как дополнительные атрибуты. Параметры **всегда** передавать через `params` (защита от SQL-инъекций). `translations` — словарь для переименования колонок результата в поля модели.",
+    syntax: "QuerySet.raw(raw_query, params=(), translations=None, using=None)",
+    arguments: [
+      { name: "raw_query", description: "Строка SQL. Должна возвращать pk модели." },
+      { name: "params", description: "Список или словарь параметров (подставляются безопасно через %s или %(name)s)." },
+      { name: "translations", description: "Словарь {column_name: field_name} для маппинга колонок результата в поля модели." },
+      { name: "using", description: "Алиас БД из settings.DATABASES. По умолчанию 'default'." },
+    ],
+    example: `# Базовый сырой запрос
+articles = Article.objects.raw("SELECT * FROM articles_article WHERE published = true")
+for a in articles:
+    print(a.title)
+
+# Параметры — ВСЕГДА через params, не форматирование строк!
+min_views = 1000
+articles = Article.objects.raw(
+    "SELECT * FROM articles_article WHERE views > %s ORDER BY views DESC",
+    params=[min_views],
+)
+
+# Именованные параметры
+Article.objects.raw(
+    "SELECT * FROM articles_article WHERE author_id = %(uid)s",
+    params={"uid": user_id},
+)
+
+# translations — маппинг колонок
+Article.objects.raw(
+    "SELECT id, title AS heading FROM articles_article",
+    translations={"heading": "title"},
+)
+
+# Дополнительные аннотации из SQL
+for a in Article.objects.raw(
+    "SELECT *, LENGTH(body) AS char_count FROM articles_article"
+):
+    print(a.char_count)   # доступен как атрибут, хотя не поле модели`,
+  },
+  {
+    name: "QuerySet.get(*args, **kwargs)",
+    category: "QuerySet",
+    description:
+      "Выполняет запрос и возвращает **ровно один объект**. Если объект не найден — бросает `Model.DoesNotExist`; если найдено более одного — `Model.MultipleObjectsReturned`. Оба исключения наследуются от `django.core.exceptions.ObjectDoesNotExist` и `MultipleObjectsReturned` соответственно. Принимает те же условия, что и `.filter()`. Для безопасного получения используйте `get_or_404()` в views или `get_or_create()`.",
+    syntax: "QuerySet.get(*args, **kwargs)",
+    arguments: [
+      {
+        name: "*args / **kwargs",
+        description: "Условия поиска (аналогично filter). Должны однозначно идентифицировать один объект.",
+      },
+    ],
+    example: `from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
+
+# По первичному ключу
+article = Article.objects.get(pk=42)
+
+# По уникальному полю
+user = User.objects.get(email="user@example.com")
+
+# Обработка исключений
+try:
+    article = Article.objects.get(slug="my-slug")
+except Article.DoesNotExist:
+    article = None
+except Article.MultipleObjectsReturned:
+    # Нарушение целостности — логировать, разобраться
+    article = Article.objects.filter(slug="my-slug").first()
+
+# В Django views — сокращение с автоматическим 404
+from django.shortcuts import get_object_or_404
+article = get_object_or_404(Article, slug=slug, published=True)
+
+# Q-объекты работают так же, как в filter
+from django.db.models import Q
+Article.objects.get(Q(slug="test") | Q(pk=1))  # только если результат один`,
+  },
+  {
+    name: "QuerySet.create(**kwargs)",
+    category: "QuerySet",
+    description:
+      "Создаёт объект и **сразу сохраняет** его в БД — атомарный аналог `obj = Model(**kwargs); obj.save()`. Возвращает созданный объект. Не вызывает `pre_save`/`post_save` сигналы менеджера (они вызываются через `save()`). Для массового создания используйте `bulk_create()`.",
+    syntax: "QuerySet.create(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Поля модели и их значения. Передаются в конструктор и затем вызывается save().",
+      },
+    ],
+    example: `# Создать и сохранить одной строкой
+article = Article.objects.create(
+    title="Django QuerySet API",
+    slug="django-queryset-api",
+    author=request.user,
+    published=True,
+)
+
+# Эквивалент:
+article = Article(title="...", slug="...")
+article.save()  # два шага — менее удобно
+
+# Создание со связанным объектом
+comment = Comment.objects.create(
+    article=article,
+    author=request.user,
+    body="Отличная статья!",
+)
+
+# Если нужна транзакция — оберните явно
+from django.db import transaction
+with transaction.atomic():
+    author = Author.objects.create(name="Ivan")
+    Article.objects.create(title="First", author=author)`,
+  },
+  {
+    name: "QuerySet.get_or_create(defaults=None, **kwargs)",
+    category: "QuerySet",
+    description:
+      "Возвращает кортеж `(объект, создан)` — ищет объект по `**kwargs`, создаёт с `defaults` если не найден. Атомарная операция (использует `SELECT` → `INSERT` с защитой через try/except `IntegrityError` при гонке). `created` — булево значение: `True` если объект был создан, `False` если найден. `defaults` задаёт значения только при создании и не используются в поиске.",
+    syntax: "QuerySet.get_or_create(defaults=None, **kwargs)",
+    arguments: [
+      { name: "defaults", description: "Словарь полей для установки только при создании объекта." },
+      { name: "**kwargs", description: "Поля для поиска (используются в WHERE). Должны однозначно идентифицировать объект." },
+    ],
+    example: `# Базовый пример
+tag, created = Tag.objects.get_or_create(slug="django")
+if created:
+    print("Новый тег создан")
+else:
+    print("Тег уже существует")
+
+# defaults — только при создании, не при поиске
+profile, created = UserProfile.objects.get_or_create(
+    user=request.user,                    # поиск по этому полю
+    defaults={                             # применяются только при INSERT
+        "bio": "",
+        "avatar": "default.png",
+        "timezone": "UTC",
+    },
+)
+
+# Гонка: если два процесса вызывают одновременно —
+# один вставит, другой получит IntegrityError и повторит SELECT.
+# Django обрабатывает это автоматически.
+
+# Для обновления существующего объекта — update_or_create()
+# Для атомарности всего блока — оборачивайте в transaction.atomic()`,
+  },
+  {
+    name: "QuerySet.update_or_create(defaults=None, **kwargs)",
+    category: "QuerySet",
+    description:
+      "Как `get_or_create`, но если объект найден — **обновляет** его полями из `defaults`. Возвращает `(объект, создан)`. Если объект существует, вызывает `save()` на нём (а не `UPDATE ... WHERE`), что позволяет отработать сигналам и переопределённому `save()`. Для массового upsert используйте `bulk_create(update_conflicts=True)` (только PostgreSQL/SQLite/MariaDB).",
+    syntax: "QuerySet.update_or_create(defaults=None, **kwargs)",
+    arguments: [
+      { name: "defaults", description: "Словарь полей для обновления (если найден) или создания (если не найден)." },
+      { name: "**kwargs", description: "Поля для поиска объекта (WHERE)." },
+    ],
+    example: `# Обновить настройки пользователя или создать, если нет
+settings_obj, created = UserSettings.objects.update_or_create(
+    user=request.user,                   # поиск
+    defaults={                            # обновить / создать с этими полями
+        "theme": "dark",
+        "notifications": True,
+        "language": "ru",
+    },
+)
+
+# Синхронизация данных из внешнего API
+for item in api_response["products"]:
+    product, created = Product.objects.update_or_create(
+        external_id=item["id"],          # уникальный ключ из API
+        defaults={
+            "name": item["name"],
+            "price": item["price"],
+            "stock": item["stock"],
+        },
+    )
+
+# Разница с get_or_create:
+# get_or_create  — найден? ничего не меняет. не найден? создаёт.
+# update_or_create — найден? обновляет defaults. не найден? создаёт.`,
+  },
+  {
+    name: "QuerySet.bulk_create(objs, batch_size=None, ignore_conflicts=False, update_conflicts=False, update_fields=None, unique_fields=None)",
+    category: "QuerySet",
+    description:
+      "Вставляет список объектов одним (или несколькими) SQL `INSERT INTO ... VALUES (...), (...)` — **значительно быстрее** цикла `.create()`. По умолчанию не вызывает `pre_save`/`post_save` сигналы и не устанавливает `pk` на объектах (кроме PostgreSQL/MariaDB/SQLite). `ignore_conflicts=True` — пропустить конфликты уникальности. `update_conflicts=True` — upsert (INSERT ... ON CONFLICT DO UPDATE).",
+    syntax: "QuerySet.bulk_create(objs, batch_size=None, ignore_conflicts=False, update_conflicts=False, update_fields=None, unique_fields=None)",
+    arguments: [
+      { name: "objs", description: "Список экземпляров модели (не сохранённых)." },
+      { name: "batch_size", description: "Максимальное число объектов в одном INSERT. По умолчанию — все сразу." },
+      { name: "ignore_conflicts", description: "Если True — пропустить строки с конфликтом уникальности (INSERT ... ON CONFLICT DO NOTHING)." },
+      { name: "update_conflicts", description: "Если True — обновить указанные поля при конфликте (upsert). Требует update_fields и unique_fields." },
+      { name: "update_fields", description: "Список полей для обновления при конфликте (с update_conflicts=True)." },
+      { name: "unique_fields", description: "Поля, определяющие конфликт (PostgreSQL: ON CONFLICT (...)). " },
+    ],
+    example: `# Массовый импорт — намного быстрее цикла create()
+articles = [
+    Article(title=row["title"], body=row["body"], author_id=row["author_id"])
+    for row in csv_data
+]
+Article.objects.bulk_create(articles, batch_size=500)
+
+# ignore_conflicts — пропустить дубли по уникальному полю
+Article.objects.bulk_create(articles, ignore_conflicts=True)
+
+# Upsert (PostgreSQL / SQLite / MariaDB)
+Product.objects.bulk_create(
+    [Product(sku="ABC", name="Widget", price=9.99)],
+    update_conflicts=True,
+    unique_fields=["sku"],           # ON CONFLICT (sku)
+    update_fields=["name", "price"], # DO UPDATE SET name=..., price=...
+)
+
+# pk устанавливается на объектах (PostgreSQL, SQLite ≥ 3.35, MariaDB ≥ 10.5)
+created = Article.objects.bulk_create(articles)
+print(created[0].pk)   # доступен на поддерживаемых БД`,
+  },
+  {
+    name: "QuerySet.bulk_update(objs, fields, batch_size=None)",
+    category: "QuerySet",
+    description:
+      "Обновляет **список объектов** одним или несколькими `UPDATE`-запросами (через `CASE WHEN`). Значительно быстрее цикла с `obj.save()`. Обновляет только указанные `fields`. Не вызывает `pre_save`/`post_save` сигналы. Объекты должны иметь установленный `pk`. `batch_size` ограничивает число объектов в одном SQL-запросе.",
+    syntax: "QuerySet.bulk_update(objs, fields, batch_size=None)",
+    arguments: [
+      { name: "objs", description: "Итерируемый набор экземпляров модели с установленным pk." },
+      { name: "fields", description: "Список имён полей для обновления." },
+      { name: "batch_size", description: "Максимальное число объектов в одном UPDATE. По умолчанию — все сразу." },
+    ],
+    example: `# Загрузить объекты, изменить в Python, сохранить одним запросом
+articles = list(Article.objects.filter(status="draft"))
+for article in articles:
+    article.status = "published"
+    article.published_at = timezone.now()
+
+Article.objects.bulk_update(articles, fields=["status", "published_at"])
+
+# С batch_size — разбить на несколько UPDATE (большие наборы)
+Article.objects.bulk_update(articles, fields=["views"], batch_size=200)
+
+# Типичный паттерн: обработка внешнего источника
+rows = fetch_from_api()
+to_update = []
+for row in rows:
+    try:
+        obj = Product.objects.get(sku=row["sku"])
+        obj.price = row["price"]
+        obj.stock = row["stock"]
+        to_update.append(obj)
+    except Product.DoesNotExist:
+        pass
+Product.objects.bulk_update(to_update, ["price", "stock"], batch_size=500)`,
+  },
+  {
+    name: "QuerySet.count()",
+    category: "QuerySet",
+    description:
+      "Возвращает количество объектов, соответствующих запросу, через SQL `SELECT COUNT(*)`. **Не загружает объекты** в память — значительно эффективнее `len(qs)`. Если QuerySet уже был вычислен и находится в `_result_cache`, возвращает `len(_result_cache)` без нового SQL. Использовать вместо `len(qs)` или `bool(qs)` — для проверки наличия записей ещё быстрее `exists()`.",
+    syntax: "QuerySet.count()",
+    arguments: [],
+    example: `# Количество опубликованных статей
+total = Article.objects.filter(published=True).count()
+
+# НЕ делайте так — загружает все объекты в память ради подсчёта:
+# total = len(Article.objects.filter(published=True))  # плохо
+
+# count() vs exists(): что выбрать?
+# Нужно число      → .count()
+# Нужна проверка   → .exists()  (SELECT 1 LIMIT 1 — быстрее)
+if Article.objects.filter(author=user).exists():
+    print("У автора есть статьи")
+
+# count() с аннотацией
+from django.db.models import Count
+Article.objects.values("status").annotate(total=Count("id"))
+# [{"status": "published", "total": 42}, ...]
+
+# Если QS уже в кэше — count() не делает SQL
+articles = list(Article.objects.all())   # кэш заполнен
+n = Article.objects.all().count()        # новый SQL (новый QS)
+n2 = len(articles)                       # из памяти`,
+  },
+  {
+    name: "QuerySet.in_bulk(id_list=None, *, field_name='pk')",
+    category: "QuerySet",
+    description:
+      "Возвращает словарь `{значение_поля: объект}` для переданного списка значений. По умолчанию ищет по первичному ключу. `field_name` позволяет использовать любое уникальное поле. Удобен для конвертации списков ID в словарь объектов с O(1)-доступом. Без аргументов (`in_bulk()`) возвращает словарь всех объектов QuerySet.",
+    syntax: "QuerySet.in_bulk(id_list=None, *, field_name='pk')",
+    arguments: [
+      { name: "id_list", description: "Список значений поля для поиска. Если None — возвращает все объекты QS." },
+      { name: "field_name", description: "Имя уникального поля. По умолчанию 'pk'." },
+    ],
+    example: `# Словарь id → объект
+articles = Article.objects.in_bulk([1, 2, 3])
+# {1: <Article: ...>, 2: <Article: ...>, 3: <Article: ...>}
+
+article = articles.get(2)  # O(1), без SQL
+
+# По уникальному полю (не pk)
+articles_by_slug = Article.objects.in_bulk(
+    ["django-orm", "fastapi-intro"],
+    field_name="slug",
+)
+# {"django-orm": <Article: ...>, "fastapi-intro": <Article: ...>}
+
+# Без аргументов — все объекты QS
+all_by_id = Article.objects.filter(published=True).in_bulk()
+
+# Паттерн: быстрый доступ при денормализации
+comment_ids = [c["article_id"] for c in comments_data]
+articles_map = Article.objects.in_bulk(comment_ids)
+for c in comments_data:
+    c["article"] = articles_map.get(c["article_id"])`,
+  },
+  {
+    name: "QuerySet.iterator(chunk_size=2000)",
+    category: "QuerySet",
+    description:
+      "Итерирует QuerySet **без кэширования** в `_result_cache`, загружая строки небольшими порциями (`chunk_size`). Критически важен при обработке **очень больших** наборов данных, когда загрузка всех объектов привела бы к исчерпанию RAM. Нельзя комбинировать с `prefetch_related()` (Django бросит исключение). После итерации объекты не остаются в памяти — каждый сразу сбрасывается сборщиком мусора.",
+    syntax: "QuerySet.iterator(chunk_size=2000)",
+    arguments: [
+      {
+        name: "chunk_size",
+        description: "Количество строк, загружаемых за один раз. По умолчанию 2000. Для PostgreSQL используется server-side cursor.",
+      },
+    ],
+    example: `# Обработка миллионов записей без OOM
+for article in Article.objects.iterator(chunk_size=500):
+    process(article)   # объект не накапливается в _result_cache
+
+# Нельзя: iterator + prefetch_related
+# Article.objects.prefetch_related("tags").iterator()  # ValueError!
+
+# Можно: select_related + iterator (JOIN, не prefetch)
+for article in Article.objects.select_related("author").iterator(chunk_size=1000):
+    send_email(article.author.email, article.title)
+
+# Паттерн: массовое обновление с минимальным потреблением памяти
+to_update = []
+for article in Article.objects.filter(status="draft").only("id", "status").iterator():
+    article.status = "archived"
+    to_update.append(article)
+    if len(to_update) >= 500:
+        Article.objects.bulk_update(to_update, ["status"])
+        to_update.clear()
+if to_update:
+    Article.objects.bulk_update(to_update, ["status"])`,
+  },
+  {
+    name: "QuerySet.latest(*fields)",
+    category: "QuerySet",
+    description:
+      "Возвращает **один** самый «последний» объект по указанным полям (убывающая сортировка, `LIMIT 1`). Если поля не переданы — использует `get_latest_by` из `Meta`. Бросает `Model.DoesNotExist` при пустом QuerySet. Противоположность — `earliest()` (возрастающая сортировка). Работает быстро при наличии индекса на поле сортировки.",
+    syntax: "QuerySet.latest(*fields)",
+    arguments: [
+      {
+        name: "*fields",
+        description: "Поля для сортировки (убывание). Если не переданы — используется Meta.get_latest_by.",
+      },
+    ],
+    example: `# Последняя опубликованная статья
+latest_article = Article.objects.filter(published=True).latest("published_at")
+
+# По нескольким полям (приоритет слева направо)
+Article.objects.latest("published_at", "created_at")
+
+# Использование Meta.get_latest_by
+class Article(Model):
+    class Meta:
+        get_latest_by = "published_at"
+
+Article.objects.latest()   # использует Meta.get_latest_by
+
+# Обработка пустого QS
+from django.core.exceptions import ObjectDoesNotExist
+try:
+    last = Article.objects.filter(author=user).latest("created_at")
+except Article.DoesNotExist:
+    last = None
+
+# earliest() — антипод latest()
+oldest = Article.objects.earliest("created_at")
+
+# Разница с first()/last():
+# latest("field") → ORDER BY field DESC LIMIT 1 (явная колонка)
+# last()          → разворачивает Meta.ordering и берёт LIMIT 1`,
+  },
+  {
+    name: "QuerySet.earliest(*fields)",
+    category: "QuerySet",
+    description:
+      "Возвращает **один** самый «ранний» объект по указанным полям — возрастающая сортировка, `LIMIT 1`. Если поля не переданы — использует `get_latest_by` из `Meta` (с инвертированным направлением). Бросает `Model.DoesNotExist` при пустом QuerySet. Прямой антипод `latest()`. Работает быстро при наличии индекса на поле сортировки.",
+    syntax: "QuerySet.earliest(*fields)",
+    arguments: [
+      {
+        name: "*fields",
+        description: "Поля для сортировки по возрастанию. Если не переданы — используется Meta.get_latest_by.",
+      },
+    ],
+    example: `# Самая первая опубликованная статья
+oldest = Article.objects.filter(published=True).earliest("published_at")
+
+# По нескольким полям (приоритет слева направо)
+Article.objects.earliest("published_at", "created_at")
+
+# Использование Meta.get_latest_by
+class Article(Model):
+    class Meta:
+        get_latest_by = "published_at"
+
+Article.objects.earliest()   # ORDER BY published_at ASC LIMIT 1
+
+# Обработка пустого QS
+try:
+    first_post = Article.objects.filter(author=user).earliest("created_at")
+except Article.DoesNotExist:
+    first_post = None
+
+# earliest vs first():
+# earliest("field") → ORDER BY field ASC LIMIT 1  (явная колонка)
+# first()           → использует Meta.ordering, LIMIT 1`,
+  },
+  {
+    name: "QuerySet.first()",
+    category: "QuerySet",
+    description:
+      "Возвращает первый объект QuerySet или `None` (в отличие от `get()`, не бросает исключение). Если QuerySet не имеет `ORDER BY` — добавляет сортировку по первичному ключу для детерминированного результата. Выполняет `LIMIT 1`. Безопаснее `qs[0]` — не бросает `IndexError` на пустом QuerySet.",
+    syntax: "QuerySet.first()",
+    arguments: [],
+    example: `# Безопасное получение первого объекта
+article = Article.objects.filter(published=True).order_by("-created_at").first()
+if article:
+    print(article.title)
+else:
+    print("Нет статей")
+
+# Без order_by — Django добавляет ORDER BY pk
+Article.objects.filter(author=user).first()
+
+# Сравнение подходов:
+# qs[0]        → IndexError при пустом QS
+# qs.first()   → None при пустом QS (безопаснее)
+# qs.get()     → DoesNotExist при пустом QS, MultipleObjectsReturned при >1
+
+# Паттерн: проверить наличие и получить объект одним запросом
+latest_draft = (
+    Article.objects.filter(author=request.user, status="draft")
+    .order_by("-updated_at")
+    .first()
+)`,
+  },
+  {
+    name: "QuerySet.last()",
+    category: "QuerySet",
+    description:
+      "Возвращает последний объект QuerySet или `None`. Работает аналогично `first()`, но инвертирует порядок сортировки (`ORDER BY ... DESC LIMIT 1`). Если QuerySet не имеет явного `ORDER BY` — сортирует по первичному ключу по убыванию. Выполняет ровно один SQL-запрос.",
+    syntax: "QuerySet.last()",
+    arguments: [],
+    example: `# Последняя созданная статья
+latest = Article.objects.filter(published=True).order_by("created_at").last()
+
+# Без order_by — сортирует по pk DESC
+Article.objects.filter(status="draft").last()
+
+# Эквивалент через order_by + first():
+# Article.objects.order_by("-created_at").first() == Article.objects.order_by("created_at").last()
+
+# Паттерн: получить последнее событие в лог-таблице
+last_login = LoginEvent.objects.filter(user=user).order_by("timestamp").last()
+if last_login:
+    print(f"Последний вход: {last_login.timestamp}")`,
+  },
+  {
+    name: "QuerySet.aggregate(*args, **kwargs)",
+    category: "QuerySet",
+    description:
+      "Выполняет агрегирование по **всему** QuerySet и возвращает **словарь** с результатами. В отличие от `annotate()` (добавляет значение к каждому объекту), `aggregate()` сворачивает весь набор в одно значение. Принимает агрегатные функции: `Count`, `Sum`, `Avg`, `Min`, `Max`, `StdDev`, `Variance` и любые совместимые выражения. Имена ключей словаря формируются автоматически (`field__aggfunc`) или задаются через `**kwargs`.",
+    syntax: "QuerySet.aggregate(*args, **kwargs)",
+    arguments: [
+      {
+        name: "*args",
+        description: "Агрегатные выражения без явного имени — имя генерируется автоматически.",
+      },
+      {
+        name: "**kwargs",
+        description: "Именованные агрегаты: `alias=Функция(...)`. Имя становится ключом результирующего словаря.",
+      },
+    ],
+    example: `from django.db.models import Count, Sum, Avg, Min, Max
+
+# Одно значение
+total = Article.objects.aggregate(Count("id"))
+# {"id__count": 42}
+
+# Именованные агрегаты — удобнее
+stats = Article.objects.filter(published=True).aggregate(
+    total=Count("id"),
+    avg_views=Avg("views"),
+    max_views=Max("views"),
+    total_views=Sum("views"),
+)
+# {"total": 42, "avg_views": 1234.5, "max_views": 50000, "total_views": 518490}
+
+# С фильтром внутри агрегата (Django 2.0+, conditional aggregation)
+from django.db.models import Q
+Article.objects.aggregate(
+    published_count=Count("id", filter=Q(published=True)),
+    draft_count=Count("id", filter=Q(status="draft")),
+)
+
+# Сочетание с filter()
+Article.objects.filter(
+    created_at__year=2024
+).aggregate(total=Count("id"), avg_score=Avg("rating"))`,
+  },
+  {
+    name: "QuerySet.exists()",
+    category: "QuerySet",
+    description:
+      "Возвращает `True`, если QuerySet содержит хотя бы один объект, иначе `False`. Выполняет `SELECT 1 ... LIMIT 1` — **самый дешёвый** способ проверки наличия записей. Если QuerySet уже вычислен (`_result_cache` заполнен), возвращает `bool(_result_cache)` без SQL. Предпочтительнее `count() > 0`, `len(qs) > 0`, `bool(qs)` и тем более `qs[0]` — не загружает объекты.",
+    syntax: "QuerySet.exists()",
+    arguments: [],
+    example: `# Проверить наличие записей без загрузки объектов
+if Article.objects.filter(author=user, published=True).exists():
+    print("У автора есть опубликованные статьи")
+
+# Антипаттерны (медленнее):
+# if Article.objects.filter(...).count() > 0:  # SELECT COUNT(*)
+# if len(Article.objects.filter(...)) > 0:     # загружает все объекты
+# if Article.objects.filter(...):              # тоже загружает (оценивает QS)
+
+# Типичное применение в валидации
+def clean_email(self):
+    email = self.cleaned_data["email"]
+    if User.objects.filter(email=email).exists():
+        raise ValidationError("Email уже зарегистрирован")
+    return email
+
+# В DRF validators
+from rest_framework.validators import UniqueValidator
+UniqueValidator(queryset=User.objects.all())  # внутри использует exists()
+
+# exists() с QS в кэше — SQL не выполняется
+articles = list(Article.objects.filter(published=True))
+Article.objects.filter(published=True).exists()  # новый QS → новый SQL
+bool(articles)  # из памяти`,
+  },
+  {
+    name: "QuerySet.contains(obj)",
+    category: "QuerySet",
+    description:
+      "Возвращает `True`, если переданный объект модели входит в QuerySet. Появился в Django 4.1 как оптимизированная альтернатива `obj in qs`. Если QuerySet уже вычислен — проверяет `_result_cache` без SQL. Иначе выполняет `SELECT 1 WHERE pk=... LIMIT 1` с учётом всех фильтров QuerySet. Корректно обрабатывает объекты с составным первичным ключом.",
+    syntax: "QuerySet.contains(obj)",
+    arguments: [
+      {
+        name: "obj",
+        description: "Экземпляр модели того же типа, что и QuerySet. Поиск ведётся по первичному ключу.",
+      },
+    ],
+    example: `# Проверить, входит ли объект в QuerySet
+article = Article.objects.get(pk=42)
+published_qs = Article.objects.filter(published=True)
+
+if published_qs.contains(article):
+    print("Статья опубликована")
+
+# Сравнение с оператором in:
+# article in published_qs  →  загружает весь QS в память (плохо на больших наборах)
+# published_qs.contains(article)  →  SELECT 1 WHERE ... AND pk=42 LIMIT 1
+
+# Если QS уже в кэше — SQL не выполняется
+articles = list(published_qs)   # кэш заполнен
+published_qs.contains(article)  # нет SQL — проверяет кэш
+
+# Появился в Django 4.1 — проверьте версию перед использованием
+import django
+assert django.VERSION >= (4, 1), "contains() требует Django >= 4.1"`,
+  },
+  {
+    name: "QuerySet.update(**kwargs)",
+    category: "QuerySet",
+    description:
+      "Выполняет SQL `UPDATE ... SET ... WHERE ...` для **всех** объектов QuerySet одним запросом. Возвращает число обновлённых строк. **Не вызывает** `save()`, сигналы `pre_save`/`post_save` и методы `clean()` — только чистый SQL. Значительно быстрее цикла с `obj.save()` при массовом обновлении. Поддерживает `F`-выражения для атомарного обновления на стороне БД.",
+    syntax: "QuerySet.update(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Поля и значения для обновления. Поддерживают F-выражения и функции ORM.",
+      },
+    ],
+    example: `from django.db.models import F
+from django.utils import timezone
+
+# Массовая публикация черновиков
+count = Article.objects.filter(status="draft", author=user).update(
+    status="published",
+    published_at=timezone.now(),
+)
+print(f"Опубликовано {count} статей")
+
+# F-выражение: атомарный инкремент без гонки
+Article.objects.filter(pk=article_id).update(views=F("views") + 1)
+
+# Обнуление поля
+Article.objects.filter(featured=True).update(featured=False)
+
+# Важно: update() не вызывает сигналы и auto_now
+# Если нужны сигналы — используйте цикл save()
+# Если нужен auto_now — обновляйте поле явно:
+Article.objects.filter(pk__in=ids).update(
+    status="archived",
+    updated_at=timezone.now(),  # auto_now не сработает!
+)
+
+# Транзакционное обновление
+from django.db import transaction
+with transaction.atomic():
+    Article.objects.select_for_update().filter(pk=pk).update(stock=F("stock") - 1)`,
+  },
+  {
+    name: "QuerySet.delete()",
+    category: "QuerySet",
+    description:
+      "Удаляет все объекты QuerySet из БД. Возвращает кортеж `(total_deleted, {Model: count})` — общее число удалённых строк и разбивку по моделям (включая каскадно удалённые связанные объекты). Вызывает `pre_delete` и `post_delete` сигналы для каждого объекта. Учитывает `on_delete` поведение FK-связей: объекты загружаются в Python для обработки каскадов, что может быть медленным на больших наборах.",
+    syntax: "QuerySet.delete()",
+    arguments: [],
+    example: `# Удалить все черновики старше 30 дней
+from django.utils import timezone
+from datetime import timedelta
+
+deleted_count, details = Article.objects.filter(
+    status="draft",
+    created_at__lt=timezone.now() - timedelta(days=30),
+).delete()
+print(f"Удалено: {deleted_count}")
+# {"articles.Article": 12, "articles.Comment": 87}  — каскад
+
+# Удалить конкретный объект
+Article.objects.filter(pk=42).delete()
+
+# Важно: удаление QuerySet vs объекта
+# qs.delete()    → один DELETE + каскады (загружает объекты для сигналов)
+# obj.delete()   → то же, но для одного объекта
+
+# Быстрое удаление без сигналов (только PostgreSQL/SQLite с простыми FK):
+# Использовать _raw_delete() или прямой SQL через connection.execute()
+
+# Мягкое удаление (soft delete) — паттерн вместо физического удаления
+Article.objects.filter(pk=pk).update(
+    deleted_at=timezone.now(),
+    is_deleted=True,
+)`,
+  },
+  {
+    name: "QuerySet.as_manager()",
+    category: "QuerySet",
+    description:
+      "Создаёт экземпляр `Manager` из методов QuerySet, позволяя использовать кастомные методы QuerySet **и** как методы менеджера (`Model.objects.method()`), **и** в цепочках (`Model.objects.all().method()`). Альтернатива ручному написанию `Manager` + `QuerySet` с дублированием методов. Метод является классовым — вызывается на классе QuerySet.",
+    syntax: "QuerySet.as_manager()",
+    arguments: [],
+    example: `from django.db import models
+
+# Определить кастомный QuerySet с методами
+class ArticleQuerySet(models.QuerySet):
+    def published(self):
+        return self.filter(published=True)
+
+    def by_author(self, user):
+        return self.filter(author=user)
+
+    def popular(self, threshold=1000):
+        return self.filter(views__gte=threshold)
+
+# as_manager() — методы QS становятся методами менеджера
+class Article(models.Model):
+    objects = ArticleQuerySet.as_manager()
+    # ...
+
+# Теперь доступны оба варианта:
+Article.objects.published()                     # через менеджер
+Article.objects.all().published()               # через цепочку QuerySet
+Article.objects.published().by_author(user)     # цепочка кастомных методов
+Article.objects.published().popular(500).order_by("-views")
+
+# Альтернатива (более явная, нужна когда менеджер имеет свою логику):
+class ArticleManager(models.Manager):
+    def get_queryset(self):
+        return ArticleQuerySet(self.model, using=self._db)
+
+    def published(self):
+        return self.get_queryset().published()`,
+  },
+  {
+    name: "QuerySet.explain(format=None, **options)",
+    category: "QuerySet",
+    description:
+      "Возвращает строку с планом выполнения SQL-запроса (`EXPLAIN` / `EXPLAIN ANALYZE`). Используется для анализа производительности: проверки использования индексов, поиска seq-сканов на больших таблицах, оценки стоимости запроса. Не выполняет сам запрос (только `EXPLAIN`). Аргументы `**options` зависят от СУБД: PostgreSQL поддерживает `analyze=True`, `buffers=True`, `verbose=True`; MySQL — `FORMAT='JSON'`.",
+    syntax: "QuerySet.explain(format=None, **options)",
+    arguments: [
+      {
+        name: "format",
+        description: "Формат вывода: None (текст по умолчанию), 'JSON', 'XML', 'YAML' (зависит от СУБД).",
+      },
+      {
+        name: "**options",
+        description: "СУБД-специфичные параметры. PostgreSQL: analyze, buffers, verbose, timing, costs, settings.",
+      },
+    ],
+    example: `# Базовый план запроса
+print(Article.objects.filter(published=True).explain())
+# Seq Scan on articles_article  (cost=0.00..42.30 rows=423 width=...)
+#   Filter: published
+
+# PostgreSQL: EXPLAIN ANALYZE с буферами
+print(
+    Article.objects.filter(
+        author__is_active=True
+    ).select_related("author").explain(
+        analyze=True,
+        buffers=True,
+        verbose=True,
+    )
+)
+
+# Вывод в JSON (удобно для программного разбора)
+import json
+plan_json = Article.objects.filter(views__gte=1000).explain(format="JSON")
+plan = json.loads(plan_json)
+
+# Паттерн: автоматическая проверка что запрос использует индекс
+def assert_uses_index(qs, index_name: str):
+    plan = qs.explain()
+    assert "Seq Scan" not in plan, f"Запрос не использует индекс! Plan:\\n{plan}"
+
+# MySQL: только текстовый формат
+Article.objects.filter(pk=1).explain()`,
+  },
+
+  // ─── Manager ───────────────────────────────────────────────────────────────
+  {
+    name: "django.db.models.manager",
+    category: "Manager",
+    description:
+      "Модуль Django ORM, содержащий класс `Manager` — интерфейс между моделью и базой данных. Менеджер является точкой входа для всех операций с QuerySet: `Model.objects` — это экземпляр `Manager` по умолчанию. Модуль также содержит `BaseManager`, миксины и вспомогательные классы для кастомизации менеджеров. Прямой импорт нужен для аннотаций типов или создания кастомных менеджеров.",
+    syntax: "from django.db import models  # Manager доступен как models.Manager",
+    arguments: [],
+    example: `from django.db import models
+
+# Manager доступен через атрибут objects (по умолчанию)
+Article.objects          # <ArticleManager object>
+Article.objects.all()    # вызывает Manager.get_queryset().all()
+
+# Прямой импорт для аннотаций
+from django.db.models.manager import Manager
+def get_manager() -> Manager:
+    return Article.objects
+
+# Кастомный менеджер — наследоваться от models.Manager
+class PublishedManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(published=True)`,
+  },
+  {
+    name: "django.db.models.manager.Manager",
+    category: "Manager",
+    description:
+      "Базовый класс менеджера Django ORM. Каждая модель получает менеджер `objects` по умолчанию. Менеджер является прокси к QuerySet: большинство методов QuerySet (`filter`, `exclude`, `get` и т.д.) доступны напрямую через менеджер. Можно определить несколько менеджеров на одной модели — первый объявленный становится менеджером по умолчанию (используется в `ForeignKey`-разрешениях и `Model._default_manager`). Кастомные менеджеры создаются наследованием и переопределением `get_queryset()`.",
+    syntax: "class CustomManager(models.Manager): ...",
+    arguments: [],
+    example: `from django.db import models
+
+# Кастомный менеджер с фильтрацией по умолчанию
+class PublishedManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(published=True)
+
+    def featured(self):
+        return self.get_queryset().filter(featured=True)
+
+class Article(models.Model):
+    published = models.BooleanField(default=False)
+    featured  = models.BooleanField(default=False)
+
+    objects   = models.Manager()        # стандартный менеджер (первый = default)
+    published = PublishedManager()      # кастомный менеджер
+
+# Использование
+Article.objects.all()          # все статьи
+Article.published.all()        # только published=True
+Article.published.featured()   # published=True AND featured=True
+
+# _default_manager — первый объявленный менеджер
+Article._default_manager       # <Manager object>`,
+  },
+  {
+    name: "django.db.models.manager.Manager.get_queryset()",
+    category: "Manager",
+    description:
+      "Возвращает базовый QuerySet, который используется всеми методами менеджера. Переопределение `get_queryset()` — главный способ создания **кастомного менеджера** с постоянным фильтром (например, `published=True`, `deleted_at__isnull=True`). Все методы, вызываемые через менеджер (`filter()`, `get()`, `all()` и т.д.), начинают с результата `get_queryset()`. Не вызывайте `get_queryset()` вручную — используйте `self.get_queryset()` внутри менеджера.",
+    syntax: "Manager.get_queryset()",
+    arguments: [],
+    example: `from django.db import models
+
+# Менеджер мягкого удаления — скрывает удалённые записи
+class SoftDeleteManager(models.Manager):
+    def get_queryset(self):
+        # базовый QS всегда исключает удалённые
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+class Article(models.Model):
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    objects      = SoftDeleteManager()   # скрывает удалённые
+    all_objects  = models.Manager()      # включая удалённые
+
+# Article.objects.all()   → WHERE deleted_at IS NULL
+# Article.all_objects.all() → все записи
+
+# Менеджер с кастомным QuerySet-классом
+class ArticleQuerySet(models.QuerySet):
+    def published(self):
+        return self.filter(published=True)
+
+class ArticleManager(models.Manager):
+    def get_queryset(self):
+        return ArticleQuerySet(self.model, using=self._db)
+
+    def published(self):          # делегируем в QS
+        return self.get_queryset().published()`,
+  },
+  {
+    name: "django.db.models.manager.Manager.from_queryset(queryset_class, class_name=None)",
+    category: "Manager",
+    description:
+      "Фабричный метод, создающий класс менеджера из QuerySet-класса — методы QuerySet копируются в менеджер автоматически. Позволяет избежать дублирования кода при написании кастомного менеджера и QuerySet с одинаковыми методами. Возвращает новый класс менеджера, который можно присвоить `objects` прямо в теле модели. Альтернатива `QuerySet.as_manager()` — более явная, позволяет добавить логику в `get_queryset()`.",
+    syntax: "Manager.from_queryset(queryset_class, class_name=None)",
+    arguments: [
+      {
+        name: "queryset_class",
+        description: "Класс QuerySet, методы которого нужно скопировать в менеджер.",
+      },
+      {
+        name: "class_name",
+        description: "Имя генерируемого класса менеджера. По умолчанию: 'ManagerFrom' + имя QS.",
+      },
+    ],
+    example: `from django.db import models
+
+class ArticleQuerySet(models.QuerySet):
+    def published(self):
+        return self.filter(published=True)
+
+    def by_author(self, user):
+        return self.filter(author=user)
+
+    def popular(self, threshold=1000):
+        return self.filter(views__gte=threshold)
+
+# Вариант 1: from_queryset на базовом Manager
+ArticleManager = models.Manager.from_queryset(ArticleQuerySet)
+
+class Article(models.Model):
+    objects = ArticleManager()
+
+# Вариант 2: from_queryset на кастомном Manager (можно переопределить get_queryset)
+class BaseManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+SafeArticleManager = BaseManager.from_queryset(ArticleQuerySet)
+
+class Article(models.Model):
+    objects = SafeArticleManager()
+
+# Методы QS доступны и через менеджер, и в цепочке:
+Article.objects.published().popular(500).order_by("-views")`,
+  },
+  {
+    name: "django.db.models.manager.Manager.check(**kwargs)",
+    category: "Manager",
+    description:
+      "Метод системной проверки Django (часть инфраструктуры `django.core.checks`). Вызывается командой `manage.py check` для валидации конфигурации менеджера. Возвращает список ошибок `CheckMessage`. При создании кастомного менеджера можно переопределить для добавления собственных проверок. В обычном коде приложения вызывать напрямую не нужно — это инструмент разработки.",
+    syntax: "Manager.check(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Параметры, передаваемые системой проверки Django (databases, app_configs и т.д.).",
+      },
+    ],
+    example: `from django.core import checks
+from django.db import models
+
+# Кастомная проверка менеджера
+class StrictManager(models.Manager):
+    def check(self, **kwargs):
+        errors = super().check(**kwargs)
+        # Проверить, что модель имеет поле published
+        if not hasattr(self.model, "published"):
+            errors.append(
+                checks.Error(
+                    "StrictManager требует поля 'published' на модели.",
+                    obj=self,
+                    id="myapp.E001",
+                )
+            )
+        return errors
+
+# Запуск системных проверок вручную (в тестах или скриптах)
+from django.core.management import call_command
+call_command("check")   # вызовет Manager.check() для всех менеджеров
+
+# Системные проверки также запускаются автоматически перед migrate`,
+  },
+
+  // ─── Field ─────────────────────────────────────────────────────────────────
+  {
+    name: "django.db.models.fields",
+    category: "Field",
+    description:
+      "Модуль Django ORM, содержащий все стандартные типы полей модели: `CharField`, `IntegerField`, `DateTimeField`, `BooleanField`, `TextField`, `ForeignKey`, `ManyToManyField` и десятки других. Каждое поле — подкласс `Field`, определяющий тип Python, тип SQL-колонки, валидацию и поведение в формах. Поля импортируются через `django.db.models` (сокращённый путь) или напрямую из `django.db.models.fields`.",
+    syntax: "from django.db import models  # поля: models.CharField, models.IntegerField, ...",
+    arguments: [],
+    example: `from django.db import models
+
+# Стандартные поля
+class Article(models.Model):
+    title       = models.CharField(max_length=200)
+    body        = models.TextField()
+    views       = models.IntegerField(default=0)
+    published   = models.BooleanField(default=False)
+    rating      = models.FloatField(null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+    slug        = models.SlugField(unique=True)
+    data        = models.JSONField(default=dict)
+
+# Прямой импорт из submodule (редко нужен)
+from django.db.models.fields import CharField, IntegerField
+from django.db.models.fields.related import ForeignKey`,
+  },
+  {
+    name: "django.db.models.fields.Field",
+    category: "Field",
+    description:
+      "Базовый класс всех полей Django ORM. Определяет общий интерфейс: атрибуты (`name`, `verbose_name`, `null`, `blank`, `default`, `unique`, `db_index` и др.), методы валидации (`validate()`, `run_validators()`), методы генерации SQL (`db_type()`, `get_internal_type()`), а также хуки `contribute_to_class()` — вызывается при добавлении поля к классу модели. Кастомные поля создаются наследованием от `Field` или одного из его подклассов.",
+    syntax: "class MyField(models.Field): ...",
+    arguments: [],
+    example: `from django.db import models
+
+# Кастомное поле — пример: хранит список через CSV
+class CommaSeparatedIntegerListField(models.CharField):
+    def from_db_value(self, value, expression, connection):
+        if value is None:
+            return []
+        return [int(x) for x in value.split(",") if x]
+
+    def to_python(self, value):
+        if isinstance(value, list):
+            return value
+        return self.from_db_value(value, None, None)
+
+    def get_prep_value(self, value):
+        if value is None:
+            return ""
+        return ",".join(str(x) for x in value)
+
+# Использование
+class Article(models.Model):
+    tag_ids = CommaSeparatedIntegerListField(max_length=500, default=list)
+
+article = Article.objects.get(pk=1)
+article.tag_ids  # [1, 2, 3] — Python-список`,
+  },
+  {
+    name: "django.db.models.fields.Field.name",
+    category: "Field",
+    description:
+      "Строковый атрибут — имя поля в модели. Устанавливается автоматически при добавлении поля к классу через `contribute_to_class()`. Совпадает с именем атрибута модели (`Article.title` → `title`). Используется в QuerySet-выражениях, сериализаторах, миграциях. До `contribute_to_class()` поле не имеет `name` — не обращайтесь к нему вне контекста модели.",
+    syntax: "field.name",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    body  = models.TextField()
+
+# Получить имя поля через метаданные модели
+field = Article._meta.get_field("title")
+print(field.name)   # "title"
+
+# Итерация по полям модели
+for field in Article._meta.get_fields():
+    print(field.name)   # title, body, id, ...
+
+# Использование в динамических запросах
+field_name = "title"
+Article.objects.filter(**{f"{field_name}__icontains": "django"})
+
+# Проверка наличия поля
+field_names = [f.name for f in Article._meta.get_fields()]
+assert "title" in field_names`,
+  },
+  {
+    name: "django.db.models.fields.Field.verbose_name",
+    category: "Field",
+    description:
+      "Человекочитаемое имя поля — используется в формах Django Admin, `ModelForm` и сообщениях валидации. Если не задан явно, генерируется из `name` заменой `_` на пробел и переводом в нижний регистр. Первый позиционный аргумент большинства полей — `verbose_name`. Для `ForeignKey`, `ManyToManyField` и `OneToOneField` первый позиционный аргумент — `to` (модель), а `verbose_name` передаётся именованно.",
+    syntax: "models.CharField(verbose_name='Заголовок', ...)",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    # Первый позиционный аргумент = verbose_name
+    title = models.CharField("Заголовок статьи", max_length=200)
+    body  = models.TextField("Содержимое")
+
+    # Или именованно
+    slug  = models.SlugField(verbose_name="URL-слаг", unique=True)
+
+    # ForeignKey — verbose_name именованно (первый аргумент = to)
+    author = models.ForeignKey(
+        "auth.User",
+        verbose_name="Автор",
+        on_delete=models.CASCADE,
+    )
+
+# Без verbose_name — генерируется из имени поля:
+# published_at → "published at"
+published_at = models.DateTimeField(null=True)
+
+# Получить verbose_name программно
+field = Article._meta.get_field("title")
+print(field.verbose_name)   # "Заголовок статьи"
+
+# Django Admin и ModelForm используют verbose_name как метку поля`,
+  },
+  {
+    name: "django.db.models.fields.Field.primary_key",
+    category: "Field",
+    description:
+      "Булев атрибут — если `True`, поле становится первичным ключом таблицы (`PRIMARY KEY`). Если ни одно поле модели не имеет `primary_key=True`, Django автоматически добавляет поле `id = models.AutoField(primary_key=True)`. Первичный ключ всегда `unique=True` и `null=False`. Модель может иметь только один первичный ключ. Доступ к PK через атрибут `pk` (алиас для поля с `primary_key=True`).",
+    syntax: "models.Field(primary_key=True)",
+    arguments: [],
+    example: `from django.db import models
+
+# Кастомный первичный ключ вместо автоинкремента
+class Article(models.Model):
+    slug = models.SlugField(primary_key=True, max_length=100)
+    title = models.CharField(max_length=200)
+
+article = Article.objects.get(pk="django-orm-guide")  # pk = slug
+
+# UUID в качестве PK
+import uuid
+class Order(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+# Составной PK (Django 5.2+) через UniqueConstraint в Meta (до 5.2 — только один PK):
+class OrderItem(models.Model):
+    order   = models.ForeignKey(Order, on_delete=models.CASCADE)
+    product = models.ForeignKey("Product", on_delete=models.CASCADE)
+    class Meta:
+        unique_together = [["order", "product"]]
+
+# Проверить, является ли поле PK
+field = Article._meta.get_field("slug")
+print(field.primary_key)   # True`,
+  },
+  {
+    name: "django.db.models.fields.Field.max_length",
+    category: "Field",
+    description:
+      "Целочисленный атрибут — максимальная длина значения в символах. Обязателен для `CharField` и его подклассов (`SlugField`, `EmailField`, `URLField` и т.д.); для других полей (`TextField`, `IntegerField`) не используется. Влияет на: 1) DDL — `VARCHAR(max_length)` в SQL; 2) валидацию — Django проверяет длину при `full_clean()`; 3) виджет формы — атрибут `maxlength` в HTML `<input>`.",
+    syntax: "models.CharField(max_length=200)",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)   # VARCHAR(200)
+    slug  = models.SlugField(max_length=100)    # VARCHAR(100)
+    email = models.EmailField(max_length=254)   # RFC 5321: 254 символа
+
+# TextField не имеет max_length в БД (TEXT / CLOB)
+body = models.TextField()   # без ограничения в SQL
+
+# Получить max_length программно
+field = Article._meta.get_field("title")
+print(field.max_length)   # 200
+
+# Валидация max_length — срабатывает при full_clean(), не при save()
+article = Article(title="x" * 201)
+article.full_clean()   # ValidationError: не более 200 символов
+article.save()         # не проверяет max_length — сохранит или БД отклонит
+
+# Рекомендуемые значения:
+# имя/фамилия    → 150
+# email          → 254  (RFC 5321)
+# slug/username  → 150
+# заголовок      → 200-255`,
+  },
+  {
+    name: "django.db.models.fields.Field.unique",
+    category: "Field",
+    description:
+      "Булев атрибут — если `True`, создаёт `UNIQUE`-ограничение на уровне БД и валидирует уникальность при `full_clean()`. Автоматически создаёт индекс (поэтому `db_index=True` дополнительно указывать не нужно). При нарушении Django бросает `IntegrityError` (на уровне БД) или `ValidationError` (при `full_clean()`). Для уникальности по нескольким полям используйте `Meta.unique_together` или `Meta.constraints`.",
+    syntax: "models.Field(unique=True)",
+    arguments: [],
+    example: `from django.db import models
+
+class User(models.Model):
+    email    = models.EmailField(unique=True)   # UNIQUE в SQL
+    username = models.CharField(max_length=150, unique=True)
+
+# Нарушение уникальности
+from django.db import IntegrityError
+try:
+    User.objects.create(email="a@b.com", username="ivan")
+    User.objects.create(email="a@b.com", username="petr")  # IntegrityError
+except IntegrityError:
+    pass
+
+# Безопасное создание
+user, created = User.objects.get_or_create(email="a@b.com")
+
+# Уникальность по нескольким полям — Meta
+class Membership(models.Model):
+    user  = models.ForeignKey(User, on_delete=models.CASCADE)
+    group = models.ForeignKey("Group", on_delete=models.CASCADE)
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "group"],
+                name="unique_user_group",
+            )
+        ]`,
+  },
+  {
+    name: "django.db.models.fields.Field.blank",
+    category: "Field",
+    description:
+      "Булев атрибут — разрешает **пустое значение** при валидации форм (Django Admin, `ModelForm`). **Не влияет на БД** — только на Python-валидацию через `full_clean()`. Если `blank=True`, поле не обязательно в форме. Часто путают с `null`: `null` влияет на SQL (`NULL`/`NOT NULL`), `blank` — на форму. Для текстовых полей предпочтительна пара `blank=True` без `null=True` (хранить пустую строку вместо NULL).",
+    syntax: "models.Field(blank=True)",
+    arguments: [],
+    example: `from django.db import models
+
+class UserProfile(models.Model):
+    user = models.OneToOneField("auth.User", on_delete=models.CASCADE)
+
+    # Необязательные текстовые поля: blank=True, null=False
+    # Хранит "" вместо NULL — рекомендовано для строк
+    bio      = models.TextField(blank=True, default="")
+    website  = models.URLField(blank=True, default="")
+
+    # Необязательные нечисловые / даты: blank=True + null=True
+    birthday = models.DateField(blank=True, null=True)
+    avatar   = models.ImageField(upload_to="avatars/", blank=True)
+
+# blank=True — поле не обязательно в форме
+# blank=False (по умолчанию) — поле обязательно в форме
+
+# Таблица: что и когда использовать
+# blank=False, null=False → обязательное поле (по умолчанию)
+# blank=True,  null=False → необязательное в форме, "" в БД (строки)
+# blank=True,  null=True  → необязательное в форме, NULL в БД (не-строки, FK)
+# blank=False, null=True  → редко нужно (программно NULL, в форме обязательно)`,
+  },
+  {
+    name: "django.db.models.fields.Field.null",
+    category: "Field",
+    description:
+      "Булев атрибут — если `True`, Django хранит пустое значение как `NULL` в базе данных (`NULL` в SQL vs `NOT NULL` по умолчанию). Для строковых полей (`CharField`, `TextField`) рекомендуется **избегать** `null=True` — Django хранит пустые строки как `''`, что исключает двойственность (пустая строка vs NULL). `null=True` уместен для числовых полей, дат, FK, когда нужно различать «не задано» и «0»/«пусто».",
+    syntax: "models.Field(null=True)",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    # Строки — НЕ используйте null=True, храните ""
+    title    = models.CharField(max_length=200)            # NOT NULL, default=""
+    subtitle = models.CharField(max_length=200, blank=True, default="")
+
+    # Числа/даты — null=True уместен, чтобы отличить 0 от "не задано"
+    rating       = models.FloatField(null=True, blank=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    # FK — null=True для необязательной связи
+    editor = models.ForeignKey(
+        "auth.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="edited_articles",
+    )
+
+# Фильтр по NULL
+Article.objects.filter(published_at__isnull=True)   # ещё не опубликованы
+Article.objects.filter(editor__isnull=False)         # есть редактор`,
+  },
+  {
+    name: "django.db.models.fields.Field.db_index",
+    category: "Field",
+    description:
+      "Булев атрибут — если `True`, Django создаёт обычный (не уникальный) индекс на это поле при создании таблицы / миграции. Ускоряет выборки по этому полю (`filter`, `order_by`, `JOIN`). Поля `ForeignKey` автоматически индексируются. Поля с `unique=True` уже имеют уникальный индекс. Для составных и функциональных индексов используйте `Meta.indexes`.",
+    syntax: "models.Field(db_index=True)",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    # Простой индекс — ускоряет фильтрацию
+    status     = models.CharField(max_length=20, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    # unique=True уже создаёт индекс — db_index не нужен
+    slug = models.SlugField(unique=True)   # индекс создан через UNIQUE
+
+    # ForeignKey — индекс создаётся автоматически
+    author = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+
+# Составные и функциональные индексы — через Meta.indexes
+class Article(models.Model):
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "created_at"]),         # составной
+            models.Index(fields=["-created_at"], name="latest_idx"), # убывание
+        ]
+
+# Когда нужен db_index:
+# ✓ Часто фильтруете по полю (status, category, user_id)
+# ✓ Сортируете по полю (created_at, order)
+# ✗ Поле с малой кардинальностью (boolean — индекс почти бесполезен)`,
+  },
+  {
+    name: "django.db.models.fields.Field.rel",
+    category: "Field",
+    description:
+      "Устаревший (deprecated) атрибут реляционных полей (`ForeignKey`, `ManyToManyField`, `OneToOneField`), хранивший объект `ForeignObjectRel` с метаданными связи (целевая модель, `related_name`, `on_delete` и т.д.). Начиная с Django 3.0 заменён атрибутом **`remote_field`**. Используйте `field.remote_field` для программного доступа к параметрам связи. `field.related_model` — прямой атрибут для получения связанной модели.",
+    syntax: "field.remote_field  # современная замена field.rel",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    author = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+
+# Устаревший способ (до Django 3.0):
+# field.rel.to  →  User
+
+# Современный способ:
+field = Article._meta.get_field("author")
+print(field.remote_field.model)         # <class 'auth.User'>
+print(field.remote_field.on_delete)     # <function CASCADE>
+print(field.remote_field.related_name)  # None (используется дефолт)
+print(field.related_model)              # <class 'auth.User'>  — прямой атрибут
+
+# Проверить, является ли поле реляционным
+from django.db.models.fields.related import RelatedField
+if isinstance(field, RelatedField):
+    print(f"Связь с: {field.related_model.__name__}")`,
+  },
+  {
+    name: "django.db.models.fields.Field.default",
+    category: "Field",
+    description:
+      "Значение по умолчанию для поля при создании объекта. Может быть **скалярным значением** или **вызываемым** (`callable`) — функцией без аргументов. Вызываемое значение важно для изменяемых объектов (список, словарь, дата) — иначе все экземпляры разделяют один объект. `default` применяется на уровне Python при `Model()`, а не на уровне SQL. Для SQL-дефолта используйте `db_default` (Django 5.0+).",
+    syntax: "models.Field(default=value_or_callable)",
+    arguments: [],
+    example: `from django.db import models
+from django.utils import timezone
+
+class Article(models.Model):
+    # Скалярный default
+    status  = models.CharField(max_length=20, default="draft")
+    views   = models.IntegerField(default=0)
+    published = models.BooleanField(default=False)
+
+    # Callable default — новый объект для каждого экземпляра
+    data       = models.JSONField(default=dict)     # dict, не dict()
+    tags_cache = models.JSONField(default=list)     # list, не list()
+    created_at = models.DateTimeField(default=timezone.now)  # не timezone.now()!
+
+    # Лямбда не работает (не сериализуется в миграциях)
+    # created_at = models.DateTimeField(default=lambda: timezone.now())  # плохо!
+
+# Антипаттерн — изменяемый default без callable:
+# data = models.JSONField(default={})   # все объекты разделяют ОДИН словарь!
+
+# db_default (Django 5.0+) — устанавливается через SQL DEFAULT
+from django.db.models.functions import Now
+updated_at = models.DateTimeField(db_default=Now())`,
+  },
+  {
+    name: "django.db.models.fields.Field.editable",
+    category: "Field",
+    description:
+      "Булев атрибут — если `False`, поле **не отображается** в формах (`ModelForm`, Django Admin) и исключается из валидации `full_clean()`. По умолчанию `True`. Поля с `editable=False` всё равно сохраняются в БД, но не редактируются через стандартные формы. Типичные случаи: поля с `auto_now`, `auto_now_add`, автоматически вычисляемые поля, UUID-идентификаторы.",
+    syntax: "models.Field(editable=False)",
+    arguments: [],
+    example: `from django.db import models
+import uuid
+
+class Article(models.Model):
+    # UUID — создаётся автоматически, редактировать нельзя
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    title = models.CharField(max_length=200)
+
+    # auto_now_add автоматически ставит editable=False
+    created_at = models.DateTimeField(auto_now_add=True)   # editable=False неявно
+
+    # Явно запретить редактирование
+    checksum = models.CharField(max_length=64, editable=False)
+
+# В ModelForm поле с editable=False не появляется автоматически:
+from django import forms
+class ArticleForm(forms.ModelForm):
+    class Meta:
+        model = Article
+        fields = "__all__"
+# форма не будет содержать id, created_at, checksum
+
+# Django Admin также скрывает editable=False поля
+# Проверить программно:
+field = Article._meta.get_field("id")
+print(field.editable)   # False`,
+  },
+  {
+    name: "django.db.models.fields.Field.serialize",
+    category: "Field",
+    description:
+      "Булев атрибут — если `False`, поле **исключается** из сериализованного вывода команды `manage.py dumpdata` и не загружается через `loaddata`. По умолчанию `True` для большинства полей. Автоматически `False` для полей с `primary_key=True` (так как PK восстанавливается отдельно при `loaddata`). Используется редко — в основном для вычисляемых или кэш-полей, которые не нужно сохранять в фикстурах.",
+    syntax: "models.Field(serialize=False)",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+
+    # Кэш-поле — не включать в фикстуры
+    search_vector = models.TextField(serialize=False, editable=False, default="")
+
+    # PK автоматически serialize=False при использовании как PK:
+    id = models.AutoField(primary_key=True)  # serialize=False неявно
+
+# manage.py dumpdata — search_vector не попадёт в JSON
+# manage.py loaddata — search_vector не будет восстанавливаться
+
+# Проверить программно
+field = Article._meta.get_field("search_vector")
+print(field.serialize)   # False`,
+  },
+  {
+    name: "django.db.models.fields.Field.choices",
+    category: "Field",
+    description:
+      "Ограничивает допустимые значения поля набором пар `(value, display)`. Сохраняет в БД `value` (обычно короткую строку или число), отображает пользователю `display`. Валидирует значение через `full_clean()`. Django добавляет метод `get_FOO_display()` для получения читаемого значения. Можно группировать через вложенные кортежи `(group_name, [(val, disp), ...])`. Современный способ — через `TextChoices` / `IntegerChoices` (Python-перечисления).",
+    syntax: "models.Field(choices=[('val', 'Display'), ...])",
+    arguments: [],
+    example: `from django.db import models
+
+# Классический способ — кортежи
+class Article(models.Model):
+    STATUS_DRAFT     = "draft"
+    STATUS_PUBLISHED = "published"
+    STATUS_ARCHIVED  = "archived"
+    STATUS_CHOICES = [
+        (STATUS_DRAFT,     "Черновик"),
+        (STATUS_PUBLISHED, "Опубликовано"),
+        (STATUS_ARCHIVED,  "Архив"),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+
+# Получить читаемое значение
+article = Article.objects.first()
+print(article.get_status_display())   # "Черновик"
+
+# Современный способ — TextChoices (рекомендуется)
+class Status(models.TextChoices):
+    DRAFT     = "draft",     "Черновик"
+    PUBLISHED = "published", "Опубликовано"
+    ARCHIVED  = "archived",  "Архив"
+
+class Article(models.Model):
+    status = models.CharField(max_length=20, choices=Status, default=Status.DRAFT)
+
+# Использование
+Article.objects.filter(status=Status.PUBLISHED)
+print(article.get_status_display())   # "Опубликовано"
+print(Status.PUBLISHED.label)         # "Опубликовано"`,
+  },
+  {
+    name: "django.db.models.fields.Field.help_text",
+    category: "Field",
+    description:
+      "Строка с подсказкой для пользователя — отображается под полем в Django Admin и `ModelForm` (в теге `<span class=\"helptext\">`). Поддерживает HTML (включая `<br>`, ссылки и теги форматирования). Используется только для представления — не влияет на валидацию или БД. Удобен для документирования назначения поля прямо в коде.",
+    syntax: 'models.Field(help_text="Подсказка")',
+    arguments: [],
+    example: `from django.db import models
+from django.utils.html import format_html
+
+class Article(models.Model):
+    slug = models.SlugField(
+        unique=True,
+        help_text="URL-совместимый идентификатор. Используйте только латиницу, цифры и дефис.",
+    )
+
+    body = models.TextField(
+        help_text="Поддерживается Markdown. Минимум 100 символов.",
+    )
+
+    # HTML в help_text
+    source_url = models.URLField(
+        blank=True,
+        help_text='Источник материала. Пример: <code>https://example.com/article</code>',
+    )
+
+# Получить help_text программно
+field = Article._meta.get_field("slug")
+print(field.help_text)
+# "URL-совместимый идентификатор..."
+
+# В шаблоне ModelForm:
+# {{ form.slug.help_text }}  →  выводит строку help_text`,
+  },
+  {
+    name: "django.db.models.fields.Field.db_column",
+    category: "Field",
+    description:
+      "Задаёт **явное имя колонки** в таблице БД. Если не указан, Django использует имя поля (с заменой CamelCase на snake_case для полей-связей: `author` → `author_id`). Нужен при работе с унаследованными базами данных, где имена колонок не соответствуют соглашениям Django, или для сохранения обратной совместимости при переименовании поля в Python.",
+    syntax: "models.Field(db_column='column_name')",
+    arguments: [],
+    example: `from django.db import models
+
+# Унаследованная БД с нестандартными именами колонок
+class LegacyUser(models.Model):
+    # Python-атрибут: first_name, колонка в БД: fst_nm
+    first_name = models.CharField(max_length=100, db_column="fst_nm")
+    last_name  = models.CharField(max_length=100, db_column="lst_nm")
+    email      = models.EmailField(db_column="email_addr")
+
+    class Meta:
+        db_table = "usr_tbl"   # имя таблицы тоже можно задать явно
+
+# Django ORM генерирует SQL с реальными именами колонок:
+# SELECT fst_nm, lst_nm, email_addr FROM usr_tbl
+
+# Получить имя колонки программно
+field = LegacyUser._meta.get_field("first_name")
+print(field.column)      # "fst_nm"
+print(field.attname)     # "first_name" (Python-атрибут)
+
+# При переименовании Python-поля без изменения БД:
+# old: username = CharField(...)
+# new: login = CharField(db_column="username", ...)
+# → миграция не меняет схему БД, только Python-атрибут`,
+  },
+  {
+    name: "django.db.models.fields.Field.db_tablespace",
+    category: "Field",
+    description:
+      "Задаёт **табличное пространство** (tablespace) для индекса поля — актуально для PostgreSQL и Oracle. Переопределяет `DEFAULT_INDEX_TABLESPACE` из settings на уровне конкретного поля. Применяется только к индексам, создаваемым полем (`db_index=True`, `unique=True`). На MySQL и SQLite игнорируется. Для управления tablespace таблицы используйте `Meta.db_tablespace`.",
+    syntax: "models.Field(db_tablespace='tablespace_name')",
+    arguments: [],
+    example: `from django.db import models
+
+# settings.py
+# DEFAULT_INDEX_TABLESPACE = "fast_ssd"
+
+class Article(models.Model):
+    # Индекс title хранится в tablespace "fast_ssd" (из настроек)
+    title = models.CharField(max_length=200, db_index=True)
+
+    # Явно указать другой tablespace для индекса этого поля
+    slug = models.SlugField(
+        unique=True,
+        db_tablespace="nvme_indexes",   # переопределяет DEFAULT_INDEX_TABLESPACE
+    )
+
+    class Meta:
+        # Tablespace для самой таблицы (не индексов)
+        db_tablespace = "main_data"
+
+# На MySQL/SQLite db_tablespace молча игнорируется`,
+  },
+  {
+    name: "django.db.models.fields.Field.auto_created",
+    category: "Field",
+    description:
+      "Булев атрибут — `True`, если поле было **автоматически создано Django**, а не определено явно разработчиком. Примеры: автоматическое поле `id` (`AutoField`) когда ни одно поле не объявлено как `primary_key=True`; обратные связи (`related_name`) в M2M. Используется внутренней инфраструктурой Django (миграции, Admin) для различения явных и служебных полей. В коде приложения почти не используется напрямую.",
+    syntax: "field.auto_created",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    # Django автоматически добавляет: id = AutoField(primary_key=True)
+
+# Проверить auto_created
+for field in Article._meta.get_fields():
+    print(f"{field.name}: auto_created={field.auto_created}")
+# id: auto_created=True    ← автоматически добавленный PK
+# title: auto_created=False ← объявлен явно
+
+# Использование в инспекции полей модели
+explicit_fields = [
+    f for f in Article._meta.get_fields()
+    if not f.auto_created
+]
+
+# Миграции используют auto_created, чтобы не включать
+# авто-поля в файлы миграций как явные объявления`,
+  },
+  {
+    name: "django.db.models.fields.Field.validators",
+    category: "Field",
+    description:
+      "Список валидаторов — callable-объектов, принимающих значение и бросающих `ValidationError` при нарушении. Вызываются при `full_clean()` (через `ModelForm`, `form.is_valid()`, явный вызов). **Не вызываются автоматически при `save()`** — только при валидации формы или явном `obj.full_clean()`. Django предоставляет готовые валидаторы (`MinValueValidator`, `MaxValueValidator`, `RegexValidator`, `EmailValidator` и т.д.).",
+    syntax: "models.Field(validators=[validator1, validator2])",
+    arguments: [],
+    example: `from django.db import models
+from django.core.validators import (
+    MinValueValidator, MaxValueValidator,
+    RegexValidator, MinLengthValidator,
+)
+
+def no_profanity(value: str):
+    bad_words = ["spam", "scam"]
+    if any(w in value.lower() for w in bad_words):
+        from django.core.exceptions import ValidationError
+        raise ValidationError("Недопустимое слово в тексте.")
+
+class Article(models.Model):
+    title = models.CharField(
+        max_length=200,
+        validators=[
+            MinLengthValidator(10),
+            no_profanity,
+        ],
+    )
+    rating = models.IntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(10)],
+    )
+    phone = models.CharField(
+        max_length=20,
+        validators=[RegexValidator(r"^\+7\d{10}\$", "Формат: +7XXXXXXXXXX")],
+    )
+
+# Валидация — срабатывает при full_clean(), не при save()
+article = Article(title="ab", rating=11)
+article.full_clean()   # ValidationError для обоих полей
+article.save()         # НЕ проверяет validators!`,
+  },
+  {
+    name: "django.db.models.fields.Field.error_messages",
+    category: "Field",
+    description:
+      "Словарь, позволяющий **переопределить стандартные сообщения об ошибках** валидации поля. Ключи соответствуют кодам ошибок: `'null'`, `'blank'`, `'invalid'`, `'unique'`, `'max_length'`, `'min_length'` и т.д. Значения — строки с новыми сообщениями. Используется для локализации или замены стандартных английских сообщений кастомными. Переопределяет только указанные ключи; остальные остаются стандартными.",
+    syntax: "models.Field(error_messages={'invalid': 'Кастомное сообщение'})",
+    arguments: [],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(
+        max_length=200,
+        error_messages={
+            "blank":      "Заголовок не может быть пустым.",
+            "max_length": "Заголовок не должен превышать %(limit_value)d символов.",
+            "null":       "Заголовок обязателен.",
+        },
+    )
+    email = models.EmailField(
+        unique=True,
+        error_messages={
+            "invalid": "Введите корректный email-адрес.",
+            "unique":  "Этот email уже зарегистрирован.",
+        },
+    )
+    age = models.IntegerField(
+        error_messages={
+            "invalid": "Возраст должен быть целым числом.",
+        },
+    )
+
+# Стандартные ключи ошибок для CharField:
+# null, blank, invalid, invalid_choice, unique, unique_for_date, max_length
+
+# Получить все сообщения для поля
+field = Article._meta.get_field("email")
+print(field.error_messages)`,
+  },
+  {
+    name: "django.db.models.fields.Field.deconstruct()",
+    category: "Field",
+    description:
+      "Возвращает кортеж `(name, path, args, kwargs)`, достаточный для **воссоздания поля** в файле миграции через `migrations.CreateModel` / `migrations.AddField`. Вызывается системой миграций автоматически. При создании **кастомного поля** необходимо переопределить `deconstruct()` и вернуть все аргументы, нестандартные для родителя — иначе миграции будут некорректными.",
+    syntax: "field.deconstruct()",
+    arguments: [],
+    example: `from django.db import models
+
+# Проверить, как поле декомпозируется для миграций
+field = models.CharField(max_length=200, blank=True, default="")
+field.set_attributes_from_name("title")   # имитация contribute_to_class
+
+name, path, args, kwargs = field.deconstruct()
+print(name)    # "title"
+print(path)    # "django.db.models.fields.CharField"
+print(args)    # []
+print(kwargs)  # {"max_length": 200, "blank": True, "default": ""}
+
+# Кастомное поле — обязательно переопределить deconstruct()
+class EncryptedCharField(models.CharField):
+    def __init__(self, *args, key_id=None, **kwargs):
+        self.key_id = key_id
+        super().__init__(*args, **kwargs)
+
+    def deconstruct(self):
+        name, path, args, kwargs = super().deconstruct()
+        if self.key_id is not None:
+            kwargs["key_id"] = self.key_id   # ← добавить кастомный аргумент
+        return name, path, args, kwargs`,
+  },
+  {
+    name: "django.db.models.fields.Field.get_internal_type()",
+    category: "Field",
+    description:
+      "Возвращает строку — **логический тип поля** в системе Django ORM, например `'CharField'`, `'IntegerField'`, `'DateTimeField'`. Используется бэкендом БД для маппинга на конкретный SQL-тип. При создании кастомного поля, которое должно вести себя как существующее, переопределите этот метод вместо `db_type()` — это позволит корректно работать с несколькими СУБД.",
+    syntax: "field.get_internal_type()",
+    arguments: [],
+    example: `from django.db import models
+
+# Стандартные поля
+field = models.CharField(max_length=200)
+print(field.get_internal_type())   # "CharField"
+
+field = models.DateTimeField()
+print(field.get_internal_type())   # "DateTimeField"
+
+field = models.JSONField()
+print(field.get_internal_type())   # "JSONField"
+
+# Кастомное поле: переопределить get_internal_type()
+# вместо db_type() для кросс-СУБД совместимости
+class PositiveSmallAutoField(models.SmallAutoField):
+    def get_internal_type(self):
+        return "SmallAutoField"   # использует маппинг SmallAutoField для каждой СУБД
+
+# Маппинг типов в бэкенде PostgreSQL:
+# "CharField"    → VARCHAR(n)
+# "IntegerField" → integer
+# "BooleanField" → boolean
+# "JSONField"    → jsonb  (на PostgreSQL)
+
+# Получить SQL-тип через connection
+from django.db import connection
+field = models.CharField(max_length=100)
+field.set_attributes_from_name("test")
+print(field.db_type(connection))   # "varchar(100)"`,
+  },
+  {
+    name: "django.db.models.fields.Field.db_type(connection)",
+    category: "Field",
+    description:
+      "Возвращает строку с **SQL-типом колонки** для указанного соединения с БД — например, `'varchar(200)'`, `'integer'`, `'jsonb'`. Используется при генерации DDL (`CREATE TABLE`, `ALTER TABLE`). Зависит от конкретного бэкенда (`connection.vendor`): один и тот же Django-тип может давать разный SQL на PostgreSQL, MySQL, SQLite. При создании кастомного поля переопределите этот метод, если `get_internal_type()` недостаточно.",
+    syntax: "field.db_type(connection)",
+    arguments: [
+      {
+        name: "connection",
+        description: "Объект соединения с БД из `django.db.connection` — используется для определения диалекта SQL.",
+      },
+    ],
+    example: `from django.db import connection, models
+
+# Получить SQL-тип существующего поля
+field = models.CharField(max_length=200)
+field.set_attributes_from_name("title")
+print(field.db_type(connection))
+# PostgreSQL: "varchar(200)"
+# MySQL:      "varchar(200)"
+# SQLite:     "varchar(200)"
+
+field2 = models.JSONField()
+field2.set_attributes_from_name("data")
+print(field2.db_type(connection))
+# PostgreSQL: "jsonb"
+# MySQL:      "json"
+# SQLite:     "text"
+
+# Кастомное поле с кастомным SQL-типом
+class UnsignedIntegerField(models.IntegerField):
+    def db_type(self, connection):
+        if connection.vendor == "mysql":
+            return "integer UNSIGNED"
+        return super().db_type(connection)   # другие СУБД — стандартный integer
+
+# Используется системой миграций при CREATE TABLE
+# Изменение db_type() → миграция изменит тип колонки`,
+  },
+  {
+    name: "django.db.models.fields.Field.rel_db_type(connection)",
+    category: "Field",
+    description:
+      "Возвращает SQL-тип для **колонки ссылки** в `ForeignKey` на это поле — то есть тип, который будет у `FK`-колонки в дочерней таблице. В большинстве случаев совпадает с `db_type()`, но для `AutoField` / `BigAutoField` отличается: сам `AutoField` — `SERIAL` (PostgreSQL) или `INTEGER AUTOINCREMENT` (SQLite), а ссылающаяся FK-колонка — обычный `integer` / `bigint`.",
+    syntax: "field.rel_db_type(connection)",
+    arguments: [
+      {
+        name: "connection",
+        description: "Объект соединения с БД — определяет диалект SQL.",
+      },
+    ],
+    example: `from django.db import connection, models
+
+# AutoField: db_type vs rel_db_type
+auto_field = models.AutoField(primary_key=True)
+auto_field.set_attributes_from_name("id")
+
+print(auto_field.db_type(connection))
+# PostgreSQL: "serial"   — AUTOINCREMENT при CREATE TABLE
+# SQLite:     "integer"  — INTEGER PRIMARY KEY AUTOINCREMENT
+
+print(auto_field.rel_db_type(connection))
+# PostgreSQL: "integer"  — FK ссылается на обычный integer, не serial
+# SQLite:     "integer"
+
+# BigAutoField
+big_auto = models.BigAutoField(primary_key=True)
+big_auto.set_attributes_from_name("id")
+print(big_auto.rel_db_type(connection))
+# PostgreSQL: "bigint"   — FK ссылается на bigint
+
+# Полезно при создании кастомного PK-поля:
+# Если кастомный AutoField использует SEQUENCE или SERIAL,
+# rel_db_type должен вернуть тип без SERIAL для FK`,
+  },
+  {
+    name: "django.db.models.fields.Field.db_parameters(connection)",
+    category: "Field",
+    description:
+      "Возвращает словарь с параметрами колонки для DDL: `{'type': sql_type, 'check': check_constraint}`. Объединяет результаты `db_type()` и `db_check()`. Используется системой миграций при генерации `CREATE TABLE` и `ALTER TABLE`. При создании кастомных полей редко требует переопределения — обычно достаточно переопределить `db_type()` и/или `db_check()`.",
+    syntax: "field.db_parameters(connection)",
+    arguments: [
+      {
+        name: "connection",
+        description: "Объект соединения с БД — определяет диалект SQL.",
+      },
+    ],
+    example: `from django.db import connection, models
+
+# CharField
+field = models.CharField(max_length=100)
+field.set_attributes_from_name("title")
+print(field.db_parameters(connection))
+# {"type": "varchar(100)", "check": None}
+
+# PositiveIntegerField — имеет CHECK-ограничение
+field2 = models.PositiveIntegerField()
+field2.set_attributes_from_name("views")
+print(field2.db_parameters(connection))
+# PostgreSQL: {"type": "integer", "check": '"views" >= 0'}
+
+# Кастомное поле: переопределить db_parameters() если нужен полный контроль
+class RangedIntegerField(models.IntegerField):
+    def __init__(self, min_value=None, max_value=None, **kwargs):
+        self.min_value = min_value
+        self.max_value = max_value
+        super().__init__(**kwargs)
+
+    def db_parameters(self, connection):
+        params = super().db_parameters(connection)
+        constraints = []
+        if self.min_value is not None:
+            constraints.append(f'"{self.attname}" >= {self.min_value}')
+        if self.max_value is not None:
+            constraints.append(f'"{self.attname}" <= {self.max_value}')
+        params["check"] = " AND ".join(constraints) or None
+        return params`,
+  },
+  {
+    name: "django.db.models.fields.Field.db_check(connection)",
+    category: "Field",
+    description:
+      "Возвращает строку SQL для `CHECK`-ограничения колонки или `None`. Используется при генерации DDL: если метод возвращает не `None`, к колонке добавляется `CHECK (...)`. Стандартные поля с ограничениями (`PositiveIntegerField`, `PositiveSmallIntegerField`) реализуют этот метод. При создании кастомного поля с диапазонными ограничениями переопределите `db_check()` вместо ручного добавления `Meta.constraints`.",
+    syntax: "field.db_check(connection)",
+    arguments: [
+      {
+        name: "connection",
+        description: "Объект соединения с БД — используется для проверки поддержки CHECK в диалекте.",
+      },
+    ],
+    example: `from django.db import connection, models
+
+# PositiveIntegerField реализует db_check()
+field = models.PositiveIntegerField()
+field.set_attributes_from_name("rating")
+print(field.db_check(connection))
+# '"rating" >= 0'  (PostgreSQL/SQLite)
+# None             (некоторые версии MySQL — CHECK не поддерживался до 8.0)
+
+# CharField — нет CHECK-ограничения
+field2 = models.CharField(max_length=200)
+field2.set_attributes_from_name("title")
+print(field2.db_check(connection))
+# None
+
+# Кастомное поле с CHECK-ограничением
+class PercentField(models.FloatField):
+    def db_check(self, connection):
+        return f'"{self.attname}" >= 0.0 AND "{self.attname}" <= 100.0'
+
+class Survey(models.Model):
+    completion = PercentField()
+# DDL: completion float CHECK ("completion" >= 0.0 AND "completion" <= 100.0)`,
+  },
+  {
+    name: "django.db.models.fields.Field.to_python(value)",
+    category: "Field",
+    description:
+      "Преобразует сырое значение (из БД, формы или Python) в **нативный Python-объект**. Вызывается при десериализации, в `clean()`-методе формы и в `run_validators()`. При создании кастомного поля переопределите этот метод для корректной конвертации: принимайте `None`, строку, уже правильный тип и любой другой ввод. Бросайте `ValidationError` если значение не поддаётся конвертации.",
+    syntax: "field.to_python(value)",
+    arguments: [
+      {
+        name: "value",
+        description: "Сырое значение любого типа — из БД, формы, JSON или Python-кода.",
+      },
+    ],
+    example: `from django.db import models
+from django.core.exceptions import ValidationError
+
+# Стандартное поведение встроенных полей
+field = models.IntegerField()
+print(field.to_python("42"))    # 42  (int)
+print(field.to_python(42))      # 42  (уже int)
+print(field.to_python(None))    # None
+
+# Кастомное поле: список целых через CSV
+class IntListField(models.CharField):
+    def to_python(self, value):
+        if value in (None, ""):
+            return []
+        if isinstance(value, list):
+            return value
+        try:
+            return [int(x.strip()) for x in value.split(",") if x.strip()]
+        except (ValueError, AttributeError):
+            raise ValidationError(
+                "Ожидается список целых чисел через запятую. Получено: %(value)s",
+                params={"value": value},
+            )
+
+# to_python вызывается Django при:
+# 1. form.clean() / field.clean() в формах
+# 2. loaddata / десериализации фикстур
+# 3. явном вызове field.to_python(raw)`,
+  },
+  {
+    name: "django.db.models.fields.Field.get_prep_value(value)",
+    category: "Field",
+    description:
+      "Преобразует Python-значение в **формат, пригодный для передачи в адаптер БД** — промежуточный шаг перед `get_db_prep_value()`. Обычно конвертирует Python-объект в строку, число или другой базовый тип. Переопределяйте этот метод в кастомных полях вместо `get_db_prep_value()` — он работает независимо от конкретной СУБД и вызывается из `get_db_prep_value()` с `prepared=True`.",
+    syntax: "field.get_prep_value(value)",
+    arguments: [
+      {
+        name: "value",
+        description: "Python-значение (результат to_python или присвоения атрибута модели).",
+      },
+    ],
+    example: `from django.db import models
+
+# Встроенный пример: UUIDField
+# Python: UUID('550e8400-...')  →  get_prep_value  →  '550e8400-...' (строка для адаптера)
+
+# Кастомное поле: список int → CSV-строка для VARCHAR
+class IntListField(models.CharField):
+    def get_prep_value(self, value):
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return ",".join(str(x) for x in value)
+        return value   # уже строка (напр., при повторном вызове)
+
+    def to_python(self, value):
+        if not value:
+            return []
+        if isinstance(value, list):
+            return value
+        return [int(x) for x in value.split(",") if x]
+
+# Цепочка вызовов при save():
+# Python-значение [1,2,3]
+#   → get_prep_value()    → "1,2,3"
+#   → get_db_prep_value() → "1,2,3" (передаётся адаптеру psycopg2)
+#   → SQL: INSERT ... VALUES ('1,2,3')`,
+  },
+  {
+    name: "django.db.models.fields.Field.get_db_prep_value(value, connection, prepared=False)",
+    category: "Field",
+    description:
+      "Финальное преобразование значения для **конкретного соединения с БД**. Если `prepared=False` — сначала вызывает `get_prep_value()`. Переопределяйте, только если преобразование зависит от диалекта СУБД (например, разный формат UUID на PostgreSQL и SQLite). В большинстве кастомных полей достаточно переопределить `get_prep_value()`.",
+    syntax: "field.get_db_prep_value(value, connection, prepared=False)",
+    arguments: [
+      {
+        name: "value",
+        description: "Python-значение или уже подготовленное значение (если prepared=True).",
+      },
+      {
+        name: "connection",
+        description: "Объект соединения с БД — позволяет выбрать поведение в зависимости от СУБД.",
+      },
+      {
+        name: "prepared",
+        description: "Если True — get_prep_value() уже вызывался, пропустить его.",
+      },
+    ],
+    example: `from django.db import models
+
+# Кастомное поле с СУБД-зависимой подготовкой
+class UpperCaseField(models.CharField):
+    def get_db_prep_value(self, value, connection, prepared=False):
+        value = super().get_db_prep_value(value, connection, prepared)
+        if value is not None:
+            return value.upper()
+        return value
+
+# UUIDField — пример из Django:
+# PostgreSQL: отдаёт UUID-объект напрямую (psycopg2 понимает)
+# SQLite:     конвертирует в hex-строку без дефисов
+
+class NativeUUIDExample(models.UUIDField):
+    def get_db_prep_value(self, value, connection, prepared=False):
+        value = super().get_db_prep_value(value, connection, prepared=prepared)
+        if connection.vendor == "postgresql":
+            return value   # UUID-объект
+        return str(value).replace("-", "") if value else None
+
+# Цепочка:
+# to_python() → Python-объект
+# get_prep_value() → базовый тип (не зависит от СУБД)
+# get_db_prep_value() → финальный тип для адаптера (зависит от СУБД)`,
+  },
+  {
+    name: "django.db.models.fields.Field.get_db_prep_save(value, connection)",
+    category: "Field",
+    description:
+      "Вызывается непосредственно перед `INSERT` или `UPDATE` — подготавливает значение для сохранения в БД. По умолчанию делегирует в `get_db_prep_value(value, connection, prepared=False)`. Переопределяйте только если логика подготовки к записи отличается от логики подготовки к чтению (например, хеширование пароля при сохранении).",
+    syntax: "field.get_db_prep_save(value, connection)",
+    arguments: [
+      {
+        name: "value",
+        description: "Python-значение атрибута модели.",
+      },
+      {
+        name: "connection",
+        description: "Объект соединения с БД.",
+      },
+    ],
+    example: `from django.db import models
+import hashlib
+
+# Пример: поле, которое хранит хеш значения, а не само значение
+class HashedField(models.CharField):
+    def get_db_prep_save(self, value, connection):
+        if value is not None:
+            # при сохранении — хешируем
+            value = hashlib.sha256(value.encode()).hexdigest()
+        return super().get_db_prep_save(value, connection)
+
+# При чтении from_db_value / to_python не преобразуют —
+# значение останется хешем (для полей-хранилищ fingerprint, токенов)
+
+class Token(models.Model):
+    value = HashedField(max_length=64)
+
+# Token.objects.create(value="secret123")
+# В БД: sha256("secret123") = "a665a45920..."
+
+# Стандартная цепочка при save():
+# field.pre_save() → field.get_db_prep_save() → cursor.execute(sql, params)`,
+  },
+  {
+    name: "django.db.models.fields.Field.value_from_object(obj)",
+    category: "Field",
+    description:
+      "Возвращает **значение поля** для указанного экземпляра модели в виде Python-объекта. Используется сериализаторами (`dumpdata`, DRF) и формами для извлечения значения из объекта. Простая реализация по умолчанию: `return getattr(obj, self.attname)`. Переопределяйте в кастомных полях, если значение хранится иначе (например, в нескольких атрибутах).",
+    syntax: "field.value_from_object(obj)",
+    arguments: [
+      {
+        name: "obj",
+        description: "Экземпляр модели, из которого нужно извлечь значение поля.",
+      },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    body  = models.TextField()
+
+# Получить значение поля через экземпляр field
+article = Article(title="Django ORM", body="...")
+field = Article._meta.get_field("title")
+print(field.value_from_object(article))   # "Django ORM"
+
+# Используется в сериализаторах
+from django.core import serializers
+data = serializers.serialize("json", Article.objects.all())
+# внутри вызывается field.value_from_object(obj) для каждого поля
+
+# Кастомное поле с нестандартным хранением
+class PointField(models.Field):
+    # хранит "x,y" в БД, возвращает tuple в Python
+    def value_from_object(self, obj):
+        val = super().value_from_object(obj)
+        if isinstance(val, tuple):
+            return val   # уже правильный тип
+        x, y = val.split(",")
+        return (float(x), float(y))`,
+  },
+  {
+    name: "django.db.models.fields.Field.value_to_string(obj)",
+    category: "Field",
+    description:
+      "Преобразует значение поля экземпляра модели в **строку для сериализации** (`dumpdata`, `loaddata`). По умолчанию вызывает `value_from_object(obj)` и возвращает `str(value)`. При создании кастомного поля переопределите этот метод, если значение нельзя корректно восстановить через `str()` — например, для дат, UUID, составных типов. Пара с `to_python()`: `value_to_string` сериализует, `to_python` десериализует.",
+    syntax: "field.value_to_string(obj)",
+    arguments: [
+      {
+        name: "obj",
+        description: "Экземпляр модели.",
+      },
+    ],
+    example: `from django.db import models
+
+# Встроенное поведение DateField:
+# Python: datetime.date(2024, 1, 15)  →  value_to_string  →  "2024-01-15"
+# Восстановление: to_python("2024-01-15") → datetime.date(2024, 1, 15)
+
+# Кастомное поле: список int ↔ JSON
+import json
+
+class IntListField(models.CharField):
+    def value_to_string(self, obj):
+        value = self.value_from_object(obj)   # [1, 2, 3]
+        return json.dumps(value)              # "[1, 2, 3]"
+
+    def to_python(self, value):
+        if isinstance(value, list):
+            return value
+        if not value:
+            return []
+        try:
+            result = json.loads(value)
+            if isinstance(result, list):
+                return result
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return [int(x) for x in value.split(",") if x.strip()]
+
+# dumpdata: вызывает value_to_string(obj) → строка в JSON-фикстуре
+# loaddata: вызывает to_python(строка)    → Python-объект`,
+  },
+  {
+    name: "django.db.models.fields.Field.formfield(**kwargs)",
+    category: "Field",
+    description:
+      "Возвращает экземпляр поля формы (`django.forms.Field`), соответствующего полю модели. Вызывается `ModelForm` для автоматической генерации полей формы. Переопределяйте для: замены стандартного виджета, добавления кастомной валидации на уровне формы, изменения типа поля формы. Параметры `form_class`, `widget`, `label` и другие можно передать через `kwargs`.",
+    syntax: "field.formfield(**kwargs)",
+    arguments: [
+      {
+        name: "**kwargs",
+        description: "Параметры для поля формы: `form_class`, `widget`, `label`, `help_text`, `required`, `initial` и т.д.",
+      },
+    ],
+    example: `from django import forms
+from django.db import models
+
+# Базовое использование: ModelForm сам вызывает formfield()
+class ArticleForm(forms.ModelForm):
+    class Meta:
+        model = Article
+        fields = "__all__"
+
+# Переопределить формфилд в кастомном поле
+class ColorField(models.CharField):
+    def formfield(self, **kwargs):
+        # заменить стандартный TextInput на ColorInput
+        kwargs.setdefault("widget", forms.TextInput(attrs={"type": "color"}))
+        kwargs.setdefault("max_length", self.max_length)
+        return super().formfield(**kwargs)
+
+# Изменить формфилд через ModelForm.formfield_callback
+class CustomForm(forms.ModelForm):
+    class Meta:
+        model = Article
+        fields = ["status"]
+        widgets = {"status": forms.RadioSelect}
+
+# Явный вызов для инспекции
+field = Article._meta.get_field("title")
+form_field = field.formfield()
+print(type(form_field))   # <class 'django.forms.fields.CharField'>
+print(form_field.max_length)   # 200`,
+  },
+  {
+    name: "django.db.models.fields.Field.save_form_data(instance, data)",
+    category: "Field",
+    description:
+      "Сохраняет данные из формы в экземпляр модели. Вызывается `ModelForm.save()` для записи очищенного значения в соответствующий атрибут модели. Реализация по умолчанию: `setattr(instance, self.attname, data)`. Переопределяйте для полей с нестандартной логикой записи — например, `FileField` удаляет старый файл при замене, `ManyToManyField` использует `set()` вместо прямого присвоения.",
+    syntax: "field.save_form_data(instance, data)",
+    arguments: [
+      {
+        name: "instance",
+        description: "Экземпляр модели, в который сохраняется значение.",
+      },
+      {
+        name: "data",
+        description: "Очищенное значение из формы (результат field.clean()).",
+      },
+    ],
+    example: `from django.db import models
+
+# Стандартная реализация (упрощённо):
+# def save_form_data(self, instance, data):
+#     setattr(instance, self.attname, data)
+
+# FileField переопределяет: если data=False — удалить файл
+# ManyToManyField переопределяет: instance.tags.set(data) после save()
+
+# Кастомное поле с логикой при сохранении из формы
+class NormalizedEmailField(models.EmailField):
+    def save_form_data(self, instance, data):
+        if data:
+            data = data.strip().lower()   # нормализация перед сохранением
+        super().save_form_data(instance, data)
+
+# Порядок при form.save():
+# 1. form.cleaned_data получает clean()-значения
+# 2. field.save_form_data(instance, cleaned_value) для каждого поля
+# 3. instance.save()
+# 4. m2m_fields.save_form_data() — M2M после save()`,
+  },
+  {
+    name: "django.db.models.fields.Field.pre_save(model_instance, add)",
+    category: "Field",
+    description:
+      "Вызывается непосредственно **перед сохранением** объекта (`INSERT` или `UPDATE`) — возвращает значение поля для передачи в БД. Именно здесь `DateTimeField(auto_now=True)` устанавливает текущее время, а `DateTimeField(auto_now_add=True)` — только при создании. Переопределяйте для: автоматических вычислений при сохранении, аудит-логов, слагификации. `add=True` если это новый объект (INSERT), `False` — обновление.",
+    syntax: "field.pre_save(model_instance, add)",
+    arguments: [
+      {
+        name: "model_instance",
+        description: "Экземпляр модели, которую сохраняют.",
+      },
+      {
+        name: "add",
+        description: "True при INSERT (новый объект), False при UPDATE.",
+      },
+    ],
+    example: `from django.db import models
+from django.utils import timezone
+from django.utils.text import slugify
+
+# Как DateTimeField(auto_now=True) реализован через pre_save:
+class AutoNowField(models.DateTimeField):
+    def pre_save(self, model_instance, add):
+        value = timezone.now()
+        setattr(model_instance, self.attname, value)
+        return value
+
+# Кастомное поле: автослагификация при создании
+class AutoSlugField(models.SlugField):
+    def __init__(self, populate_from, **kwargs):
+        self.populate_from = populate_from
+        kwargs.setdefault("blank", True)
+        super().__init__(**kwargs)
+
+    def pre_save(self, model_instance, add):
+        value = getattr(model_instance, self.attname)
+        if not value:   # если slug не задан — сгенерировать
+            source = getattr(model_instance, self.populate_from)
+            value = slugify(source)
+            setattr(model_instance, self.attname, value)
+        return super().pre_save(model_instance, add)
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    slug  = AutoSlugField(populate_from="title", unique=True)`,
+  },
+  {
+    name: "django.db.models.fields.Field.get_choices(include_blank=True, blank_choice=[('', '---------')], limit_choices_to=None, ordering=())",
+    category: "Field",
+    description:
+      "Возвращает список пар `(value, display)` для использования в виджетах выбора (select, radioselect). Если у поля задан атрибут `choices` — возвращает его (с опциональным пустым вариантом). Для полей `ForeignKey` и `ManyToManyField` выполняет запрос к БД и возвращает `queryset`-значения. `limit_choices_to` фильтрует доступные варианты (словарь или Q-объект). Вызывается `formfield()` при построении виджета.",
+    syntax: "field.get_choices(include_blank=True, blank_choice=[('', '---------')], limit_choices_to=None, ordering=())",
+    arguments: [
+      {
+        name: "include_blank",
+        description: "Если True — добавляет пустой вариант в начало списка.",
+      },
+      {
+        name: "blank_choice",
+        description: "Список пар для пустого варианта. По умолчанию: [('', '---------')].",
+      },
+      {
+        name: "limit_choices_to",
+        description: "Словарь или Q-объект для фильтрации FK/M2M вариантов.",
+      },
+      {
+        name: "ordering",
+        description: "Порядок сортировки FK/M2M вариантов (список полей).",
+      },
+    ],
+    example: `from django.db import models
+
+class Article(models.Model):
+    class Status(models.TextChoices):
+        DRAFT     = "draft",     "Черновик"
+        PUBLISHED = "published", "Опубликовано"
+
+    status = models.CharField(max_length=20, choices=Status)
+    author = models.ForeignKey("auth.User", on_delete=models.CASCADE)
+
+# Получить варианты для CharField с choices
+field = Article._meta.get_field("status")
+print(field.get_choices())
+# [("", "---------"), ("draft", "Черновик"), ("published", "Опубликовано")]
+
+print(field.get_choices(include_blank=False))
+# [("draft", "Черновик"), ("published", "Опубликовано")]
+
+# FK — выполнит SELECT для получения всех User
+fk_field = Article._meta.get_field("author")
+choices = fk_field.get_choices(
+    limit_choices_to={"is_active": True},
+    ordering=["last_name"],
+)
+# [("", "---------"), (1, "Иванов"), (2, "Петров"), ...]
+
+# В формах: get_choices() вызывается автоматически при рендеринге Select-виджета`,
+  },
+
+  // ─── Signals ───────────────────────────────────────────────────────────────
+  {
+    name: "django.db.models.signals",
+    category: "Signals",
+    description:
+      "Модуль Django, содержащий встроенные сигналы ORM: `pre_init`, `post_init`, `pre_save`, `post_save`, `pre_delete`, `post_delete`, `m2m_changed`, `class_prepared`. Сигналы реализованы через `django.dispatch.Signal` — механизм publish/subscribe, позволяющий декаплированным компонентам реагировать на события модели. Подписка через `.connect()` или декоратор `@receiver`. Для подписки рекомендуется регистрировать обработчики в `AppConfig.ready()` — до этого момента приложения не инициализированы.",
+    syntax: "from django.db.models import signals",
+    arguments: [],
+    example: `from django.db.models import signals
+from django.dispatch import receiver
+
+# Способ 1: декоратор @receiver (рекомендуется)
+@receiver(signals.post_save, sender="auth.User")
+def on_user_saved(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
+
+# Способ 2: явный .connect()
+def on_post_delete(sender, instance, **kwargs):
+    print(f"Удалён: {instance}")
+
+signals.post_delete.connect(on_post_delete, sender=Article)
+
+# Регистрация в AppConfig.ready() — правильное место для подписок
+# myapp/apps.py
+class MyAppConfig(AppConfig):
+    name = "myapp"
+
+    def ready(self):
+        import myapp.signals   # импорт модуля с @receiver-декораторами`,
+  },
+  {
+    name: "django.db.models.signals.pre_init.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    category: "Signals",
+    description:
+      "Сигнал, отправляемый в начале `Model.__init__()` — **до** инициализации полей. `sender` — класс модели, `args` и `kwargs` — аргументы конструктора. Используется редко: на момент срабатывания объект ещё не создан и поля не установлены. Полезен для аудита вызовов конструктора или перехвата аргументов до их обработки.",
+    syntax: "pre_init.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    arguments: [
+      { name: "receiver", description: "Callable с сигнатурой `(sender, *args, **kwargs)`. `args`/`kwargs` — аргументы __init__." },
+      { name: "sender", description: "Класс модели-отправителя. None — получать от всех моделей." },
+      { name: "weak", description: "Если True (по умолчанию) — слабая ссылка на receiver. Используйте dispatch_uid или weak=False для обычных функций." },
+      { name: "dispatch_uid", description: "Уникальный строковый идентификатор — предотвращает двойную регистрацию." },
+    ],
+    example: `from django.db.models.signals import pre_init
+from django.dispatch import receiver
+
+@receiver(pre_init, sender=Article)
+def article_pre_init(sender, args, kwargs, **extra):
+    # sender  — класс Article
+    # args    — позиционные аргументы __init__
+    # kwargs  — именованные аргументы __init__
+    print(f"Article.__init__ вызван с kwargs: {list(kwargs.keys())}")
+
+# pre_init срабатывает ДО установки атрибутов:
+# a = Article(title="Test")  →  сигнал → __init__ продолжается → a.title = "Test"
+
+# Явное подключение с dispatch_uid (защита от дублирования)
+pre_init.connect(
+    article_pre_init,
+    sender=Article,
+    dispatch_uid="myapp.article_pre_init",
+)`,
+  },
+  {
+    name: "django.db.models.signals.post_init.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    category: "Signals",
+    description:
+      "Сигнал, отправляемый в конце `Model.__init__()` — **после** того, как все поля установлены. `instance` — готовый объект модели. Используется чаще `pre_init`: для установки дополнительных атрибутов, кэширования исходного состояния объекта (для отслеживания изменений при `save()`), аудита создания экземпляров.",
+    syntax: "post_init.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    arguments: [
+      { name: "receiver", description: "Callable с сигнатурой `(sender, instance, **kwargs)`." },
+      { name: "sender", description: "Класс модели. None — получать от всех." },
+      { name: "weak", description: "Слабая ссылка на receiver. Укажите dispatch_uid для надёжной регистрации." },
+      { name: "dispatch_uid", description: "Уникальный ID — предотвращает двойную подписку." },
+    ],
+    example: `from django.db.models.signals import post_init
+from django.dispatch import receiver
+
+# Паттерн: кэшировать исходное состояние для отслеживания изменений
+@receiver(post_init, sender=Article)
+def cache_original_state(sender, instance, **kwargs):
+    # Сохраняем снимок состояния сразу после загрузки из БД
+    instance._original_status = instance.status
+    instance._original_title  = instance.title
+
+# Использование в post_save: сравнить с оригиналом
+@receiver(post_save, sender=Article)
+def on_status_change(sender, instance, created, **kwargs):
+    if not created:
+        if instance.status != instance._original_status:
+            notify_subscribers(instance)
+
+# post_init срабатывает при:
+# Article(...)               — создание нового объекта
+# Article.objects.get(pk=1)  — загрузка из БД (через __init__)`,
+  },
+  {
+    name: "django.db.models.signals.pre_save.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    category: "Signals",
+    description:
+      "Сигнал, отправляемый **перед** `Model.save()`. `instance` — объект, который будет сохранён; `raw=True` если сохранение выполняется через `loaddata`; `update_fields` — набор полей при частичном `save(update_fields=[...])`. Используется для: вычисления производных полей (slug, хеш), валидации, аудит-логов перед изменением, шифрования данных.",
+    syntax: "pre_save.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    arguments: [
+      { name: "receiver", description: "Callable `(sender, instance, raw, using, update_fields, **kwargs)`." },
+      { name: "sender", description: "Класс модели. None — все модели." },
+      { name: "weak", description: "Слабая ссылка. Используйте dispatch_uid." },
+      { name: "dispatch_uid", description: "Уникальный ID подписки." },
+    ],
+    example: `from django.db.models.signals import pre_save
+from django.dispatch import receiver
+from django.utils.text import slugify
+
+@receiver(pre_save, sender=Article)
+def auto_slug(sender, instance, **kwargs):
+    # Пропустить при загрузке фикстур
+    if kwargs.get("raw"):
+        return
+    if not instance.slug:
+        instance.slug = slugify(instance.title)
+
+@receiver(pre_save, sender=Article)
+def log_before_save(sender, instance, update_fields, **kwargs):
+    if not instance.pk:
+        return   # новый объект, нечего сравнивать
+    try:
+        old = Article.objects.get(pk=instance.pk)
+    except Article.DoesNotExist:
+        return
+    if old.status != instance.status:
+        AuditLog.objects.create(
+            model="Article",
+            pk=instance.pk,
+            field="status",
+            old=old.status,
+            new=instance.status,
+        )`,
+  },
+  {
+    name: "django.db.models.signals.post_save.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    category: "Signals",
+    description:
+      "Сигнал, отправляемый **после успешного** `Model.save()`. Ключевой аргумент `created=True` при `INSERT`, `False` при `UPDATE`. `update_fields` — набор обновлённых полей или `None`. Самый часто используемый сигнал ORM: создание связанных объектов, отправка уведомлений, инвалидация кэша, запуск фоновых задач. **Важно:** выполняется в той же транзакции — используйте `transaction.on_commit()` для отправки задач Celery.",
+    syntax: "post_save.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    arguments: [
+      { name: "receiver", description: "Callable `(sender, instance, created, update_fields, **kwargs)`. `created=True` при INSERT." },
+      { name: "sender", description: "Класс модели. None — все модели." },
+      { name: "weak", description: "Слабая ссылка." },
+      { name: "dispatch_uid", description: "Уникальный ID подписки." },
+    ],
+    example: `from django.db.models.signals import post_save
+from django.dispatch import receiver
+from django.db import transaction
+
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
+
+@receiver(post_save, sender=Article)
+def invalidate_cache(sender, instance, **kwargs):
+    cache.delete(f"article:{instance.pk}")
+    cache.delete("article_list")
+
+# Celery-задача после коммита (не внутри транзакции!)
+@receiver(post_save, sender=Order)
+def send_confirmation(sender, instance, created, **kwargs):
+    if created:
+        transaction.on_commit(
+            lambda: send_order_email.delay(instance.pk)
+        )
+
+# Только при обновлении конкретного поля
+@receiver(post_save, sender=Article)
+def on_published(sender, instance, update_fields, **kwargs):
+    if update_fields and "status" in update_fields:
+        if instance.status == "published":
+            notify_subscribers.delay(instance.pk)`,
+  },
+  {
+    name: "django.db.models.signals.pre_delete.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    category: "Signals",
+    description:
+      "Сигнал, отправляемый **перед** `Model.delete()` или `QuerySet.delete()`. `instance` — объект перед удалением; `using` — алиас БД. Используется для: очистки связанных ресурсов (файлы, S3-объекты), создания архивных записей, проверки разрешений на удаление, логирования. Срабатывает до каскадного удаления — объект ещё существует в БД.",
+    syntax: "pre_delete.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    arguments: [
+      { name: "receiver", description: "Callable `(sender, instance, using, **kwargs)`." },
+      { name: "sender", description: "Класс модели. None — все модели." },
+      { name: "weak", description: "Слабая ссылка." },
+      { name: "dispatch_uid", description: "Уникальный ID подписки." },
+    ],
+    example: `from django.db.models.signals import pre_delete
+from django.dispatch import receiver
+import os
+
+@receiver(pre_delete, sender=Article)
+def archive_before_delete(sender, instance, **kwargs):
+    # Создать архивную запись до удаления
+    ArchivedArticle.objects.create(
+        original_pk=instance.pk,
+        title=instance.title,
+        body=instance.body,
+        deleted_by=get_current_user(),
+    )
+
+@receiver(pre_delete, sender=UserAvatar)
+def delete_avatar_file(sender, instance, **kwargs):
+    # Удалить файл с диска перед удалением записи
+    if instance.image and os.path.isfile(instance.image.path):
+        os.remove(instance.image.path)
+
+# pre_delete срабатывает для каждого объекта при каскадном удалении:
+# Article.objects.filter(author=user).delete()
+# → pre_delete срабатывает для каждой статьи`,
+  },
+  {
+    name: "django.db.models.signals.post_delete.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    category: "Signals",
+    description:
+      "Сигнал, отправляемый **после** `Model.delete()`. `instance` — удалённый объект; `instance.pk` уже `None` (сброшен после удаления). Используется для: инвалидации кэша, обновления счётчиков, уведомлений об удалении, очистки внешних ресурсов после подтверждения удаления из БД. Аналогично `post_save` — выполняется в транзакции, используйте `on_commit` для Celery.",
+    syntax: "post_delete.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    arguments: [
+      { name: "receiver", description: "Callable `(sender, instance, using, **kwargs)`. `instance.pk` уже None." },
+      { name: "sender", description: "Класс модели. None — все модели." },
+      { name: "weak", description: "Слабая ссылка." },
+      { name: "dispatch_uid", description: "Уникальный ID подписки." },
+    ],
+    example: `from django.db.models.signals import post_delete
+from django.dispatch import receiver
+from django.db import transaction
+
+@receiver(post_delete, sender=Article)
+def invalidate_cache(sender, instance, **kwargs):
+    # instance.pk уже None — используем сохранённое значение
+    cache.delete(f"article:{instance.pk}")  # будет None!
+
+# Правильный паттерн: сохранить pk до удаления
+@receiver(pre_delete, sender=Article)
+def capture_pk(sender, instance, **kwargs):
+    instance._deleted_pk = instance.pk
+
+@receiver(post_delete, sender=Article)
+def post_delete_cleanup(sender, instance, **kwargs):
+    pk = instance._deleted_pk
+    cache.delete(f"article:{pk}")
+    cache.delete("article_list")
+    transaction.on_commit(
+        lambda: update_search_index.delay("delete", pk)
+    )`,
+  },
+  {
+    name: "django.db.models.signals.m2m_changed.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    category: "Signals",
+    description:
+      "Сигнал, отправляемый при изменении M2M-связи через промежуточную таблицу: `add`, `remove`, `clear`, `pre_add`, `pre_remove`, `pre_clear`. `sender` — **промежуточный класс** M2M (не сама модель). `action` указывает тип операции; `pk_set` — множество PK добавляемых/удаляемых объектов; `reverse=True` если изменение через обратную сторону связи.",
+    syntax: "m2m_changed.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    arguments: [
+      { name: "receiver", description: "Callable `(sender, instance, action, reverse, model, pk_set, using, **kwargs)`." },
+      { name: "sender", description: "Промежуточный класс M2M (`Article.tags.through`). None — все M2M." },
+      { name: "weak", description: "Слабая ссылка." },
+      { name: "dispatch_uid", description: "Уникальный ID подписки." },
+    ],
+    example: `from django.db.models.signals import m2m_changed
+from django.dispatch import receiver
+
+class Article(models.Model):
+    tags = models.ManyToManyField("Tag")
+
+# sender — промежуточная таблица Article.tags.through
+@receiver(m2m_changed, sender=Article.tags.through)
+def on_tags_changed(sender, instance, action, pk_set, **kwargs):
+    # action: "pre_add", "post_add", "pre_remove", "post_remove",
+    #         "pre_clear", "post_clear"
+    if action == "post_add":
+        print(f"Добавлены теги {pk_set} к статье {instance.pk}")
+        cache.delete(f"article_tags:{instance.pk}")
+
+    elif action == "post_remove":
+        print(f"Удалены теги {pk_set}")
+
+    elif action == "post_clear":
+        print("Все теги удалены")
+
+# Типичное применение: обновление поискового индекса при изменении тегов
+@receiver(m2m_changed, sender=Article.tags.through)
+def reindex_on_tag_change(sender, instance, action, **kwargs):
+    if action.startswith("post_"):
+        transaction.on_commit(lambda: reindex_article.delay(instance.pk))`,
+  },
+  {
+    name: "django.db.models.signals.class_prepared.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    category: "Signals",
+    description:
+      "Сигнал, отправляемый при **регистрации класса модели** в реестре приложений — после завершения `ModelBase.__new__()`. Срабатывает один раз при старте приложения, когда Python импортирует модуль с классом модели. `sender` — сам класс модели. Используется внутри Django для настройки ленивых FK-ссылок по строкам (`'auth.User'`). В прикладном коде применяется редко — для динамической настройки классов после их объявления.",
+    syntax: "class_prepared.connect(receiver, sender=None, weak=True, dispatch_uid=None)",
+    arguments: [
+      { name: "receiver", description: "Callable `(sender, **kwargs)`. sender — класс модели, только что зарегистрированный." },
+      { name: "sender", description: "Конкретный класс модели или None — получать для всех моделей." },
+      { name: "weak", description: "Слабая ссылка на receiver." },
+      { name: "dispatch_uid", description: "Уникальный ID — защита от двойной регистрации." },
+    ],
+    example: `from django.db.models.signals import class_prepared
+
+# Получать уведомление о каждом зарегистрированном классе модели
+def on_class_prepared(sender, **kwargs):
+    print(f"Класс модели зарегистрирован: {sender.__name__}")
+
+class_prepared.connect(on_class_prepared)
+
+# Пример использования: динамически добавить метод к модели
+def add_audit_method(sender, **kwargs):
+    if hasattr(sender, "created_at"):
+        def get_age(self):
+            from django.utils import timezone
+            return (timezone.now() - self.created_at).days
+
+        sender.get_age_days = get_age
+
+class_prepared.connect(add_audit_method)
+
+# Важно: class_prepared срабатывает во время импорта модулей,
+# до AppConfig.ready() — подписывайтесь очень рано (напр., в __init__.py)
+# или не используйте instance-данные (БД ещё может быть не готова)`,
+  },
+   {
+        name: "django.db.models.query.QuerySet.aget",
+        category: "QuerySet",
+        description: "Асинхронная версия `get()`. Возвращает единственный объект, соответствующий условиям поиска. Выбрасывает `DoesNotExist`, если объект не найден, и `MultipleObjectsReturned`, если найдено больше одного. Используется внутри асинхронных представлений и корутин с `await`.",
+        syntax: "await QuerySet.aget(*args, **kwargs)",
+        arguments: [
+            { name: "*args", description: "Объекты Q для сложных условий поиска." },
+            { name: "**kwargs", description: "Именованные условия фильтрации (аналогично filter())." },
+        ],
+        example: `from django.http import JsonResponse
+from myapp.models import Article
+
+async def article_detail(request, article_id):
+    try:
+        article = await Article.objects.aget(pk=article_id)
+    except Article.DoesNotExist:
+        return JsonResponse({"error": "Не найдено"}, status=404)
+    return JsonResponse({"title": article.title})
+
+# Прямой вызов в асинхронном коде
+article = await Article.objects.aget(slug="hello-world")
+print(article.title)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.acreate",
+        category: "QuerySet",
+        description: "Асинхронная версия `create()`. Создаёт объект, сохраняет его в базу данных одним вызовом `save()` и возвращает созданный экземпляр. Удобна для создания объектов в асинхронных представлениях без отдельного вызова `asave()`.",
+        syntax: "await QuerySet.acreate(**kwargs)",
+        arguments: [
+            { name: "**kwargs", description: "Значения полей модели для нового объекта." },
+        ],
+        example: `from myapp.models import Comment
+
+async def add_comment(request, post_id):
+    comment = await Comment.objects.acreate(
+        post_id=post_id,
+        author=request.user.username,
+        text=request.POST["text"],
+    )
+    return JsonResponse({"id": comment.id, "created": True})
+
+# Эквивалентно (но одним асинхронным вызовом):
+# comment = Comment(post_id=post_id, ...)
+# await comment.asave()`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.aget_or_create",
+        category: "QuerySet",
+        description: "Асинхронная версия `get_or_create()`. Пытается найти объект по условиям поиска; если не найден — создаёт новый, используя `kwargs` вместе с `defaults`. Возвращает кортеж `(объект, created)`, где `created` — булево значение, указывающее, был ли объект создан.",
+        syntax: "await QuerySet.aget_or_create(defaults=None, **kwargs)",
+        arguments: [
+            { name: "defaults", description: "Словарь значений, используемых только при создании нового объекта." },
+            { name: "**kwargs", description: "Условия поиска существующего объекта (и часть полей при создании)." },
+        ],
+        example: `from myapp.models import Tag
+
+async def ensure_tag(name: str):
+    tag, created = await Tag.objects.aget_or_create(
+        name=name,
+        defaults={"slug": name.lower().replace(" ", "-")},
+    )
+    if created:
+        print(f"Создан новый тег: {tag.name}")
+    else:
+        print(f"Тег уже существует: {tag.name}")
+    return tag`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.aupdate_or_create",
+        category: "QuerySet",
+        description: "Асинхронная версия `update_or_create()`. Пытается найти объект по условиям поиска и обновить его значениями из `defaults`; если объект не найден — создаёт новый с объединёнными `kwargs` и `defaults`. Возвращает кортеж `(объект, created)`.",
+        syntax: "await QuerySet.aupdate_or_create(defaults=None, **kwargs)",
+        arguments: [
+            { name: "defaults", description: "Словарь значений для обновления существующего объекта или добавления к новому." },
+            { name: "**kwargs", description: "Условия поиска объекта." },
+        ],
+        example: `from myapp.models import UserProfile
+
+async def sync_profile(user_id: int, bio: str, avatar_url: str):
+    profile, created = await UserProfile.objects.aupdate_or_create(
+        user_id=user_id,
+        defaults={"bio": bio, "avatar_url": avatar_url},
+    )
+    action = "создан" if created else "обновлён"
+    print(f"Профиль {profile.user_id} {action}")
+    return profile`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.abulk_create",
+        category: "QuerySet",
+        description: "Асинхронная версия `bulk_create()`. Эффективно вставляет список объектов в базу данных минимальным числом запросов. Поддерживает `batch_size` для разбиения на пакеты, `ignore_conflicts` для игнорирования дублей, а также `update_conflicts`/`update_fields`/`unique_fields` для выполнения UPSERT (аналог `ON CONFLICT DO UPDATE`).",
+        syntax: "await QuerySet.abulk_create(objs, batch_size=None, ignore_conflicts=False, update_conflicts=False, update_fields=None, unique_fields=None)",
+        arguments: [
+            { name: "objs", description: "Список несохранённых экземпляров модели для вставки." },
+            { name: "batch_size", description: "Максимальное число объектов в одном SQL-запросе. None — без ограничения." },
+            { name: "ignore_conflicts", description: "Если True — конфликтующие строки (например, дубли по уникальным полям) игнорируются." },
+            { name: "update_conflicts", description: "Если True — выполняет UPSERT: при конфликте обновляет указанные поля." },
+            { name: "update_fields", description: "Список полей для обновления при update_conflicts=True." },
+            { name: "unique_fields", description: "Поля, определяющие конфликт для update_conflicts (обязательно на некоторых БД)." },
+        ],
+        example: `from myapp.models import LogEntry
+
+async def bulk_log(entries: list[dict]):
+    objs = [LogEntry(message=e["message"], level=e["level"]) for e in entries]
+    created = await LogEntry.objects.abulk_create(
+        objs,
+        batch_size=500,
+        ignore_conflicts=True,
+    )
+    print(f"Вставлено записей: {len(created)}")
+
+# UPSERT-сценарий
+await LogEntry.objects.abulk_create(
+    objs,
+    update_conflicts=True,
+    update_fields=["level"],
+    unique_fields=["message"],
+)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.abulk_update",
+        category: "QuerySet",
+        description: "Асинхронная версия `bulk_update()`. Обновляет указанные поля для списка уже существующих объектов одним (или несколькими, при `batch_size`) SQL-запросом на основе первичного ключа каждого объекта. Значительно быстрее последовательных вызовов `asave()` для каждого объекта.",
+        syntax: "await QuerySet.abulk_update(objs, fields, batch_size=None)",
+        arguments: [
+            { name: "objs", description: "Список объектов модели (уже сохранённых, с заполненным pk) для обновления." },
+            { name: "fields", description: "Список имён полей, которые нужно обновить." },
+            { name: "batch_size", description: "Максимальное число объектов в одном запросе. None — без ограничения." },
+        ],
+        example: `from myapp.models import Product
+
+async def apply_discount(category: str, percent: float):
+    products = [p async for p in Product.objects.filter(category=category)]
+    for p in products:
+        p.price = p.price * (1 - percent / 100)
+    await Product.objects.abulk_update(products, fields=["price"], batch_size=200)
+    print(f"Обновлено товаров: {len(products)}")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.acount",
+        category: "QuerySet",
+        description: "Асинхронная версия `count()`. Выполняет SQL-запрос `COUNT(*)` и возвращает число объектов, соответствующих текущему QuerySet. Эффективнее, чем `len(await queryset.all())`, так как не загружает сами объекты.",
+        syntax: "await QuerySet.acount()",
+        arguments: [],
+        example: `from myapp.models import Order
+
+async def orders_summary(request):
+    total = await Order.objects.acount()
+    pending = await Order.objects.filter(status="pending").acount()
+    return JsonResponse({"total": total, "pending": pending})`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.ain_bulk",
+        category: "QuerySet",
+        description: "Асинхронная версия `in_bulk()`. Возвращает словарь, отображающий значения указанного поля (по умолчанию первичный ключ) на объекты. Удобна для быстрого поиска нескольких объектов по списку идентификаторов без повторных запросов.",
+        syntax: "await QuerySet.ain_bulk(id_list=None, *, field_name='pk')",
+        arguments: [
+            { name: "id_list", description: "Список значений поля для выборки. Если None — выбираются все объекты QuerySet." },
+            { name: "field_name", description: "Имя поля, используемого как ключ словаря. Должно быть уникальным. По умолчанию 'pk'." },
+        ],
+        example: `from myapp.models import Author
+
+async def get_authors_map(ids: list[int]):
+    authors_by_id = await Author.objects.ain_bulk(ids)
+    for author_id in ids:
+        author = authors_by_id.get(author_id)
+        print(author.name if author else "не найден")
+
+# По другому уникальному полю
+by_slug = await Author.objects.ain_bulk(
+    ["j-doe", "a-smith"], field_name="slug"
+)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.aiterator",
+        category: "QuerySet",
+        description: "Асинхронная версия `iterator()`. Возвращает асинхронный генератор, который читает результаты из базы данных порциями (`chunk_size`), не загружая весь набор в память и не кэшируя QuerySet. Используется через `async for` — оптимально для обработки больших объёмов данных.",
+        syntax: "QuerySet.aiterator(chunk_size=2000)",
+        arguments: [
+            { name: "chunk_size", description: "Количество строк, читаемых из базы за один внутренний запрос. По умолчанию 2000." },
+        ],
+        example: `from myapp.models import Event
+
+async def export_events():
+    count = 0
+    async for event in Event.objects.filter(archived=False).aiterator(chunk_size=1000):
+        await process_event(event)
+        count += 1
+    print(f"Обработано событий: {count}")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.alatest",
+        category: "QuerySet",
+        description: "Асинхронная версия `latest()`. Возвращает самый последний объект по дате, используя указанное поле или `get_latest_by`, заданное в `Meta` модели. Эквивалентна `aearliest()`, но сортирует в обратном порядке.",
+        syntax: "await QuerySet.alatest(*fields)",
+        arguments: [
+            { name: "*fields", description: "Поля для определения порядка. Если не указаны — используется Meta.get_latest_by." },
+        ],
+        example: `from myapp.models import Release
+
+async def latest_release():
+    release = await Release.objects.alatest("published_at")
+    return JsonResponse({"version": release.version})
+
+# Используя Meta.get_latest_by модели
+# class Release(models.Model):
+#     class Meta:
+#         get_latest_by = "published_at"
+release = await Release.objects.alatest()`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.aearliest",
+        category: "QuerySet",
+        description: "Асинхронная версия `earliest()`. Возвращает самый ранний объект по дате, используя указанное поле или `get_latest_by` из `Meta` модели. Порядок сортировки противоположен `alatest()`.",
+        syntax: "await QuerySet.aearliest(*fields)",
+        arguments: [
+            { name: "*fields", description: "Поля для определения порядка. Если не указаны — используется Meta.get_latest_by." },
+        ],
+        example: `from myapp.models import Release
+
+async def first_release():
+    release = await Release.objects.aearliest("published_at")
+    return JsonResponse({"version": release.version, "date": release.published_at})
+
+# По нескольким полям (порядок влияет на сравнение)
+oldest = await Release.objects.aearliest("major_version", "published_at")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.afirst",
+        category: "QuerySet",
+        description: "Асинхронная версия `first()`. Возвращает первый объект, соответствующий QuerySet (с учётом упорядочивания), или `None`, если результатов нет. Если явного `order_by()` не задано, сортирует по первичному ключу для получения предсказуемого результата.",
+        syntax: "await QuerySet.afirst()",
+        arguments: [],
+        example: `from myapp.models import Notification
+
+async def get_next_unread(user):
+    notification = await Notification.objects.filter(
+        user=user, read=False
+    ).order_by("created_at").afirst()
+    if notification is None:
+        return JsonResponse({"message": "Нет новых уведомлений"})
+    return JsonResponse({"id": notification.id, "text": notification.text})`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.alast",
+        category: "QuerySet",
+        description: "Асинхронная версия `last()`. Возвращает последний объект, соответствующий QuerySet (с учётом упорядочивания), или `None`, если результатов нет. Если явного `order_by()` не задано, использует порядок по первичному ключу в обратном направлении.",
+        syntax: "await QuerySet.alast()",
+        arguments: [],
+        example: `from myapp.models import Notification
+
+async def get_most_recent(user):
+    notification = await Notification.objects.filter(
+        user=user
+    ).order_by("created_at").alast()
+    if notification is None:
+        return JsonResponse({"message": "Уведомлений нет"})
+    return JsonResponse({"id": notification.id, "text": notification.text})`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.aaggregate",
+        category: "QuerySet",
+        description: "Асинхронная версия `aggregate()`. Вычисляет агрегатные значения (Sum, Avg, Count, Max, Min и т.д.) по всему QuerySet и возвращает словарь с результатами. В отличие от `annotate()`, не добавляет значения к каждому объекту, а возвращает единственный сводный результат.",
+        syntax: "await QuerySet.aaggregate(*args, **kwargs)",
+        arguments: [
+            { name: "*args", description: "Агрегатные выражения без явного имени (ключ в результате генерируется автоматически)." },
+            { name: "**kwargs", description: "Именованные агрегатные выражения — ключ станет именем в результирующем словаре." },
+        ],
+        example: `from django.db.models import Avg, Sum, Count
+from myapp.models import Order
+
+async def sales_stats():
+    stats = await Order.objects.aaggregate(
+        total_revenue=Sum("amount"),
+        avg_amount=Avg("amount"),
+        orders_count=Count("id"),
+    )
+    print(stats)
+    # → {'total_revenue': 15230.50, 'avg_amount': 87.6, 'orders_count': 174}`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.aexists",
+        category: "QuerySet",
+        description: "Асинхронная версия `exists()`. Выполняет оптимизированный SQL-запрос (обычно `SELECT 1 ... LIMIT 1`) и возвращает `True`, если QuerySet содержит хотя бы один результат, иначе `False`. Эффективнее, чем проверка `await queryset.acount() > 0` или загрузка объектов.",
+        syntax: "await QuerySet.aexists()",
+        arguments: [],
+        example: `from myapp.models import User
+
+async def username_taken(username: str) -> bool:
+    return await User.objects.filter(username=username).aexists()
+
+async def register(request):
+    if await username_taken(request.POST["username"]):
+        return JsonResponse({"error": "Имя занято"}, status=400)
+    # ... создание пользователя ...`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.acontains",
+        category: "QuerySet",
+        description: "Асинхронная версия `contains()`. Проверяет, содержится ли указанный объект модели в QuerySet, выполняя эффективный запрос по первичному ключу вместо загрузки всех результатов. Возвращает `True` или `False`.",
+        syntax: "await QuerySet.acontains(obj)",
+        arguments: [
+            { name: "obj", description: "Экземпляр модели, наличие которого в QuerySet нужно проверить." },
+        ],
+        example: `from myapp.models import Playlist, Track
+
+async def track_in_playlist(playlist: Playlist, track: Track) -> bool:
+    return await playlist.tracks.acontains(track)
+
+async def add_if_missing(playlist, track):
+    if not await playlist.tracks.acontains(track):
+        await playlist.tracks.aadd(track)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.aupdate",
+        category: "QuerySet",
+        description: "Асинхронная версия `update()`. Выполняет SQL-запрос `UPDATE` сразу для всех объектов, соответствующих QuerySet, без загрузки их в память и без вызова `save()`/сигналов модели. Возвращает количество затронутых строк.",
+        syntax: "await QuerySet.aupdate(**kwargs)",
+        arguments: [
+            { name: "**kwargs", description: "Поля и новые значения для массового обновления." },
+        ],
+        example: `from myapp.models import Task
+
+async def mark_overdue_as_failed():
+    updated = await Task.objects.filter(
+        status="pending", due_date__lt=timezone.now()
+    ).aupdate(status="failed")
+    print(f"Обновлено задач: {updated}")
+
+# Важно: aupdate() не вызывает save() и сигналы pre_save/post_save`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.adelete",
+        category: "QuerySet",
+        description: "Асинхронная версия `delete()`. Удаляет все объекты, соответствующие QuerySet, а также связанные объекты по каскадным правилам. Возвращает кортеж: общее число удалённых объектов и словарь с разбивкой по моделям.",
+        syntax: "await QuerySet.adelete()",
+        arguments: [],
+        example: `from myapp.models import Comment
+
+async def cleanup_spam():
+    total, per_model = await Comment.objects.filter(is_spam=True).adelete()
+    print(f"Удалено всего: {total}")
+    print(per_model)
+    # → {'myapp.Comment': 42}`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.aexplain",
+        category: "QuerySet",
+        description: "Асинхронная версия `explain()`. Возвращает строку с планом выполнения запроса от СУБД (EXPLAIN), не выполняя сам запрос над данными. Полезна для отладки производительности запросов. Набор допустимых `options` зависит от используемой базы данных.",
+        syntax: "await QuerySet.aexplain(format=None, **options)",
+        arguments: [
+            { name: "format", description: "Формат вывода плана (например, 'text', 'json') — зависит от СУБД." },
+            { name: "**options", description: "Дополнительные параметры EXPLAIN, специфичные для БД (например, analyze=True для PostgreSQL)." },
+        ],
+        example: `from myapp.models import Order
+
+async def debug_query():
+    plan = await Order.objects.filter(status="pending").aexplain()
+    print(plan)
+
+    # PostgreSQL: с реальным выполнением и подробностями
+    plan = await Order.objects.filter(
+        status="pending"
+    ).aexplain(format="json", analyze=True)
+    print(plan)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.filter",
+        category: "QuerySet",
+        description: "Возвращает новый QuerySet, содержащий объекты, удовлетворяющие заданным условиям поиска. Условия объединяются логическим И. Поддерживает объекты `Q` для сложных выражений (OR, NOT) и лукапы через двойное подчёркивание (`field__lookup`). Не изменяет исходный QuerySet — возвращает новый (иммутабельность).",
+        syntax: "QuerySet.filter(*args, **kwargs)",
+        arguments: [
+            { name: "*args", description: "Объекты Q для сложных условий (OR, вложенные группы)." },
+            { name: "**kwargs", description: "Условия вида field=value или field__lookup=value." },
+        ],
+        example: `from django.db.models import Q
+from myapp.models import Article
+
+# Простая фильтрация
+published = Article.objects.filter(status="published")
+
+# С лукапом
+recent = Article.objects.filter(created_at__gte="2026-01-01")
+
+# Сложное условие через Q
+qs = Article.objects.filter(Q(status="published") | Q(featured=True))
+
+# Цепочка filter() объединяется через AND
+qs = Article.objects.filter(status="published").filter(author__isnull=False)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.exclude",
+        category: "QuerySet",
+        description: "Возвращает новый QuerySet, исключающий объекты, удовлетворяющие заданным условиям — логическая противоположность `filter()`. Условия объединяются как AND внутри одного вызова, но сам результат — это NOT(условие). Поддерживает объекты `Q` и лукапы, аналогично `filter()`.",
+        syntax: "QuerySet.exclude(*args, **kwargs)",
+        arguments: [
+            { name: "*args", description: "Объекты Q для сложных условий исключения." },
+            { name: "**kwargs", description: "Условия вида field=value или field__lookup=value, объекты с которыми будут исключены." },
+        ],
+        example: `from myapp.models import Article
+
+# Исключить черновики
+qs = Article.objects.exclude(status="draft")
+
+# Исключить по нескольким условиям (AND внутри exclude)
+qs = Article.objects.exclude(status="draft", author__isnull=True)
+
+# Комбинация filter + exclude
+qs = Article.objects.filter(published_at__year=2026).exclude(archived=True)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.annotate",
+        category: "QuerySet",
+        description: "Добавляет вычисляемые поля (аннотации) к каждому объекту QuerySet на основе агрегатных функций (`Count`, `Sum`, `Avg`), выражений (`F`, `Case`) или подзапросов. В отличие от `aggregate()`, результат вычисляется для каждой строки, а не единственное сводное значение.",
+        syntax: "QuerySet.annotate(*args, **kwargs)",
+        arguments: [
+            { name: "*args", description: "Аннотации без явного имени (имя генерируется автоматически на основе выражения)." },
+            { name: "**kwargs", description: "Именованные аннотации — ключ станет атрибутом объекта." },
+        ],
+        example: `from django.db.models import Count, Avg
+from myapp.models import Author
+
+authors = Author.objects.annotate(
+    books_count=Count("books"),
+    avg_rating=Avg("books__rating"),
+)
+for author in authors:
+    print(f"{author.name}: {author.books_count} книг, рейтинг {author.avg_rating}")
+
+# Фильтрация по аннотированному полю
+popular = Author.objects.annotate(books_count=Count("books")).filter(books_count__gte=5)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.alias",
+        category: "QuerySet",
+        description: "Аналогичен `annotate()`, но добавленное выражение не включается в итоговый набор полей результата (SELECT) — используется только как промежуточное имя для дальнейших вычислений в `filter()`, `annotate()` или `order_by()`. Позволяет избежать лишних полей в результате и потенциального дублирования вычислений.",
+        syntax: "QuerySet.alias(*args, **kwargs)",
+        arguments: [
+            { name: "*args", description: "Псевдонимы без явного имени." },
+            { name: "**kwargs", description: "Именованные псевдонимы-выражения для промежуточных вычислений." },
+        ],
+        example: `from django.db.models import F
+from myapp.models import Product
+
+# alias не добавляет поле discounted_price в результат,
+# но позволяет использовать его в filter()
+qs = Product.objects.alias(
+    discounted_price=F("price") * 0.9
+).filter(discounted_price__lt=100)
+
+for product in qs:
+    print(product.name)  # discounted_price недоступен как атрибут`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.order_by",
+        category: "QuerySet",
+        description: "Возвращает новый QuerySet с заданным порядком сортировки, переопределяя `Meta.ordering` модели (если задан). Префикс `-` перед именем поля означает сортировку по убыванию. Можно сортировать по нескольким полям, вычисляемым выражениям (`F`) и связанным полям через `__`. Вызов без аргументов сбрасывает сортировку.",
+        syntax: "QuerySet.order_by(*field_names)",
+        arguments: [
+            { name: "*field_names", description: "Имена полей для сортировки. Префикс '-' — по убыванию. Пустой вызов сбрасывает ordering." },
+        ],
+        example: `from myapp.models import Article
+
+# По возрастанию
+qs = Article.objects.order_by("created_at")
+
+# По убыванию, затем по названию
+qs = Article.objects.order_by("-created_at", "title")
+
+# По связанному полю
+qs = Article.objects.order_by("author__last_name")
+
+# Сброс сортировки, заданной в Meta.ordering
+qs = Article.objects.order_by()`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.reverse",
+        category: "QuerySet",
+        description: "Возвращает новый QuerySet с обратным порядком сортировки относительно текущего (заданного через `order_by()` или `Meta.ordering`). Если порядок не задан явно, поведение не определено однозначно — рекомендуется всегда использовать вместе с явным `order_by()`.",
+        syntax: "QuerySet.reverse()",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs = Article.objects.order_by("created_at")
+newest_first = qs.reverse()  # эквивалент order_by("-created_at")
+
+# Полезно для получения последних N записей в исходном порядке
+last_five = list(Article.objects.order_by("-created_at")[:5])
+last_five.reverse()  # список Python, а не QuerySet.reverse()
+
+# Через QuerySet.reverse()
+qs2 = Article.objects.order_by("-created_at").reverse()[:5]`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.distinct",
+        category: "QuerySet",
+        description: "Возвращает новый QuerySet, исключающий дублирующиеся строки в результате SQL-запроса (`SELECT DISTINCT`). Без аргументов убирает полные дубликаты строк. С аргументами (поддерживается только в PostgreSQL) — `DISTINCT ON` по указанным полям, требует, чтобы эти поля были первыми в `order_by()`.",
+        syntax: "QuerySet.distinct(*field_names)",
+        arguments: [
+            { name: "*field_names", description: "Поля для DISTINCT ON (только PostgreSQL). Без аргументов — обычный DISTINCT по всей строке." },
+        ],
+        example: `from myapp.models import Order
+
+# Убрать полные дубликаты
+qs = Order.objects.values("customer_id").distinct()
+
+# PostgreSQL: DISTINCT ON — последний заказ каждого клиента
+qs = Order.objects.order_by(
+    "customer_id", "-created_at"
+).distinct("customer_id")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.values",
+        category: "QuerySet",
+        description: "Возвращает QuerySet, элементы которого — словари, а не экземпляры модели. Ключи словаря соответствуют указанным полям (или всем полям модели, если аргументы не переданы). Поддерживает передачу именованных выражений (`expressions`) как дополнительные вычисляемые ключи.",
+        syntax: "QuerySet.values(*fields, **expressions)",
+        arguments: [
+            { name: "*fields", description: "Имена полей модели для включения в результат. Без аргументов — все поля." },
+            { name: "**expressions", description: "Именованные выражения (аннотации), результат которых также включается как ключ словаря." },
+        ],
+        example: `from django.db.models import F
+from myapp.models import Article
+
+qs = Article.objects.values("id", "title")
+print(list(qs))
+# → [{'id': 1, 'title': 'Первая статья'}, {'id': 2, 'title': 'Вторая'}]
+
+# С выражением
+qs = Article.objects.values("title", word_count=F("content_length"))
+for row in qs:
+    print(row["title"], row["word_count"])`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.values_list",
+        category: "QuerySet",
+        description: "Аналогичен `values()`, но каждый элемент результата — кортеж значений (а не словарь). При `flat=True` (допустимо только с одним полем) возвращает плоский список значений вместо кортежей. При `named=True` возвращает именованные кортежи (`namedtuple`), к полям которых можно обращаться по имени.",
+        syntax: "QuerySet.values_list(*fields, flat=False, named=False)",
+        arguments: [
+            { name: "*fields", description: "Имена полей для включения в результат." },
+            { name: "flat", description: "Если True и указано ровно одно поле — возвращает плоский список значений вместо кортежей." },
+            { name: "named", description: "Если True — возвращает именованные кортежи (Row) вместо обычных." },
+        ],
+        example: `from myapp.models import Article
+
+# Кортежи
+qs = Article.objects.values_list("id", "title")
+print(list(qs))  # → [(1, 'Первая'), (2, 'Вторая')]
+
+# Плоский список
+ids = Article.objects.values_list("id", flat=True)
+print(list(ids))  # → [1, 2, 3]
+
+# Именованные кортежи
+rows = Article.objects.values_list("id", "title", named=True)
+for row in rows:
+    print(row.id, row.title)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.dates",
+        category: "QuerySet",
+        description: "Возвращает QuerySet значений `datetime.date`, представляющих уникальные даты (по указанной детализации `kind`), в которые встречается значение поля `field_name`. Полезно для построения архивов по датам (например, список месяцев/лет с публикациями).",
+        syntax: "QuerySet.dates(field_name, kind, order='ASC')",
+        arguments: [
+            { name: "field_name", description: "Имя поля типа DateField/DateTimeField." },
+            { name: "kind", description: "Детализация группировки: 'year', 'month', 'week' или 'day'." },
+            { name: "order", description: "Порядок сортировки: 'ASC' (по умолчанию) или 'DESC'." },
+        ],
+        example: `from myapp.models import Article
+
+# Все годы, в которых публиковались статьи
+years = Article.objects.dates("published_at", "year")
+print(list(years))  # → [datetime.date(2024, 1, 1), datetime.date(2025, 1, 1)]
+
+# Месяцы в обратном порядке
+months = Article.objects.dates("published_at", "month", order="DESC")
+for month in months:
+    print(month.strftime("%Y-%m"))`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.datetimes",
+        category: "QuerySet",
+        description: "Аналогичен `dates()`, но возвращает значения `datetime.datetime` вместо `datetime.date`, сохраняя информацию о времени. Поддерживает приведение к часовому поясу через `tzinfo`. Используется для группировки по временным интервалам с учётом времени суток.",
+        syntax: "QuerySet.datetimes(field_name, kind, order='ASC', tzinfo=None)",
+        arguments: [
+            { name: "field_name", description: "Имя поля типа DateTimeField." },
+            { name: "kind", description: "Детализация: 'year', 'month', 'week', 'day', 'hour', 'minute' или 'second'." },
+            { name: "order", description: "Порядок сортировки: 'ASC' (по умолчанию) или 'DESC'." },
+            { name: "tzinfo", description: "Часовой пояс для приведения значений. По умолчанию используется текущий активный часовой пояс Django." },
+        ],
+        example: `import zoneinfo
+from myapp.models import Event
+
+# Уникальные дни с событиями
+days = Event.objects.datetimes("starts_at", "day")
+print(list(days))
+
+# С явным часовым поясом
+moscow_tz = zoneinfo.ZoneInfo("Europe/Moscow")
+hours = Event.objects.datetimes("starts_at", "hour", tzinfo=moscow_tz)
+for dt in hours:
+    print(dt.isoformat())`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.none",
+        category: "QuerySet",
+        description: "Возвращает пустой QuerySet — объект, который никогда не выполняет реальный SQL-запрос к базе данных и всегда возвращает пустой результат. Полезен для единообразного возврата QuerySet в условной логике (например, когда у пользователя нет прав на просмотр данных), сохраняя API QuerySet.",
+        syntax: "QuerySet.none()",
+        arguments: [],
+        example: `from myapp.models import Article
+
+def get_visible_articles(user):
+    if not user.is_authenticated:
+        return Article.objects.none()  # пустой QuerySet, без запроса к БД
+    return Article.objects.filter(status="published")
+
+qs = Article.objects.none()
+print(list(qs))       # → []
+print(qs.query.is_empty())  # → True`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.all",
+        category: "QuerySet",
+        description: "Возвращает новую копию текущего QuerySet (с теми же фильтрами и параметрами). Обычно вызывается на менеджере (`Model.objects.all()`) для получения всех объектов модели. Также полезен для явного клонирования QuerySet перед его дальнейшим независимым изменением, чтобы избежать неожиданного переиспользования кэша.",
+        syntax: "QuerySet.all()",
+        arguments: [],
+        example: `from myapp.models import Article
+
+# Все объекты модели
+qs = Article.objects.all()
+
+# Клонирование существующего QuerySet
+published = Article.objects.filter(status="published")
+clone = published.all()  # независимая копия с теми же условиями
+clone = clone.exclude(archived=True)  # не влияет на published`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.union",
+        category: "QuerySet",
+        description: "Объединяет результаты текущего QuerySet и одного или нескольких других QuerySet через SQL `UNION`. По умолчанию удаляет дубликаты; `all=True` использует `UNION ALL` (быстрее, сохраняет дубликаты). Объединяемые QuerySet должны иметь совместимый набор полей (обычно из одной модели или с одинаковыми values()).",
+        syntax: "QuerySet.union(*other_qs, all=False)",
+        arguments: [
+            { name: "*other_qs", description: "Один или несколько QuerySet для объединения с текущим." },
+            { name: "all", description: "Если True — использует UNION ALL (сохраняет дубликаты, быстрее)." },
+        ],
+        example: `from myapp.models import Article
+
+drafts = Article.objects.filter(status="draft")
+featured = Article.objects.filter(featured=True)
+
+# UNION без дубликатов
+qs = drafts.union(featured)
+
+# UNION ALL — быстрее, с возможными дубликатами
+qs_all = drafts.union(featured, all=True)
+print(qs.count())`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.intersection",
+        category: "QuerySet",
+        description: "Возвращает QuerySet, содержащий только те объекты, которые присутствуют одновременно во всех переданных QuerySet, используя SQL `INTERSECT`. Поддерживается не всеми базами данных в равной степени (например, ограничения в MySQL до версии 8.0.31).",
+        syntax: "QuerySet.intersection(*other_qs)",
+        arguments: [
+            { name: "*other_qs", description: "Один или несколько QuerySet, с которыми вычисляется пересечение." },
+        ],
+        example: `from myapp.models import Article
+
+featured = Article.objects.filter(featured=True)
+recent = Article.objects.filter(created_at__year=2026)
+
+# Статьи, которые одновременно избранные и созданы в 2026
+qs = featured.intersection(recent)
+print(qs.count())`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.difference",
+        category: "QuerySet",
+        description: "Возвращает QuerySet, содержащий объекты из текущего QuerySet, которые отсутствуют во всех переданных QuerySet, используя SQL `EXCEPT` (или `MINUS` в некоторых СУБД). Как и `union`/`intersection`, требует совместимой структуры полей между объединяемыми QuerySet.",
+        syntax: "QuerySet.difference(*other_qs)",
+        arguments: [
+            { name: "*other_qs", description: "Один или несколько QuerySet, объекты которых нужно исключить из результата." },
+        ],
+        example: `from myapp.models import Article
+
+all_articles = Article.objects.all()
+archived = Article.objects.filter(archived=True)
+
+# Все статьи, кроме архивных
+qs = all_articles.difference(archived)
+print(qs.count())`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.select_related",
+        category: "QuerySet",
+        description: "Оптимизация для связей ForeignKey и OneToOneField: выполняет один SQL-запрос с JOIN, подгружая связанные объекты сразу, вместо отдельного запроса при каждом обращении к связи. Без аргументов подгружает все связи, доступные без обхода NULL-able ForeignKey. С аргументами — только указанные пути связей, включая вложенные через `__`.",
+        syntax: "QuerySet.select_related(*fields)",
+        arguments: [
+            { name: "*fields", description: "Пути к связанным полям (ForeignKey/OneToOne) для JOIN. Пустой вызов сбрасывает select_related." },
+        ],
+        example: `from myapp.models import Article
+
+# Без select_related — N+1 запросов
+for article in Article.objects.all():
+    print(article.author.name)  # отдельный запрос на каждой итерации
+
+# С select_related — один запрос с JOIN
+for article in Article.objects.select_related("author"):
+    print(article.author.name)  # без дополнительных запросов
+
+# Вложенные связи
+qs = Article.objects.select_related("author__profile")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.prefetch_related",
+        category: "QuerySet",
+        description: "Оптимизация для связей ManyToMany и обратных ForeignKey (а также для дополнительных запросов через `Prefetch`): выполняет отдельный дополнительный SQL-запрос для каждого lookup и связывает результаты в Python, вместо JOIN. В отличие от `select_related`, подходит для связей 'многие-ко-многим', где JOIN дал бы дублирование строк.",
+        syntax: "QuerySet.prefetch_related(*lookups)",
+        arguments: [
+            { name: "*lookups", description: "Строки-пути к связям (в т.ч. через __) или объекты Prefetch для тонкой настройки." },
+        ],
+        example: `from django.db.models import Prefetch
+from myapp.models import Author, Book
+
+# Простая предзагрузка
+authors = Author.objects.prefetch_related("books")
+for author in authors:
+    for book in author.books.all():  # без доп. запросов
+        print(book.title)
+
+# С Prefetch для фильтрации предзагружаемых объектов
+qs = Author.objects.prefetch_related(
+    Prefetch("books", queryset=Book.objects.filter(published=True), to_attr="published_books")
+)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.extra",
+        category: "QuerySet",
+        description: "Устаревший (deprecated) способ добавления в запрос произвольных фрагментов SQL — дополнительных полей SELECT, условий WHERE, JOIN-таблиц или ORDER BY, — когда возможностей стандартного API QuerySet недостаточно. Официально не рекомендуется к использованию в новом коде: предпочтительны `annotate()` с `RawSQL`/`Func` или полноценный `raw()`. Может быть удалён в будущих версиях Django.",
+        syntax: "QuerySet.extra(select=None, where=None, params=None, tables=None, order_by=None, select_params=None)",
+        arguments: [
+            { name: "select", description: "Словарь {имя_поля: SQL-выражение} для добавления вычисляемых полей." },
+            { name: "where", description: "Список дополнительных SQL-условий для WHERE." },
+            { name: "params", description: "Параметры, подставляемые в условия where (защита от SQL-инъекций)." },
+            { name: "tables", description: "Дополнительные таблицы для включения в FROM/JOIN." },
+            { name: "order_by", description: "Дополнительные выражения для сортировки." },
+            { name: "select_params", description: "Параметры, подставляемые в выражения select." },
+        ],
+        example: `from myapp.models import Article
+
+# Устаревший стиль (избегайте в новом коде)
+qs = Article.objects.extra(
+    select={"is_recent": "created_at > %s"},
+    select_params=["2026-01-01"],
+)
+
+# Современная альтернатива через annotate + RawSQL
+from django.db.models.expressions import RawSQL
+qs = Article.objects.annotate(
+    is_recent=RawSQL("created_at > %s", ("2026-01-01",))
+)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.defer",
+        category: "QuerySet",
+        description: "Возвращает QuerySet, при вычислении которого указанные поля не загружаются сразу из базы данных — они подгружаются лениво (отдельным запросом) при первом обращении к ним. Полезно для моделей с тяжёлыми полями (большой текст, бинарные данные), которые не нужны в большинстве сценариев.",
+        syntax: "QuerySet.defer(*fields)",
+        arguments: [
+            { name: "*fields", description: "Имена полей, загрузку которых нужно отложить. Поддерживает связанные поля через __." },
+        ],
+        example: `from myapp.models import Article
+
+# content — большое текстовое поле, не нужно для списка
+qs = Article.objects.defer("content")
+for article in qs:
+    print(article.title)       # без доп. запроса
+    print(article.content)     # доп. SQL-запрос при первом обращении
+
+# defer("*") сбрасывает предыдущие defer/only`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.only",
+        category: "QuerySet",
+        description: "Противоположность `defer()`: ограничивает набор полей, загружаемых сразу из базы данных, только указанными. Остальные поля модели подгружаются лениво при первом обращении отдельным запросом. Первичный ключ загружается всегда, даже если не указан явно.",
+        syntax: "QuerySet.only(*fields)",
+        arguments: [
+            { name: "*fields", description: "Имена полей, которые нужно загрузить сразу. Остальные будут отложены (ленивая загрузка)." },
+        ],
+        example: `from myapp.models import Article
+
+# Загрузить только id и title
+qs = Article.objects.only("id", "title")
+for article in qs:
+    print(article.title)   # без доп. запроса
+    print(article.content) # доп. SQL-запрос — поле не было в only()
+
+# Комбинация с select_related
+qs = Article.objects.select_related("author").only("title", "author__name")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.using",
+        category: "QuerySet",
+        description: "Явно указывает, какую базу данных (алиас из `DATABASES` в settings) следует использовать для выполнения запроса, переопределяя выбор роутеров баз данных по умолчанию. Полезно в проектах с несколькими базами данных — например, для чтения из реплики.",
+        syntax: "QuerySet.using(alias)",
+        arguments: [
+            { name: "alias", description: "Алиас базы данных, определённый в settings.DATABASES (например, 'replica')." },
+        ],
+        example: `from myapp.models import Article
+
+# Чтение с реплики вместо основной БД
+qs = Article.objects.using("replica").filter(status="published")
+print(qs.db)  # → 'replica'
+
+# Запись в конкретную БД (для менеджера с сохранением)
+article = Article(title="Новость")
+article.save(using="analytics_db")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.select_for_update",
+        category: "QuerySet",
+        description: "Блокирует выбранные строки на уровне базы данных до конца транзакции (`SELECT ... FOR UPDATE`), предотвращая их одновременное изменение другими транзакциями. Должен использоваться внутри `transaction.atomic()`. `nowait` и `skip_locked` управляют поведением при уже заблокированных строках; `of` указывает конкретные таблицы для блокировки при JOIN; `no_key` использует более мягкую блокировку (PostgreSQL, FOR NO KEY UPDATE).",
+        syntax: "QuerySet.select_for_update(nowait=False, skip_locked=False, of=(), no_key=False)",
+        arguments: [
+            { name: "nowait", description: "Если True — сразу выбросить ошибку, если строки уже заблокированы, вместо ожидания." },
+            { name: "skip_locked", description: "Если True — пропустить уже заблокированные строки вместо ожидания или ошибки." },
+            { name: "of", description: "Кортеж имён связей/таблиц, к которым применяется блокировка (при select_related)." },
+            { name: "no_key", description: "Если True — использовать облегчённую блокировку FOR NO KEY UPDATE (PostgreSQL)." },
+        ],
+        example: `from django.db import transaction
+from myapp.models import Account
+
+def transfer(from_id, to_id, amount):
+    with transaction.atomic():
+        accounts = Account.objects.select_for_update().filter(
+            id__in=[from_id, to_id]
+        )
+        from_acc = accounts.get(id=from_id)
+        to_acc = accounts.get(id=to_id)
+        from_acc.balance -= amount
+        to_acc.balance += amount
+        from_acc.save()
+        to_acc.save()
+
+# Не блокировать выполнение, если строка занята другой транзакцией
+Account.objects.select_for_update(nowait=True).get(pk=1)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.raw",
+        category: "QuerySet",
+        description: "Выполняет произвольный SQL SELECT-запрос и возвращает `RawQuerySet` — итерируемый набор экземпляров модели, поля которых заполнены из результата запроса. Позволяет использовать возможности БД, недоступные через ORM API, при этом сохраняя удобство работы с объектами модели. Всегда используйте параметризацию (`params`) вместо форматирования строк — иначе возникает риск SQL-инъекций.",
+        syntax: "QuerySet.raw(raw_query, params=(), translations=None, using=None)",
+        arguments: [
+            { name: "raw_query", description: "Строка SQL-запроса SELECT с плейсхолдерами %s для параметров." },
+            { name: "params", description: "Список или кортеж значений, безопасно подставляемых вместо %s." },
+            { name: "translations", description: "Словарь для отображения имён колонок результата на имена полей модели." },
+            { name: "using", description: "Алиас базы данных, на которой нужно выполнить запрос." },
+        ],
+        example: `from myapp.models import Article
+
+# Параметризованный «сырой» SQL-запрос
+articles = Article.objects.raw(
+    "SELECT * FROM myapp_article WHERE status = %s AND created_at > %s",
+    ["published", "2026-01-01"],
+)
+for article in articles:
+    print(article.title)  # article — экземпляр Article
+
+# НИКОГДА не форматируйте параметры напрямую в строку — риск SQL-инъекции!
+# Article.objects.raw(f"... WHERE status = '{status}'")  # ОПАСНО`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.get",
+        category: "QuerySet",
+        description: "Возвращает единственный объект, соответствующий условиям поиска. Выбрасывает исключение `Model.DoesNotExist`, если ни один объект не найден, и `Model.MultipleObjectsReturned`, если найдено больше одного. Синхронный аналог `aget()` — используется в обычном (не асинхронном) коде.",
+        syntax: "QuerySet.get(*args, **kwargs)",
+        arguments: [
+            { name: "*args", description: "Объекты Q для сложных условий поиска." },
+            { name: "**kwargs", description: "Именованные условия фильтрации (аналогично filter())." },
+        ],
+        example: `from myapp.models import Article
+
+def article_detail(request, article_id):
+    try:
+        article = Article.objects.get(pk=article_id)
+    except Article.DoesNotExist:
+        return HttpResponseNotFound("Статья не найдена")
+    return render(request, "detail.html", {"article": article})
+
+# По уникальному полю
+article = Article.objects.get(slug="hello-world")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.create",
+        category: "QuerySet",
+        description: "Создаёт новый экземпляр модели, сохраняет его в базу данных одним вызовом `save()` и возвращает созданный объект. Синхронный аналог `acreate()`. Удобнее, чем создание экземпляра и явный вызов `save()` по отдельности.",
+        syntax: "QuerySet.create(**kwargs)",
+        arguments: [
+            { name: "**kwargs", description: "Значения полей модели для нового объекта." },
+        ],
+        example: `from myapp.models import Comment
+
+def add_comment(request, post_id):
+    comment = Comment.objects.create(
+        post_id=post_id,
+        author=request.user.username,
+        text=request.POST["text"],
+    )
+    return JsonResponse({"id": comment.id})
+
+# Эквивалентно:
+# comment = Comment(post_id=post_id, author=..., text=...)
+# comment.save()`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.get_or_create",
+        category: "QuerySet",
+        description: "Пытается найти объект по условиям поиска; если не найден — создаёт новый, используя `kwargs` вместе с `defaults`. Возвращает кортеж `(объект, created)`. Синхронный аналог `aget_or_create()`. Полезен для идемпотентного создания объектов без гонки условий при использовании внутри транзакции с уникальным ограничением.",
+        syntax: "QuerySet.get_or_create(defaults=None, **kwargs)",
+        arguments: [
+            { name: "defaults", description: "Словарь значений, используемых только при создании нового объекта." },
+            { name: "**kwargs", description: "Условия поиска существующего объекта (и часть полей при создании)." },
+        ],
+        example: `from myapp.models import Tag
+
+def ensure_tag(name: str):
+    tag, created = Tag.objects.get_or_create(
+        name=name,
+        defaults={"slug": name.lower().replace(" ", "-")},
+    )
+    if created:
+        print(f"Создан новый тег: {tag.name}")
+    return tag`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.update_or_create",
+        category: "QuerySet",
+        description: "Пытается найти объект по условиям поиска и обновить его значениями из `defaults`; если объект не найден — создаёт новый с объединёнными `kwargs` и `defaults`. Возвращает кортеж `(объект, created)`. Синхронный аналог `aupdate_or_create()`.",
+        syntax: "QuerySet.update_or_create(defaults=None, **kwargs)",
+        arguments: [
+            { name: "defaults", description: "Словарь значений для обновления существующего объекта или добавления к новому." },
+            { name: "**kwargs", description: "Условия поиска объекта." },
+        ],
+        example: `from myapp.models import UserProfile
+
+def sync_profile(user_id: int, bio: str, avatar_url: str):
+    profile, created = UserProfile.objects.update_or_create(
+        user_id=user_id,
+        defaults={"bio": bio, "avatar_url": avatar_url},
+    )
+    action = "создан" if created else "обновлён"
+    print(f"Профиль {profile.user_id} {action}")
+    return profile`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.count",
+        category: "QuerySet",
+        description: "Выполняет SQL-запрос `COUNT(*)` и возвращает число объектов, соответствующих текущему QuerySet. Эффективнее, чем `len(queryset)`, так как не загружает сами объекты в память. Синхронный аналог `acount()`.",
+        syntax: "QuerySet.count()",
+        arguments: [],
+        example: `from myapp.models import Order
+
+def orders_summary(request):
+    total = Order.objects.count()
+    pending = Order.objects.filter(status="pending").count()
+    return JsonResponse({"total": total, "pending": pending})`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.in_bulk",
+        category: "QuerySet",
+        description: "Возвращает словарь, отображающий значения указанного поля (по умолчанию первичный ключ) на объекты. Удобна для быстрого поиска нескольких объектов по списку идентификаторов без повторных запросов. Синхронный аналог `ain_bulk()`.",
+        syntax: "QuerySet.in_bulk(id_list=None, *, field_name='pk')",
+        arguments: [
+            { name: "id_list", description: "Список значений поля для выборки. Если None — выбираются все объекты QuerySet." },
+            { name: "field_name", description: "Имя поля, используемого как ключ словаря. Должно быть уникальным. По умолчанию 'pk'." },
+        ],
+        example: `from myapp.models import Author
+
+def get_authors_map(ids: list[int]):
+    authors_by_id = Author.objects.in_bulk(ids)
+    for author_id in ids:
+        author = authors_by_id.get(author_id)
+        print(author.name if author else "не найден")
+
+# По другому уникальному полю
+by_slug = Author.objects.in_bulk(["j-doe", "a-smith"], field_name="slug")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.iterator",
+        category: "QuerySet",
+        description: "Возвращает итератор, который читает результаты из базы данных порциями (`chunk_size`), не загружая весь набор в память и не заполняя `_result_cache` QuerySet. Используется в обычном (синхронном) цикле `for` для обработки больших объёмов данных. Синхронный аналог `aiterator()`.",
+        syntax: "QuerySet.iterator(chunk_size=2000)",
+        arguments: [
+            { name: "chunk_size", description: "Количество строк, читаемых из базы за один внутренний запрос. По умолчанию 2000." },
+        ],
+        example: `from myapp.models import Event
+
+def export_events():
+    count = 0
+    for event in Event.objects.filter(archived=False).iterator(chunk_size=1000):
+        process_event(event)
+        count += 1
+    print(f"Обработано событий: {count}")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.latest",
+        category: "QuerySet",
+        description: "Возвращает самый последний объект по дате, используя указанное поле или `get_latest_by`, заданное в `Meta` модели. Синхронный аналог `alatest()`. Противоположна `earliest()` по направлению сортировки.",
+        syntax: "QuerySet.latest(*fields)",
+        arguments: [
+            { name: "*fields", description: "Поля для определения порядка. Если не указаны — используется Meta.get_latest_by." },
+        ],
+        example: `from myapp.models import Release
+
+def latest_release():
+    release = Release.objects.latest("published_at")
+    return JsonResponse({"version": release.version})
+
+# Используя Meta.get_latest_by модели
+release = Release.objects.latest()`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.earliest",
+        category: "QuerySet",
+        description: "Возвращает самый ранний объект по дате, используя указанное поле или `get_latest_by` из `Meta` модели. Синхронный аналог `aearliest()`. Порядок сортировки противоположен `latest()`.",
+        syntax: "QuerySet.earliest(*fields)",
+        arguments: [
+            { name: "*fields", description: "Поля для определения порядка. Если не указаны — используется Meta.get_latest_by." },
+        ],
+        example: `from myapp.models import Release
+
+def first_release():
+    release = Release.objects.earliest("published_at")
+    return JsonResponse({"version": release.version, "date": release.published_at})`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.first",
+        category: "QuerySet",
+        description: "Возвращает первый объект, соответствующий QuerySet (с учётом упорядочивания), или `None`, если результатов нет. Если явного `order_by()` не задано, сортирует по первичному ключу для получения предсказуемого результата. Синхронный аналог `afirst()`.",
+        syntax: "QuerySet.first()",
+        arguments: [],
+        example: `from myapp.models import Notification
+
+def get_next_unread(user):
+    notification = Notification.objects.filter(
+        user=user, read=False
+    ).order_by("created_at").first()
+    if notification is None:
+        return JsonResponse({"message": "Нет новых уведомлений"})
+    return JsonResponse({"id": notification.id, "text": notification.text})`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.last",
+        category: "QuerySet",
+        description: "Возвращает последний объект, соответствующий QuerySet (с учётом упорядочивания), или `None`, если результатов нет. Если явного `order_by()` не задано, использует порядок по первичному ключу в обратном направлении. Синхронный аналог `alast()`.",
+        syntax: "QuerySet.last()",
+        arguments: [],
+        example: `from myapp.models import Notification
+
+def get_most_recent(user):
+    notification = Notification.objects.filter(
+        user=user
+    ).order_by("created_at").last()
+    if notification is None:
+        return JsonResponse({"message": "Уведомлений нет"})
+    return JsonResponse({"id": notification.id, "text": notification.text})`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.aggregate",
+        category: "QuerySet",
+        description: "Вычисляет агрегатные значения (Sum, Avg, Count, Max, Min и т.д.) по всему QuerySet и возвращает словарь с результатами. Синхронный аналог `aaggregate()`. В отличие от `annotate()`, не добавляет значения к каждому объекту, а возвращает единственный сводный результат.",
+        syntax: "QuerySet.aggregate(*args, **kwargs)",
+        arguments: [
+            { name: "*args", description: "Агрегатные выражения без явного имени (ключ в результате генерируется автоматически)." },
+            { name: "**kwargs", description: "Именованные агрегатные выражения — ключ станет именем в результирующем словаре." },
+        ],
+        example: `from django.db.models import Avg, Sum, Count
+from myapp.models import Order
+
+def sales_stats():
+    stats = Order.objects.aggregate(
+        total_revenue=Sum("amount"),
+        avg_amount=Avg("amount"),
+        orders_count=Count("id"),
+    )
+    print(stats)
+    # → {'total_revenue': 15230.50, 'avg_amount': 87.6, 'orders_count': 174}`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.exists",
+        category: "QuerySet",
+        description: "Выполняет оптимизированный SQL-запрос (обычно `SELECT 1 ... LIMIT 1`) и возвращает `True`, если QuerySet содержит хотя бы один результат, иначе `False`. Эффективнее, чем `queryset.count() > 0` или загрузка объектов. Синхронный аналог `aexists()`.",
+        syntax: "QuerySet.exists()",
+        arguments: [],
+        example: `from myapp.models import User
+
+def username_taken(username: str) -> bool:
+    return User.objects.filter(username=username).exists()
+
+def register(request):
+    if username_taken(request.POST["username"]):
+        return JsonResponse({"error": "Имя занято"}, status=400)
+    # ... создание пользователя ...`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.contains",
+        category: "QuerySet",
+        description: "Проверяет, содержится ли указанный объект модели в QuerySet, выполняя эффективный запрос по первичному ключу вместо загрузки всех результатов. Возвращает `True` или `False`. Синхронный аналог `acontains()`.",
+        syntax: "QuerySet.contains(obj)",
+        arguments: [
+            { name: "obj", description: "Экземпляр модели, наличие которого в QuerySet нужно проверить." },
+        ],
+        example: `from myapp.models import Playlist, Track
+
+def track_in_playlist(playlist: Playlist, track: Track) -> bool:
+    return playlist.tracks.contains(track)
+
+def add_if_missing(playlist, track):
+    if not playlist.tracks.contains(track):
+        playlist.tracks.add(track)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.explain",
+        category: "QuerySet",
+        description: "Возвращает строку с планом выполнения запроса от СУБД (EXPLAIN), не выполняя сам запрос над данными. Полезна для отладки производительности запросов. Синхронный аналог `aexplain()`. Набор допустимых `options` зависит от используемой базы данных.",
+        syntax: "QuerySet.explain(format=None, **options)",
+        arguments: [
+            { name: "format", description: "Формат вывода плана (например, 'text', 'json') — зависит от СУБД." },
+            { name: "**options", description: "Дополнительные параметры EXPLAIN, специфичные для БД (например, analyze=True для PostgreSQL)." },
+        ],
+        example: `from myapp.models import Order
+
+def debug_query():
+    plan = Order.objects.filter(status="pending").explain()
+    print(plan)
+
+    # PostgreSQL: с реальным выполнением и подробностями
+    plan = Order.objects.filter(status="pending").explain(format="json", analyze=True)
+    print(plan)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.update",
+        category: "QuerySet",
+        description: "Выполняет SQL-запрос `UPDATE` сразу для всех объектов, соответствующих QuerySet, без загрузки их в память и без вызова `save()`/сигналов модели `pre_save`/`post_save`. Возвращает количество затронутых строк. Синхронный аналог `aupdate()`. Значительно эффективнее цикла с `save()` для массового изменения данных.",
+        syntax: "QuerySet.update(**kwargs)",
+        arguments: [
+            { name: "**kwargs", description: "Поля и новые значения для массового обновления." },
+        ],
+        example: `from django.utils import timezone
+from myapp.models import Task
+
+def mark_overdue_as_failed():
+    updated = Task.objects.filter(
+        status="pending", due_date__lt=timezone.now()
+    ).update(status="failed")
+    print(f"Обновлено задач: {updated}")
+
+# С использованием F() для относительного изменения
+from django.db.models import F
+Task.objects.filter(status="active").update(retries=F("retries") + 1)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.delete",
+        category: "QuerySet",
+        description: "Удаляет все объекты, соответствующие QuerySet, а также связанные объекты по каскадным правилам (`on_delete`). Возвращает кортеж: общее число удалённых объектов и словарь с разбивкой по моделям. Синхронный аналог `adelete()`. Не вызывает `delete()` каждой модели по отдельности, если для этого не переопределён `QuerySet.delete` на уровне менеджера.",
+        syntax: "QuerySet.delete()",
+        arguments: [],
+        example: `from myapp.models import Comment
+
+def cleanup_spam():
+    total, per_model = Comment.objects.filter(is_spam=True).delete()
+    print(f"Удалено всего: {total}")
+    print(per_model)
+    # → {'myapp.Comment': 42}`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.bulk_create",
+        category: "QuerySet",
+        description: "Эффективно вставляет список объектов в базу данных минимальным числом SQL-запросов, минуя вызов `save()` и большинство сигналов для каждого объекта. Поддерживает `batch_size` для разбиения на пакеты, `ignore_conflicts` для игнорирования дублей, а также `update_conflicts`/`update_fields`/`unique_fields` для выполнения UPSERT. Синхронный аналог `abulk_create()`.",
+        syntax: "QuerySet.bulk_create(objs, batch_size=None, ignore_conflicts=False, update_conflicts=False, update_fields=None, unique_fields=None)",
+        arguments: [
+            { name: "objs", description: "Список несохранённых экземпляров модели для вставки." },
+            { name: "batch_size", description: "Максимальное число объектов в одном SQL-запросе. None — без ограничения." },
+            { name: "ignore_conflicts", description: "Если True — конфликтующие строки (дубли по уникальным полям) игнорируются." },
+            { name: "update_conflicts", description: "Если True — выполняет UPSERT: при конфликте обновляет указанные поля." },
+            { name: "update_fields", description: "Список полей для обновления при update_conflicts=True." },
+            { name: "unique_fields", description: "Поля, определяющие конфликт для update_conflicts (обязательно на некоторых БД)." },
+        ],
+        example: `from myapp.models import LogEntry
+
+def bulk_log(entries: list[dict]):
+    objs = [LogEntry(message=e["message"], level=e["level"]) for e in entries]
+    created = LogEntry.objects.bulk_create(objs, batch_size=500, ignore_conflicts=True)
+    print(f"Вставлено записей: {len(created)}")
+
+# UPSERT-сценарий
+LogEntry.objects.bulk_create(
+    objs,
+    update_conflicts=True,
+    update_fields=["level"],
+    unique_fields=["message"],
+)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.bulk_update",
+        category: "QuerySet",
+        description: "Обновляет указанные поля для списка уже существующих объектов одним (или несколькими, при `batch_size`) SQL-запросом на основе первичного ключа каждого объекта. Значительно быстрее последовательных вызовов `save()` для каждого объекта. Синхронный аналог `abulk_update()`.",
+        syntax: "QuerySet.bulk_update(objs, fields, batch_size=None)",
+        arguments: [
+            { name: "objs", description: "Список объектов модели (уже сохранённых, с заполненным pk) для обновления." },
+            { name: "fields", description: "Список имён полей, которые нужно обновить." },
+            { name: "batch_size", description: "Максимальное число объектов в одном запросе. None — без ограничения." },
+        ],
+        example: `from myapp.models import Product
+
+def apply_discount(category: str, percent: float):
+    products = list(Product.objects.filter(category=category))
+    for p in products:
+        p.price = p.price * (1 - percent / 100)
+    Product.objects.bulk_update(products, fields=["price"], batch_size=200)
+    print(f"Обновлено товаров: {len(products)}")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.resolve_expression",
+        category: "QuerySet",
+        description: "Внутренний метод, реализующий протокол `Expression` Django ORM, что позволяет использовать QuerySet как подзапрос (`Subquery`) внутри другого запроса — например, в `annotate()`, `filter()` или `Case`. Обычно не вызывается напрямую пользовательским кодом — вызывается автоматически движком ORM при разрешении выражений в дереве запроса.",
+        syntax: "QuerySet.resolve_expression(query=None, allow_joins=True, reuse=None, summarize=False, for_save=False)",
+        arguments: [
+            { name: "query", description: "Объект Query, в контексте которого разрешается выражение." },
+            { name: "allow_joins", description: "Разрешены ли JOIN при построении выражения." },
+            { name: "reuse", description: "Множество алиасов, которые можно переиспользовать при построении JOIN." },
+            { name: "summarize", description: "True, если выражение используется в контексте агрегации (aggregate())." },
+            { name: "for_save", description: "True, если выражение разрешается для операции сохранения (INSERT/UPDATE)." },
+        ],
+        example: `from django.db.models import OuterRef, Subquery
+from myapp.models import Article, Comment
+
+# QuerySet как подзапрос — resolve_expression вызывается ORM неявно
+latest_comment = Comment.objects.filter(
+    article=OuterRef("pk")
+).order_by("-created_at").values("text")[:1]
+
+qs = Article.objects.annotate(
+    latest_comment_text=Subquery(latest_comment)
+)
+for article in qs:
+    print(article.latest_comment_text)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.as_manager",
+        category: "QuerySet",
+        description: "Классовый метод (classmethod) QuerySet, создающий объект `Manager`, который использует методы этого QuerySet как свои собственные. Стандартный способ подключить кастомный QuerySet к менеджеру модели без дублирования логики методов вручную.",
+        syntax: "QuerySet.as_manager()",
+        arguments: [],
+        example: `from django.db import models
+
+class ArticleQuerySet(models.QuerySet):
+    def published(self):
+        return self.filter(status="published")
+
+    def by_author(self, author):
+        return self.filter(author=author)
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    status = models.CharField(max_length=20)
+    author = models.ForeignKey("Author", on_delete=models.CASCADE)
+
+    objects = ArticleQuerySet.as_manager()
+
+# Теперь методы QuerySet доступны напрямую на менеджере:
+Article.objects.published().by_author(some_author)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._clone",
+        category: "QuerySet",
+        description: "Внутренний метод, создающий новую копию QuerySet с тем же (клонированным) AST-объектом `Query`, тем же классом модели и настройками, но без вычисленного `_result_cache`. Именно `_clone()` лежит в основе иммутабельности QuerySet: каждый цепочный метод (`filter`, `exclude`, `order_by` и др.) вызывает `_clone()` и модифицирует копию, не затрагивая исходный объект. Критично учитывать при написании собственных цепочных методов QuerySet.",
+        syntax: "queryset._clone()",
+        arguments: [],
+        example: `from django.db import models
+
+class ArticleQuerySet(models.QuerySet):
+    def published(self):
+        # Правильный паттерн: клонируем перед изменением
+        clone = self._clone()
+        clone.query.add_q(models.Q(status="published"))
+        return clone
+
+qs1 = Article.objects.all()
+qs2 = qs1.filter(status="draft")  # filter() внутри тоже вызывает _clone()
+print(qs1 is qs2)  # → False, независимые объекты`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._fetch_all",
+        category: "QuerySet",
+        description: "Внутренний метод, принудительно выполняющий SQL-запрос (если это ещё не было сделано) и заполняющий `_result_cache`, а также запускающий отложенную предзагрузку связанных объектов (`_prefetch_related_lookups`), если она есть. Вызывается автоматически из `__iter__`, `__len__`, `__bool__` и других методов, требующих реальных данных.",
+        syntax: "queryset._fetch_all()",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs = Article.objects.filter(status="published")
+print(qs._result_cache)  # → None
+
+qs._fetch_all()  # принудительно выполняет запрос и заполняет кэш
+print(qs._result_cache is not None)  # → True
+
+# На практике вызывается неявно:
+bool(qs)   # вызывает _fetch_all() внутри __bool__
+len(qs)    # вызывает _fetch_all() внутри __len__`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._next_is_sticky",
+        category: "QuerySet",
+        description: "Внутренний метод, помечающий текущий QuerySet флагом 'sticky' для следующего вызова `filter()`/`exclude()`. Это заставляет следующий фильтр применяться к тому же JOIN-соединению, что и предыдущий (в контексте multi-valued связей), а не создавать новый JOIN. Используется внутри ORM для точного контроля семантики фильтрации по связанным объектам.",
+        syntax: "queryset._next_is_sticky()",
+        arguments: [],
+        example: `from myapp.models import Author
+
+# Внутренний механизм — обычно не вызывается напрямую пользователем.
+# Иллюстрация семантики 'sticky' на related-фильтрации:
+qs = Author.objects.filter(books__title="Django", books__rating__gte=4)
+# Без sticky-соединения два условия books__ могут относиться
+# к РАЗНЫМ связанным объектам (разным книгам)
+
+# _next_is_sticky() используется внутри реализации filter()
+# для случаев, когда условия должны относиться к ОДНОЙ и той же связи`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._add_hints",
+        category: "QuerySet",
+        description: "Внутренний метод, добавляющий подсказки (hints) в словарь `_hints` QuerySet — например, экземпляр модели, инициировавший запрос через related manager. Эти подсказки передаются в роутеры баз данных (`DATABASE_ROUTERS`) через методы `db_for_read`/`db_for_write`, позволяя маршрутизировать запрос на нужную базу данных на основе контекста.",
+        syntax: "queryset._add_hints(**hints)",
+        arguments: [
+            { name: "**hints", description: "Пары ключ-значение с контекстной информацией (например, instance=<объект>)." },
+        ],
+        example: `from myapp.models import Author
+
+author = Author.objects.get(pk=1)
+qs = author.books.all()
+# Внутри related manager вызывается что-то вроде:
+# qs._add_hints(instance=author)
+print(qs._hints)
+# → {'instance': <Author: Author object (1)>}
+
+# Роутер БД может использовать эту подсказку для маршрутизации
+class MyRouter:
+    def db_for_read(self, model, **hints):
+        instance = hints.get("instance")
+        return "replica" if instance else "default"`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._has_filters",
+        category: "QuerySet",
+        description: "Внутренний метод, возвращающий `True`, если к QuerySet применены какие-либо условия фильтрации (WHERE-условия в лежащем в основе объекте `Query`). Используется, например, в `delete()`/`update()` для проверки перед выполнением потенциально опасных операций над всей таблицей, а также в отладочных целях.",
+        syntax: "queryset._has_filters()",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs1 = Article.objects.all()
+print(qs1._has_filters())  # → False, фильтров нет
+
+qs2 = Article.objects.filter(status="published")
+print(qs2._has_filters())  # → True
+
+# Иллюстрация внутреннего use case: защита от случайного удаления всей таблицы
+def safe_delete(queryset):
+    if not queryset._has_filters():
+        raise ValueError("Отказ: попытка удалить все объекты без фильтра")
+    return queryset.delete()`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._extract_model_params",
+        category: "QuerySet",
+        description: "Внутренний метод, используемый в `get_or_create()`/`update_or_create()` для разделения `kwargs` на параметры, пригодные для конструктора модели (с разрешением лукапов вида `field__exact` до `field`), и отдельно обрабатываемые поля (например, ManyToMany, которые нельзя передать в конструктор `Model(**kwargs)`). Принимает `meta` модели и исходные `kwargs`, возвращает подготовленный словарь параметров.",
+        syntax: "queryset._extract_model_params(meta, **kwargs)",
+        arguments: [
+            { name: "meta", description: "Объект Meta модели (model._meta), содержащий информацию о полях." },
+            { name: "**kwargs", description: "Исходные именованные аргументы, переданные в get_or_create()/update_or_create()." },
+        ],
+        example: `from myapp.models import Tag
+
+# Внутри get_or_create() Django вызывает нечто подобное:
+# params = queryset._extract_model_params(Tag._meta, name__iexact="python", slug="python")
+# → {'name': 'python', 'slug': 'python'}  (лукап __iexact разрешается в поле name)
+
+tag, created = Tag.objects.get_or_create(name__iexact="python", defaults={"slug": "python"})`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._prepare",
+        category: "QuerySet",
+        description: "Внутренний метод, подготавливающий QuerySet для использования в качестве значения при сравнении в SQL-выражении (например, внутри подзапроса `IN` или сравнения полей). При необходимости приводит QuerySet к форме, содержащей только указанное поле, аналогично неявному вызову `values_list(field, flat=True)`.",
+        syntax: "queryset._prepare(field)",
+        arguments: [
+            { name: "field", description: "Поле модели, к которому подготавливается QuerySet (для сравнения/использования как подзапрос)." },
+        ],
+        example: `from myapp.models import Author, Article
+
+# Использование QuerySet как подзапроса для IN — внутри ORM
+# задействуется _prepare() для приведения к нужному полю:
+active_authors = Author.objects.filter(is_active=True)
+articles = Article.objects.filter(author__in=active_authors)
+# active_authors неявно подготавливается к сравнению по pk`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._check_bulk_create_options",
+        category: "QuerySet",
+        description: "Внутренний метод валидации, проверяющий совместимость и корректность параметров, переданных в `bulk_create()` (`ignore_conflicts`, `update_conflicts`, `update_fields`, `unique_fields`) — например, что `ignore_conflicts` и `update_conflicts` не заданы одновременно, и что при `update_conflicts=True` указаны `update_fields`. Выбрасывает `ValueError`, если комбинация параметров некорректна или не поддерживается используемой базой данных.",
+        syntax: "queryset._check_bulk_create_options(ignore_conflicts, update_conflicts, update_fields, unique_fields)",
+        arguments: [
+            { name: "ignore_conflicts", description: "Флаг игнорирования конфликтов из bulk_create()." },
+            { name: "update_conflicts", description: "Флаг режима UPSERT из bulk_create()." },
+            { name: "update_fields", description: "Список полей для обновления при UPSERT." },
+            { name: "unique_fields", description: "Поля, определяющие конфликт при UPSERT." },
+        ],
+        example: `from myapp.models import LogEntry
+
+# Некорректная комбинация — вызовет ValueError внутри bulk_create(),
+# так как _check_bulk_create_options() обнаружит конфликт параметров:
+try:
+    LogEntry.objects.bulk_create(
+        [LogEntry(message="test")],
+        ignore_conflicts=True,
+        update_conflicts=True,  # нельзя одновременно с ignore_conflicts
+    )
+except ValueError as e:
+    print(f"Некорректные параметры: {e}")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._insert",
+        category: "QuerySet",
+        description: "Внутренний низкоуровневый метод, формирующий и выполняющий SQL `INSERT` для списка объектов. Используется как строительный блок внутри `save()` и `bulk_create()`. Поддерживает возврат сгенерированных полей (`returning_fields`, например автоинкрементный pk) и передачу `ignore_conflicts` для формирования `ON CONFLICT DO NOTHING`.",
+        syntax: "queryset._insert(objs, fields, returning_fields=None, raw=False, using=None, ignore_conflicts=False)",
+        arguments: [
+            { name: "objs", description: "Список объектов модели для вставки." },
+            { name: "fields", description: "Список полей модели, включаемых в INSERT." },
+            { name: "returning_fields", description: "Поля, значения которых нужно получить обратно после вставки (например, pk)." },
+            { name: "raw", description: "Если True — пропускает часть валидации/обработки полей (используется при загрузке фикстур)." },
+            { name: "using", description: "Алиас базы данных для выполнения INSERT." },
+            { name: "ignore_conflicts", description: "Если True — формирует INSERT с игнорированием конфликтов." },
+        ],
+        example: `from myapp.models import LogEntry
+
+# _insert() — внутренний строительный блок bulk_create():
+# при вызове bulk_create() ORM в итоге обращается к
+# queryset._insert(objs, fields=[...], using="default")
+# для формирования единого SQL INSERT на несколько строк
+
+objs = [LogEntry(message=f"event {i}") for i in range(3)]
+LogEntry.objects.bulk_create(objs)  # использует _insert() внутри`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._batched_insert",
+        category: "QuerySet",
+        description: "Внутренний метод, разбивающий список объектов на пакеты размером `batch_size` и вызывающий `_insert()` для каждого пакета — реализует пакетную вставку в `bulk_create()`. Учитывает ограничения конкретной СУБД на максимальное число параметров/строк в одном запросе, автоматически подбирая безопасный размер пакета, если `batch_size` не задан явно.",
+        syntax: "queryset._batched_insert(objs, fields, batch_size, ignore_conflicts=False)",
+        arguments: [
+            { name: "objs", description: "Полный список объектов для вставки." },
+            { name: "fields", description: "Список полей модели, включаемых в каждый INSERT." },
+            { name: "batch_size", description: "Максимальное число объектов в одном пакете. None — размер выбирается автоматически с учётом лимитов СУБД." },
+            { name: "ignore_conflicts", description: "Передаётся дальше в _insert() для каждого пакета." },
+        ],
+        example: `from myapp.models import LogEntry
+
+objs = [LogEntry(message=f"event {i}") for i in range(10_000)]
+
+# bulk_create() с явным batch_size использует _batched_insert()
+# для разбиения 10 000 объектов на пакеты по 500
+LogEntry.objects.bulk_create(objs, batch_size=500)
+# Внутри: 20 вызовов _insert() вместо одного гигантского INSERT`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._chain",
+        category: "QuerySet",
+        description: "Внутренний метод, похожий на `_clone()`, но применяемый в специфичных случаях цепочного вызова методов (например, после операций, требующих особой обработки sticky-фильтров). Возвращает клонированный QuerySet, сохраняя внутреннее состояние, необходимое для корректной семантики последующих вызовов в цепочке.",
+        syntax: "queryset._chain(**kwargs)",
+        arguments: [
+            { name: "**kwargs", description: "Дополнительные атрибуты, которые нужно установить на клонированном QuerySet." },
+        ],
+        example: `from myapp.models import Article
+
+# _chain() используется внутри реализации многих методов QuerySet
+# (annotate, order_by и др.) для получения корректной копии
+# с сохранением специфичного внутреннего состояния:
+
+qs = Article.objects.filter(status="published")
+qs2 = qs.order_by("-created_at")  # внутри order_by() задействован _chain()/_clone()
+print(qs is qs2)  # → False`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.__len__",
+        category: "QuerySet",
+        description: "Магический метод, вызываемый функцией `len()`. Если `_result_cache` ещё не заполнен, выполняет SQL-запрос (через `_fetch_all()`) для получения всех объектов и возвращает их количество. Если QuerySet уже был вычислен ранее (например, итерировался), повторного запроса не происходит — используется кэш. Для одной лишь проверки количества без загрузки объектов эффективнее `count()`.",
+        syntax: "len(queryset)",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs = Article.objects.filter(status="published")
+print(len(qs))  # выполняет SQL-запрос, загружает все объекты в _result_cache
+
+# Повторный len() не делает новый запрос — использует кэш
+print(len(qs))  # без обращения к БД
+
+# Если нужно только число, без загрузки объектов — используйте count()
+print(Article.objects.filter(status="published").count())`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.__iter__",
+        category: "QuerySet",
+        description: "Магический метод, реализующий синхронный протокол итерации. Вызывает `_fetch_all()`, чтобы гарантировать заполнение `_result_cache` (выполняя SQL-запрос при необходимости), а затем возвращает итератор по уже загруженным объектам. Именно благодаря `__iter__` конструкция `for obj in queryset:` работает и одновременно кэширует результаты для повторного использования.",
+        syntax: "iter(queryset)",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs = Article.objects.filter(status="published")
+for article in qs:      # __iter__ вызывает _fetch_all(), выполняется SQL
+    print(article.title)
+
+for article in qs:      # повторная итерация — из _result_cache, без SQL
+    print(article.title)
+
+# Явный вызов
+it = iter(qs)
+print(next(it).title)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.__bool__",
+        category: "QuerySet",
+        description: "Магический метод, вызываемый при проверке истинности QuerySet (`if queryset:`, `bool(queryset)`). Если `_result_cache` ещё не заполнен, неявно вызывает эквивалент `exists()`/`_fetch_all()` для определения, есть ли результаты, и заполняет кэш. QuerySet считается 'ложным', если он не содержит объектов.",
+        syntax: "bool(queryset)",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs = Article.objects.filter(status="published")
+if qs:  # __bool__ проверяет наличие объектов, при необходимости выполняет запрос
+    print("Есть опубликованные статьи")
+else:
+    print("Опубликованных статей нет")
+
+# Для проверки существования без последующей работы с объектами
+# эффективнее exists(), так как он не грузит сами объекты:
+if Article.objects.filter(status="published").exists():
+    pass`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.__getitem__",
+        category: "QuerySet",
+        description: "Магический метод, реализующий индексацию и слайсинг QuerySet (`qs[0]`, `qs[0:10]`). Слайсинг транслируется в SQL `LIMIT`/`OFFSET` и не загружает лишние строки из базы данных. Обращение по одиночному индексу (`qs[0]`) выполняет запрос с `LIMIT 1 OFFSET n` и возвращает объект напрямую (не QuerySet), выбрасывая `IndexError`, если объект не найден. После среза QuerySet становится 'зафиксированным' — к нему нельзя дальше применять `filter()`/`exclude()`.",
+        syntax: "queryset[k] / queryset[start:stop]",
+        arguments: [
+            { name: "k", description: "Индекс (int) для получения одного объекта или slice (start:stop[:step]) для получения подмножества." },
+        ],
+        example: `from myapp.models import Article
+
+qs = Article.objects.order_by("-created_at")
+
+# Одиночный индекс — сразу объект, SQL LIMIT 1 OFFSET 0
+first_article = qs[0]
+
+# Слайс — новый QuerySet с LIMIT/OFFSET, без загрузки лишних строк
+page = qs[10:20]   # LIMIT 10 OFFSET 10
+for article in page:
+    print(article.title)
+
+# После среза нельзя дальше фильтровать
+# page.filter(status="published")  # AssertionError`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.__and__",
+        category: "QuerySet",
+        description: "Магический метод, реализующий оператор `&` между двумя QuerySet одной модели. Объединяет WHERE-условия обоих QuerySet через логическое И на уровне SQL (аналогично последовательному применению `filter()` с условиями обоих наборов). Оба QuerySet должны быть построены на одной модели.",
+        syntax: "queryset1 & queryset2",
+        arguments: [
+            { name: "other", description: "Другой QuerySet той же модели, условия которого объединяются через AND." },
+        ],
+        example: `from myapp.models import Article
+
+published = Article.objects.filter(status="published")
+featured = Article.objects.filter(featured=True)
+
+# AND на уровне SQL: опубликованные И избранные
+qs = published & featured
+print(qs.query)  # WHERE status = 'published' AND featured = true
+
+# Эквивалент через filter():
+qs2 = Article.objects.filter(status="published", featured=True)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.__or__",
+        category: "QuerySet",
+        description: "Магический метод, реализующий оператор `|` между двумя QuerySet одной модели. Объединяет условия через логическое ИЛИ на уровне SQL (`WHERE (...) OR (...)`), в отличие от `union()`, который использует SQL `UNION`. Результат — единый QuerySet с объединённым условием, а не конкатенация результатов на уровне Python.",
+        syntax: "queryset1 | queryset2",
+        arguments: [
+            { name: "other", description: "Другой QuerySet той же модели, условия которого объединяются через OR." },
+        ],
+        example: `from myapp.models import Article
+
+drafts = Article.objects.filter(status="draft")
+featured = Article.objects.filter(featured=True)
+
+# OR на уровне SQL: черновики ИЛИ избранные
+qs = drafts | featured
+print(qs.query)  # WHERE status = 'draft' OR featured = true
+
+# Эквивалент через Q:
+from django.db.models import Q
+qs2 = Article.objects.filter(Q(status="draft") | Q(featured=True))`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.__xor__",
+        category: "QuerySet",
+        description: "Магический метод, реализующий оператор `^` между двумя QuerySet одной модели (доступен начиная с Django 4.1 при поддержке СУБД операции XOR, либо эмулируется через эквивалентное выражение). Возвращает объекты, удовлетворяющие ровно одному из двух условий (исключающее ИЛИ) — то есть присутствующие в одном наборе условий, но не в обоих одновременно.",
+        syntax: "queryset1 ^ queryset2",
+        arguments: [
+            { name: "other", description: "Другой QuerySet той же модели, с которым вычисляется исключающее ИЛИ по условиям." },
+        ],
+        example: `from myapp.models import Article
+
+featured = Article.objects.filter(featured=True)
+recent = Article.objects.filter(created_at__year=2026)
+
+# XOR: избранные ИЛИ созданные в 2026, но не оба условия сразу
+qs = featured ^ recent
+for article in qs:
+    print(article.title)`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.__getstate__",
+        category: "QuerySet",
+        description: "Магический метод, вызываемый при сериализации объекта (например, модулем `pickle`, используемым Django для низкоуровневого кеширования QuerySet). Возвращает словарь состояния объекта, пригодный для последующего восстановления через `__setstate__()`. Django добавляет в это состояние версию Django, чтобы при десериализации можно было обнаружить несовместимость версий.",
+        syntax: "queryset.__getstate__()",
+        arguments: [],
+        example: `import pickle
+from myapp.models import Article
+
+qs = Article.objects.filter(status="published")
+list(qs)  # вычисляем QuerySet перед сериализацией
+
+# __getstate__() вызывается неявно внутри pickle.dumps
+data = pickle.dumps(qs)
+
+# Восстановление — задействует __setstate__()
+restored_qs = pickle.loads(data)
+print(len(restored_qs))`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.__setstate__",
+        category: "QuerySet",
+        description: "Магический метод, вызываемый при десериализации объекта (например, `pickle.loads`) для восстановления состояния QuerySet из словаря, полученного ранее через `__getstate__()`. Django проверяет сохранённую версию Django в состоянии и выводит предупреждение (`RuntimeWarning`), если версия отличается от текущей — pickled QuerySet между несовместимыми версиями Django может работать некорректно.",
+        syntax: "queryset.__setstate__(state)",
+        arguments: [
+            { name: "state", description: "Словарь состояния объекта, полученный ранее из __getstate__()." },
+        ],
+        example: `import pickle
+from myapp.models import Article
+
+qs = Article.objects.filter(status="published")
+list(qs)
+data = pickle.dumps(qs)
+
+# __setstate__() вызывается неявно внутри pickle.loads
+restored = pickle.loads(data)
+# Если версия Django изменилась с момента сериализации —
+# Django выведет RuntimeWarning о возможной несовместимости`,
+    },
+    {
+        name: "django.db.models.UniqueConstraint",
+        category: "Constraints",
+        description: "Ограничение уникальности на уровне базы данных, задаваемое в `Meta.constraints` модели. В отличие от `unique=True` на поле или устаревшего `unique_together`, поддерживает условные ограничения (`condition`), уникальность по выражениям (`Func`, `F`) через `expressions`, включение дополнительных столбцов без участия в уникальности (`include`, PostgreSQL) и настройку класса оператора (`opclasses`).",
+        syntax: "models.UniqueConstraint(*expressions, fields=(), name=None, condition=None, deferrable=None, include=None, opclasses=(), violation_error_code=None, violation_error_message=None)",
+        arguments: [
+            { name: "fields", description: "Кортеж имён полей, комбинация значений которых должна быть уникальной." },
+            { name: "name", description: "Уникальное имя ограничения (обязательно)." },
+            { name: "condition", description: "Объект Q — ограничение действует только для строк, удовлетворяющих условию (частичный уникальный индекс)." },
+            { name: "expressions", description: "Выражения (Func, F) для уникальности по вычисляемым значениям, а не по 'сырым' полям." },
+            { name: "deferrable", description: "Управляет отложенной проверкой ограничения в транзакции (PostgreSQL: Deferrable.DEFERRED/IMMEDIATE)." },
+            { name: "include", description: "Дополнительные поля, включаемые в индекс, но не участвующие в уникальности (PostgreSQL covering index)." },
+            { name: "opclasses", description: "Классы операторов PostgreSQL для полей — для тонкой настройки поведения индекса." },
+            { name: "violation_error_message", description: "Кастомное сообщение об ошибке при нарушении ограничения на уровне валидации модели." },
+        ],
+        example: `from django.db import models
+from django.db.models import Q
+
+class Booking(models.Model):
+    room = models.ForeignKey("Room", on_delete=models.CASCADE)
+    date = models.DateField()
+    is_cancelled = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["room", "date"],
+                name="unique_room_date",
+                condition=Q(is_cancelled=False),
+            ),
+        ]
+
+# Ограничение действует только для активных бронирований —
+# отменённые (is_cancelled=True) не мешают повторному бронированию той же даты`,
+    },
+    {
+        name: "django.db.models.ExclusionConstraint",
+        category: "Constraints",
+        description: "Ограничение исключения (PostgreSQL-специфичное, требует расширения `btree_gist`), запрещающее одновременное существование строк, для которых указанные выражения 'пересекаются' согласно заданным операторам. Классический пример использования — запрет пересекающихся временных диапазонов (бронирования, резервирования) на уровне базы данных.",
+        syntax: "models.ExclusionConstraint(name=None, expressions=(), condition=None, index_type=None, deferrable=None, include=None, violation_error_code=None, violation_error_message=None)",
+        arguments: [
+            { name: "name", description: "Уникальное имя ограничения (обязательно)." },
+            { name: "expressions", description: "Список пар (выражение, оператор), например (F('period'), RangeOperators.OVERLAPS)." },
+            { name: "condition", description: "Объект Q — ограничение действует только для строк, удовлетворяющих условию." },
+            { name: "index_type", description: "Тип индекса, обычно 'GIST' (по умолчанию) или 'SPGIST'." },
+            { name: "deferrable", description: "Управляет отложенной проверкой ограничения в транзакции." },
+            { name: "include", description: "Дополнительные поля, включаемые в индекс без участия в проверке исключения." },
+        ],
+        example: `from django.contrib.postgres.constraints import ExclusionConstraint
+from django.contrib.postgres.fields import DateTimeRangeField
+from django.db.models import Q, F
+from django.contrib.postgres.constraints import RangeOperators
+
+class RoomBooking(models.Model):
+    room = models.ForeignKey("Room", on_delete=models.CASCADE)
+    period = DateTimeRangeField()
+
+    class Meta:
+        constraints = [
+            ExclusionConstraint(
+                name="exclude_overlapping_bookings",
+                expressions=[
+                    ("room", RangeOperators.EQUAL),
+                    ("period", RangeOperators.OVERLAPS),
+                ],
+            ),
+        ]
+# База данных не позволит создать два бронирования одной комнаты
+# с пересекающимися временными интервалами`,
+    },
+    {
+        name: "django.db.models.Index",
+        category: "Indexes",
+        description: "Определяет обычный индекс базы данных для одного или нескольких полей, задаваемый в `Meta.indexes` модели. Ускоряет операции поиска, фильтрации и сортировки по указанным полям ценой некоторого замедления записи. Поддерживает частичные индексы (`condition`), индексы по выражениям (`expressions`), покрывающие индексы (`include`, PostgreSQL) и выбор типа индекса СУБД (`db_tablespace`, специализированные подклассы вроде `GinIndex`).",
+        syntax: "models.Index(*expressions, fields=(), name=None, db_tablespace=None, opclasses=(), condition=None, include=None)",
+        arguments: [
+            { name: "fields", description: "Кортеж имён полей для индекса. Префикс '-' — индекс с сортировкой по убыванию." },
+            { name: "name", description: "Имя индекса. Если не указано — генерируется автоматически (ограничение длины 30 символов для некоторых СУБД)." },
+            { name: "expressions", description: "Выражения (Func, F) для функционального индекса по вычисляемым значениям." },
+            { name: "condition", description: "Объект Q — создаёт частичный индекс, покрывающий только строки, удовлетворяющие условию." },
+            { name: "include", description: "Дополнительные поля, включаемые в индекс для ускорения запросов 'только по индексу' (PostgreSQL)." },
+            { name: "db_tablespace", description: "Табличное пространство базы данных для размещения индекса." },
+            { name: "opclasses", description: "Классы операторов PostgreSQL для полей индекса." },
+        ],
+        example: `from django.db import models
+from django.db.models import Q
+from django.db.models.functions import Lower
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    status = models.CharField(max_length=20)
+    published_at = models.DateTimeField(null=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["status", "-published_at"], name="status_published_idx"),
+            models.Index(Lower("title"), name="title_lower_idx"),
+            models.Index(
+                fields=["published_at"],
+                name="published_only_idx",
+                condition=Q(status="published"),
+            ),
+        ]`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.ordered",
+        category: "QuerySet",
+        description: "Свойство, возвращающее `True`, если QuerySet явно упорядочен — через `order_by()` или через `Meta.ordering` модели. Возвращает `False`, если сортировка не задана явно, даже если СУБД фактически возвращает строки в каком-то порядке. Полезно для проверки, будет ли результат детерминированным (например, перед пагинацией).",
+        syntax: "QuerySet.ordered",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs1 = Article.objects.all()
+print(qs1.ordered)  # → False, если в Meta модели нет ordering
+
+qs2 = Article.objects.order_by("-published_at")
+print(qs2.ordered)  # → True
+
+# Полезно перед пагинацией, чтобы избежать непредсказуемого порядка
+def safe_paginate(queryset, page_size=20):
+    if not queryset.ordered:
+        queryset = queryset.order_by("pk")
+    return queryset[:page_size]`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.complex_filter",
+        category: "QuerySet",
+        description: "Устаревший (legacy) метод фильтрации, принимающий объект `Q` или словарь условий. Исторически использовался внутри Django ORM (например, менеджерами related-полей) до того, как стало общепринятым распаковывать словарь через `**kwargs` прямо в `filter()`. В новом коде почти не применяется напрямую.",
+        syntax: "QuerySet.complex_filter(filter_obj)",
+        arguments: [
+            { name: "filter_obj", description: "Объект Q либо словарь условий фильтрации, аналогичный аргументам filter()." },
+        ],
+        example: `from django.db.models import Q
+from myapp.models import Article
+
+# Через объект Q
+qs = Article.objects.complex_filter(Q(status="published") | Q(featured=True))
+
+# Через словарь (устаревший стиль)
+qs = Article.objects.complex_filter({"status": "published"})
+
+# Современный эквивалент:
+qs = Article.objects.filter(Q(status="published") | Q(featured=True))`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.query.is_empty",
+        category: "QuerySet",
+        description: "Часть внутреннего API `django.db.models.sql.Query`. Метод `is_empty()` возвращает `True`, если запрос заведомо не вернёт ни одной строки — например, после вызова `.none()`, который устанавливает специальный `EmptyResultSet`. Используется при написании кастомных менеджеров, лукапов или отладке построения SQL без выполнения запроса к БД.",
+        syntax: "queryset.query.is_empty()",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs_empty = Article.objects.none()
+print(qs_empty.query.is_empty())  # → True
+
+qs_normal = Article.objects.filter(status="published")
+print(qs_normal.query.is_empty())  # → False
+
+# Полезно в кастомном менеджере — избежать лишнего SQL-запроса
+class SafeManager(models.Manager):
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if qs.query.is_empty():
+            return qs  # не выполняем запрос впустую
+        return qs.select_related("author")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.model",
+        category: "QuerySet",
+        description: "Атрибут QuerySet, хранящий класс модели, с которым связан данный QuerySet (например, `Article`, а не экземпляр). Используется как во внутренней реализации ORM, так и в пользовательском коде — например, для получения имени модели или создания новых экземпляров динамически.",
+        syntax: "QuerySet.model",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs = Article.objects.filter(status="published")
+print(qs.model)              # → <class 'myapp.models.Article'>
+print(qs.model.__name__)     # → 'Article'
+print(qs.model._meta.db_table)  # → 'myapp_article'
+
+# Полезно в дженерик-коде, работающем с разными моделями
+def describe_queryset(queryset):
+    return f"QuerySet по модели {queryset.model.__name__}, объектов: {queryset.count()}"`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.db",
+        category: "QuerySet",
+        description: "Свойство, возвращающее алиас базы данных, который будет использован при выполнении QuerySet (например, `'default'`). Определяется на основе `using()`, роутеров базы данных (`DATABASE_ROUTERS`) или значения по умолчанию. Полезно для отладки в проектах с несколькими базами данных.",
+        syntax: "QuerySet.db",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs = Article.objects.all()
+print(qs.db)  # → 'default'
+
+qs_replica = Article.objects.using("replica")
+print(qs_replica.db)  # → 'replica'
+
+# Полезно для логирования при работе с несколькими БД
+def log_query_db(queryset):
+    print(f"Запрос выполнится на базе: {queryset.db}")`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.query",
+        category: "QuerySet",
+        description: "Атрибут, содержащий объект `django.db.models.sql.Query` — внутреннее AST-представление SQL-запроса (WHERE, JOIN, ORDER BY и т.д.), которое ORM строит по мере вызова методов QuerySet (`filter`, `exclude`, `annotate` и др.). Приведение к строке (`str(qs.query)`) выводит итоговый SQL — удобно для отладки без реального выполнения запроса.",
+        syntax: "QuerySet.query",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs = Article.objects.filter(status="published").order_by("-created_at")
+
+# Посмотреть сгенерированный SQL без выполнения запроса
+print(str(qs.query))
+# → SELECT ... FROM "myapp_article" WHERE "myapp_article"."status" = published
+#   ORDER BY "myapp_article"."created_at" DESC
+
+print(type(qs.query))  # → <class 'django.db.models.sql.query.Query'>`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._result_cache",
+        category: "QuerySet",
+        description: "Внутренний (приватный) атрибут QuerySet, в котором хранится кэш уже вычисленных результатов запроса в виде списка объектов. До первого обращения к данным равен `None`; после первой итерации (или явного вычисления) заполняется, и последующие обращения не порождают новых SQL-запросов. Не предназначен для прямого использования в пользовательском коде.",
+        syntax: "QuerySet._result_cache",
+        arguments: [],
+        example: `from myapp.models import Article
+
+qs = Article.objects.filter(status="published")
+print(qs._result_cache)  # → None, запрос ещё не выполнялся
+
+list(qs)  # выполняет SQL-запрос и заполняет кэш
+print(qs._result_cache is not None)  # → True
+
+# Именно поэтому повторная итерация по тому же qs
+# не порождает новый SQL-запрос:
+for article in qs:  # использует _result_cache
+    pass`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._prefetch_related_lookups",
+        category: "QuerySet",
+        description: "Внутренний атрибут QuerySet — кортеж лукапов (строк или объектов `Prefetch`), накопленных вызовами `prefetch_related()`. Фактическая предзагрузка связанных объектов выполняется отложенно, при вычислении QuerySet (заполнении `_result_cache`), а не в момент вызова `prefetch_related()`.",
+        syntax: "QuerySet._prefetch_related_lookups",
+        arguments: [],
+        example: `from myapp.models import Author
+
+qs = Author.objects.prefetch_related("books", "books__reviews")
+print(qs._prefetch_related_lookups)
+# → ('books', 'books__reviews')
+
+# Предзагрузка выполняется только при вычислении QuerySet:
+list(qs)  # только теперь выполняются дополнительные запросы
+          # для books и books__reviews`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._prefetch_done",
+        category: "QuerySet",
+        description: "Внутренний булев флаг QuerySet, указывающий, была ли уже выполнена предзагрузка связанных объектов, накопленных в `_prefetch_related_lookups`. Предотвращает повторное выполнение предзагрузочных запросов при повторных обращениях к уже вычисленному QuerySet.",
+        syntax: "QuerySet._prefetch_done",
+        arguments: [],
+        example: `from myapp.models import Author
+
+qs = Author.objects.prefetch_related("books")
+print(qs._prefetch_done)  # → False
+
+list(qs)  # выполняет основной запрос + предзагрузку books
+print(qs._prefetch_done)  # → True
+
+# Повторная итерация не запускает предзагрузку заново
+for author in qs:
+    pass  # используется уже предзагруженный кэш`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._iterable_class",
+        category: "QuerySet",
+        description: "Внутренний атрибут QuerySet, определяющий класс-итератор, который используется для формирования объектов из строк результата SQL-запроса. По умолчанию — `ModelIterable` (возвращает экземпляры модели). Методы `values()`, `values_list()` и `values_list(flat=True)` подставляют другие классы: `ValuesIterable`, `ValuesListIterable`, `FlatValuesListIterable` соответственно.",
+        syntax: "QuerySet._iterable_class",
+        arguments: [],
+        example: `from myapp.models import Article
+from django.db.models.query import ModelIterable, ValuesIterable
+
+qs = Article.objects.all()
+print(qs._iterable_class)  # → <class 'django.db.models.query.ModelIterable'>
+
+qs_values = Article.objects.values("id", "title")
+print(qs_values._iterable_class)  # → <class 'django.db.models.query.ValuesIterable'>
+
+qs_flat = Article.objects.values_list("id", flat=True)
+print(qs_flat._iterable_class)
+# → <class 'django.db.models.query.FlatValuesListIterable'>`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._known_related_objects",
+        category: "QuerySet",
+        description: "Внутренний атрибут QuerySet — словарь вида `{поле: {pk: объект}}`, хранящий уже известные связанные объекты (например, при обращении через related manager: `author.articles.all()`). Позволяет ORM избежать лишнего запроса к базе при последующем доступе к обратной связи (`article.author`), подставляя уже имеющийся в памяти объект.",
+        syntax: "QuerySet._known_related_objects",
+        arguments: [],
+        example: `from myapp.models import Author
+
+author = await Author.objects.aget(pk=1)
+qs = author.articles.all()
+print(qs._known_related_objects)
+# → {<ForeignKey: author>: {1: <Author: Author object (1)>}}
+
+# Благодаря этому обращение article.author
+# не порождает дополнительный SQL-запрос:
+for article in qs:
+    print(article.author.name)  # author уже известен, доп. запроса нет`,
+    },
+    {
+        name: "django.db.models.query.QuerySet._hints",
+        category: "QuerySet",
+        description: "Внутренний атрибут QuerySet — словарь с подсказками (hints) для роутеров баз данных (`DATABASE_ROUTERS`), например ссылка на экземпляр модели (`instance`), используемый при выборе базы данных методом `db_for_read`/`db_for_write` роутера. Используется ORM внутренне, не предназначен для прямого изменения в пользовательском коде.",
+        syntax: "QuerySet._hints",
+        arguments: [],
+        example: `from myapp.models import Author
+
+author = Author.objects.get(pk=1)
+qs = author.articles.all()
+print(qs._hints)
+# → {'instance': <Author: Author object (1)>}
+
+# Роутер БД может использовать эту подсказку:
+class MyRouter:
+    def db_for_read(self, model, **hints):
+        instance = hints.get("instance")
+        if instance and getattr(instance, "use_replica", False):
+            return "replica"
+        return "default"`,
+    },
+    {
+        name: "django.db.models.query.QuerySet.__aiter__",
+        category: "QuerySet",
+        description: "Асинхронный протокол итерации QuerySet. Позволяет использовать конструкцию `async for obj in queryset:` для последовательного получения объектов без блокировки event loop. В отличие от `aiterator()`, обычно кэширует результаты в QuerySet, как обычная итерация. Реализует магический метод `__aiter__`.",
+        syntax: "async for obj in queryset:",
+        arguments: [],
+        example: `from myapp.models import Product
+
+async def list_products():
+    names = []
+    async for product in Product.objects.filter(in_stock=True):
+        names.append(product.name)
+    return names
+
+# Эквивалент через явный вызов __aiter__ (обычно не требуется)
+async def manual_iteration():
+    qs = Product.objects.filter(in_stock=True)
+    async for product in qs.__aiter__():
+        print(product.name)`,
+    },
 ];
