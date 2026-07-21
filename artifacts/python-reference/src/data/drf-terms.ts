@@ -3029,4 +3029,1678 @@ class SmartRelationalSerializer(serializers.ModelSerializer):
             }
         return field_class, field_kwargs`,
   },
+  {
+    name: "rest_framework.permissions.BasePermission.has_permission(request, view)",
+    category: "Permissions",
+    description:
+      "Метод проверки разрешения на уровне представления (view). Вызывается для каждого входящего запроса до того, как он попадёт в обработчик. Возвращает True, если запрос разрешён, и False — если нет (в этом случае DRF автоматически вернёт 403 Forbidden или 401 Unauthorized). Базовая реализация в BasePermission всегда возвращает True — при создании кастомных классов разрешений этот метод необходимо переопределить.",
+    syntax: "BasePermission.has_permission(request, view)",
+    arguments: [
+      {
+        name: "request",
+        description: "DRF-объект Request с данными о текущем запросе, включая request.user и request.auth.",
+      },
+      {
+        name: "view",
+        description: "Экземпляр представления (APIView или ViewSet), обрабатывающего запрос. Позволяет проверять атрибуты вьюсета, например action ('list', 'retrieve', 'create' и т.д.).",
+      },
+    ],
+    example: `from rest_framework.permissions import BasePermission
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+
+class IsStaffOrReadOnly(BasePermission):
+    """
+    Разрешает запись только персоналу (is_staff=True).
+    Анонимные и обычные пользователи могут только читать (GET, HEAD, OPTIONS).
+    """
+
+    SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+
+    def has_permission(self, request, view):
+        # Безопасные методы разрешены всем
+        if request.method in self.SAFE_METHODS:
+            return True
+        # Остальные методы — только для staff
+        return bool(request.user and request.user.is_staff)
+
+
+class IsOwnerOrAdmin(BasePermission):
+    """
+    Разрешает доступ только владельцу ресурса или администратору.
+    Пример проверки через атрибуты вьюсета.
+    """
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated)
+
+
+class ArticleView(APIView):
+    permission_classes = [IsStaffOrReadOnly]
+
+    def get(self, request):
+        return Response({"articles": []})
+
+    def post(self, request):
+        return Response({"created": True}, status=201)
+
+
+# urls.py
+# path("articles/", ArticleView.as_view())
+
+# GET /articles/   — доступно всем
+# POST /articles/  — только staff, иначе 403`,
+  },
+  {
+    name: "rest_framework.permissions.BasePermission.has_object_permission(request, view, obj)",
+    category: "Permissions",
+    description:
+      "Метод проверки разрешения на уровне конкретного объекта. Вызывается только когда сначала прошла проверка has_permission(), и только если код представления явно вызывает self.check_object_permissions(request, obj). Используется для разграничения доступа к отдельным записям (например, только владелец может редактировать свой пост). Базовая реализация в BasePermission всегда возвращает True.",
+    syntax: "BasePermission.has_object_permission(request, view, obj)",
+    arguments: [
+      {
+        name: "request",
+        description: "DRF-объект Request. Через request.user доступен текущий пользователь.",
+      },
+      {
+        name: "view",
+        description: "Экземпляр представления. Полезен для получения action и других атрибутов вьюсета.",
+      },
+      {
+        name: "obj",
+        description: "Конкретный объект (экземпляр модели), для которого проверяется разрешение. Передаётся из get_object() представления.",
+      },
+    ],
+    example: `from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import generics, serializers
+
+
+class IsOwnerOrReadOnly(BasePermission):
+    """
+    Разрешает изменение объекта только его владельцу.
+    Чтение доступно всем аутентифицированным пользователям.
+    """
+
+    SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated)
+
+    def has_object_permission(self, request, view, obj):
+        # Чтение разрешено всем аутентифицированным
+        if request.method in self.SAFE_METHODS:
+            return True
+        # Запись — только владельцу
+        return obj.author == request.user
+
+
+# Использование в generic-представлении
+class PostSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    title = serializers.CharField()
+
+
+class PostDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = PostSerializer
+    permission_classes = [IsOwnerOrReadOnly]
+
+    def get_object(self):
+        obj = super().get_object()
+        # check_object_permissions ОБЯЗАТЕЛЕН для вызова has_object_permission
+        self.check_object_permissions(self.request, obj)
+        return obj
+
+
+# ВАЖНО: в APIView нужно вызывать check_object_permissions() явно:
+class PostView(APIView):
+    permission_classes = [IsOwnerOrReadOnly]
+
+    def get(self, request, pk):
+        post = get_post_or_404(pk)                           # ваша логика
+        self.check_object_permissions(request, post)         # ← обязательно!
+        return Response(PostSerializer(post).data)`,
+  },
+  {
+    name: "rest_framework.authentication.BaseAuthentication.authenticate(request)",
+    category: "Authentication",
+    description:
+      "Основной метод базового класса аутентификации. Должен быть переопределён во всех кастомных бэкендах аутентификации. Возвращает кортеж (user, auth) при успешной аутентификации, None — если этот бэкенд не применим к данному запросу (тогда DRF попробует следующий бэкенд из списка), или выбрасывает AuthenticationFailed при явно некорректных учётных данных. Результат сохраняется в request.user и request.auth.",
+    syntax: "BaseAuthentication.authenticate(request)",
+    arguments: [
+      {
+        name: "request",
+        description: "DRF-объект Request. Метод должен анализировать заголовки, куки или тело запроса для извлечения и проверки учётных данных.",
+      },
+    ],
+    example: `from rest_framework.authentication import BaseAuthentication
+from rest_framework.exceptions import AuthenticationFailed
+from django.contrib.auth.models import User
+import hmac
+import hashlib
+import time
+
+
+class HMACAuthentication(BaseAuthentication):
+    """
+    Аутентификация по HMAC-подписи.
+    Клиент передаёт заголовки:
+      X-User-ID: <id пользователя>
+      X-Timestamp: <unix timestamp>
+      X-Signature: <hmac-sha256(secret, user_id + timestamp)>
+    """
+
+    SECRET = b"supersecret"
+    MAX_AGE_SECONDS = 30
+
+    def authenticate(self, request):
+        user_id = request.META.get("HTTP_X_USER_ID")
+        timestamp = request.META.get("HTTP_X_TIMESTAMP")
+        signature = request.META.get("HTTP_X_SIGNATURE")
+
+        # Если заголовков нет — этот бэкенд не применим, пробуем следующий
+        if not all([user_id, timestamp, signature]):
+            return None
+
+        # Проверяем свежесть запроса
+        try:
+            ts = int(timestamp)
+        except ValueError:
+            raise AuthenticationFailed("Некорректный timestamp.")
+
+        if abs(time.time() - ts) > self.MAX_AGE_SECONDS:
+            raise AuthenticationFailed("Запрос устарел.")
+
+        # Проверяем подпись
+        expected = hmac.new(
+            self.SECRET,
+            f"{user_id}{timestamp}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+        if not hmac.compare_digest(expected, signature):
+            raise AuthenticationFailed("Неверная подпись.")
+
+        # Загружаем пользователя
+        try:
+            user = User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            raise AuthenticationFailed("Пользователь не найден.")
+
+        # Возвращаем (user, auth_token)
+        return (user, signature)
+
+
+# settings.py
+# REST_FRAMEWORK = {
+#     "DEFAULT_AUTHENTICATION_CLASSES": [
+#         "myapp.auth.HMACAuthentication",
+#     ]
+# }`,
+  },
+  {
+    name: "rest_framework.authentication.BaseAuthentication.authenticate_header(request)",
+    category: "Authentication",
+    description:
+      "Возвращает строку, которая будет помещена в заголовок WWW-Authenticate ответа 401 Unauthorized. Используется для уведомления клиента о поддерживаемых схемах аутентификации (например, 'Bearer realm=\"api\"' или 'Token'). Если метод возвращает None или не переопределён — DRF вернёт 403 Forbidden вместо 401. Переопределение обязательно, если нужен корректный 401-ответ с подсказкой для клиента.",
+    syntax: "BaseAuthentication.authenticate_header(request)",
+    arguments: [
+      {
+        name: "request",
+        description: "DRF-объект Request. Обычно не используется внутри метода, но передаётся для возможной логики выбора realm или схемы.",
+      },
+    ],
+    example: `from rest_framework.authentication import BaseAuthentication
+from rest_framework.exceptions import AuthenticationFailed
+
+
+class ApiKeyAuthentication(BaseAuthentication):
+    """
+    Аутентификация по API-ключу в заголовке X-API-Key.
+    Без переопределения authenticate_header() при ошибке вернётся 403,
+    а не 401 с подсказкой.
+    """
+
+    def authenticate(self, request):
+        api_key = request.META.get("HTTP_X_API_KEY")
+        if not api_key:
+            return None
+
+        from myapp.models import ApiKey
+        try:
+            key_obj = ApiKey.objects.select_related("user").get(
+                key=api_key, is_active=True
+            )
+        except ApiKey.DoesNotExist:
+            raise AuthenticationFailed("Неверный API-ключ.")
+
+        return (key_obj.user, key_obj)
+
+    def authenticate_header(self, request):
+        # Эта строка попадёт в заголовок ответа:
+        # WWW-Authenticate: ApiKey realm="api"
+        return 'ApiKey realm="api"'
+
+
+# Поведение без authenticate_header():
+# HTTP/1.1 403 Forbidden
+# {"detail": "Authentication credentials were not provided."}
+
+# Поведение с authenticate_header():
+# HTTP/1.1 401 Unauthorized
+# WWW-Authenticate: ApiKey realm="api"
+# {"detail": "Authentication credentials were not provided."}
+
+# Стандартные бэкенды DRF уже переопределяют этот метод:
+# TokenAuthentication    → 'Token'
+# BasicAuthentication    → 'Basic realm="api"'
+# SessionAuthentication  → None (403, форма логина в браузере)`,
+  },
+  {
+    name: "rest_framework.authentication.TokenAuthentication.authenticate_credentials(key)",
+    category: "Authentication",
+    description:
+      "Метод TokenAuthentication, выполняющий поиск пользователя по токену в базе данных. Принимает строковый ключ токена, ищет соответствующий объект Token, проверяет активность связанного пользователя. Возвращает кортеж (user, token) или выбрасывает AuthenticationFailed. Переопределяется для добавления дополнительных проверок (например, срок действия токена) без необходимости реализовывать полный бэкенд аутентификации с нуля.",
+    syntax: "TokenAuthentication.authenticate_credentials(key)",
+    arguments: [
+      {
+        name: "key",
+        description: "Строковый токен, извлечённый из заголовка Authorization: Token <key>.",
+      },
+    ],
+    example: `from rest_framework.authentication import TokenAuthentication
+from rest_framework.exceptions import AuthenticationFailed
+from django.utils import timezone
+from datetime import timedelta
+
+
+class ExpiringTokenAuthentication(TokenAuthentication):
+    """
+    TokenAuthentication с поддержкой срока действия токена (24 часа).
+    Переопределяем только authenticate_credentials() — остальная логика
+    (парсинг заголовка, вызов этого метода) остаётся из базового класса.
+    """
+
+    TOKEN_LIFETIME = timedelta(hours=24)
+
+    def authenticate_credentials(self, key):
+        # Вызываем базовый метод: он найдёт токен и проверит активность пользователя
+        user, token = super().authenticate_credentials(key)
+
+        # Добавляем проверку срока действия
+        # Предполагаем, что модель Token расширена полем created (DateTimeField)
+        token_age = timezone.now() - token.created
+        if token_age > self.TOKEN_LIFETIME:
+            raise AuthenticationFailed(
+                "Токен истёк. Пожалуйста, выполните вход заново."
+            )
+
+        return (user, token)
+
+
+# models.py — расширение стандартной модели Token не требуется,
+# если created уже есть (в стандартной модели оно есть).
+
+# settings.py
+# REST_FRAMEWORK = {
+#     "DEFAULT_AUTHENTICATION_CLASSES": [
+#         "myapp.auth.ExpiringTokenAuthentication",
+#     ]
+# }
+
+# Использование:
+# curl -H "Authorization: Token 9944b09199c62bcf9418ad846dd0e4bbdfc6ee4" \\
+#      https://api.example.com/profile/`,
+  },
+  {
+    name: "rest_framework.authentication.SessionAuthentication.enforce_csrf(request)",
+    category: "Authentication",
+    description:
+      "Метод SessionAuthentication, принудительно проверяющий CSRF-токен для небезопасных HTTP-методов (POST, PUT, PATCH, DELETE). Вызывается внутри authenticate() после успешного определения пользователя через сессию Django. Если CSRF-проверка не пройдена — выбрасывает PermissionDenied. Переопределяется для отключения CSRF в тестах или при использовании кастомных механизмов защиты.",
+    syntax: "SessionAuthentication.enforce_csrf(request)",
+    arguments: [
+      {
+        name: "request",
+        description: "DRF-объект Request. Метод извлекает из него CSRF-токен и проверяет его через стандартный Django CsrfViewMiddleware.",
+      },
+    ],
+    example: `from rest_framework.authentication import SessionAuthentication
+from unittest.mock import patch
+
+
+class CsrfExemptSessionAuthentication(SessionAuthentication):
+    """
+    SessionAuthentication без проверки CSRF.
+    Полезно для API, доступных через мобильные приложения или
+    внешние клиенты, которые не могут получить CSRF-токен.
+
+    ВНИМАНИЕ: используйте только если уверены в безопасности —
+    например, при наличии другого механизма защиты (Origin-check, CORS).
+    """
+
+    def enforce_csrf(self, request):
+        # Полностью пропускаем CSRF-проверку
+        return
+
+
+class StrictSameSiteSessionAuthentication(SessionAuthentication):
+    """
+    Пример переопределения для дополнительного логирования CSRF-ошибок.
+    """
+
+    def enforce_csrf(self, request):
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            super().enforce_csrf(request)
+        except Exception as exc:
+            logger.warning(
+                "CSRF-проверка не пройдена для пользователя %s: %s",
+                getattr(request.user, "username", "anonymous"),
+                exc,
+            )
+            raise
+
+
+# Стандартное поведение SessionAuthentication:
+# 1. authenticate() получает пользователя из request.session
+# 2. Если пользователь аутентифицирован — вызывает enforce_csrf()
+# 3. enforce_csrf() проверяет заголовок X-CSRFToken или куку csrftoken
+# 4. При неудаче — 403 PermissionDenied
+
+# Для SPA: получение CSRF-токена
+# GET /api/csrf/  →  Set-Cookie: csrftoken=...
+# Далее: X-CSRFToken: <значение из куки> в каждом небезопасном запросе`,
+  },
+  {
+    name: "rest_framework.pagination.BasePagination.paginate_queryset(queryset, request, view=None)",
+    category: "Pagination",
+    description:
+      "Абстрактный метод базового класса пагинации. Должен быть переопределён во всех кастомных классах пагинации. Принимает полный queryset, анализирует параметры запроса и возвращает срез данных для текущей страницы (list) или None, если пагинация не применима. Также сохраняет состояние (текущую страницу, счётчик и т.д.) для последующего вызова get_paginated_response().",
+    syntax: "BasePagination.paginate_queryset(queryset, request, view=None)",
+    arguments: [
+      {
+        name: "queryset",
+        description: "Queryset или список объектов, которые нужно разбить на страницы.",
+      },
+      {
+        name: "request",
+        description: "DRF-объект Request. Используется для извлечения параметров пагинации (номер страницы, limit, cursor) и построения абсолютных URL в ссылках.",
+      },
+      {
+        name: "view",
+        description: "Опциональный экземпляр представления. Используется для получения атрибутов вьюсета (например, page_size).",
+      },
+    ],
+    example: `from rest_framework.pagination import BasePagination
+from rest_framework.response import Response
+
+
+class AlphabeticPagination(BasePagination):
+    """
+    Пагинация по первой букве: ?letter=A возвращает все записи,
+    чьё поле name начинается с указанной буквы.
+    """
+
+    def paginate_queryset(self, queryset, request, view=None):
+        self.letter = request.query_params.get("letter", "A").upper()
+        self.request = request
+        # Фильтруем и сохраняем результат
+        self.results = list(queryset.filter(name__istartswith=self.letter))
+        return self.results
+
+    def get_paginated_response(self, data):
+        return Response({
+            "letter": self.letter,
+            "count": len(self.results),
+            "results": data,
+        })
+
+
+# views.py
+from rest_framework.viewsets import ReadOnlyModelViewSet
+
+class AuthorViewSet(ReadOnlyModelViewSet):
+    pagination_class = AlphabeticPagination
+    # ...
+
+# GET /authors/?letter=P  →  все авторы на букву «P»`,
+  },
+  {
+    name: "rest_framework.pagination.BasePagination.get_paginated_response(data)",
+    category: "Pagination",
+    description:
+      "Абстрактный метод базового класса пагинации. Формирует итоговый HTTP-ответ для страницы данных, добавляя к сериализованным объектам метаданные пагинации (ссылки на следующую/предыдущую страницы, общее количество объектов и т.д.). Вызывается из представления после того, как paginate_queryset() вернул срез и данные были сериализованы. Должен возвращать объект Response.",
+    syntax: "BasePagination.get_paginated_response(data)",
+    arguments: [
+      {
+        name: "data",
+        description: "Уже сериализованные данные текущей страницы (список словарей, готовый к JSON-сериализации).",
+      },
+    ],
+    example: `from rest_framework.pagination import BasePagination
+from rest_framework.response import Response
+
+
+class EnvelopePagination(BasePagination):
+    """
+    Пагинация с ответом в формате «конверт»:
+    { "meta": {...}, "data": [...] }
+    """
+
+    def paginate_queryset(self, queryset, request, view=None):
+        self.page_size = 10
+        self.count = queryset.count()
+        try:
+            self.page_number = int(request.query_params.get("page", 1))
+        except ValueError:
+            self.page_number = 1
+        offset = (self.page_number - 1) * self.page_size
+        return list(queryset[offset: offset + self.page_size])
+
+    def get_paginated_response(self, data):
+        total_pages = (self.count + self.page_size - 1) // self.page_size
+        return Response({
+            "meta": {
+                "total": self.count,
+                "page": self.page_number,
+                "per_page": self.page_size,
+                "total_pages": total_pages,
+            },
+            "data": data,
+        })
+
+    def get_paginated_response_schema(self, schema):
+        # Поддержка OpenAPI-схемы
+        return {
+            "type": "object",
+            "properties": {
+                "meta": {"type": "object"},
+                "data": schema,
+            },
+        }`,
+  },
+  {
+    name: "rest_framework.pagination.PageNumberPagination.paginate_queryset(queryset, request, view=None)",
+    category: "Pagination",
+    description:
+      "Реализация пагинации по номеру страницы. Читает параметр ?page=N из запроса, вычисляет нужный срез queryset и возвращает список объектов текущей страницы. Сохраняет внутреннее состояние (self.page, self.request) для последующего вызова get_paginated_response(). Возвращает None, если результат не требует пагинации (queryset пустой или размер страницы не задан).",
+    syntax: "PageNumberPagination.paginate_queryset(queryset, request, view=None)",
+    arguments: [
+      {
+        name: "queryset",
+        description: "Queryset или список объектов для пагинации.",
+      },
+      {
+        name: "request",
+        description: "DRF-объект Request. Из него читается параметр page_query_param (по умолчанию 'page').",
+      },
+      {
+        name: "view",
+        description: "Опциональный экземпляр представления. Используется для получения атрибута pagination_class.page_size.",
+      },
+    ],
+    example: `from rest_framework.pagination import PageNumberPagination
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+
+class StandardPagination(PageNumberPagination):
+    page_size = 20                    # объектов на странице
+    page_size_query_param = "size"    # ?size=50
+    max_page_size = 100               # максимум
+    page_query_param = "page"         # ?page=3
+
+
+class ArticleListView(APIView):
+    pagination_class = StandardPagination
+
+    def get(self, request):
+        from myapp.models import Article
+        from myapp.serializers import ArticleSerializer
+
+        queryset = Article.objects.order_by("-created_at")
+        paginator = self.pagination_class()
+
+        # paginate_queryset возвращает срез или None
+        page = paginator.paginate_queryset(queryset, request, view=self)
+
+        if page is not None:
+            serializer = ArticleSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+
+        serializer = ArticleSerializer(queryset, many=True)
+        return Response(serializer.data)
+
+
+# GET /articles/?page=2&size=10
+# Вернёт объекты 11–20 с метаданными пагинации`,
+  },
+  {
+    name: "rest_framework.pagination.PageNumberPagination.get_paginated_response(data)",
+    category: "Pagination",
+    description:
+      "Формирует ответ с метаданными для PageNumberPagination. Возвращает Response со стандартной структурой: count (общее количество объектов), next (URL следующей страницы или null), previous (URL предыдущей страницы или null) и results (данные текущей страницы). Переопределяется для изменения формата ответа без замены всего класса пагинации.",
+    syntax: "PageNumberPagination.get_paginated_response(data)",
+    arguments: [
+      {
+        name: "data",
+        description: "Сериализованные данные текущей страницы (list). Помещаются в ключ 'results' ответа.",
+      },
+    ],
+    example: `from rest_framework.pagination import PageNumberPagination
+from rest_framework.response import Response
+from collections import OrderedDict
+
+
+class RichPageNumberPagination(PageNumberPagination):
+    page_size = 25
+    page_size_query_param = "page_size"
+
+    def get_paginated_response(self, data):
+        # Переопределяем стандартный ответ: добавляем total_pages и current_page
+        return Response(OrderedDict([
+            ("count", self.page.paginator.count),
+            ("total_pages", self.page.paginator.num_pages),
+            ("current_page", self.page.number),
+            ("next", self.get_next_link()),
+            ("previous", self.get_previous_link()),
+            ("results", data),
+        ]))
+
+    def get_paginated_response_schema(self, schema):
+        """Описание для OpenAPI."""
+        return {
+            "type": "object",
+            "required": ["count", "results"],
+            "properties": {
+                "count": {"type": "integer"},
+                "total_pages": {"type": "integer"},
+                "current_page": {"type": "integer"},
+                "next": {"type": "string", "nullable": True},
+                "previous": {"type": "string", "nullable": True},
+                "results": schema,
+            },
+        }
+
+
+# Пример ответа:
+# {
+#   "count": 243,
+#   "total_pages": 10,
+#   "current_page": 3,
+#   "next": "https://api.example.com/articles/?page=4",
+#   "previous": "https://api.example.com/articles/?page=2",
+#   "results": [...]
+# }`,
+  },
+  {
+    name: "rest_framework.pagination.PageNumberPagination.get_page_size(request)",
+    category: "Pagination",
+    description:
+      "Определяет размер страницы для конкретного запроса. Проверяет параметр page_size_query_param в строке запроса (например, ?page_size=50); если он задан и не превышает max_page_size — использует его. Иначе возвращает значение атрибута page_size класса. Переопределяется для динамического управления размером страницы — например, в зависимости от роли пользователя.",
+    syntax: "PageNumberPagination.get_page_size(request)",
+    arguments: [
+      {
+        name: "request",
+        description: "DRF-объект Request. Из него читается query-параметр page_size_query_param.",
+      },
+    ],
+    example: `from rest_framework.pagination import PageNumberPagination
+
+
+class RoleBasedPagination(PageNumberPagination):
+    """
+    Размер страницы зависит от роли пользователя:
+    - анонимный / обычный пользователь: 10
+    - staff: 100
+    - ?page_size=N: учитывается, но ограничивается максимумом роли
+    """
+
+    page_size = 10
+    page_size_query_param = "page_size"
+    max_page_size = 10  # переопределим динамически
+
+    def get_page_size(self, request):
+        user = request.user
+
+        if user and user.is_staff:
+            self.max_page_size = 500
+            default_size = 100
+        else:
+            self.max_page_size = 50
+            default_size = 10
+
+        # Проверяем явно переданный размер страницы
+        if self.page_size_query_param:
+            try:
+                requested = int(request.query_params[self.page_size_query_param])
+                return min(requested, self.max_page_size)
+            except (KeyError, ValueError):
+                pass
+
+        return default_size
+
+
+# GET /articles/?page_size=200  (обычный пользователь) → 50 (ограничение)
+# GET /articles/?page_size=200  (staff)                → 200
+# GET /articles/                (обычный пользователь) → 10
+# GET /articles/                (staff)                → 100`,
+  },
+  {
+    name: "rest_framework.pagination.PageNumberPagination.get_html_context()",
+    category: "Pagination",
+    description:
+      "Возвращает словарь с контекстом для рендеринга HTML-элементов управления пагинацией в browsable API. Включает данные о соседних страницах, первой и последней страницах, ссылки назад и вперёд. Используется шаблоном DRF для отображения кнопок пагинации. Переопределяется для кастомизации отображения страниц в browsable API без изменения логики пагинации.",
+    syntax: "PageNumberPagination.get_html_context()",
+    arguments: [],
+    example: `from rest_framework.pagination import PageNumberPagination
+
+
+class ExtendedPageNumberPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+
+    def get_html_context(self):
+        # Получаем стандартный контекст (page_links, previous, next, ...)
+        context = super().get_html_context()
+
+        # Добавляем собственные данные для шаблона
+        context["total_pages"] = self.page.paginator.num_pages
+        context["current_page"] = self.page.number
+        context["page_size"] = self.get_page_size(self.request)
+
+        return context
+
+    def to_html(self):
+        # to_html() вызывает get_html_context() и рендерит шаблон.
+        # Переопределяем для подключения кастомного шаблона.
+        template = self.template
+        context = self.get_html_context()
+        return template.render(context, request=self.request)
+
+
+# Стандартный контекст содержит:
+# {
+#   "previous_url": "http://api/items/?page=2",
+#   "next_url": "http://api/items/?page=4",
+#   "page_links": [
+#     {"url": "http://api/items/?page=1",  "number": 1,    "is_active": False, "is_break": False},
+#     {"url": "http://api/items/?page=2",  "number": 2,    "is_active": False, "is_break": False},
+#     {"url": "http://api/items/?page=3",  "number": 3,    "is_active": True,  "is_break": False},
+#     ...
+#     {"url": None,                        "number": None, "is_active": False, "is_break": True},
+#     {"url": "http://api/items/?page=12", "number": 12,   "is_active": False, "is_break": False},
+#   ]
+# }`,
+  },
+  {
+    name: "rest_framework.pagination.LimitOffsetPagination.paginate_queryset(queryset, request, view=None)",
+    category: "Pagination",
+    description:
+      "Реализация limit/offset-пагинации. Читает параметры ?limit=N&offset=M из запроса, применяет queryset[offset:offset+limit] и возвращает срез. Этот стиль пагинации позволяет клиенту точно указывать, сколько объектов запросить и с какой позиции — удобно для бесконечной прокрутки. Сохраняет count, limit и offset для формирования ответа.",
+    syntax: "LimitOffsetPagination.paginate_queryset(queryset, request, view=None)",
+    arguments: [
+      {
+        name: "queryset",
+        description: "Queryset или список объектов для пагинации.",
+      },
+      {
+        name: "request",
+        description: "DRF-объект Request. Из него читаются параметры limit_query_param ('limit') и offset_query_param ('offset').",
+      },
+      {
+        name: "view",
+        description: "Опциональный экземпляр представления.",
+      },
+    ],
+    example: `from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.response import Response
+from rest_framework import serializers
+from rest_framework.views import APIView
+
+
+class ProductPagination(LimitOffsetPagination):
+    default_limit = 20      # limit по умолчанию
+    max_limit = 200         # максимальный limit
+    limit_query_param = "limit"
+    offset_query_param = "offset"
+
+
+class ProductListView(APIView):
+    pagination_class = ProductPagination
+
+    def get(self, request):
+        from myapp.models import Product
+        from myapp.serializers import ProductSerializer
+
+        queryset = Product.objects.filter(is_active=True).order_by("name")
+        paginator = ProductPagination()
+
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = ProductSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+# GET /products/?limit=10&offset=30
+# Возвращает объекты с позиции 30 по 39 (10 штук)
+
+# GET /products/?limit=5&offset=0
+# Возвращает первые 5 объектов
+
+# Ответ:
+# {
+#   "count": 157,
+#   "next": "http://api/products/?limit=5&offset=5",
+#   "previous": null,
+#   "results": [...]
+# }`,
+  },
+  {
+    name: "rest_framework.pagination.LimitOffsetPagination.get_paginated_response(data)",
+    category: "Pagination",
+    description:
+      "Формирует ответ с метаданными для LimitOffsetPagination. Возвращает Response с полями: count (общее количество объектов), next (URL следующей страницы с соответствующими limit/offset или null), previous (URL предыдущей страницы или null) и results (данные). В отличие от PageNumberPagination, ссылки содержат явные параметры limit и offset.",
+    syntax: "LimitOffsetPagination.get_paginated_response(data)",
+    arguments: [
+      {
+        name: "data",
+        description: "Сериализованные данные текущей страницы (list).",
+      },
+    ],
+    example: `from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.response import Response
+from collections import OrderedDict
+
+
+class DetailedLimitOffsetPagination(LimitOffsetPagination):
+    default_limit = 25
+    max_limit = 100
+
+    def get_paginated_response(self, data):
+        return Response(OrderedDict([
+            ("total", self.count),
+            ("limit", self.limit),
+            ("offset", self.offset),
+            ("has_next", self.offset + self.limit < self.count),
+            ("has_previous", self.offset > 0),
+            ("next", self.get_next_link()),
+            ("previous", self.get_previous_link()),
+            ("items", data),          # 'items' вместо стандартного 'results'
+        ]))
+
+
+# Стандартный ответ LimitOffsetPagination:
+# GET /events/?limit=10&offset=20
+# {
+#   "count": 87,
+#   "next": "http://api/events/?limit=10&offset=30",
+#   "previous": "http://api/events/?limit=10&offset=10",
+#   "results": [...]
+# }
+
+# Кастомный ответ DetailedLimitOffsetPagination:
+# {
+#   "total": 87,
+#   "limit": 10,
+#   "offset": 20,
+#   "has_next": true,
+#   "has_previous": true,
+#   "next": "http://api/events/?limit=10&offset=30",
+#   "previous": "http://api/events/?limit=10&offset=10",
+#   "items": [...]
+# }`,
+  },
+  {
+    name: "rest_framework.pagination.LimitOffsetPagination.get_limit(request)",
+    category: "Pagination",
+    description:
+      "Извлекает и валидирует значение limit из параметров запроса. Читает параметр limit_query_param (по умолчанию 'limit'), проверяет что значение положительное и не превышает max_limit. Если параметр не задан — возвращает default_limit. Переопределяется для кастомной логики: например, разные максимумы для разных пользователей.",
+    syntax: "LimitOffsetPagination.get_limit(request)",
+    arguments: [
+      {
+        name: "request",
+        description: "DRF-объект Request. Из него читается query-параметр limit_query_param.",
+      },
+    ],
+    example: `from rest_framework.pagination import LimitOffsetPagination
+
+
+class TierBasedPagination(LimitOffsetPagination):
+    """
+    Ограничения зависят от тарифного плана пользователя.
+    Атрибут 'plan' берётся из профиля, прикреплённого к пользователю.
+    """
+
+    default_limit = 20
+    max_limit = 20  # будет переопределён в get_limit()
+    limit_query_param = "limit"
+    offset_query_param = "offset"
+
+    PLAN_LIMITS = {
+        "free": 20,
+        "pro": 100,
+        "enterprise": 1000,
+    }
+
+    def get_limit(self, request):
+        # Определяем максимум по тарифу
+        plan = getattr(getattr(request.user, "profile", None), "plan", "free")
+        self.max_limit = self.PLAN_LIMITS.get(plan, 20)
+
+        # Стандартная логика: читаем параметр и ограничиваем максимумом
+        try:
+            requested = int(request.query_params[self.limit_query_param])
+            if requested <= 0:
+                raise ValueError
+            return min(requested, self.max_limit)
+        except (KeyError, ValueError):
+            return min(self.default_limit, self.max_limit)
+
+
+# GET /products/?limit=500  (free пользователь) → 20
+# GET /products/?limit=500  (pro пользователь)  → 100
+# GET /products/?limit=50   (pro пользователь)  → 50`,
+  },
+  {
+    name: "rest_framework.pagination.LimitOffsetPagination.get_offset(request)",
+    category: "Pagination",
+    description:
+      "Извлекает и валидирует значение offset из параметров запроса. Читает параметр offset_query_param (по умолчанию 'offset'), проверяет что значение неотрицательное целое число. Если параметр не задан или некорректен — возвращает 0. Переопределяется редко; чаще достаточно настроить offset_query_param.",
+    syntax: "LimitOffsetPagination.get_offset(request)",
+    arguments: [
+      {
+        name: "request",
+        description: "DRF-объект Request. Из него читается query-параметр offset_query_param.",
+      },
+    ],
+    example: `from rest_framework.pagination import LimitOffsetPagination
+
+
+class BoundedOffsetPagination(LimitOffsetPagination):
+    """
+    Ограничивает максимальный offset, чтобы предотвратить
+    дорогостоящие запросы глубоко в середину большой таблицы.
+    """
+
+    default_limit = 20
+    max_limit = 100
+    MAX_OFFSET = 10_000  # нельзя уйти дальше 10 000-й записи
+
+    def get_offset(self, request):
+        # Стандартное получение offset
+        try:
+            offset = int(request.query_params[self.offset_query_param])
+            if offset < 0:
+                raise ValueError
+        except (KeyError, ValueError):
+            return 0
+
+        # Принудительное ограничение
+        if offset > self.MAX_OFFSET:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                f"offset не может превышать {self.MAX_OFFSET}. "
+                "Используйте cursor-пагинацию для навигации по большим наборам данных."
+            )
+
+        return offset
+
+
+# GET /logs/?offset=50000  →  400 ValidationError
+# GET /logs/?offset=500    →  500 (корректно)
+# GET /logs/               →  0   (по умолчанию)`,
+  },
+  {
+    name: "rest_framework.pagination.CursorPagination.paginate_queryset(queryset, request, view=None)",
+    category: "Pagination",
+    description:
+      "Реализация курсорной пагинации — наиболее эффективной для больших и часто обновляемых наборов данных. Вместо номера страницы использует непрозрачный курсор (зашифрованную позицию в наборе данных), что исключает пропуски и дубликаты при добавлении новых записей. Требует устойчивой сортировки queryset. Не поддерживает переход на произвольную страницу — только «вперёд» и «назад».",
+    syntax: "CursorPagination.paginate_queryset(queryset, request, view=None)",
+    arguments: [
+      {
+        name: "queryset",
+        description: "Queryset с явной сортировкой (ordering). CursorPagination требует детерминированного порядка — без него поведение непредсказуемо.",
+      },
+      {
+        name: "request",
+        description: "DRF-объект Request. Из него читается параметр cursor_query_param (по умолчанию 'cursor') с закодированным курсором.",
+      },
+      {
+        name: "view",
+        description: "Опциональный экземпляр представления.",
+      },
+    ],
+    example: `from rest_framework.pagination import CursorPagination
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+
+class EventCursorPagination(CursorPagination):
+    page_size = 50
+    ordering = "-created_at"           # обязательная сортировка
+    cursor_query_param = "cursor"
+    page_size_query_param = "page_size"
+    max_page_size = 200
+
+
+class EventListView(APIView):
+    pagination_class = EventCursorPagination
+
+    def get(self, request):
+        from myapp.models import Event
+        from myapp.serializers import EventSerializer
+
+        # Queryset ДОЛЖЕН быть отсортирован так же, как ordering в пагинаторе
+        queryset = Event.objects.order_by("-created_at")
+        paginator = EventCursorPagination()
+
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = EventSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+# Первый запрос:  GET /events/
+# Следующая стр.: GET /events/?cursor=cD0yMDI0LTAxLTAxKzAwJTNBMDAlM0EwMC4wMDAwMDA%3D
+#
+# Особенности:
+# - нет параметра ?page= или ?offset=
+# - курсор непрозрачен и нельзя вычислить вручную
+# - при добавлении новых записей страницы не «съезжают»`,
+  },
+  {
+    name: "rest_framework.pagination.CursorPagination.get_paginated_response(data)",
+    category: "Pagination",
+    description:
+      "Формирует ответ с метаданными для CursorPagination. Возвращает Response с тремя полями: next (URL следующей страницы с курсором или null), previous (URL предыдущей страницы с курсором или null) и results. В отличие от PageNumberPagination, не включает общее количество объектов (count) — подсчёт COUNT(*) по большой таблице дорог и нивелирует преимущества курсорной пагинации.",
+    syntax: "CursorPagination.get_paginated_response(data)",
+    arguments: [
+      {
+        name: "data",
+        description: "Сериализованные данные текущей страницы (list).",
+      },
+    ],
+    example: `from rest_framework.pagination import CursorPagination
+from rest_framework.response import Response
+from collections import OrderedDict
+
+
+class RichCursorPagination(CursorPagination):
+    page_size = 30
+    ordering = "-published_at"
+    cursor_query_param = "cursor"
+
+    def get_paginated_response(self, data):
+        return Response(OrderedDict([
+            # CursorPagination намеренно не предоставляет count —
+            # для лент и бесконечной прокрутки он не нужен
+            ("next", self.get_next_link()),
+            ("previous", self.get_previous_link()),
+            ("page_size", self.page_size),
+            ("results", data),
+        ]))
+
+    def get_paginated_response_schema(self, schema):
+        return {
+            "type": "object",
+            "properties": {
+                "next": {"type": "string", "nullable": True},
+                "previous": {"type": "string", "nullable": True},
+                "page_size": {"type": "integer"},
+                "results": schema,
+            },
+        }
+
+
+# Ответ:
+# {
+#   "next": "https://api.example.com/feed/?cursor=cD0yM...",
+#   "previous": null,
+#   "page_size": 30,
+#   "results": [...]
+# }
+#
+# Типичное применение: лента новостей, чат, лог событий —
+# любой поток данных, куда постоянно добавляются новые записи.`,
+  },
+  {
+    name: "rest_framework.pagination.CursorPagination.decode_cursor(request)",
+    category: "Pagination",
+    description:
+      "Декодирует курсор из строки запроса в структуру данных с позицией в наборе. Читает параметр cursor из запроса, base64-декодирует его, десериализует JSON и возвращает именованный кортеж Cursor с полями position, reverse и offset. Возвращает None, если курсор отсутствует (первая страница) или повреждён. Используется внутри paginate_queryset() — прямой вызов нужен только при создании глубоко кастомной пагинации.",
+    syntax: "CursorPagination.decode_cursor(request)",
+    arguments: [
+      {
+        name: "request",
+        description: "DRF-объект Request. Из него читается query-параметр cursor_query_param со строкой курсора.",
+      },
+    ],
+    example: `from rest_framework.pagination import CursorPagination
+from rest_framework.exceptions import NotFound
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class DebugCursorPagination(CursorPagination):
+    """
+    CursorPagination с логированием и защитой от подделки курсора.
+    """
+
+    page_size = 25
+    ordering = "id"
+
+    def decode_cursor(self, request):
+        raw_cursor = request.query_params.get(self.cursor_query_param)
+
+        if raw_cursor is None:
+            logger.debug("Cursor: первая страница, курсор отсутствует")
+            return None
+
+        cursor = super().decode_cursor(request)
+
+        if cursor is None:
+            # Курсор был передан, но не удалось декодировать — он повреждён
+            logger.warning("Cursor: получен некорректный курсор: %r", raw_cursor)
+            raise NotFound("Недействительный курсор. Начните навигацию с первой страницы.")
+
+        logger.debug(
+            "Cursor: position=%s, reverse=%s, offset=%s",
+            cursor.position, cursor.reverse, cursor.offset,
+        )
+        return cursor
+
+
+# Структура Cursor (именованный кортеж):
+# Cursor(
+#   position={'published_at': '2024-01-15T10:30:00Z'},  # значение поля сортировки
+#   reverse=False,   # направление (True = назад)
+#   offset=2         # смещение внутри группы с одинаковым position
+# )`,
+  },
+  {
+    name: "rest_framework.pagination.CursorPagination.encode_cursor(cursor)",
+    category: "Pagination",
+    description:
+      "Кодирует внутреннюю структуру позиции (именованный кортеж Cursor) в непрозрачную строку для URL. Сериализует cursor в JSON, затем кодирует результат в base64url без padding. Возвращает полный URL с параметром курсора. Используется внутри get_next_link() и get_previous_link() — прямой вызов нужен только при создании кастомных механизмов навигации.",
+    syntax: "CursorPagination.encode_cursor(cursor)",
+    arguments: [
+      {
+        name: "cursor",
+        description: "Именованный кортеж Cursor(position, reverse, offset), описывающий позицию в наборе данных. position — словарь со значениями полей сортировки.",
+      },
+    ],
+    example: `from rest_framework.pagination import CursorPagination
+from rest_framework.pagination import _reverse_ordering, Cursor
+from rest_framework.response import Response
+from collections import OrderedDict
+
+
+class BookmarkableCursorPagination(CursorPagination):
+    """
+    CursorPagination, который дополнительно отдаёт курсоры
+    для «закладок» — позиций первого и последнего элементов страницы.
+    Полезно для UI с кнопкой «вернуться к этой позиции».
+    """
+
+    page_size = 20
+    ordering = "-created_at"
+
+    def get_paginated_response(self, data):
+        next_link = self.get_next_link()
+        previous_link = self.get_previous_link()
+
+        # Формируем курсор-закладку для первого элемента текущей страницы
+        first_cursor = None
+        if self.page and len(self.page) > 0:
+            first_obj = self.page[0]
+            position = {
+                field.lstrip("-"): str(getattr(first_obj, field.lstrip("-"), ""))
+                for field in self.ordering.split(",")
+            }
+            cursor = Cursor(position=position, reverse=False, offset=0)
+            first_cursor = self.encode_cursor(cursor)
+
+        return Response(OrderedDict([
+            ("next", next_link),
+            ("previous", previous_link),
+            ("first_item_cursor", first_cursor),
+            ("results", data),
+        ]))
+
+
+# encode_cursor() гарантирует:
+# 1. Непрозрачность: клиент не может изменить позицию вручную
+# 2. URL-безопасность: base64url без символов +, /, =
+# 3. Компактность: короткая строка вместо читаемых параметров`,
+  },
+  {
+    name: "rest_framework.fields.Field.__init__(read_only=False, write_only=False, required=None, default=empty, initial=empty, source=None, label=None, help_text=None, allow_null=False, validators=None, error_messages=None, style=None)",
+    category: "Fields",
+    description:
+      "Конструктор базового класса Field — родителя всех полей сериализатора. Принимает универсальные параметры, общие для любого поля: режим доступа (read_only/write_only), обязательность, значение по умолчанию, источник данных и метаданные для отображения. Все конкретные поля (CharField, IntegerField и т.д.) наследуют эти параметры и вызывают super().__init__() в своём конструкторе.",
+    syntax: "Field(read_only=False, write_only=False, required=None, default=empty, initial=empty, source=None, label=None, help_text=None, allow_null=False, validators=None, error_messages=None, style=None)",
+    arguments: [
+      {
+        name: "read_only",
+        description: "Если True — поле включается в вывод (сериализацию), но игнорируется при вводе (десериализации). Используется для полей, которые нельзя изменить через API (например, id, created_at).",
+      },
+      {
+        name: "write_only",
+        description: "Если True — поле принимается при вводе, но не включается в ответ. Типичный пример: поле password.",
+      },
+      {
+        name: "required",
+        description: "Если True — поле обязательно при десериализации. По умолчанию True, если не задан default.",
+      },
+      {
+        name: "default",
+        description: "Значение по умолчанию, используемое при десериализации, если поле отсутствует во входных данных. Может быть callable.",
+      },
+      {
+        name: "initial",
+        description: "Начальное значение для форм и browsable API. Не влияет на десериализацию.",
+      },
+      {
+        name: "source",
+        description: "Атрибут модели или метод, из которого берётся значение при сериализации. Поддерживает точечную нотацию ('author.name'). Специальное значение '*' передаёт весь объект.",
+      },
+      {
+        name: "label",
+        description: "Человекочитаемое имя поля для browsable API и форм.",
+      },
+      {
+        name: "help_text",
+        description: "Описание поля, отображаемое в browsable API и схемах (OpenAPI).",
+      },
+      {
+        name: "allow_null",
+        description: "Если True — поле принимает значение None как валидное. По умолчанию False.",
+      },
+      {
+        name: "validators",
+        description: "Список дополнительных валидаторов — callable-объектов, вызываемых после базовой проверки типа.",
+      },
+      {
+        name: "error_messages",
+        description: "Словарь для переопределения стандартных сообщений об ошибках (ключи: 'required', 'null', 'invalid' и др.).",
+      },
+      {
+        name: "style",
+        description: "Словарь с подсказками для рендереров (например, {'input_type': 'password'} для browsable API).",
+      },
+    ],
+    example: `from rest_framework import serializers
+from django.utils import timezone
+
+
+class ArticleSerializer(serializers.Serializer):
+    # read_only: нельзя изменить через API
+    id = serializers.IntegerField(read_only=True)
+
+    # write_only: не попадёт в ответ
+    internal_notes = serializers.CharField(write_only=True, required=False)
+
+    # required=False + default
+    status = serializers.CharField(
+        required=False,
+        default="draft",
+        help_text="Статус статьи: draft или published",
+    )
+
+    # source — берёт данные из другого атрибута модели
+    author_name = serializers.CharField(source="author.get_full_name")
+
+    # allow_null — разрешает None
+    published_at = serializers.DateTimeField(allow_null=True, required=False)
+
+    # style — подсказка для рендерера
+    title = serializers.CharField(
+        label="Заголовок",
+        style={"placeholder": "Введите заголовок..."},
+    )
+
+    # custom validators + error_messages
+    slug = serializers.SlugField(
+        validators=[lambda v: (_ for _ in ()).throw(
+            serializers.ValidationError("reserved")
+        ) if v == "admin" else None],
+        error_messages={"invalid": "Slug может содержать только буквы, цифры и дефисы."},
+    )
+
+
+# Пример использования
+data = {
+    "internal_notes": "проверить корректуру",
+    "title": "Введение в DRF",
+    "slug": "intro-drf",
+}
+s = ArticleSerializer(data=data)
+print(s.is_valid())   # True
+print(s.validated_data["status"])  # "draft" (default)`,
+  },
+  {
+    name: "rest_framework.fields.Field.get_attribute(instance)",
+    category: "Fields",
+    description:
+      "Извлекает значение поля из объекта (модели или словаря) при сериализации. Использует параметр source, заданный при инициализации поля, для навигации по атрибутам через точечную нотацию. Если атрибут не найден и задано значение по умолчанию — возвращает его. При ошибке доступа выбрасывает SkipField (поле пропускается в выводе) или ValidationError.",
+    syntax: "Field.get_attribute(instance)",
+    arguments: [
+      {
+        name: "instance",
+        description: "Объект (экземпляр модели, словарь или любой другой объект), из которого нужно извлечь значение поля.",
+      },
+    ],
+    example: `from rest_framework import serializers
+from rest_framework.fields import Field
+
+
+class UpperCaseField(Field):
+    """Поле, которое возвращает строковый атрибут в верхнем регистре."""
+
+    def get_attribute(self, instance):
+        # Сначала получаем значение стандартным способом
+        value = super().get_attribute(instance)
+        # Затем трансформируем его
+        if isinstance(value, str):
+            return value.upper()
+        return value
+
+    def to_representation(self, value):
+        return value
+
+    def to_internal_value(self, data):
+        return data
+
+
+class ProductSerializer(serializers.Serializer):
+    name = UpperCaseField(source="name")
+    category = serializers.CharField(source="category.name")  # вложенный source
+
+
+class Product:
+    def __init__(self, name, category):
+        self.name = name
+        self.category = category
+
+
+class Category:
+    def __init__(self, name):
+        self.name = name
+
+
+product = Product(name="ноутбук", category=Category(name="электроника"))
+s = ProductSerializer(instance=product)
+print(s.data)
+# {'name': 'НОУТБУК', 'category': 'электроника'}`,
+  },
+  {
+    name: "rest_framework.fields.Field.to_representation(value)",
+    category: "Fields",
+    description:
+      "Преобразует внутреннее Python-значение в примитив, пригодный для сериализации (JSON, XML и т.д.). Вызывается при сериализации объекта в ответ API. Базовая реализация в Field просто возвращает значение как есть; все конкретные поля переопределяют этот метод для конвертации типов (например, datetime → строка ISO 8601). Переопределяйте этот метод при создании кастомных полей.",
+    syntax: "Field.to_representation(value)",
+    arguments: [
+      {
+        name: "value",
+        description: "Внутреннее Python-значение, полученное из объекта через get_attribute(). Гарантированно не None (None обрабатывается до вызова метода).",
+      },
+    ],
+    example: `from rest_framework import serializers
+from rest_framework.fields import Field
+
+
+class MoneyField(Field):
+    """Хранит сумму в копейках (int), отдаёт в рублях (str с двумя знаками)."""
+
+    def to_representation(self, value):
+        # value — целое число копеек
+        rubles = value / 100
+        return f"{rubles:.2f} ₽"
+
+    def to_internal_value(self, data):
+        # Обратное преобразование: строка → копейки
+        try:
+            cleaned = str(data).replace("₽", "").replace(",", ".").strip()
+            return round(float(cleaned) * 100)
+        except (ValueError, TypeError):
+            self.fail("invalid")
+
+
+class OrderSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    total = MoneyField()
+
+
+class Order:
+    def __init__(self, id, total):
+        self.id = id
+        self.total = total  # копейки
+
+
+order = Order(id=1, total=149900)
+s = OrderSerializer(instance=order)
+print(s.data)
+# {'id': 1, 'total': '1499.00 ₽'}
+
+# Десериализация
+s2 = OrderSerializer(data={"total": "1499.00 ₽"})
+print(s2.is_valid())           # True
+print(s2.validated_data)       # {'total': 149900}`,
+  },
+  {
+    name: "rest_framework.fields.Field.to_internal_value(data)",
+    category: "Fields",
+    description:
+      "Преобразует примитивное входное значение (из запроса) во внутреннее Python-представление при десериализации. Это парный метод к to_representation(). Должен валидировать тип и формат данных, выбрасывая ValidationError при некорректном вводе. Базовая реализация в Field выбрасывает NotImplementedError — каждое конкретное поле обязано переопределить этот метод.",
+    syntax: "Field.to_internal_value(data)",
+    arguments: [
+      {
+        name: "data",
+        description: "Примитивное значение из входных данных запроса (строка, число, булево и т.д.), которое нужно преобразовать во внутренний тип Python.",
+      },
+    ],
+    example: `from rest_framework import serializers
+from rest_framework.fields import Field
+import re
+
+
+class PhoneField(Field):
+    """Принимает номер телефона в любом формате, хранит как +7XXXXXXXXXX."""
+
+    PHONE_RE = re.compile(r"^[+7|8][\\s\\-()]*(\\d[\\s\\-()]*){10}$")
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail("invalid")
+        digits = re.sub(r"\\D", "", data)
+        if len(digits) == 11 and digits[0] in ("7", "8"):
+            normalized = "+7" + digits[1:]
+        elif len(digits) == 10:
+            normalized = "+7" + digits
+        else:
+            raise serializers.ValidationError(
+                "Введите корректный российский номер телефона."
+            )
+        return normalized
+
+    def to_representation(self, value):
+        # +79991234567 → +7 (999) 123-45-67
+        d = value[2:]
+        return f"+7 ({d[:3]}) {d[3:6]}-{d[6:8]}-{d[8:]}"
+
+
+class ContactSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    phone = PhoneField()
+
+
+s = ContactSerializer(data={"name": "Иван", "phone": "8 (999) 123-45-67"})
+print(s.is_valid())           # True
+print(s.validated_data)       # {'name': 'Иван', 'phone': '+79991234567'}
+print(s.data)                 # {'name': 'Иван', 'phone': '+7 (999) 123-45-67'}`,
+  },
+  {
+    name: "rest_framework.fields.Field.run_validation(data=empty)",
+    category: "Fields",
+    description:
+      "Запускает полный цикл валидации поля: проверяет наличие значения и allow_null, вызывает to_internal_value() для преобразования типа, затем run_validators() для применения дополнительных валидаторов. Возвращает преобразованное значение или выбрасывает ValidationError. Является главной точкой входа для валидации отдельного поля — вызывается из Serializer.run_validation().",
+    syntax: "Field.run_validation(data=empty)",
+    arguments: [
+      {
+        name: "data",
+        description: "Входные данные для поля. Специальное значение empty означает, что поле отсутствовало во входных данных.",
+      },
+    ],
+    example: `from rest_framework import serializers
+from rest_framework.fields import Field, empty
+from rest_framework.exceptions import ValidationError
+
+
+class PositiveIntegerField(Field):
+    """Целое положительное число с расширенной валидацией."""
+
+    def to_internal_value(self, data):
+        try:
+            value = int(data)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError("Требуется целое число.")
+        return value
+
+    def run_validation(self, data=empty):
+        # Вызываем стандартную валидацию (проверка required/null + to_internal_value)
+        value = super().run_validation(data)
+        # Добавляем собственную проверку после стандартной
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Значение должно быть больше нуля.")
+        return value
+
+    def to_representation(self, value):
+        return value
+
+
+class ProductSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    quantity = PositiveIntegerField()
+
+
+# Прямой вызов run_validation на поле
+field = PositiveIntegerField()
+field.field_name = "quantity"
+
+try:
+    print(field.run_validation("5"))    # 5
+    print(field.run_validation("-1"))   # ValidationError
+except ValidationError as e:
+    print(e.detail)  # ['Значение должно быть больше нуля.']`,
+  },
+  {
+    name: "rest_framework.fields.Field.run_validators(value)",
+    category: "Fields",
+    description:
+      "Последовательно применяет все валидаторы из списка self.validators к уже преобразованному значению. Вызывается из run_validation() после успешного выполнения to_internal_value(). Если несколько валидаторов выбрасывают ошибки — они собираются и возвращаются вместе. Переопределяется редко; чаще достаточно передать список validators= в конструктор поля.",
+    syntax: "Field.run_validators(value)",
+    arguments: [
+      {
+        name: "value",
+        description: "Преобразованное внутреннее значение (результат to_internal_value()), которое нужно проверить валидаторами.",
+      },
+    ],
+    example: `from rest_framework import serializers
+from rest_framework.fields import Field
+from rest_framework.exceptions import ValidationError
+
+
+def no_profanity(value):
+    """Простой фильтр запрещённых слов."""
+    blocked = {"спам", "реклама"}
+    if any(word in value.lower() for word in blocked):
+        raise serializers.ValidationError("Сообщение содержит запрещённые слова.")
+
+
+def min_words(value):
+    """Минимум 3 слова."""
+    if len(value.split()) < 3:
+        raise serializers.ValidationError("Сообщение должно содержать минимум 3 слова.")
+
+
+class CommentSerializer(serializers.Serializer):
+    # Оба валидатора будут вызваны через run_validators()
+    text = serializers.CharField(validators=[no_profanity, min_words])
+
+
+# Валидное сообщение
+s = CommentSerializer(data={"text": "Отличная статья, спасибо!"})
+print(s.is_valid())   # True
+
+# Нарушение обоих валидаторов
+s2 = CommentSerializer(data={"text": "спам"})
+print(s2.is_valid())   # False
+print(s2.errors)
+# {'text': ['Сообщение содержит запрещённые слова.',
+#            'Сообщение должно содержать минимум 3 слова.']}`,
+  },
+  {
+    name: "rest_framework.fields.Field.get_default()",
+    category: "Fields",
+    description:
+      "Возвращает значение по умолчанию для поля, если оно отсутствует во входных данных при десериализации. Если default не задан — выбрасывает SkipField, сигнализируя, что поле нужно пропустить. Если default является callable — вызывает его и возвращает результат. Вызывается из run_validation() когда data=empty и поле не обязательно (required=False).",
+    syntax: "Field.get_default()",
+    arguments: [],
+    example: `from rest_framework import serializers
+from django.utils import timezone
+
+
+def current_year():
+    return timezone.now().year
+
+
+class EventSerializer(serializers.Serializer):
+    title = serializers.CharField()
+
+    # Фиксированное значение по умолчанию
+    status = serializers.CharField(default="planned")
+
+    # Callable-default: вычисляется при каждой десериализации
+    year = serializers.IntegerField(default=current_year)
+
+    # Без default и required=False: поле пропускается, если отсутствует
+    description = serializers.CharField(required=False)
+
+
+# Только обязательное поле
+s = EventSerializer(data={"title": "PyCon Russia"})
+print(s.is_valid())          # True
+print(s.validated_data)
+# {'title': 'PyCon Russia', 'status': 'planned', 'year': 2026}
+# 'description' отсутствует — SkipField, поле пропущено
+
+# Явная передача значений перекрывает default
+s2 = EventSerializer(data={"title": "Meetup", "status": "confirmed", "year": 2025})
+print(s2.is_valid())
+print(s2.validated_data)
+# {'title': 'Meetup', 'status': 'confirmed', 'year': 2025}`,
+  },
+  {
+    name: "rest_framework.fields.Field.get_initial()",
+    category: "Fields",
+    description:
+      "Возвращает начальное значение поля, используемое при рендеринге пустых форм в browsable API. В отличие от get_default(), этот метод не влияет на десериализацию — он нужен только для предзаполнения формы в интерфейсе. По умолчанию возвращает значение параметра initial, переданного в конструктор. Если initial — callable, вызывает его.",
+    syntax: "Field.get_initial()",
+    arguments: [],
+    example: `from rest_framework import serializers
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.utils import timezone
+
+
+def next_monday():
+    """Возвращает дату ближайшего понедельника."""
+    today = timezone.now().date()
+    days_ahead = 7 - today.weekday()
+    return today + timezone.timedelta(days=days_ahead)
+
+
+class MeetingSerializer(serializers.Serializer):
+    title = serializers.CharField(
+        initial="Новое совещание",      # строка-подсказка для формы
+        label="Тема совещания",
+    )
+    date = serializers.DateField(
+        initial=next_monday,            # callable: пересчитывается при каждом рендере
+        help_text="Дата проведения",
+    )
+    duration_minutes = serializers.IntegerField(
+        initial=60,
+        min_value=15,
+        max_value=480,
+    )
+
+
+class MeetingView(APIView):
+    def get(self, request):
+        # В browsable API поля будут предзаполнены начальными значениями
+        serializer = MeetingSerializer()
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = MeetingSerializer(data=request.data)
+        if serializer.is_valid():
+            return Response(serializer.validated_data)
+        return Response(serializer.errors, status=400)
+
+
+# Прямой вызов get_initial()
+field = serializers.DateField(initial=next_monday)
+print(field.get_initial())   # например: datetime.date(2026, 7, 27)`,
+  },
+  {
+    name: "rest_framework.fields.Field.fail(key, **kwargs)",
+    category: "Fields",
+    description:
+      "Вспомогательный метод для генерации стандартизированных ValidationError внутри поля. Принимает ключ ошибки (например, 'required', 'invalid', 'null') и находит соответствующее сообщение в словаре error_messages. Поддерживает форматирование через **kwargs (подставляет значения в шаблон сообщения). Используется во всех встроенных полях DRF вместо прямого выброса ValidationError — это обеспечивает единообразие и возможность переопределения сообщений через параметр error_messages.",
+    syntax: "Field.fail(key, **kwargs)",
+    arguments: [
+      {
+        name: "key",
+        description: "Строковый ключ из словаря error_messages поля (например, 'required', 'null', 'invalid', 'max_length').",
+      },
+      {
+        name: "**kwargs",
+        description: "Именованные аргументы для форматирования шаблона сообщения об ошибке (например, max_length=255 подставится в 'Не более {max_length} символов.').",
+      },
+    ],
+    example: `from rest_framework import serializers
+from rest_framework.fields import Field
+
+
+class RangeField(Field):
+    """Числовое поле с настраиваемым диапазоном допустимых значений."""
+
+    # Словарь ключей → шаблоны сообщений
+    default_error_messages = {
+        "invalid": "Введите корректное число.",
+        "too_small": "Значение {value} меньше минимального ({min_value}).",
+        "too_large": "Значение {value} больше максимального ({max_value}).",
+    }
+
+    def __init__(self, min_value=None, max_value=None, **kwargs):
+        super().__init__(**kwargs)
+        self.min_value = min_value
+        self.max_value = max_value
+
+    def to_internal_value(self, data):
+        try:
+            value = float(data)
+        except (TypeError, ValueError):
+            self.fail("invalid")               # ключ без параметров
+
+        if self.min_value is not None and value < self.min_value:
+            self.fail("too_small", value=value, min_value=self.min_value)
+
+        if self.max_value is not None and value > self.max_value:
+            self.fail("too_large", value=value, max_value=self.max_value)
+
+        return value
+
+    def to_representation(self, value):
+        return value
+
+
+class TemperatureSerializer(serializers.Serializer):
+    celsius = RangeField(
+        min_value=-273.15,
+        max_value=1e6,
+        # Переопределяем сообщение через параметр конструктора
+        error_messages={"invalid": "Температура должна быть числом."},
+    )
+
+
+s = TemperatureSerializer(data={"celsius": -300})
+print(s.is_valid())   # False
+print(s.errors)
+# {'celsius': ['Значение -300.0 меньше минимального (-273.15).']}`,
+  },
 ];
